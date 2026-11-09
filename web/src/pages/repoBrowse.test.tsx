@@ -84,16 +84,48 @@ function findButton(text: string): HTMLButtonElement {
   return button as HTMLButtonElement
 }
 
+function byName(name: string): HTMLElement | null {
+  const button = [...document.querySelectorAll<HTMLElement>('button')].find((entry) => entry.textContent?.trim() === name)
+  if (button) return button
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
+async function openPicker(name: string): Promise<HTMLElement[]> {
+  await act(async () => {
+    byName(name)?.click()
+  })
+  await waitFor(() => document.querySelector('[role="option"]') !== null)
+  return [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+}
+
+async function pick(name: string, text: string) {
+  const options = await openPicker(name)
+  const option = options.find((entry) => entry.textContent?.includes(text))
+  if (!option) throw new Error(`option ${text} not found in ${name}`)
+  await act(async () => {
+    option.click()
+  })
+}
+
+async function closePicker() {
+  await act(async () => {
+    ;(document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  })
+  await waitFor(() => document.querySelector('[role="option"]') === null)
+}
+
 function setInputValue(el: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
   setter?.call(el, value)
   el.dispatchEvent(new Event('input', { bubbles: true }))
-}
-
-function setSelectValue(el: HTMLSelectElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set
-  setter?.call(el, value)
-  el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
 function setTextareaValue(el: HTMLTextAreaElement, value: string) {
@@ -396,12 +428,16 @@ describe('MergeRequestsPage', () => {
     await waitFor(() => container.querySelector('form') !== null)
 
     const titleInput = container.querySelector('input') as HTMLInputElement
-    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
     await act(async () => {
       setInputValue(titleInput, 'Add feature')
-      setSelectValue(sourceSelect, 'feature')
-      setSelectValue(targetSelect, 'main')
     })
+    expect(byName('Choose the target branch')?.textContent).toContain('main')
+    expect(findButton('Create merge request').disabled).toBe(true)
+    await pick('Choose the source branch', 'main')
+    expect(container.textContent).toContain('The source and target branches are the same.')
+    expect(findButton('Create merge request').disabled).toBe(true)
+    await pick('Choose the source branch', 'feature')
+    expect(byName('Choose the source branch')?.textContent).toContain('feature')
     await act(async () => {
       findButton('Create merge request').click()
     })
@@ -435,31 +471,33 @@ describe('MergeRequestsPage', () => {
     })
 
     const { container, root } = await renderApp('/studio/game/merges/new')
-    await waitFor(() => container.querySelector('select[aria-label="Add reviewer"]') !== null)
-    const reviewerOptions = Array.from(
-      container.querySelectorAll('select[aria-label="Add reviewer"] option'),
-    ).map((option) => option.textContent)
-    expect(reviewerOptions).toEqual(['Add reviewer…', 'Bob', 'carol@example.com'])
+    await waitFor(() => byName('Add reviewers') !== null)
+    const reviewerOptions = await openPicker('Add reviewers')
+    expect(reviewerOptions.map((option) => option.textContent?.includes('Alice'))).toEqual([false, false])
+    expect(reviewerOptions.map((option) => option.textContent?.includes('Bob') || option.textContent?.includes('carol@example.com'))).toEqual([
+      true,
+      true,
+    ])
+    const currentOption = (index: number) => [...document.querySelectorAll<HTMLElement>('[role="option"]')][index]
+    await act(async () => {
+      currentOption(0).click()
+    })
+    await act(async () => {
+      currentOption(1).click()
+    })
+    await closePicker()
+
+    await pick('Add assignees', 'Alice')
+    await act(async () => {
+      ;[...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent?.includes('carol'))?.click()
+    })
+    await closePicker()
 
     const titleInput = container.querySelector('input') as HTMLInputElement
-    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
     await act(async () => {
       setInputValue(titleInput, 'Add feature')
-      setSelectValue(sourceSelect, 'feature')
-      setSelectValue(targetSelect, 'main')
     })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '2')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '3')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '1')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '3')
-    })
+    await pick('Choose the source branch', 'feature')
     await act(async () => {
       const removers = [...container.querySelectorAll<HTMLElement>('button[aria-labelledby]')].filter((element) =>
         (element.getAttribute('aria-labelledby') ?? '')
@@ -468,8 +506,6 @@ describe('MergeRequestsPage', () => {
       )
       removers[removers.length - 1].click()
     })
-    expect(container.querySelector('select[aria-label="Add reviewer"]')).toBeNull()
-    expect(container.querySelector('select[aria-label="Add assignee"]')).not.toBeNull()
     await act(async () => {
       findButton('Create merge request').click()
     })
@@ -512,6 +548,7 @@ describe('MergeRequestsPage', () => {
           { user_id: '1', name: 'Alice', email: 'a@example.com', photo_url: '', is_admin: true, is_super_admin: false, role: 'owner' },
         ])
       }
+      if (url.includes('/branches')) return jsonResponse(TWO_BRANCHES)
       if (url.includes('/merge-requests')) {
         calls.push(url)
         if (url.includes('after=2')) return jsonResponse(page([1]))
@@ -522,18 +559,32 @@ describe('MergeRequestsPage', () => {
     })
 
     const { container, root } = await renderApp('/acme/game/merges')
-    await waitForText(container, '#2 Two')
+    await waitForText(container, 'Two')
+    expect(container.textContent).toContain('#2 opened')
     await act(async () => {
       findButton('Load more').click()
     })
-    await waitForText(container, '#1 One')
+    await waitForText(container, '#1 opened')
+
+    await pick('Filter by source', 'feature')
+    await waitFor(() => calls.some((url) => url.includes('source=feature')))
+    await waitFor(() => !(container.textContent ?? '').includes('#2 opened'))
+    expect(container.textContent).toContain('#1 opened')
+    expect(byName('Filter by source')?.textContent).toContain('Source: feature')
 
     await act(async () => {
-      setInputValue(container.querySelector('[aria-label="Filter by source branch"]') as HTMLInputElement, 'feature')
+      findButton('Merged').click()
     })
-    await waitFor(() => calls.some((url) => url.includes('source=feature')))
-    await waitForText(container, '#1 One')
-    expect(container.textContent).not.toContain('#2 Two')
+    await waitFor(() => calls.some((url) => url.includes('status=merged')))
+    await act(async () => {
+      findButton('Draft').click()
+    })
+    await waitFor(() => calls.some((url) => url.includes('draft=true')))
+    await act(async () => {
+      findButton('Clear current search and filters').click()
+    })
+    await waitFor(() => !(container.textContent ?? '').includes('Clear current search and filters'))
+    expect(byName('Filter by source')?.textContent).toBe('Source')
     act(() => root.unmount())
   })
 })

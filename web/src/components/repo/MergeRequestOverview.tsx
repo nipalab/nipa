@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { Button, Checkbox, IconButton, Label, Link as PrimerLink, Select, Text, Textarea } from '@primer/react'
+import { ActionList, ActionMenu, Button, ButtonGroup, Checkbox, IconButton, Label, Link as PrimerLink, Text, Textarea } from '@primer/react'
 import {
   CheckCircleFillIcon,
   CheckIcon,
@@ -13,6 +13,7 @@ import {
   GitPullRequestClosedIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
+  TriangleDownIcon,
   XCircleFillIcon,
   XCircleIcon,
   XIcon,
@@ -46,7 +47,7 @@ import { Timestamp } from '../Timestamp'
 import { errorMessage } from '../../hooks'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
-import { MemberSelect } from './MemberPicker'
+import { MemberPanel } from './MemberPicker'
 
 const Markdown = lazy(() => import('./Markdown').then((module) => ({ default: module.Markdown })))
 
@@ -133,10 +134,13 @@ function TimelineEvent({ icon, tone = 'muted', children }: { icon: ReactNode; to
   )
 }
 
-function SideSection({ title, children }: { title: string; children: ReactNode }) {
+function SideSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="nipa-mr-side-section" aria-label={title}>
-      <h3>{title}</h3>
+      <div className="nipa-mr-side-title">
+        <h3>{title}</h3>
+        {action}
+      </div>
       <div className="nipa-mr-side-body">{children}</div>
     </section>
   )
@@ -258,6 +262,33 @@ function eventLabel(item: TimelineItemResponse, org: string, project: string): R
   }
 }
 
+const MERGE_STRATEGIES: { value: string; label: string; button: string; description: string }[] = [
+  {
+    value: 'ff',
+    label: 'Fast-forward',
+    button: 'Fast-forward merge',
+    description: 'Move the target branch to the source head. Only possible when the source is up to date.',
+  },
+  {
+    value: 'merge',
+    label: 'Create a merge commit',
+    button: 'Merge request',
+    description: 'All commits from this branch are added to the target branch with a merge commit.',
+  },
+  {
+    value: 'squash',
+    label: 'Squash and merge',
+    button: 'Squash and merge',
+    description: 'The commits from this branch are combined into one commit on the target branch.',
+  },
+  {
+    value: 'rebase',
+    label: 'Rebase and merge',
+    button: 'Rebase and merge',
+    description: 'The commits from this branch are replayed one by one onto the target branch.',
+  },
+]
+
 const MERGE_BOX_TEXT: Record<string, { title: string; hint: string }> = {
   mergeable: {
     title: 'This branch has no conflicts with the base branch.',
@@ -375,8 +406,6 @@ export function MergeRequestOverview({
   onReopen: () => void
 }) {
   const [body, setBody] = useState('')
-  const [reviewer, setReviewer] = useState('')
-  const [assignee, setAssignee] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [strategy, setStrategy] = useState('ff')
@@ -429,14 +458,23 @@ export function MergeRequestOverview({
     reviewers.push(entry)
   }
 
-  const candidates = members.filter(
-    (member) =>
-      member.user_id !== request?.created_by &&
-      !reviewRequests.some((entry) => entry.reviewer.user_id === member.user_id),
+  const reviewCandidates = members.filter(
+    (member) => member.user_id !== request?.created_by && !reviews.some((review) => review.reviewer.user_id === member.user_id),
   )
-  const assigneeCandidates = members.filter(
-    (member) => !(request?.assignees ?? []).some((entry) => entry.user_id === member.user_id),
-  )
+  const requestedIds = reviewRequests
+    .map((entry) => entry.reviewer.user_id)
+    .filter((userId) => reviewCandidates.some((member) => member.user_id === userId))
+  const assigneeIds = (request?.assignees ?? []).map((entry) => entry.user_id)
+
+  function changeReviewRequests(next: string[]) {
+    const added = next.filter((userId) => !requestedIds.includes(userId))
+    const removed = requestedIds.filter((userId) => !next.includes(userId))
+    if (added.length === 0 && removed.length === 0) return
+    void run(async () => {
+      for (const userId of added) await requestMergeRequestReview(org, project, id, userId)
+      for (const userId of removed) await removeMergeRequestReviewRequest(org, project, id, userId)
+    })
+  }
 
   const entries: (
     | { kind: 'event'; at: string; item: TimelineItemResponse }
@@ -766,7 +804,22 @@ export function MergeRequestOverview({
       </div>
 
       <aside className="nipa-mr-sidebar">
-        <SideSection title="Reviewers">
+        <SideSection
+          title="Reviewers"
+          action={
+            canWrite &&
+            open && (
+              <MemberPanel
+                title="Request up to 10 reviewers"
+                anchorLabel="Edit reviewers"
+                members={reviewCandidates}
+                selected={requestedIds}
+                onChange={changeReviewRequests}
+                disabled={pending}
+              />
+            )
+          }
+        >
           {reviewers.length === 0 && (
             <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>No reviews</Text>
           )}
@@ -792,26 +845,24 @@ export function MergeRequestOverview({
               </div>
             )
           })}
-          {canWrite && open && candidates.length > 0 && (
-            <div className="nipa-mr-side-picker">
-              <MemberSelect label="Add reviewer" placeholder="Add reviewer…" members={candidates} value={reviewer} onChange={setReviewer} />
-              <Button
-                size="small"
-                disabled={pending || !reviewer}
-                onClick={() =>
-                  run(async () => {
-                    await requestMergeRequestReview(org, project, id, reviewer)
-                    setReviewer('')
-                  })
-                }
-              >
-                Request review
-              </Button>
-            </div>
-          )}
         </SideSection>
 
-        <SideSection title="Assignees">
+        <SideSection
+          title="Assignees"
+          action={
+            canWrite &&
+            open && (
+              <MemberPanel
+                title="Assign up to 10 people to this merge request"
+                anchorLabel="Edit assignees"
+                members={members}
+                selected={assigneeIds}
+                onChange={(next) => void run(() => setMergeRequestAssignees(org, project, id, next))}
+                disabled={pending}
+              />
+            )
+          }
+        >
           {(request?.assignees ?? []).length === 0 && (
             <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>No one assigned</Text>
           )}
@@ -840,26 +891,6 @@ export function MergeRequestOverview({
               )}
             </div>
           ))}
-          {canWrite && open && assigneeCandidates.length > 0 && (
-            <div className="nipa-mr-side-picker">
-              <MemberSelect label="Add assignee" placeholder="Add assignee…" members={assigneeCandidates} value={assignee} onChange={setAssignee} />
-              <Button
-                size="small"
-                disabled={pending || !assignee}
-                onClick={() =>
-                  run(async () => {
-                    await setMergeRequestAssignees(org, project, id, [
-                      ...(request?.assignees ?? []).map((entry) => entry.user_id),
-                      assignee,
-                    ])
-                    setAssignee('')
-                  })
-                }
-              >
-                Assign
-              </Button>
-            </div>
-          )}
         </SideSection>
 
         {participants.size > 0 && (
@@ -1014,15 +1045,26 @@ export function MergeRequestOverview({
 
           {canWrite && (
             <div className="nipa-merge-actions">
-              <Button variant="primary" disabled={!mergeable || pending} onClick={() => onMerge(strategy, deleteSource)}>
-                Merge request
-              </Button>
-              <Select aria-label="Merge strategy" value={strategy} onChange={(event) => setStrategy(event.target.value)}>
-                <Select.Option value="ff">Fast-forward</Select.Option>
-                <Select.Option value="merge">Create a merge commit</Select.Option>
-                <Select.Option value="squash">Squash and merge</Select.Option>
-                <Select.Option value="rebase">Rebase and merge</Select.Option>
-              </Select>
+              <ButtonGroup>
+                <Button variant="primary" disabled={!mergeable || pending} onClick={() => onMerge(strategy, deleteSource)}>
+                  {MERGE_STRATEGIES.find((entry) => entry.value === strategy)?.button ?? 'Merge'}
+                </Button>
+                <ActionMenu>
+                  <ActionMenu.Anchor>
+                    <IconButton variant="primary" icon={TriangleDownIcon} aria-label="Select merge method" disabled={pending} />
+                  </ActionMenu.Anchor>
+                  <ActionMenu.Overlay width="medium" align="end">
+                    <ActionList selectionVariant="single" aria-label="Merge strategy">
+                      {MERGE_STRATEGIES.map((entry) => (
+                        <ActionList.Item key={entry.value} selected={entry.value === strategy} onSelect={() => setStrategy(entry.value)}>
+                          {entry.label}
+                          <ActionList.Description variant="block">{entry.description}</ActionList.Description>
+                        </ActionList.Item>
+                      ))}
+                    </ActionList>
+                  </ActionMenu.Overlay>
+                </ActionMenu>
+              </ButtonGroup>
               <label className="nipa-merge-delete">
                 <Checkbox
                   aria-label="Delete source branch"

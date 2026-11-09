@@ -28,6 +28,7 @@ vi.mock('../../api/endpoints', async (importOriginal) => {
     removeMergeRequestReviewRequest: vi.fn(async () => ({})),
     dismissMergeRequestReview: vi.fn(async () => ({ id: '1' })),
     withdrawMergeRequestReview: vi.fn(async () => ({})),
+    setMergeRequestAssignees: vi.fn(async () => ({})),
   }
 })
 
@@ -81,15 +82,6 @@ function typeInput(el: Element | null | undefined, value: string) {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     setter?.call(target, value)
     target.dispatchEvent(new Event('input', { bubbles: true }))
-  })
-}
-
-function selectOption(el: Element | null | undefined, value: string) {
-  act(() => {
-    const target = el as HTMLSelectElement
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
-    setter?.call(target, value)
-    target.dispatchEvent(new Event('change', { bubbles: true }))
   })
 }
 
@@ -619,9 +611,8 @@ describe('MergeRequestOverview', () => {
     const request = { ...base.request, mergeability: { status } }
     const { container } = await render(<MergeRequestOverview {...base} request={request} />)
     expect(container.textContent).toContain(expected)
-    const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge request',
-    ) as HTMLButtonElement
+    const mergeButton = container.querySelector('.nipa-merge-actions button') as HTMLButtonElement
+    expect(mergeButton.textContent).toBe('Fast-forward merge')
     expect(mergeButton.disabled).toBe(status !== 'mergeable')
   })
 
@@ -632,9 +623,8 @@ describe('MergeRequestOverview', () => {
     const request = { ...base.request, mergeability: { status: 'mergeable', blocked_by: blockedBy } }
     const { container } = await render(<MergeRequestOverview {...base} request={request} />)
     expect(container.textContent).toContain(expected)
-    const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge request',
-    ) as HTMLButtonElement
+    const mergeButton = container.querySelector('.nipa-merge-actions button') as HTMLButtonElement
+    expect(mergeButton.textContent).toBe('Fast-forward merge')
     expect(mergeButton.disabled).toBe(true)
   })
 
@@ -642,29 +632,92 @@ describe('MergeRequestOverview', () => {
     const onMerge = vi.fn()
     const request = { ...base.request, mergeability: { status: 'behind_target' } }
     const { container } = await render(<MergeRequestOverview {...base} request={request} onMerge={onMerge} />)
-    const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge request',
-    ) as HTMLButtonElement
+    const mergeButton = container.querySelector('.nipa-merge-actions button') as HTMLButtonElement
+    expect(mergeButton.textContent).toBe('Fast-forward merge')
     expect(mergeButton.disabled).toBe(true)
 
-    selectOption(container.querySelector('[aria-label="Merge strategy"]'), 'squash')
-    expect(mergeButton.disabled).toBe(false)
+    const menuButton = byLabel(container, 'Select merge method')
+    await act(async () => {
+      menuButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const options = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')]
+    expect(options.map((option) => option.querySelector('[data-component="ActionList.Description"]') !== null)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ])
+    expect(options[0].getAttribute('aria-checked')).toBe('true')
+    await act(async () => {
+      options.find((option) => option.textContent?.startsWith('Squash and merge'))?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const squash = container.querySelector('.nipa-merge-actions button') as HTMLButtonElement
+    expect(squash.textContent).toBe('Squash and merge')
+    expect(squash.disabled).toBe(false)
 
     click(container.querySelector('[aria-label="Delete source branch"]'))
-    click(mergeButton)
+    click(squash)
     expect(onMerge).toHaveBeenCalledWith('squash', true)
   })
 
-  it('renders assignees and the assign picker', async () => {
+  async function openPanel(container: HTMLElement, label: string) {
+    await act(async () => {
+      byLabel(container, label)?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    return [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+  }
+
+  it('renders assignees and edits them from the gear panel', async () => {
     const request = { ...base.request, assignees: [{ user_id: 'u3', name: 'Dana' }] }
-    const members = [{ user_id: 'u4', name: 'Eve', email: 'eve@example.com' }] as OrgMemberResponse[]
-    const { container } = await render(
-      <MergeRequestOverview {...base} request={request} members={members} />,
-    )
+    const members = [
+      { user_id: 'u3', name: 'Dana', email: 'dana@example.com' },
+      { user_id: 'u4', name: 'Eve', email: 'eve@example.com' },
+    ] as OrgMemberResponse[]
+    const { container } = await render(<MergeRequestOverview {...base} request={request} members={members} />)
     expect(container.textContent).toContain('Assignees')
     expect(container.textContent).toContain('Dana')
-    expect(container.querySelector('[aria-label="Add assignee"]')).not.toBeNull()
     expect(byLabel(container, 'unassign Dana')).not.toBeNull()
+
+    const options = await openPanel(container, 'Edit assignees')
+    expect(options).toHaveLength(2)
+    expect(options[0].textContent).toContain('dana@example.com')
+    expect(options[1].textContent).toContain('Eve')
+    expect(options[0].getAttribute('aria-selected')).toBe('true')
+    await act(async () => {
+      options[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(endpoints.setMergeRequestAssignees).toHaveBeenCalledWith('acme', 'game', '7', ['u3', 'u4'])
+  })
+
+  it('requests and cancels reviews from the gear panel', async () => {
+    const members = [
+      { user_id: 'u1', name: 'Author', email: 'author@example.com' },
+      { user_id: 'u3', name: 'Peer', email: 'peer@example.com' },
+      { user_id: 'u4', name: 'Quin', email: 'quin@example.com' },
+      { user_id: 'u5', name: 'Rae', email: 'rae@example.com' },
+    ] as OrgMemberResponse[]
+    const reviewRequests = [
+      { id: 'q1', merge_request_id: 1, reviewer: { user_id: 'u3', name: 'Peer' }, requested_by: { user_id: 'u1', name: 'Author' }, created_at: '2024-01-01T00:00:00Z' },
+    ]
+    const reviews = [liveReview({ user_id: 'u5', name: 'Rae' })]
+    const { container } = await render(
+      <MergeRequestOverview {...base} members={members} reviewRequests={reviewRequests} reviews={reviews} />,
+    )
+    const options = await openPanel(container, 'Edit reviewers')
+    expect(options).toHaveLength(2)
+    expect(options[0].textContent).toContain('Peer')
+    expect(options[1].textContent).toContain('Quin')
+    await act(async () => {
+      options[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(endpoints.requestMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', 'u4')
+    await act(async () => {
+      options[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(endpoints.removeMergeRequestReviewRequest).toHaveBeenCalledWith('acme', 'game', '7', 'u3')
   })
 
   it('shows merged and closed requests', async () => {

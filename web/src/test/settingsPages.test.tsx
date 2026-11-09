@@ -84,6 +84,18 @@ const GROUP: GroupResponse = {
   members: [{ user_id: '2', name: 'Dana', email: 'dana@example.com' }],
 }
 
+function byName(root: ParentNode, name: string): HTMLElement | null {
+  return (
+    [...root.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
 function branch(overrides: Partial<BranchResponse> = {}): BranchResponse {
   return {
     id: 'b1',
@@ -331,12 +343,21 @@ describe('ProjectSettingsPage', () => {
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
     expect(submit()?.disabled).toBe(true)
     await click(buttonByText(document.body, 'pick subject'))
-    await waitFor(() => document.body.textContent?.includes('Selected: Artists') ?? false)
+    const picked = () => document.body.querySelector('[aria-label="Selected user or group"]')
+    await waitFor(() => picked() !== null)
+    expect(picked()?.textContent).toContain('Artists')
+    expect(picked()?.textContent).toContain('Group')
+    await click(buttonByText(picked() as HTMLElement, 'Change'))
+    expect(picked()).toBeNull()
+    await click(buttonByText(document.body, 'pick subject'))
+    await waitFor(() => picked() !== null)
     await type(document.body.querySelector<HTMLInputElement>('input[placeholder^="e.g. assets"]'), 'art')
-    await click(document.body.querySelector('[role="dialog"] input[type="checkbox"]'))
+    const boxes = () => document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')
+    expect(boxes()[0].checked).toBe(true)
+    await click(boxes()[1])
     await click(submit())
     await flush()
-    expect(api.createProjectRule).toHaveBeenCalledWith('acme', 'game', '', 'g7', 'art', PERMISSION_READ)
+    expect(api.createProjectRule).toHaveBeenCalledWith('acme', 'game', '', 'g7', 'art', PERMISSION_READ | PERMISSION_WRITE)
 
     await click(buttonsByText(container, 'Revoke')[0])
     await confirmDialog('Revoke')
@@ -359,9 +380,12 @@ describe('ProjectSettingsPage', () => {
     await click(buttonByText(container, 'Add path default'))
     await waitFor(() => document.body.textContent?.includes('Add default') ?? false)
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
+    expect(document.body.textContent).toContain('Default permissions')
+    const readBox = () => document.body.querySelector<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')
+    await click(readBox())
     expect(submit()?.disabled).toBe(true)
+    await click(readBox())
     await type(document.body.querySelector<HTMLInputElement>('input[placeholder^="e.g. assets"]'), 'docs')
-    await click(document.body.querySelector('[role="dialog"] input[type="checkbox"]'))
     await click(submit())
     await flush()
     expect(api.setProjectDefault).toHaveBeenCalledWith('acme', 'game', 'docs', PERMISSION_READ)
@@ -389,91 +413,96 @@ describe('ProjectSettingsPage', () => {
     expect(container.textContent).not.toContain('rule locked')
   })
 
-  it('edits branch protection settings', async () => {
+  it('lists protection rules and edits one in the rule form', async () => {
     api.listBranches.mockResolvedValue([
       branch({
         is_protected: true,
         required_approvals: 1,
+        require_status_checks: true,
         required_checks: ['ci'],
         required_reviewers: [{ user_id: '2', name: 'Dana' }],
       }),
     ])
     const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
-    await waitFor(() => container.querySelector('input[aria-label="Required approvals for main"]') !== null)
-    const lastCall = () => api.setBranchProtection.mock.calls[api.setBranchProtection.mock.calls.length - 1]
-
-    const approvals = container.querySelector<HTMLInputElement>('input[aria-label="Required approvals for main"]')
-    await type(approvals, '3')
-    await act(async () => {
-      approvals?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    })
-    await flush()
-    expect(lastCall()).toEqual(['acme', 'game', 'main', true, 3, undefined, undefined, undefined, undefined])
-
-    await click(container.querySelector('input[aria-label="Dismiss stale approvals on push for main"]'))
-    await flush()
-    expect(lastCall()?.[5]).toBe(false)
-
-    await click(container.querySelector('input[aria-label="Require status checks for main"]'))
-    await flush()
-    expect(lastCall()?.[6]).toBe(true)
-
-    const checks = container.querySelector<HTMLInputElement>('input[aria-label="Required checks for main"]')
-    await type(checks, 'ci, lint ,')
-    await act(async () => {
-      checks?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    })
-    await flush()
-    expect(lastCall()?.[8]).toEqual(['ci', 'lint'])
-
-    await choose(container.querySelector<HTMLSelectElement>('select[aria-label="Add required reviewer for main"]'), '3')
-    await click(buttonByText(container, 'Add'))
-    await flush()
-    expect(lastCall()?.[7]).toEqual(['2', '3'])
-
-    const removeReviewer = [...container.querySelectorAll<HTMLElement>('[aria-labelledby]')].find((element) =>
-      (element.getAttribute('aria-labelledby') ?? '')
-        .split(' ')
-        .some((id) => document.getElementById(id)?.textContent === 'remove required reviewer Dana'),
+    await waitFor(() =>
+      (container.textContent ?? '').includes('1 approval required · stale approvals dismissed · 1 required reviewer · 1 required check'),
     )
-    await click(removeReviewer)
+
+    await click(buttonByText(container, 'Edit'))
+    await waitFor(() => (container.textContent ?? '').includes('Edit protection for main'))
+    const field = (selector: string) => container.querySelector(selector) as HTMLInputElement
+    expect(field('#protect-approvals').checked).toBe(true)
+    expect(field('#protect-reviewers').checked).toBe(true)
+    expect(field('#protect-checks').checked).toBe(true)
+
+    await choose(container.querySelector<HTMLSelectElement>('select[aria-label="Add required reviewer"]'), '3')
+    await click(buttonByText(container, 'Add reviewer'))
+    await click(byName(container, 'Remove required reviewer Dana'))
+
+    await choose(
+      [...container.querySelectorAll<HTMLSelectElement>('select')].find((select) => select.value === '1') ?? null,
+      '3',
+    )
+    await click(field('#protect-dismiss-stale'))
+
+    const checkInput = container.querySelector<HTMLInputElement>('input[aria-label="Status check name"]')
+    await type(checkInput, 'lint')
+    await act(async () => {
+      checkInput?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    await type(checkInput, 'ci')
+    await click(buttonByText(container, 'Add check'))
+    await type(checkInput, 'e2e')
+    await click(buttonByText(container, 'Add check'))
+    await click(byName(container, 'Remove required check e2e'))
+
+    await click(buttonByText(container, 'Save changes'))
     await flush()
-    expect(lastCall()?.[7]).toEqual([])
+    expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'main', true, 3, false, true, ['3'], ['ci', 'lint'])
+    await waitFor(() => (container.textContent ?? '').includes('Add rule'))
   })
 
-  it('keeps unchanged approval and check values without saving', async () => {
-    api.listBranches.mockResolvedValue([branch({ required_approvals: 2, required_checks: ['ci'] })])
+  it('adds a rule for an unprotected branch and keeps the form open on failure', async () => {
+    api.listBranches.mockResolvedValue([branch(), branch({ id: 'b2', name: 'dev', is_default: false })])
     const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
-    await waitFor(() => container.querySelector('input[aria-label="Required approvals for main"]') !== null)
-    const approvals = container.querySelector<HTMLInputElement>('input[aria-label="Required approvals for main"]')
-    await act(async () => {
-      approvals?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
-    })
-    const checks = container.querySelector<HTMLInputElement>('input[aria-label="Required checks for main"]')
-    await act(async () => {
-      checks?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
-    })
-    await type(approvals, 'abc')
-    await act(async () => {
-      approvals?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    })
-    expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'main', false, 0, undefined, undefined, undefined, undefined)
+    await waitFor(() => (container.textContent ?? '').includes('No branch protection rules yet'))
+
+    await click(buttonByText(container, 'Add rule'))
+    await waitFor(() => (container.textContent ?? '').includes('Add branch protection rule'))
+    await click(buttonByText(container, 'Cancel'))
+    await waitFor(() => (container.textContent ?? '').includes('No branch protection rules yet'))
+
+    await click(buttonByText(container, 'Add rule'))
+    const branchSelect = [...container.querySelectorAll<HTMLSelectElement>('select')].find((select) => select.value === 'main')
+    expect(branchSelect).toBeDefined()
+    await choose(branchSelect, 'dev')
+    expect((container.querySelector('#protect-approvals') as HTMLInputElement).checked).toBe(false)
+    await click(container.querySelector('#protect-approvals'))
+    await click(buttonByText(container, 'Create'))
+    await flush()
+    expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'dev', true, 1, true, false, [], [])
+
+    api.setBranchProtection.mockRejectedValueOnce(new Error('branch is busy'))
+    await click(buttonByText(container, 'Add rule'))
+    await click(buttonByText(container, 'Create'))
+    await waitFor(() => (container.textContent ?? '').includes('branch is busy'))
+    expect(api.setBranchProtection).toHaveBeenLastCalledWith('acme', 'game', 'main', true, 0, true, false, [], [])
+    expect(container.textContent).toContain('Add branch protection rule')
   })
 
-  it('confirms before unprotecting a branch from the toggle and shows empty branches', async () => {
+  it('confirms before deleting a rule and disables adding when every branch is protected', async () => {
     api.listBranches.mockResolvedValue([branch({ is_protected: true })])
     const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
-    await waitFor(() => container.querySelector('button[aria-labelledby="branch-protection-0"]') !== null)
-    await click(container.querySelector('button[aria-labelledby="branch-protection-0"]'))
+    await waitFor(() => byName(container, 'Delete protection rule for main') !== null)
+    expect(container.textContent).toContain('Merge requests only')
+    expect(buttonByText(container, 'Add rule')?.disabled).toBe(true)
+
+    await click(byName(container, 'Delete protection rule for main'))
     await cancelDialog()
     expect(api.setBranchProtection).not.toHaveBeenCalled()
-    await click(container.querySelector('button[aria-labelledby="branch-protection-0"]'))
-    await confirmDialog('Unprotect')
-    expect(api.setBranchProtection.mock.calls[0]?.[3]).toBe(false)
-
-    api.listBranches.mockResolvedValue([])
-    const empty = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
-    await waitFor(() => (empty.container.textContent ?? '').includes('No branches yet.'))
+    await click(byName(container, 'Delete protection rule for main'))
+    await confirmDialog('Delete rule')
+    expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'main', false, 0, true, false, [], [])
   })
 
   it('explains a seat-limit 402 when a new rule would add a user', async () => {
@@ -483,7 +512,6 @@ describe('ProjectSettingsPage', () => {
     await click(buttonByText(container, 'Add access rule'))
     await waitFor(() => document.body.textContent?.includes('User or group') ?? false)
     await click(buttonByText(document.body, 'pick subject'))
-    await click(document.body.querySelector('[role="dialog"] input[type="checkbox"]'))
     await click(document.body.querySelector('button[type="submit"]'))
     await expectSeatLimitBanner(location)
   })
@@ -493,5 +521,24 @@ describe('ProjectSettingsPage', () => {
     await waitFor(() => (hooks.container.textContent ?? '').includes('Create webhook'))
     const email = await renderRoute(pattern, `${base}?tab=email`, <ProjectSettingsPage />)
     await waitFor(() => (email.container.textContent ?? '').includes('No email deliveries.'))
+  })
+
+  it('filters email deliveries by state from the state menu', async () => {
+    const { container } = await renderRoute(pattern, `${base}?tab=email`, <ProjectSettingsPage />)
+    await waitFor(() => (container.textContent ?? '').includes('No email deliveries.'))
+    expect(api.listEmailDeliveries).toHaveBeenLastCalledWith('acme', 'game', '')
+    const menuButton = () => byName(container, 'Filter by delivery state') as HTMLButtonElement
+    expect(menuButton().textContent).toContain('State: All states')
+
+    await click(menuButton())
+    await waitFor(() => document.querySelector('[role="menuitemradio"]') !== null)
+    const options = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')]
+    expect(options.map((option) => option.textContent)).toEqual(['All states', 'Failed', 'Pending', 'Delivered'])
+    expect(options[0].getAttribute('aria-checked')).toBe('true')
+    await click(options[1])
+    await flush()
+
+    expect(api.listEmailDeliveries).toHaveBeenLastCalledWith('acme', 'game', 'failed')
+    expect(menuButton().textContent).toContain('State: Failed')
   })
 })

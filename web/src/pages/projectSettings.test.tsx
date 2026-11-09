@@ -200,17 +200,16 @@ describe('ProjectSettingsPage github-style navigation', () => {
     const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
     expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Service tokens', 'Email deliveries'])
     expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
-    expect(document.body.textContent).not.toContain('Protected branches')
+    expect(document.body.textContent).not.toContain('Branch protection rules')
 
     act(() => root.unmount())
   })
 
   it('shows only the selected section for ?tab=branches', async () => {
     const root = await renderSettings('/sticker/backend/settings?tab=branches')
-    await waitForText('Protected branches')
+    await waitForText('Branch protection rules')
 
     expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Branches')
-    expect(document.body.textContent).toContain('main')
     expect(document.body.textContent).not.toContain('Access rules')
     expect(document.body.textContent).not.toContain('Create webhook')
 
@@ -222,7 +221,7 @@ describe('ProjectSettingsPage github-style navigation', () => {
     await waitForText('Webhooks')
 
     expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Webhooks')
-    expect(document.body.textContent).not.toContain('Protected branches')
+    expect(document.body.textContent).not.toContain('Branch protection rules')
 
     act(() => root.unmount())
   })
@@ -271,15 +270,16 @@ describe('ProjectSettingsPage github-style navigation', () => {
     act(() => root.unmount())
   })
 
-  it('protects a branch from the branch protection toggle', async () => {
+  it('protects a branch through the add rule form', async () => {
     const root = await renderSettings('/sticker/backend/settings?tab=branches')
-    await waitForText('Protected branches')
+    await waitForText('Branch protection rules')
 
-    const toggle = document.querySelector('button[aria-labelledby="branch-protection-0"]')
-    expect(toggle).not.toBeNull()
-    expect(toggle?.getAttribute('aria-pressed')).toBe('false')
     await act(async () => {
-      ;(toggle as HTMLButtonElement).click()
+      findButton('Add rule').click()
+    })
+    await waitForText('Add branch protection rule')
+    await act(async () => {
+      findButton('Create').click()
     })
 
     await waitFor(() => {
@@ -287,9 +287,9 @@ describe('ProjectSettingsPage github-style navigation', () => {
       const protectedCall = calls.find((call) => String(call[0]).endsWith('/branches/main/protection'))
       expect(protectedCall).toBeDefined()
       expect((protectedCall?.[1] as RequestInit | undefined)?.method).toBe('PUT')
+      expect(JSON.parse(String((protectedCall?.[1] as RequestInit).body))).toMatchObject({ protected: true, required_approvals: 0 })
       return true
     })
-    await waitForText('Protected — pushes and deletions are restricted.')
 
     act(() => root.unmount())
   })

@@ -2,7 +2,7 @@ import { act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ServiceTokenSettings, endOfLocalDay } from './ServiceTokenSettings'
+import { ServiceTokenSettings, endOfLocalDay, expiryDay } from './ServiceTokenSettings'
 import type { ServiceTokenResponse } from '../../api/models'
 
 vi.mock('../../api/endpoints', async (importOriginal) => {
@@ -77,6 +77,22 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+describe('expiryDay', () => {
+  const now = new Date(2030, 0, 30, 15, 0, 0)
+
+  it('counts days from today in local time', () => {
+    expect(expiryDay('7', '', now)).toBe('2030-02-06')
+    expect(expiryDay('30', '', now)).toBe('2030-03-01')
+    expect(expiryDay('unknown', '', now)).toBe('2030-03-01')
+  })
+
+  it('uses the custom day or none', () => {
+    expect(expiryDay('custom', '2031-05-04', now)).toBe('2031-05-04')
+    expect(expiryDay('custom', '', now)).toBe('')
+    expect(expiryDay('never', '2031-05-04', now)).toBe('')
+  })
+})
+
 describe('endOfLocalDay', () => {
   it('ends the picked day in local time', () => {
     const end = new Date(endOfLocalDay('2030-01-02'))
@@ -107,32 +123,95 @@ describe('ServiceTokenSettings', () => {
     act(() => root.unmount())
   })
 
-  it('creates a token and reveals it once', async () => {
+  async function openDialog() {
+    const view = await render(<ServiceTokenSettings org="acme" project="game" />)
+    await waitFor(() => view.container.textContent?.includes('No service tokens') ?? false)
+    click(button(view.container, 'Create token'))
+    await waitFor(() => document.body.textContent?.includes('Status checks') ?? false)
+    return view
+  }
+
+  async function chooseExpiration(label: string) {
+    click(document.body.querySelector('[aria-label="Token expiration"]'))
+    await waitFor(() => document.querySelector('[role="menuitemradio"]') !== null)
+    click([...document.querySelectorAll('[role="menuitemradio"]')].find((item) => item.textContent === label))
+  }
+
+  const nameInput = () => document.body.querySelector<HTMLInputElement>('[role="dialog"] input[placeholder^="e.g."]')
+  const scopeBoxes = () => document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')
+  const generate = () => button(document.body, 'Generate token') as HTMLButtonElement
+
+  it('creates a token that expires in 30 days by default and reveals it once', async () => {
     vi.mocked(endpoints.listServiceTokens).mockResolvedValueOnce([]).mockResolvedValue([token()])
     vi.mocked(endpoints.createServiceToken).mockResolvedValue(token({ token: 'nipa_st_secretvalue' }))
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 
-    const { container, root } = await render(<ServiceTokenSettings org="acme" project="game" />)
-    await waitFor(() => container.textContent?.includes('No service tokens') ?? false)
-
-    click(button(container, 'Create token'))
-    await waitFor(() => document.body.textContent?.includes('Manage webhooks') ?? false)
-    const inputs = document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input:not([type="checkbox"])')
-    type(inputs[0], 'bugbase')
-    type(inputs[1], '2030-01-02')
-    const boxes = document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input[type="checkbox"]')
-    click(boxes[1])
-    click(boxes[0])
-    click(boxes[0])
-    click(button(document.body, 'Create'))
+    const { container, root } = await openDialog()
+    expect(document.body.textContent).toContain('The token will expire on')
+    expect(generate().disabled).toBe(true)
+    type(nameInput(), ' bugbase ')
+    click(scopeBoxes()[0])
+    expect(document.body.textContent).toContain('Choose at least one scope.')
+    expect(generate().disabled).toBe(true)
+    click(scopeBoxes()[1])
+    click(scopeBoxes()[0])
+    click(generate())
 
     await waitFor(() => container.textContent?.includes('nipa_st_secretvalue') ?? false)
+    expect(container.textContent).toContain("You won't be able to see it again.")
+    const day = expiryDay('30', '')
     expect(endpoints.createServiceToken).toHaveBeenCalledWith('acme', 'game', {
       name: 'bugbase',
-      scopes: ['checks:write', 'read'],
-      expires_at: new Date(2030, 0, 2, 23, 59, 59).toISOString(),
+      scopes: ['read', 'checks:write'],
+      expires_at: endOfLocalDay(day),
     })
+
+    const copyButton = [...container.querySelectorAll<HTMLElement>('[aria-labelledby]')].find((element) =>
+      (element.getAttribute('aria-labelledby') ?? '').split(' ').some((id) => document.getElementById(id)?.textContent === 'Copy token'),
+    )
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(writeText).toHaveBeenCalledWith('nipa_st_secretvalue')
+    expect(document.body.textContent).toContain('Copied')
+
     click(container.querySelector('button[class*="BannerDismiss"]'))
     await waitFor(() => !(container.textContent?.includes('nipa_st_secretvalue') ?? false))
+    act(() => root.unmount())
+  })
+
+  it('creates a token with a custom expiration day', async () => {
+    vi.mocked(endpoints.createServiceToken).mockResolvedValue(token())
+    const { root } = await openDialog()
+    type(nameInput(), 'ci')
+    await chooseExpiration('Custom…')
+    expect(document.body.textContent).toContain('Pick the last day the token works.')
+    expect(generate().disabled).toBe(true)
+    const dateInput = document.body.querySelector<HTMLInputElement>('[aria-label="Expiration date"]')
+    type(dateInput, '2000-01-01')
+    expect(generate().disabled).toBe(true)
+    type(dateInput, '2099-01-02')
+    expect(document.body.textContent).toContain('The token will expire on')
+    click(generate())
+    await waitFor(() => vi.mocked(endpoints.createServiceToken).mock.calls.length === 1)
+    expect(endpoints.createServiceToken).toHaveBeenCalledWith('acme', 'game', {
+      name: 'ci',
+      scopes: ['read'],
+      expires_at: new Date(2099, 0, 2, 23, 59, 59).toISOString(),
+    })
+    act(() => root.unmount())
+  })
+
+  it('creates a token without expiration after warning about it', async () => {
+    vi.mocked(endpoints.createServiceToken).mockResolvedValue(token())
+    const { root } = await openDialog()
+    type(nameInput(), 'forever')
+    await chooseExpiration('No expiration')
+    expect(document.body.textContent).toContain('an expiration date is recommended')
+    click(generate())
+    await waitFor(() => vi.mocked(endpoints.createServiceToken).mock.calls.length === 1)
+    expect(endpoints.createServiceToken).toHaveBeenCalledWith('acme', 'game', { name: 'forever', scopes: ['read'] })
     act(() => root.unmount())
   })
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Banner, Button, Checkbox, FormControl, Stack, Text, TextInput } from '@primer/react'
+import { Button, Checkbox, CheckboxGroup, FormControl, Radio, RadioGroup, Stack, Text, TextInput } from '@primer/react'
 import {
   createWebhook,
   deleteWebhook,
@@ -15,27 +15,46 @@ import { useAction, useAsync } from '../../hooks'
 import { useConfirmAction } from '../confirm'
 import { DataTable, type Column } from '../DataTable'
 import { FormDialog } from '../FormDialog'
+import { SecretReveal } from '../SecretReveal'
 import { SettingsCard } from '../SettingsCard'
 import { StateBadge } from '../StateBadge'
 import { Timestamp } from '../Timestamp'
 import { ErrorBanner, Mono } from '../ui'
 
-export const WEBHOOK_EVENTS: { value: string; label: string }[] = [
-  { value: 'push', label: 'Push' },
-  { value: 'branch.created', label: 'Branch created' },
-  { value: 'branch.deleted', label: 'Branch deleted' },
-  { value: 'mr.created', label: 'Merge request created' },
-  { value: 'mr.updated', label: 'Merge request updated' },
-  { value: 'mr.synchronized', label: 'Merge request synchronized' },
-  { value: 'mr.merged', label: 'Merge request merged' },
-  { value: 'mr.closed', label: 'Merge request closed' },
-  { value: 'mr.reopened', label: 'Merge request reopened' },
-  { value: 'mr.review_submitted', label: 'Merge request review submitted' },
-  { value: 'mr.review_dismissed', label: 'Merge request review dismissed' },
-  { value: 'mr.review_requested', label: 'Merge request review requested' },
-  { value: 'mr.review_request_removed', label: 'Merge request review request removed' },
-  { value: 'mr.comment_created', label: 'Merge request comment created' },
+export const WEBHOOK_EVENTS: { value: string; label: string; group: 'Repository' | 'Merge requests'; short: string }[] = [
+  { value: 'push', label: 'Push', group: 'Repository', short: 'Push' },
+  { value: 'branch.created', label: 'Branch created', group: 'Repository', short: 'Branch created' },
+  { value: 'branch.deleted', label: 'Branch deleted', group: 'Repository', short: 'Branch deleted' },
+  { value: 'mr.created', label: 'Merge request created', group: 'Merge requests', short: 'Created' },
+  { value: 'mr.updated', label: 'Merge request updated', group: 'Merge requests', short: 'Updated' },
+  { value: 'mr.synchronized', label: 'Merge request synchronized', group: 'Merge requests', short: 'New commits pushed' },
+  { value: 'mr.merged', label: 'Merge request merged', group: 'Merge requests', short: 'Merged' },
+  { value: 'mr.closed', label: 'Merge request closed', group: 'Merge requests', short: 'Closed' },
+  { value: 'mr.reopened', label: 'Merge request reopened', group: 'Merge requests', short: 'Reopened' },
+  { value: 'mr.review_submitted', label: 'Merge request review submitted', group: 'Merge requests', short: 'Review submitted' },
+  { value: 'mr.review_dismissed', label: 'Merge request review dismissed', group: 'Merge requests', short: 'Review dismissed' },
+  { value: 'mr.review_requested', label: 'Merge request review requested', group: 'Merge requests', short: 'Review requested' },
+  {
+    value: 'mr.review_request_removed',
+    label: 'Merge request review request removed',
+    group: 'Merge requests',
+    short: 'Review request removed',
+  },
+  { value: 'mr.comment_created', label: 'Merge request comment created', group: 'Merge requests', short: 'Comment created' },
 ]
+
+const EVENT_GROUPS = ['Repository', 'Merge requests'] as const
+
+type EventMode = 'push' | 'all' | 'custom'
+
+export function isPayloadURL(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
+  } catch {
+    return false
+  }
+}
 
 export function webhookEventLabel(event: string): string {
   return WEBHOOK_EVENTS.find((entry) => entry.value === event)?.label ?? event
@@ -187,14 +206,13 @@ export function WebhookSettings({ org, project }: { org: string; project: string
       >
         <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
         {revealedSecret && (
-          <Banner variant="warning" title={`Signing secret for ${revealedSecret.name}`} onDismiss={() => setRevealedSecret(null)}>
-            <Stack direction="vertical" gap="condensed">
-              <Mono>{revealedSecret.secret}</Mono>
-              <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-                Copy it now: the secret is only shown when it is created or rotated.
-              </Text>
-            </Stack>
-          </Banner>
+          <SecretReveal
+            title={`Signing secret for ${revealedSecret.name}`}
+            message="Copy it now and configure your receiver with it. The secret is only shown when it is created or rotated."
+            secret={revealedSecret.secret}
+            copyLabel="Copy secret"
+            onDismiss={() => setRevealedSecret(null)}
+          />
         )}
       </SettingsCard>
 
@@ -249,70 +267,136 @@ function CreateWebhookDialog({
 }) {
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
-  const [events, setEvents] = useState<string[]>(['push'])
+  const [mode, setMode] = useState<EventMode>('push')
+  const [picked, setPicked] = useState<string[]>(['push'])
   const [pathPrefix, setPathPrefix] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [insecureTLS, setInsecureTLS] = useState(false)
 
+  const events = mode === 'push' ? ['push'] : mode === 'all' ? WEBHOOK_EVENTS.map((entry) => entry.value) : picked
+  const urlInvalid = url.trim() !== '' && !isPayloadURL(url)
+  const pushSelected = events.includes('push')
+
   function toggleEvent(value: string) {
-    setEvents((current) => (current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]))
+    setPicked((current) => (current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]))
   }
 
   return (
     <FormDialog
-      title="Create webhook"
+      title="Add webhook"
       width="large"
-      submitLabel="Create"
-      submitDisabled={url.trim() === ''}
+      submitLabel="Add webhook"
+      submitDisabled={!isPayloadURL(url) || events.length === 0}
       onClose={onClose}
       onSubmit={() =>
         onCreate({
-          name,
-          url,
-          events,
-          path_prefix: pathPrefix,
+          name: name.trim(),
+          url: url.trim(),
+          events: WEBHOOK_EVENTS.map((entry) => entry.value).filter((value) => events.includes(value)),
+          path_prefix: pushSelected ? pathPrefix.trim() : '',
           is_active: isActive,
           insecure_tls: insecureTLS,
         })
       }
     >
-      <FormControl>
-        <FormControl.Label>Name</FormControl.Label>
-        <TextInput block autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-      </FormControl>
+      <Text as="p" style={{ margin: 0, color: 'var(--fgColor-muted)', fontSize: 14 }}>
+        We'll send a signed POST request to the URL below with details of any subscribed events.
+      </Text>
       <FormControl required>
         <FormControl.Label>Payload URL</FormControl.Label>
         <TextInput
           block
+          autoFocus
           type="url"
           placeholder="https://ci.example.com/hooks/nipa"
           value={url}
+          validationStatus={urlInvalid ? 'error' : undefined}
           onChange={(event) => setUrl(event.target.value)}
         />
+        {urlInvalid ? (
+          <FormControl.Validation variant="error">Enter a full http:// or https:// URL.</FormControl.Validation>
+        ) : (
+          <FormControl.Caption>Requests carry an HMAC signature made with a secret shown after creation.</FormControl.Caption>
+        )}
       </FormControl>
       <FormControl>
-        <FormControl.Label>Events</FormControl.Label>
-        <Stack direction="vertical" gap="condensed">
-          {WEBHOOK_EVENTS.map((entry) => (
-            <label key={entry.value} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <Checkbox checked={events.includes(entry.value)} onChange={() => toggleEvent(entry.value)} />
-              {entry.label}
-            </label>
+        <FormControl.Label>Name</FormControl.Label>
+        <TextInput block placeholder="e.g. CI notifications" value={name} onChange={(event) => setName(event.target.value)} />
+        <FormControl.Caption>Optional; shown in the webhook list instead of the URL.</FormControl.Caption>
+      </FormControl>
+
+      <RadioGroup name="webhook-events">
+        <RadioGroup.Label>Which events would you like to trigger this webhook?</RadioGroup.Label>
+        <FormControl>
+          <Radio value="push" checked={mode === 'push'} onChange={() => setMode('push')} />
+          <FormControl.Label>Just the push event</FormControl.Label>
+        </FormControl>
+        <FormControl>
+          <Radio value="all" checked={mode === 'all'} onChange={() => setMode('all')} />
+          <FormControl.Label>Send me everything</FormControl.Label>
+        </FormControl>
+        <FormControl>
+          <Radio value="custom" checked={mode === 'custom'} onChange={() => setMode('custom')} />
+          <FormControl.Label>Let me select individual events</FormControl.Label>
+        </FormControl>
+      </RadioGroup>
+
+      {mode === 'custom' && (
+        <div className="nipa-webhook-events">
+          {EVENT_GROUPS.map((group) => (
+            <CheckboxGroup key={group}>
+              <CheckboxGroup.Label>{group}</CheckboxGroup.Label>
+              {WEBHOOK_EVENTS.filter((entry) => entry.group === group).map((entry) => (
+                <FormControl key={entry.value}>
+                  <Checkbox value={entry.value} checked={picked.includes(entry.value)} onChange={() => toggleEvent(entry.value)} />
+                  <FormControl.Label>{entry.short}</FormControl.Label>
+                  <FormControl.Caption>
+                    <Mono>{entry.value}</Mono>
+                  </FormControl.Caption>
+                </FormControl>
+              ))}
+            </CheckboxGroup>
           ))}
-        </Stack>
-      </FormControl>
+          {picked.length === 0 && (
+            <Text as="p" style={{ margin: 0, color: 'var(--fgColor-danger)', fontSize: 12 }}>
+              Choose at least one event.
+            </Text>
+          )}
+        </div>
+      )}
+
+      {pushSelected && (
+        <FormControl>
+          <FormControl.Label>Only pushes under path</FormControl.Label>
+          <TextInput
+            block
+            leadingVisual={() => <span style={{ color: 'var(--fgColor-muted)' }}>/</span>}
+            placeholder="e.g. assets"
+            value={pathPrefix}
+            onChange={(event) => setPathPrefix(event.target.value)}
+          />
+          <FormControl.Caption>Push events fire only when a file under this folder changed. Leave empty for every push.</FormControl.Caption>
+        </FormControl>
+      )}
+
+      <RadioGroup name="webhook-ssl">
+        <RadioGroup.Label>SSL verification</RadioGroup.Label>
+        <FormControl>
+          <Radio value="enable" checked={!insecureTLS} onChange={() => setInsecureTLS(false)} />
+          <FormControl.Label>Enable SSL verification</FormControl.Label>
+        </FormControl>
+        <FormControl>
+          <Radio value="disable" checked={insecureTLS} onChange={() => setInsecureTLS(true)} />
+          <FormControl.Label>Disable (not recommended)</FormControl.Label>
+          <FormControl.Caption>Only for receivers with a self-signed certificate.</FormControl.Caption>
+        </FormControl>
+      </RadioGroup>
+
       <FormControl>
-        <FormControl.Label>Path prefix (only filters push events)</FormControl.Label>
-        <TextInput block placeholder="assets" value={pathPrefix} onChange={(event) => setPathPrefix(event.target.value)} />
-      </FormControl>
-      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <Checkbox checked={isActive} onChange={() => setIsActive((value) => !value)} />
-        Active
-      </label>
-      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <Checkbox checked={insecureTLS} onChange={() => setInsecureTLS((value) => !value)} />
-        Skip TLS verification (self-signed receiver)
-      </label>
+        <FormControl.Label>Active</FormControl.Label>
+        <FormControl.Caption>Event details are delivered when this webhook is triggered.</FormControl.Caption>
+      </FormControl>
     </FormDialog>
   )
 }

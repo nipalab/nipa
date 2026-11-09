@@ -97,6 +97,20 @@ describe('UserGroupPicker', () => {
     expect(selected).toEqual([{ id: '1', isGroup: false }])
   })
 
+  it('lists matches in the page flow when inline, so dialogs do not clip them', async () => {
+    const floating = await render(<UserGroupPicker org="acme" kind="user" onSelect={() => {}} />)
+    type(floating.querySelector('input'), 'al')
+    await waitFor(() => floating.querySelector('[role="listbox"]') !== null)
+    expect((floating.querySelector('[role="listbox"]') as HTMLElement).style.position).toBe('absolute')
+
+    const inline = await render(<UserGroupPicker org="acme" kind="user" inline onSelect={() => {}} />)
+    type(inline.querySelector('input'), 'al')
+    await waitFor(() => inline.querySelector('[role="listbox"]') !== null)
+    const list = inline.querySelector('[role="listbox"]') as HTMLElement
+    expect(list.style.position).toBe('static')
+    expect(list.style.boxShadow).toBe('')
+  })
+
   it('filters by group name when kind is group', async () => {
     const container = await render(<UserGroupPicker org="acme" kind="group" onSelect={() => undefined} />)
 

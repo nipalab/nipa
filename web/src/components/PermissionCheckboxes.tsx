@@ -1,45 +1,36 @@
-import { Checkbox, Stack, Text } from '@primer/react'
+import { Checkbox, CheckboxGroup, FormControl } from '@primer/react'
 import { PERMISSION_ADMIN, PERMISSION_LOCK, PERMISSION_READ, PERMISSION_WRITE } from '../api/models'
 
 const PERMISSION_OPTIONS = [
-  { bit: PERMISSION_READ, label: 'Read', description: 'View and download files' },
-  { bit: PERMISSION_WRITE, label: 'Write', description: 'Push changes and create branches' },
-  { bit: PERMISSION_LOCK, label: 'Lock', description: 'Lock and unlock binary files' },
-  { bit: PERMISSION_ADMIN, label: 'Admin', description: 'Manage access rules and settings' },
+  { bit: PERMISSION_READ, label: 'Read', description: 'View, clone and download files.' },
+  { bit: PERMISSION_WRITE, label: 'Write', description: 'Push changes, create branches and open merge requests.' },
+  { bit: PERMISSION_LOCK, label: 'Lock', description: 'Lock and unlock binary files.' },
+  { bit: PERMISSION_ADMIN, label: 'Admin', description: 'Manage access rules, branch protection and settings.' },
 ]
 
 export function PermissionCheckboxes({
   value,
   onChange,
+  label = 'Permissions',
 }: {
   value: number
   onChange: (mask: number) => void
+  label?: string
 }) {
   function toggle(bit: number) {
-    if (value & bit) {
-      onChange(value & ~bit)
-    } else {
-      onChange(value | bit)
-    }
+    onChange(value & bit ? value & ~bit : value | bit)
   }
 
   return (
-    <Stack direction="vertical" gap="condensed">
+    <CheckboxGroup required>
+      <CheckboxGroup.Label>{label}</CheckboxGroup.Label>
       {PERMISSION_OPTIONS.map((option) => (
-        <label
-          key={option.bit}
-          style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}
-        >
-          <Checkbox checked={(value & option.bit) !== 0} onChange={() => toggle(option.bit)} />
-          <span>
-            <span style={{ fontWeight: 600 }}>{option.label}</span>
-            <Text as="span" style={{ color: 'var(--fgColor-muted)' }}>
-              {' '}
-              — {option.description}
-            </Text>
-          </span>
-        </label>
+        <FormControl key={option.bit}>
+          <Checkbox value={String(option.bit)} checked={(value & option.bit) !== 0} onChange={() => toggle(option.bit)} />
+          <FormControl.Label>{option.label}</FormControl.Label>
+          <FormControl.Caption>{option.description}</FormControl.Caption>
+        </FormControl>
       ))}
-    </Stack>
+    </CheckboxGroup>
   )
 }

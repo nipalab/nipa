@@ -2,7 +2,7 @@ import { act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { WebhookSettings } from './WebhookSettings'
+import { WEBHOOK_EVENTS, WebhookSettings, isPayloadURL } from './WebhookSettings'
 import type { WebhookDeliveryResponse, WebhookResponse } from '../../api/models'
 
 vi.mock('../../api/endpoints', async (importOriginal) => {
@@ -124,36 +124,105 @@ describe('WebhookSettings', () => {
     act(() => root.unmount())
   })
 
-  it('creates a webhook and reveals the secret once', async () => {
+  async function openDialog() {
+    const view = await render(<WebhookSettings org="acme" project="game" />)
+    await waitFor(() => view.container.textContent?.includes('No webhooks') ?? false)
+    click(button(view.container, 'Create webhook'))
+    await waitFor(() => document.body.textContent?.includes('Which events would you like') ?? false)
+    return view
+  }
+
+  const dialog = () => document.body.querySelector('[role="dialog"]') as HTMLElement
+  const urlInput = () => dialog().querySelector<HTMLInputElement>('input[type="url"]')
+  const radio = (value: string) => dialog().querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`)
+  const submit = () => button(dialog(), 'Add webhook') as HTMLButtonElement
+
+  it('validates the payload url', () => {
+    expect(isPayloadURL('https://ci.example.com/hook')).toBe(true)
+    expect(isPayloadURL(' http://10.0.0.1:8080/x ')).toBe(true)
+    expect(isPayloadURL('ftp://ci.example.com')).toBe(false)
+    expect(isPayloadURL('ci.example.com')).toBe(false)
+  })
+
+  it('creates a push webhook and reveals the secret once', async () => {
     vi.mocked(endpoints.listWebhooks)
       .mockResolvedValueOnce([])
       .mockResolvedValue([hook({ secret: undefined })])
     vi.mocked(endpoints.createWebhook).mockResolvedValue(hook({ secret: 'deadbeef' }))
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 
-    const { container, root } = await render(<WebhookSettings org="acme" project="game" />)
-    await waitFor(() => container.textContent?.includes('No webhooks') ?? false)
-
-    click(button(container, 'Create webhook'))
-    await waitFor(() => document.body.textContent?.includes('Merge request synchronized') ?? false)
-    const textInputs = document.body.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"])')
-    type(textInputs[0], 'ci')
-    type(textInputs[1], 'https://ci.example.com/hooks/nipa')
-    click(button(document.body, 'Create'))
+    const { container, root } = await openDialog()
+    expect(submit().disabled).toBe(true)
+    type(urlInput(), 'not a url')
+    expect(document.body.textContent).toContain('Enter a full http:// or https:// URL.')
+    expect(submit().disabled).toBe(true)
+    type(urlInput(), 'https://ci.example.com/hooks/nipa')
+    type(dialog().querySelector('input[placeholder="e.g. CI notifications"]'), ' ci ')
+    type(dialog().querySelector('input[placeholder="e.g. assets"]'), 'art/')
+    click(radio('disable'))
+    click(submit())
 
     await waitFor(() => container.textContent?.includes('deadbeef') ?? false)
     expect(endpoints.createWebhook).toHaveBeenCalledWith('acme', 'game', {
       name: 'ci',
       url: 'https://ci.example.com/hooks/nipa',
       events: ['push'],
-      path_prefix: '',
+      path_prefix: 'art/',
       is_active: true,
-      insecure_tls: false,
+      insecure_tls: true,
     })
     expect(container.textContent).toContain('Signing secret for ci')
+    const copy = [...container.querySelectorAll<HTMLElement>('[aria-labelledby]')].find((element) =>
+      (element.getAttribute('aria-labelledby') ?? '').split(' ').some((id) => document.getElementById(id)?.textContent === 'Copy secret'),
+    )
+    await act(async () => {
+      copy?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(writeText).toHaveBeenCalledWith('deadbeef')
 
     click(container.querySelector('button[class*="BannerDismiss"]'))
     await waitFor(() => !(container.textContent?.includes('deadbeef') ?? false))
     act(() => root.unmount())
+  })
+
+  it('subscribes to everything or to picked events', async () => {
+    vi.mocked(endpoints.createWebhook).mockResolvedValue(hook())
+    const { root } = await openDialog()
+    type(urlInput(), 'https://ci.example.com/all')
+    click(radio('all'))
+    expect(dialog().querySelector('input[placeholder="e.g. assets"]')).not.toBeNull()
+    click(submit())
+    await waitFor(() => vi.mocked(endpoints.createWebhook).mock.calls.length === 1)
+    expect(vi.mocked(endpoints.createWebhook).mock.calls[0][2].events).toHaveLength(WEBHOOK_EVENTS.length)
+    act(() => root.unmount())
+    document.body.innerHTML = ''
+
+    const second = await openDialog()
+    type(urlInput(), 'https://ci.example.com/mr')
+    type(dialog().querySelector('input[placeholder="e.g. assets"]'), 'docs')
+    click(radio('custom'))
+    expect(document.body.textContent).toContain('Merge requests')
+    const box = (value: string) => dialog().querySelector<HTMLInputElement>(`input[type="checkbox"][value="${value}"]`)
+    click(box('push'))
+    expect(document.body.textContent).toContain('Choose at least one event.')
+    expect(submit().disabled).toBe(true)
+    expect(dialog().querySelector('input[placeholder="e.g. assets"]')).toBeNull()
+    click(box('mr.merged'))
+    click(box('mr.created'))
+    const activeLabel = [...dialog().querySelectorAll('label')].find((label) => label.textContent === 'Active') as HTMLLabelElement
+    click(document.getElementById(activeLabel.htmlFor))
+    click(submit())
+    await waitFor(() => vi.mocked(endpoints.createWebhook).mock.calls.length === 2)
+    expect(vi.mocked(endpoints.createWebhook).mock.calls[1][2]).toEqual({
+      name: '',
+      url: 'https://ci.example.com/mr',
+      events: ['mr.created', 'mr.merged'],
+      path_prefix: '',
+      is_active: false,
+      insecure_tls: false,
+    })
+    act(() => second.root.unmount())
   })
 
   it('shows deliveries and redelivers one', async () => {
