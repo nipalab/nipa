@@ -93,6 +93,9 @@ func LockTTLSeconds(seconds int64) AcquireOption {
 	if seconds > int64(MaxLockTTL/time.Second) {
 		return LockTTL(MaxLockTTL + time.Second)
 	}
+	if seconds < int64(MinLockTTL/time.Second) {
+		return LockTTL(MinLockTTL - time.Second)
+	}
 	return LockTTL(time.Duration(seconds) * time.Second)
 }
 

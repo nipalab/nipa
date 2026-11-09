@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -67,11 +68,13 @@ type lockCall struct {
 }
 
 type recordingLockClient struct {
-	mu      sync.Mutex
-	calls   []lockCall
-	lockErr error
-	locks   []*domain.FileLock
-	listErr error
+	mu        sync.Mutex
+	calls     []lockCall
+	lockErr   error
+	granted   *domain.FileLock
+	locks     []*domain.FileLock
+	listErr   error
+	unlockErr error
 }
 
 func (r *recordingLockClient) Connect(context.Context, string) error { return nil }
@@ -83,12 +86,15 @@ func (r *recordingLockClient) LockFile(_ context.Context, _, _, path, branch str
 	if len(r.calls) > 1 && r.lockErr != nil {
 		return nil, r.lockErr
 	}
+	if r.granted != nil {
+		return r.granted, nil
+	}
 	expires := time.Now().Add(ttl)
-	return &domain.FileLock{Path: path, Branch: branch, ExpiresAt: &expires}, nil
+	return &domain.FileLock{ID: fmt.Sprintf("id-%s-%d", path, len(r.calls)), Path: path, Branch: branch, ExpiresAt: &expires}, nil
 }
 
 func (r *recordingLockClient) UnlockFile(context.Context, string, string, string, string) error {
-	return nil
+	return r.unlockErr
 }
 
 func (r *recordingLockClient) ListFileLocks(context.Context, string, string) ([]*domain.FileLock, error) {
@@ -200,12 +206,12 @@ func TestLock_RelockRestartsRenewal(t *testing.T) {
 func TestKeepAlive_StopEndsRenewal(t *testing.T) {
 	tickers := &fakeTickers{}
 	var renews int
-	k := newKeepAlive(tickers.new, func(context.Context, keepAliveKey, time.Duration) error {
+	k := newKeepAlive(tickers.new, func(context.Context, keepAliveKey, time.Duration) (string, error) {
 		renews++
-		return nil
+		return "", nil
 	})
-	k.track(keepAliveKey{root: "/r", path: "a.png"}, time.Minute)
-	k.track(keepAliveKey{root: "/r", path: "zero.png"}, 0)
+	k.track(keepAliveKey{root: "/r", path: "a.png"}, time.Minute, "1")
+	k.track(keepAliveKey{root: "/r", path: "zero.png"}, 0, "2")
 	require.Len(t, k.keys(), 1)
 
 	k.stop()
@@ -213,21 +219,21 @@ func TestKeepAlive_StopEndsRenewal(t *testing.T) {
 	require.Empty(t, k.keys())
 	require.Zero(t, renews)
 
-	k.track(keepAliveKey{root: "/r", path: "b.png"}, time.Minute)
+	k.track(keepAliveKey{root: "/r", path: "b.png"}, time.Minute, "3")
 	require.Empty(t, k.keys(), "nothing is tracked after shutdown")
 }
 
 func TestKeepAlive_RetainDropsReleasedLocks(t *testing.T) {
 	tickers := &fakeTickers{}
-	k := newKeepAlive(tickers.new, func(context.Context, keepAliveKey, time.Duration) error { return nil })
+	k := newKeepAlive(tickers.new, func(context.Context, keepAliveKey, time.Duration) (string, error) { return "", nil })
 	defer k.stop()
-	k.track(keepAliveKey{root: "/r", path: "a.png"}, time.Minute)
-	k.track(keepAliveKey{root: "/r", path: "art"}, time.Minute)
-	k.track(keepAliveKey{root: "/other", path: "a.png"}, time.Minute)
+	k.track(keepAliveKey{root: "/r", path: "a.png"}, time.Minute, "1")
+	k.track(keepAliveKey{root: "/r", path: "art"}, time.Minute, "2")
+	k.track(keepAliveKey{root: "/other", path: "a.png"}, time.Minute, "3")
 	require.True(t, k.tracking("/r"))
 	require.False(t, k.tracking("/none"))
 
-	k.retain("/r", map[string]bool{"art": true})
+	k.retain("/r", map[string]bool{"2": true})
 	keys := k.keys()
 	require.Len(t, keys, 2)
 	require.ElementsMatch(t, []keepAliveKey{{root: "/r", path: "art"}, {root: "/other", path: "a.png"}}, keys)
@@ -236,14 +242,14 @@ func TestKeepAlive_RetainDropsReleasedLocks(t *testing.T) {
 
 func TestForgetLanded(t *testing.T) {
 	root := setupRepo(t, nil)
-	client := &recordingLockClient{locks: []*domain.FileLock{{Path: "art"}}}
+	client := &recordingLockClient{locks: []*domain.FileLock{{ID: "art-mine", Path: "art"}, {ID: "a-other-scope", Path: "a.png"}}}
 	s, _, _ := newKeepAliveServer(t, client)
 	uc := UseCases{Lock: usecase.NewFileLock(loggedInAuth(), client, localrepo.NewLocalRepo())}
 
 	s.forgetLanded(context.Background(), root, uc)
 
-	s.keepAlive.track(keepAliveKey{root: root, path: "a.png"}, time.Minute)
-	s.keepAlive.track(keepAliveKey{root: root, path: "art"}, time.Minute)
+	s.keepAlive.track(keepAliveKey{root: root, path: "a.png"}, time.Minute, "a-mine")
+	s.keepAlive.track(keepAliveKey{root: root, path: "art"}, time.Minute, "art-mine")
 
 	client.listErr = errors.New("offline")
 	s.forgetLanded(context.Background(), root, uc)
@@ -260,11 +266,60 @@ func TestForgetLanded(t *testing.T) {
 func TestRenewLock_NotConfigured(t *testing.T) {
 	s, _ := newServer(Options{NewUseCases: func() UseCases { return UseCases{} }})
 	defer s.keepAlive.stop()
-	require.EqualError(t, s.renewLock(context.Background(), keepAliveKey{root: "/r", path: "a"}, time.Minute), "locks are not configured")
+	_, err := s.renewLock(context.Background(), keepAliveKey{root: "/r", path: "a"}, time.Minute)
+	require.EqualError(t, err, "locks are not configured")
 
 	s2, _ := newServer(Options{})
 	defer s2.keepAlive.stop()
-	require.Error(t, s2.renewLock(context.Background(), keepAliveKey{}, time.Minute))
+	_, err = s2.renewLock(context.Background(), keepAliveKey{}, time.Minute)
+	require.Error(t, err)
+}
+
+func TestLock_PermanentCoveringLockIsNotRenewed(t *testing.T) {
+	root := setupRepo(t, nil)
+	client := &recordingLockClient{granted: &domain.FileLock{ID: "dir", Path: "art"}}
+	s, session, _ := newKeepAliveServer(t, client)
+
+	res := call(t, session, "nipa_lock", map[string]any{"repo": root, "path": "art/hero.png"})
+	require.False(t, res.IsError, toolText(t, res))
+	require.Empty(t, s.keepAlive.keys())
+}
+
+func TestLock_RenewalFollowsLockID(t *testing.T) {
+	root := setupRepo(t, nil)
+	client := &recordingLockClient{}
+	s, session, tickers := newKeepAliveServer(t, client)
+
+	call(t, session, "nipa_lock", map[string]any{"repo": root, "path": "a.png"})
+	tk := tickers.get(t, 0)
+	tk.ch <- time.Now()
+	require.Eventually(t, func() bool { return len(client.snapshot()) == 2 }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool {
+		s.keepAlive.mu.Lock()
+		defer s.keepAlive.mu.Unlock()
+		for _, entry := range s.keepAlive.entries {
+			return entry.lockID == "id-a.png-2"
+		}
+		return false
+	}, time.Second, time.Millisecond)
+}
+
+func TestUnlock_FailureKeepsRenewing(t *testing.T) {
+	root := setupRepo(t, nil)
+	client := &recordingLockClient{unlockErr: errors.New("unavailable")}
+	s, session, tickers := newKeepAliveServer(t, client)
+
+	call(t, session, "nipa_lock", map[string]any{"repo": root, "path": "a.png"})
+	res := call(t, session, "nipa_unlock", map[string]any{"repo": root, "path": "a.png"})
+	require.True(t, res.IsError)
+	requireStopped(t, tickers.get(t, 0))
+	require.Equal(t, []keepAliveKey{{root: root, branch: "main", path: "a.png"}}, s.keepAlive.keys())
+	require.Equal(t, 10*time.Minute/3, tickers.get(t, 1).period)
+
+	client.unlockErr = domain.NewNotFoundError("no lock")
+	res = call(t, session, "nipa_unlock", map[string]any{"repo": root, "path": "a.png"})
+	require.True(t, res.IsError)
+	require.Empty(t, s.keepAlive.keys())
 }
 
 func TestRealTicker(t *testing.T) {

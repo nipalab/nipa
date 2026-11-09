@@ -321,8 +321,10 @@ resolve/review/request-review/check, `merge` merge/resolve-conflict/
 error. Writes are serialized by `writeMu` and annotated `DestructiveHint`
 when they discard or overwrite work. `nipa_lock` takes a `ttl` (default
 10m); `keepalive.go` re-locks every TTL lock the server took every ttl/3
-(re-lock = renew, injectable ticker), drops a lock on `nipa_unlock`, a failed
-renew (`slog.Warn`) or when a push landed it (`forgetLanded`), and stops on
+(re-lock = renew, injectable ticker; a permanent covering lock is not
+tracked, entries are matched by lock id), drops a lock on a successful
+`nipa_unlock` (a failed non-404 unlock keeps renewing), a failed renew
+(`slog.Warn`) or when a push landed it (`forgetLanded`), and stops on
 shutdown, so a crashed agent frees its locks within one TTL. `withAgentTrailer` appends
 `Nipa-Agent: <clientInfo.name>/<version>` from the initialize handshake to
 push messages, MR descriptions, comments, replies and review bodies (not

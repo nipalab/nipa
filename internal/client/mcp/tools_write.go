@@ -337,11 +337,9 @@ func (s *server) lock(ctx context.Context, _ *mcp.CallToolRequest, in lockInput)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
-	path := in.Path
-	if lock != nil && lock.Path != "" {
-		path = lock.Path
+	if lock != nil && lock.ExpiresAt != nil {
+		s.keepAlive.track(lockKey(root, branch, lock.Path), ttl, lock.ID)
 	}
-	s.keepAlive.track(lockKey(root, branch, path), ttl)
 	return nil, output.NewLock(lock), nil
 }
 
@@ -365,17 +363,20 @@ func lockKey(root, branch, path string) keepAliveKey {
 	return keepAliveKey{root: root, branch: branch, path: path}
 }
 
-func (s *server) renewLock(ctx context.Context, key keepAliveKey, ttl time.Duration) error {
+func (s *server) renewLock(ctx context.Context, key keepAliveKey, ttl time.Duration) (string, error) {
 	uc, err := s.useCases()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer uc.close()
 	if uc.Lock == nil {
-		return errors.New("locks are not configured")
+		return "", errors.New("locks are not configured")
 	}
-	_, err = uc.Lock.Lock(ctx, key.root, key.path, usecase.LockOptions{Branch: key.branch, TTL: ttl})
-	return err
+	lock, err := uc.Lock.Lock(ctx, key.root, key.path, usecase.LockOptions{Branch: key.branch, TTL: ttl})
+	if err != nil || lock == nil {
+		return "", err
+	}
+	return lock.ID, nil
 }
 
 // forgetLanded stops renewing exact-path locks the server released when the
@@ -391,7 +392,7 @@ func (s *server) forgetLanded(ctx context.Context, root string, uc UseCases) {
 	}
 	held := make(map[string]bool, len(locks))
 	for _, lock := range locks {
-		held[lock.Path] = true
+		held[lock.ID] = true
 	}
 	s.keepAlive.retain(root, held)
 }
@@ -419,8 +420,14 @@ func (s *server) unlock(ctx context.Context, _ *mcp.CallToolRequest, in unlockIn
 		return nil, zero, notConfigured("locks are")
 	}
 	branch := lockBranch(root, in.Branch)
-	s.keepAlive.untrack(lockKey(root, branch, in.Path))
+	key := lockKey(root, branch, in.Path)
+	entry, tracked := s.keepAlive.untrack(key)
 	if err := uc.Lock.Unlock(ctx, root, in.Path, branch); err != nil {
+		var derr *domain.Error
+		gone := errors.As(err, &derr) && derr.Code == 404
+		if tracked && !gone {
+			s.keepAlive.track(key, entry.ttl, entry.lockID)
+		}
 		return nil, zero, toolError(err)
 	}
 	return nil, unlockedOutput{Path: in.Path}, nil

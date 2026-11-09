@@ -29,6 +29,8 @@ type keepAliveKey struct {
 
 type keepAliveEntry struct {
 	cancel context.CancelFunc
+	ttl    time.Duration
+	lockID string
 }
 
 // keepAlive renews the TTL locks this MCP server took every ttl/3, so a live
@@ -40,10 +42,10 @@ type keepAlive struct {
 	entries   map[keepAliveKey]*keepAliveEntry
 	wg        sync.WaitGroup
 	newTicker func(time.Duration) ticker
-	renew     func(ctx context.Context, key keepAliveKey, ttl time.Duration) error
+	renew     func(ctx context.Context, key keepAliveKey, ttl time.Duration) (string, error)
 }
 
-func newKeepAlive(newTicker func(time.Duration) ticker, renew func(context.Context, keepAliveKey, time.Duration) error) *keepAlive {
+func newKeepAlive(newTicker func(time.Duration) ticker, renew func(context.Context, keepAliveKey, time.Duration) (string, error)) *keepAlive {
 	if newTicker == nil {
 		newTicker = newRealTicker
 	}
@@ -57,7 +59,7 @@ func newKeepAlive(newTicker func(time.Duration) ticker, renew func(context.Conte
 	}
 }
 
-func (k *keepAlive) track(key keepAliveKey, ttl time.Duration) {
+func (k *keepAlive) track(key keepAliveKey, ttl time.Duration, lockID string) {
 	if ttl <= 0 {
 		return
 	}
@@ -70,7 +72,7 @@ func (k *keepAlive) track(key keepAliveKey, ttl time.Duration) {
 		old.cancel()
 	}
 	ctx, cancel := context.WithCancel(k.ctx)
-	entry := &keepAliveEntry{cancel: cancel}
+	entry := &keepAliveEntry{cancel: cancel, ttl: ttl, lockID: lockID}
 	k.entries[key] = entry
 	t := k.newTicker(ttl / 3)
 	k.wg.Add(1)
@@ -85,7 +87,8 @@ func (k *keepAlive) loop(ctx context.Context, key keepAliveKey, entry *keepAlive
 		case <-ctx.Done():
 			return
 		case <-t.C():
-			if err := k.renew(ctx, key, ttl); err != nil {
+			lockID, err := k.renew(ctx, key, ttl)
+			if err != nil {
 				if ctx.Err() != nil {
 					return
 				}
@@ -93,8 +96,18 @@ func (k *keepAlive) loop(ctx context.Context, key keepAliveKey, entry *keepAlive
 				k.remove(key, entry)
 				return
 			}
+			k.setLockID(entry, lockID)
 		}
 	}
+}
+
+func (k *keepAlive) setLockID(entry *keepAliveEntry, lockID string) {
+	if lockID == "" {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	entry.lockID = lockID
 }
 
 func (k *keepAlive) remove(key keepAliveKey, entry *keepAliveEntry) {
@@ -106,13 +119,16 @@ func (k *keepAlive) remove(key keepAliveKey, entry *keepAliveEntry) {
 	}
 }
 
-func (k *keepAlive) untrack(key keepAliveKey) {
+func (k *keepAlive) untrack(key keepAliveKey) (keepAliveEntry, bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	if entry, ok := k.entries[key]; ok {
-		delete(k.entries, key)
-		entry.cancel()
+	entry, ok := k.entries[key]
+	if !ok {
+		return keepAliveEntry{}, false
 	}
+	delete(k.entries, key)
+	entry.cancel()
+	return keepAliveEntry{ttl: entry.ttl, lockID: entry.lockID}, true
 }
 
 func (k *keepAlive) tracking(root string) bool {
@@ -126,13 +142,13 @@ func (k *keepAlive) tracking(root string) bool {
 	return false
 }
 
-// retain stops renewing the root's locks whose path is no longer held, such
-// as exact-path locks the server released after a push landed them.
+// retain stops renewing the root's locks whose id is no longer listed, such as
+// exact-path locks the server released after a push landed them.
 func (k *keepAlive) retain(root string, held map[string]bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	for key, entry := range k.entries {
-		if key.root == root && !held[key.path] {
+		if key.root == root && !held[entry.lockID] {
 			delete(k.entries, key)
 			entry.cancel()
 		}

@@ -866,7 +866,7 @@ func TestFileLock_Acquire_TTL(t *testing.T) {
 		uc, _, _, _ := newStrictTestFileLock(t, now)
 		for _, opt := range []AcquireOption{
 			LockTTL(30 * time.Second), LockTTL(8 * 24 * time.Hour), LockTTL(-time.Minute),
-			LockTTLSeconds(0), LockTTLSeconds(1 << 62),
+			LockTTLSeconds(0), LockTTLSeconds(1 << 62), LockTTLSeconds(-9223372036854775748), LockTTLSeconds(-1),
 		} {
 			_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png", opt)
 			requireUserError(t, err)
