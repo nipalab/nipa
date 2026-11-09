@@ -92,6 +92,18 @@ func (s *superbox) children() []*superbox {
 	return out
 }
 
+func (s *superbox) lastChild() *superbox {
+	for i := len(s.content) - 1; i >= 0; i-- {
+		if s.content[i].typ != "jumb" {
+			continue
+		}
+		if child, err := parseSuperbox(s.content[i].payload); err == nil {
+			return child
+		}
+	}
+	return nil
+}
+
 func (s *superbox) cbor() []byte {
 	for _, b := range s.content {
 		if b.typ == "cbor" {
@@ -129,11 +141,10 @@ func parseC2PA(store []byte, lim Limits) (*Record, bool, error) {
 	if root.label != "c2pa" {
 		return nil, false, nil
 	}
-	manifests := root.children()
-	if len(manifests) == 0 {
+	active := root.lastChild()
+	if active == nil {
 		return nil, false, nil
 	}
-	active := manifests[len(manifests)-1]
 	var claim map[string]any
 	var sourceType string
 	for _, sb := range active.children() {

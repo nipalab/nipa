@@ -18,7 +18,7 @@ import (
 )
 
 // MaxProvenanceBytes caps the .nipaprovenance.yml read from any side.
-const MaxProvenanceBytes = 16 << 20
+const MaxProvenanceBytes = usecase.MaxProvenanceFileBytes
 
 // LoadProvenance reads the provenance file of side through load; a missing
 // file is nil and no error.

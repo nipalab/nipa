@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,15 +32,26 @@ func (r ProvenanceReport) String() string {
 	return fmt.Sprintf("provenance: recorded %d, moved %d, deleted %d", r.Recorded, r.Moved, r.Deleted)
 }
 
+// MaxProvenanceFileBytes caps the .nipaprovenance.yml read from any side.
+const MaxProvenanceFileBytes = 16 << 20
+
 // LoadProvenance reads the clone's .nipaprovenance.yml; nil when absent,
 // which means the repository has not opted in.
 func LoadProvenance(root string) (*provenance.File, error) {
-	data, err := os.ReadFile(filepath.Join(root, provenance.FileName))
+	file, err := os.Open(filepath.Join(root, provenance.FileName))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	data, err := io.ReadAll(io.LimitReader(file, MaxProvenanceFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxProvenanceFileBytes {
+		return nil, domain.NewUserError(fmt.Sprintf("%s is larger than %d bytes", provenance.FileName, MaxProvenanceFileBytes))
 	}
 	f, err := provenance.Parse(data)
 	if err != nil {
@@ -103,14 +115,21 @@ func (w *WorkingCopy) workingFileInfo(p string) (os.FileInfo, bool, error) {
 // of files gone from the working copy follow a new path with the same
 // content, new supported files get the metadata they declare, and staged
 // deletions drop what is left. Existing records are never overwritten.
-func (w *WorkingCopy) recordProvenance(paths []string) (ProvenanceReport, bool, error) {
+func (w *WorkingCopy) recordProvenance(snapshot *domain.Snapshot, paths []string) (ProvenanceReport, bool, error) {
 	var rep ProvenanceReport
 	f, err := LoadProvenance(w.root)
 	if err != nil || f == nil {
 		return rep, false, err
 	}
+	tracked := map[string]bool{}
+	for _, p := range snapshotPaths(snapshot) {
+		tracked[p] = true
+	}
 	orphans := map[string][]string{}
 	for _, p := range f.Paths() {
+		if !tracked[p] {
+			continue
+		}
 		if _, exists, err := w.workingFileInfo(p); err != nil {
 			return rep, false, err
 		} else if !exists {

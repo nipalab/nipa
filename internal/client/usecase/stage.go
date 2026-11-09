@@ -106,7 +106,7 @@ func (w *WorkingCopy) AddWithReport(ctx context.Context, targets []string, opts 
 	}
 	if !opt.NoProvenance {
 		var changed bool
-		if rep, changed, err = w.recordProvenance(paths); err != nil {
+		if rep, changed, err = w.recordProvenance(snapshot, paths); err != nil {
 			return rep, err
 		}
 		if changed {

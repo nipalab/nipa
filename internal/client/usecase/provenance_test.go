@@ -251,3 +251,28 @@ func TestSaveProvenance_KeepsFileMode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
+
+func TestAddProvenance_UntrackedMissingRecordIsNotAnOrphan(t *testing.T) {
+	root := t.TempDir()
+	content := generatedPNG(t, "Comment", "copy")
+	f := provenance.New()
+	require.NoError(t, f.Set("outside/hero.png", &provenance.Record{Tool: "Manual", ContentHash: provenance.HashBytes(content), Source: provenance.SourceManual}))
+	require.NoError(t, SaveProvenance(root, f))
+	writeRepoFile(t, root, "inside/copy.png", string(content))
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
+
+	rep, err := newWorkingCopy(t, local, root).AddWithReport(context.Background(), []string{"inside/copy.png"})
+	require.NoError(t, err)
+	require.False(t, rep.Changed())
+	got := readProvenance(t, root)
+	require.Equal(t, "Manual", got.Get("outside/hero.png").Tool, "a record outside the sparse set stays put")
+	require.Nil(t, got.Get("inside/copy.png"))
+}
+
+func TestLoadProvenance_SizeCap(t *testing.T) {
+	root := t.TempDir()
+	big := make([]byte, MaxProvenanceFileBytes+1)
+	require.NoError(t, os.WriteFile(filepath.Join(root, provenance.FileName), big, 0o600))
+	_, err := LoadProvenance(root)
+	require.ErrorContains(t, err, "larger than")
+}

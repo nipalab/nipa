@@ -110,7 +110,7 @@ func (r *cborReader) item(depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		out := make([]any, 0, n)
+		out := make([]any, 0, min(n, 64))
 		for range n {
 			v, err := r.item(depth + 1)
 			if err != nil {

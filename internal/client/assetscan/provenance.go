@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/nipalab/nipa/internal/assetbudget"
@@ -87,7 +89,7 @@ func ScanProvenance(ctx context.Context, d *usecase.Diff, wc *usecase.WorkingCop
 		if present[p] || !coveredBy(prefixes, p) {
 			continue
 		}
-		if _, err := usecase.HashWorkingFile(root, p); errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p))); errors.Is(err, fs.ErrNotExist) {
 			out.Orphaned = append(out.Orphaned, p)
 		}
 	}

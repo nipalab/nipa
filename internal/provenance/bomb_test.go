@@ -46,3 +46,18 @@ func TestBomb_DeepCBORClaim(t *testing.T) {
 	require.False(t, ok)
 	require.ErrorContains(t, err, "nesting deeper")
 }
+
+func TestBomb_CBORDeclaredCountsDoNotPreallocate(t *testing.T) {
+	data := make([]byte, 0, 1<<20)
+	for range 32 {
+		data = append(data, 0x9a, 0x00, 0x0f, 0x00, 0x00)
+	}
+	data = append(data, make([]byte, 1<<20-len(data))...)
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := decodeCBOR(data, 32)
+	runtime.ReadMemStats(&after)
+	require.Error(t, err)
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(8<<20))
+}
