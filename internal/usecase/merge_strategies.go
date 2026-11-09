@@ -98,7 +98,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		return nil, domain.NewErrorInternalServer("non-fast-forward merge strategies are not configured")
 	}
 
-	base, err := b.findMergeBase(ctx, target.CommitID, source.CommitID)
+	base, err := b.findMergeBase(ctx, projectID, target.CommitID, source.CommitID)
 	if err != nil {
 		return nil, err
 	}

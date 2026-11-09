@@ -83,3 +83,52 @@ func (s *MigrateSuite) TestUpDown() {
 	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')").Scan(&exists))
 	s.False(exists)
 }
+
+func (s *MigrateSuite) TestQueryPerformanceIndexes() {
+	ctx := context.Background()
+	s.Require().NoError(MigrateUp(s.conn))
+
+	rows, err := s.conn.QueryContext(ctx, "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema()")
+	s.Require().NoError(err)
+	defer func() { _ = rows.Close() }()
+	indexes := map[string]string{}
+	for rows.Next() {
+		var name, def string
+		s.Require().NoError(rows.Scan(&name, &def))
+		indexes[name] = def
+	}
+	s.Require().NoError(rows.Err())
+
+	for _, name := range []string{
+		"idx_tree_nodes_hash_id",
+		"idx_organizations_created_by",
+		"idx_pbac_rules_org_wide",
+		"idx_pbac_rules_org_users",
+		"idx_refresh_tokens_user",
+		"idx_merge_requests_source_status",
+		"idx_merge_requests_target_status",
+		"idx_email_deliveries_thread",
+		"idx_email_deliveries_sweep",
+		"idx_audit_log_action",
+		"idx_branches_project_updated_id",
+	} {
+		s.Contains(indexes, name)
+	}
+	for _, name := range []string{
+		"idx_tree_nodes_hash",
+		"idx_tree_nodes_parent",
+		"idx_files_tree_id",
+		"idx_merge_requests_project",
+		"idx_merge_request_review_requests_mr",
+		"idx_merge_request_checks_mr",
+		"idx_audit_log_id",
+	} {
+		s.NotContains(indexes, name)
+	}
+	s.Contains(indexes["idx_audit_log_action"], `COLLATE "C"`)
+	s.Contains(indexes["idx_tree_nodes_hash_id"], "(hash, id)")
+	s.Contains(indexes["idx_organizations_created_by"], "WHERE (deleted = false)")
+	s.Contains(indexes["idx_pbac_rules_org_wide"], "WHERE (project_id IS NULL)")
+	s.Contains(indexes["idx_pbac_rules_org_users"], "WHERE (user_id IS NOT NULL)")
+	s.Contains(indexes["idx_branches_project_updated_id"], "WHERE (deleted = false)")
+}

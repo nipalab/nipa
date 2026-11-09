@@ -726,7 +726,7 @@ func TestBranch_FindMergeBase_AReachesSource(t *testing.T) {
 		Return(&domain.Commit{ID: a, ProjectID: 1, TreeID: 101, Parent1ID: &c}, nil)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	got, err := uc.findMergeBase(context.Background(), &a, &c)
+	got, err := uc.findMergeBase(context.Background(), 1, &a, &c)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, c, *got)
@@ -750,7 +750,7 @@ func TestBranch_FindMergeBase_NoCommonAncestor(t *testing.T) {
 		Return(&domain.Commit{ID: root, ProjectID: 1, TreeID: 104}, nil)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	got, err := uc.findMergeBase(context.Background(), &a, &c)
+	got, err := uc.findMergeBase(context.Background(), 1, &a, &c)
 	require.NoError(t, err)
 	require.Nil(t, got)
 }

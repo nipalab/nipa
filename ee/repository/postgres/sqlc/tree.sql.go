@@ -19,13 +19,17 @@ WHERE file_chunks.file_id IN (
         SELECT f.id
         FROM files f
         WHERE f.tree_id = (
-                SELECT content.id
-                FROM tree_nodes content
-                JOIN tree_nodes ref ON ref.hash = content.hash
+                SELECT x.id
+                FROM tree_nodes ref
+                CROSS JOIN LATERAL (
+                    SELECT content.id
+                    FROM tree_nodes content
+                    WHERE content.hash = ref.hash
+                      AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+                    ORDER BY content.id
+                    LIMIT 1
+                ) x
                 WHERE ref.id = $1
-                  AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
-                ORDER BY content.id
-                LIMIT 1
             )
     )
 ORDER BY file_chunks.file_id, file_chunks.chunk_index
@@ -334,13 +338,17 @@ const fileListByTree = `-- name: FileListByTree :many
 SELECT f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.encoding, f.created_at
 FROM files f
 WHERE f.tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = $1
-          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
-        ORDER BY content.id
-        LIMIT 1
     )
 ORDER BY f.name
 `
@@ -403,16 +411,20 @@ const treeNodeGetChildByName = `-- name: TreeNodeGetChildByName :one
 SELECT t.id, t.hash, t.name, t.mode, t.parent_tree_id, t.created_at
 FROM tree_nodes t
 WHERE t.parent_tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND (
+                  EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+                  OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+              )
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = $1
-          AND (
-              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
-              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
-          )
-        ORDER BY content.id
-        LIMIT 1
     )
     AND t.name = $2
 LIMIT 1
@@ -441,16 +453,20 @@ const treeNodeListChildren = `-- name: TreeNodeListChildren :many
 SELECT t.id, t.hash, t.name, t.mode, t.parent_tree_id, t.created_at
 FROM tree_nodes t
 WHERE t.parent_tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND (
+                  EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+                  OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+              )
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = $1
-          AND (
-              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
-              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
-          )
-        ORDER BY content.id
-        LIMIT 1
     )
 ORDER BY t.name
 `

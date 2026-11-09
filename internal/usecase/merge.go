@@ -72,7 +72,7 @@ func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, so
 		return nil, err
 	}
 
-	baseCommitID, err := b.findMergeBase(ctx, targetSide.commitID, sourceSide.commitID)
+	baseCommitID, err := b.findMergeBase(ctx, projectID, targetSide.commitID, sourceSide.commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 		return nil, domain.NewErrorConflict(fmt.Sprintf("source branch %q changed since the merge request was checked; review it again", sourceBranch))
 	}
 
-	base, err := b.findMergeBase(ctx, target.CommitID, source.CommitID)
+	base, err := b.findMergeBase(ctx, projectID, target.CommitID, source.CommitID)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ func (b *Branch) binaryChanges(ctx context.Context, projectID snow.ID, fromCommi
 	return changes, nil
 }
 
-func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, error) {
+func (b *Branch) findMergeBase(ctx context.Context, projectID snow.ID, a, c *snow.ID) (*snow.ID, error) {
 	if a == nil || c == nil {
 		return nil, nil
 	}
@@ -258,6 +258,7 @@ func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, er
 		return a, nil
 	}
 
+	graph := newCommitGraph(b.branchRepo, projectID, false)
 	seenA := map[snow.ID]bool{*a: true}
 	seenB := map[snow.ID]bool{*c: true}
 	queueA := []snow.ID{*a}
@@ -266,7 +267,7 @@ func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, er
 	for len(queueA) > 0 || len(queueB) > 0 {
 		var nextA, nextB []snow.ID
 		for _, id := range queueA {
-			commit, err := b.branchRepo.GetCommit(ctx, id)
+			commit, err := graph.get(ctx, id)
 			if err != nil {
 				return nil, err
 			}
@@ -284,7 +285,7 @@ func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, er
 		queueA = nextA
 
 		for _, id := range queueB {
-			commit, err := b.branchRepo.GetCommit(ctx, id)
+			commit, err := graph.get(ctx, id)
 			if err != nil {
 				return nil, err
 			}

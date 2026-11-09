@@ -59,6 +59,7 @@ func walkCommitsRange(ctx context.Context, repo branchRepository, projectID snow
 	loaded := make(map[snow.ID]*domain.Commit)
 	stack := []frame{{id: startCommitID}}
 	var ordered []*domain.Commit
+	graph := newCommitGraph(repo, projectID, true)
 
 	for len(stack) > 0 {
 		f := stack[len(stack)-1]
@@ -70,7 +71,7 @@ func walkCommitsRange(ctx context.Context, repo branchRepository, projectID snow
 		if stopCommitID != nil && f.id == *stopCommitID {
 			continue
 		}
-		commit, err := commitByIDInProject(ctx, repo, projectID, f.id)
+		commit, err := graph.get(ctx, f.id)
 		if err != nil {
 			return nil, err
 		}
