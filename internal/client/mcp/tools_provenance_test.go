@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,7 +14,10 @@ import (
 
 func provenanceFixture(t *testing.T) string {
 	t.Helper()
-	root := setupRepo(t, map[string]string{"a.txt": "one\n", "art_a.png": "aaa", "art_b.png": "bbb"})
+	root := setupRepo(t, map[string]string{"a.txt": "one\n", "art_a.png": "aaa", "art_b.png": "bbb", "gone.png": "g", "zz_gone.png": "z"})
+	for _, p := range []string{"gone.png", "zz_gone.png"} {
+		require.NoError(t, os.Remove(filepath.Join(root, p)))
+	}
 	f := provenance.New()
 	require.NoError(t, f.Set("art_a.png", &provenance.Record{Tool: "ComfyUI", ContentHash: provenance.HashBytes([]byte("aaa"))}))
 	require.NoError(t, f.Set("gone.png", &provenance.Record{Tool: "Firefly"}))

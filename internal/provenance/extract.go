@@ -94,6 +94,7 @@ func walkPNG(r io.ReadSeeker, lim Limits) (*pngMeta, error) {
 		return nil, ErrNotPNG
 	}
 	meta := &pngMeta{text: map[string]string{}}
+	inflated := int64(0)
 	for {
 		var hdr [8]byte
 		if _, err := io.ReadFull(r, hdr[:]); err != nil {
@@ -125,13 +126,17 @@ func walkPNG(r io.ReadSeeker, lim Limits) (*pngMeta, error) {
 			meta.c2pa = data
 			continue
 		}
-		if key, text, ok := pngText(typ, data, lim); ok && (key == "prompt" || key == "parameters") {
+		key, text, ok := pngText(typ, data, min(lim.MaxInflate, lim.MaxStore-inflated), &inflated)
+		if inflated >= lim.MaxStore {
+			return nil, errors.New("png: compressed text exceeds the extraction budget")
+		}
+		if ok && (key == "prompt" || key == "parameters") {
 			meta.text[key] = text
 		}
 	}
 }
 
-func pngText(typ string, data []byte, lim Limits) (string, string, bool) {
+func pngText(typ string, data []byte, maxInflate int64, inflated *int64) (string, string, bool) {
 	key, rest, ok := bytes.Cut(data, []byte{0})
 	if !ok || len(key) == 0 || len(key) > 79 {
 		return "", "", false
@@ -143,7 +148,7 @@ func pngText(typ string, data []byte, lim Limits) (string, string, bool) {
 		if len(rest) < 1 || rest[0] != 0 {
 			return "", "", false
 		}
-		text, ok := inflate(rest[1:], lim.MaxInflate)
+		text, ok := inflate(rest[1:], maxInflate, inflated)
 		if !ok {
 			return "", "", false
 		}
@@ -163,7 +168,7 @@ func pngText(typ string, data []byte, lim Limits) (string, string, bool) {
 		if method != 0 {
 			return "", "", false
 		}
-		if rest, ok = inflate(rest, lim.MaxInflate); !ok {
+		if rest, ok = inflate(rest, maxInflate, inflated); !ok {
 			return "", "", false
 		}
 	}
@@ -173,13 +178,14 @@ func pngText(typ string, data []byte, lim Limits) (string, string, bool) {
 	return latin1(key), string(rest), true
 }
 
-func inflate(data []byte, limit int64) ([]byte, bool) {
+func inflate(data []byte, limit int64, inflated *int64) ([]byte, bool) {
 	zr, err := zlib.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, false
 	}
 	defer func() { _ = zr.Close() }()
 	out, err := io.ReadAll(io.LimitReader(zr, limit+1))
+	*inflated += int64(len(out))
 	if err != nil || int64(len(out)) > limit {
 		return nil, false
 	}

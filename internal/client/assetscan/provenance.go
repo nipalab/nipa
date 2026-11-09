@@ -85,8 +85,12 @@ func ScanProvenance(ctx context.Context, d *usecase.Diff, wc *usecase.WorkingCop
 		rec := records.Get(p)
 		out.Files = append(out.Files, ProvenanceEntry{Path: p, Record: rec, Status: provenance.Status(rec, hash)})
 	}
+	tracked, err := wc.SnapshotPathSet()
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range records.Paths() {
-		if present[p] || !coveredBy(prefixes, p) {
+		if present[p] || !tracked[p] || !coveredBy(prefixes, p) {
 			continue
 		}
 		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p))); errors.Is(err, fs.ErrNotExist) {

@@ -234,7 +234,7 @@ func TestPNGText_Variants(t *testing.T) {
 	}
 	for i, tc := range cases {
 		data := tc.chunk[8 : len(tc.chunk)-4]
-		key, text, ok := pngText(string(tc.chunk[4:8]), data, lim)
+		key, text, ok := pngText(string(tc.chunk[4:8]), data, lim.MaxInflate, new(int64))
 		require.Equal(t, tc.ok, ok, i)
 		require.Equal(t, tc.key, key, i)
 		require.Equal(t, tc.text, text, i)

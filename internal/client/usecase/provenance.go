@@ -232,6 +232,20 @@ func (w *WorkingCopy) forgetProvenance(paths []string) (ProvenanceReport, bool, 
 	return rep, true, SaveProvenance(w.root, f)
 }
 
+// SnapshotPathSet returns the paths of the pinned snapshot. In a sparse or
+// read-filtered clone it holds only the materialized set.
+func (w *WorkingCopy) SnapshotPathSet() (map[string]bool, error) {
+	snapshot, err := w.localRepo.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, p := range snapshotPaths(snapshot) {
+		out[p] = true
+	}
+	return out, nil
+}
+
 // TrackedPaths lists the tracked and staged files present in the working
 // copy, sorted.
 func (w *WorkingCopy) TrackedPaths() ([]string, error) {

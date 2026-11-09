@@ -16,11 +16,13 @@ import (
 
 func provenanceRepo(t *testing.T) (string, *usecase.WorkingCopy) {
 	t.Helper()
-	root := setupRepo(t, map[string]string{"art/a.png": "aaa", "art/b.png": "bbb", "docs/readme.md": "x"})
+	root := setupRepo(t, map[string]string{"art/a.png": "aaa", "art/b.png": "bbb", "art/gone.png": "old", "docs/readme.md": "x"})
+	require.NoError(t, os.Remove(filepath.Join(root, "art", "gone.png")))
 	f := provenance.New()
 	require.NoError(t, f.Set("art/a.png", &provenance.Record{Tool: "ComfyUI", Model: "sdxl", ContentHash: provenance.HashBytes([]byte("aaa"))}))
 	require.NoError(t, f.Set("art/c.png", &provenance.Record{Tool: "ComfyUI", ContentHash: provenance.HashBytes([]byte("ccc")), HumanEdited: true}))
 	require.NoError(t, f.Set("art/gone.png", &provenance.Record{Tool: "Firefly"}))
+	require.NoError(t, f.Set("outside/sparse.png", &provenance.Record{Tool: "Firefly"}))
 	require.NoError(t, usecase.SaveProvenance(root, f))
 	writeFile(t, root, "art/c.png", "edited")
 	writeFile(t, root, assetbudget.FileName, "rules:\n  - paths: [\"art/**\"]\n    require_provenance: true\n")

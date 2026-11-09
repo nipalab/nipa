@@ -61,3 +61,22 @@ func TestBomb_CBORDeclaredCountsDoNotPreallocate(t *testing.T) {
 	require.Error(t, err)
 	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(8<<20))
 }
+
+func TestBomb_ManyCompressedTextChunks(t *testing.T) {
+	chunk := zTextChunk("junk", bytes.Repeat([]byte{'a'}, 1<<20))
+	chunks := make([][]byte, 0, 200)
+	for range 200 {
+		chunks = append(chunks, chunk)
+	}
+	data := withChunks(tinyPNG(), chunks...)
+	require.Less(t, len(data), 1<<20)
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, ok, err := Extract("many.png", bytes.NewReader(data), Limits{})
+	runtime.ReadMemStats(&after)
+	require.False(t, ok)
+	require.ErrorContains(t, err, "extraction budget")
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(128<<20))
+}
