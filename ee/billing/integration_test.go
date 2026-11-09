@@ -2,8 +2,10 @@ package billing
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	"github.com/nipalab/nipa/internal/domain"
@@ -269,4 +271,47 @@ func (s *billingSuite) TestAudit_SeatDeniedSurvivesTheRollback() {
 	s.Equal(owner.Base36(), entries[0].Metadata["billing_owner_id"])
 	s.EqualValues(testConfig.FreeSeats, entries[0].Metadata["used"])
 	s.EqualValues(testConfig.FreeSeats, entries[0].Metadata["limit"])
+}
+
+func (s *billingSuite) TestReconcileQuotas_AppliesNewSettingsToEveryOwner() {
+	ctx := context.Background()
+	free := s.seedUser("free")
+	payer := s.seedUser("payer")
+	overridden := s.seedUser("overridden")
+	current := s.seedUser("current")
+	deleted := s.seedUser("deleted")
+	s.Require().NoError(s.service.Apply(ctx, Subscription{
+		ProviderSubscriptionID: "sub_payer", UserID: payer, Status: StatusActive, Seats: 3, StoragePacks: 1, ProviderUpdatedAt: at(1),
+	}))
+	s.exec(`INSERT INTO owner_quota (user_id, quota_bytes, override_bytes) VALUES ($1, 1000, NULL), ($2, 1000, 777), ($3, 4000, NULL), ($4, 1000, NULL)`,
+		free.Int64(), overridden.Int64(), current.Int64(), deleted.Int64())
+	s.exec(`UPDATE users SET deleted = true WHERE id = $1`, deleted.Int64())
+	s.exec(`UPDATE owner_quota SET updated_at = '2020-01-01' WHERE user_id = $1`, current.Int64())
+
+	cfg := Config{FreeSeats: 3, FreeQuotaBytes: 4000, SeatIncludedBytes: 200, StoragePackBytes: 5000}
+	rec := &captureRecorder{}
+	svc := New(s.repo, s.ledger, dbtx.NewTransactor(s.db), cfg).WithAudit(rec)
+
+	updated, err := svc.ReconcileQuotas(ctx)
+	s.Require().NoError(err)
+	s.Equal(3, updated, "free, payer and overridden; current matches and deleted is skipped")
+
+	quota, _ := s.quota(free)
+	s.Equal(int64(4000), quota.Int64)
+	quota, _ = s.quota(payer)
+	s.Equal(int64(4000+3*200+5000), quota.Int64)
+	quota, override := s.quota(overridden)
+	s.Equal(int64(4000), quota.Int64)
+	s.Equal(sql.NullInt64{Int64: 777, Valid: true}, override, "the admin override is untouched")
+	quota, _ = s.quota(deleted)
+	s.Equal(int64(1000), quota.Int64)
+	var touched time.Time
+	s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT updated_at FROM owner_quota WHERE user_id = $1`, current.Int64()).Scan(&touched))
+	s.Equal(2020, touched.Year(), "a correct row is not rewritten")
+	s.Equal([]string{domain.AuditBillingQuotasReconciled}, rec.actions())
+
+	updated, err = svc.ReconcileQuotas(ctx)
+	s.Require().NoError(err)
+	s.Zero(updated, "a second run finds nothing to do")
+	s.Len(rec.entries, 1)
 }

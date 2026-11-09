@@ -107,6 +107,25 @@ newest `provider_updated_at`.
 upsert. The storage ledger enforces it as before: over quota, writes get 402
 at presign, confirm and merge; reads keep working.
 
+Stored computed quotas only change when written, so `nipad-ee` reconciles
+them at startup in SaaS mode: `Service.ReconcileQuotas` (`ee/billing/reconcile.go`)
+pages through every `owner_quota` row (keyset by user id, 500 per page) and,
+per owner in one transaction under the same per-owner advisory lock `Apply`
+takes, recomputes the entitlement from the live subscription (free tier when
+there is none) and writes it only when it differs from the stored value. A
+change of `SAAS_FREE_QUOTA_BYTES`, `BILLING_SEAT_INCLUDED_BYTES`,
+`BILLING_STORAGE_PACK_BYTES` or the formula therefore reaches free and paying
+owners on the next deploy, without waiting for a Paddle event. Deleted users
+are skipped, `override_bytes` is never touched, and one
+`billing.quotas.reconciled` audit entry (system actor, `updated` count, plus
+`complete: false` when the run stopped early) is written when anything
+changed. It runs in the background as a server dispatcher (10 minute bound,
+cancelled on shutdown between owner transactions), so readiness never waits
+for it; with `BILLING_PROVIDER=off` a provider-less service does the same with
+the free entitlement. A failure is only logged; the next start finishes the
+remaining owners. The admin sync route stays for re-reading one owner's
+subscriptions from Paddle.
+
 ### Admin override
 
 `owner_quota.override_bytes` is the super-admin override and always wins:

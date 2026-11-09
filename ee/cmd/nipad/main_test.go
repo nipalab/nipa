@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,3 +65,80 @@ func TestBuildBilling(t *testing.T) {
 		},
 	}, setup.capabilitiesOrNil())
 }
+
+func TestLedgerDefaultQuotaBytes(t *testing.T) {
+	cfg := &config.Config{StorageLedgerDefaultQuotaBytes: 15, SaasFreeQuotaBytes: 50}
+	require.Equal(t, int64(15), ledgerDefaultQuotaBytes(cfg))
+	cfg.SaaSMode = true
+	require.Equal(t, int64(50), ledgerDefaultQuotaBytes(cfg), "SaaS owners without a row get the free tier")
+}
+
+func TestQuotaReconciler(t *testing.T) {
+	ledger := storageusage.NewLedger(nil, storageusage.Config{})
+	require.Nil(t, quotaReconciler(&config.Config{}, nil, ledger, nil, nil), "outside SaaS mode")
+	require.Nil(t, quotaReconciler(&config.Config{SaaSMode: true}, nil, nil, nil, nil), "without a ledger")
+	require.NotNil(t, quotaReconciler(&config.Config{SaaSMode: true}, nil, ledger, nil, nil), "billing off builds a provider-less service")
+
+	setup, err := buildBilling(paddleConfig(), nil, ledger)
+	require.NoError(t, err)
+	require.Same(t, setup.service, quotaReconciler(paddleConfig(), nil, ledger, setup, nil))
+}
+
+type stubReconcile struct {
+	updated  int
+	err      error
+	deadline bool
+	block    bool
+	ran      chan struct{}
+}
+
+func (s *stubReconcile) ReconcileQuotas(ctx context.Context) (int, error) {
+	_, s.deadline = ctx.Deadline()
+	if s.ran != nil {
+		close(s.ran)
+	}
+	if s.block {
+		<-ctx.Done()
+		return s.updated, ctx.Err()
+	}
+	return s.updated, s.err
+}
+
+func TestReconcileQuotas(t *testing.T) {
+	reconcileQuotas(context.Background(), &stubReconcile{updated: 3})
+	reconcileQuotas(context.Background(), &stubReconcile{err: errors.New("db down")})
+}
+
+func TestQuotaReconcileJob(t *testing.T) {
+	require.NoError(t, newQuotaReconcileJob(&stubReconcile{}).Stop(context.Background()), "never started")
+
+	done := &stubReconcile{updated: 1, ran: make(chan struct{})}
+	job := newQuotaReconcileJob(done)
+	job.Start()
+	<-done.ran
+	require.NoError(t, job.Stop(context.Background()))
+	require.True(t, done.deadline, "the run is bounded")
+
+	blocked := &stubReconcile{block: true, ran: make(chan struct{})}
+	job = newQuotaReconcileJob(blocked)
+	job.Start()
+	<-blocked.ran
+	require.NoError(t, job.Stop(context.Background()), "stop cancels a running reconcile")
+}
+
+func TestQuotaReconcileJob_StopDeadline(t *testing.T) {
+	release := make(chan struct{})
+	job := newQuotaReconcileJob(reconcileFunc(func(context.Context) (int, error) {
+		<-release
+		return 0, nil
+	}))
+	job.Start()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, job.Stop(ctx), context.Canceled)
+	close(release)
+}
+
+type reconcileFunc func(context.Context) (int, error)
+
+func (f reconcileFunc) ReconcileQuotas(ctx context.Context) (int, error) { return f(ctx) }

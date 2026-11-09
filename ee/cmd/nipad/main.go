@@ -182,7 +182,7 @@ func main() {
 	}
 	if storageLedger != nil {
 		deps.StorageLedger = storageLedger
-		slog.Info("storage ledger enabled", "default_quota_bytes", cfg.StorageLedgerDefaultQuotaBytes)
+		slog.Info("storage ledger enabled", "default_quota_bytes", ledgerDefaultQuotaBytes(cfg))
 	}
 	if billingSetup != nil {
 		deps.SeatGate = billingSetup.service
@@ -221,6 +221,9 @@ func main() {
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
+	}
+	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
+		dispatchers = append(dispatchers, newQuotaReconcileJob(reconciler))
 	}
 	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)}
 	if storageLedger != nil {
@@ -334,6 +337,15 @@ func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodel
 	return node, manager, nil
 }
 
+// ledgerDefaultQuotaBytes is the quota of an owner without a quota row: the
+// free tier in SaaS mode, STORAGE_LEDGER_DEFAULT_QUOTA_BYTES otherwise.
+func ledgerDefaultQuotaBytes(cfg *config.Config) int64 {
+	if cfg.SaaSMode {
+		return cfg.SaasFreeQuotaBytes
+	}
+	return cfg.StorageLedgerDefaultQuotaBytes
+}
+
 func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledger, error) {
 	setting := strings.ToLower(strings.TrimSpace(cfg.StorageLedger))
 	if setting == "" && cfg.SaaSMode {
@@ -345,7 +357,7 @@ func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledg
 		return nil, nil
 	case "cloud":
 		return storageusage.NewLedger(dbConn, storageusage.Config{
-			DefaultQuotaBytes: cfg.StorageLedgerDefaultQuotaBytes,
+			DefaultQuotaBytes: ledgerDefaultQuotaBytes(cfg),
 		}), nil
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)

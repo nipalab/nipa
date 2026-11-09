@@ -117,3 +117,9 @@ UPDATE billing_events SET processed_at = now(), error = NULL WHERE event_id = sq
 
 -- name: MarkBillingEventFailed :exec
 UPDATE billing_events SET processed_at = NULL, error = sqlc.arg(error) WHERE event_id = sqlc.arg(event_id);
+
+-- name: ListQuotaOwners :many
+SELECT user_id FROM owner_quota
+WHERE user_id > sqlc.arg(after)::bigint
+ORDER BY user_id
+LIMIT sqlc.arg('limit')::bigint;

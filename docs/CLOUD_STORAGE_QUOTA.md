@@ -165,7 +165,11 @@ presign/confirm/merge read on every operation.
 
 SaaS self-registration seeds every new account with the free-tier baseline
 (`SAAS_FREE_QUOTA_BYTES`, default 15 GiB) through the same `owner_quota` row;
-see docs/SAAS_ONBOARDING.md.
+see docs/SAAS_ONBOARDING.md. In SaaS mode the ledger's missing-row default is
+also `SAAS_FREE_QUOTA_BYTES` (not `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`), and at
+startup `billing.Service.ReconcileQuotas` rewrites every stored
+`quota_bytes` that differs from the current entitlement, so a raised free tier
+or changed seat/pack sizes reach existing owners (see docs/BILLING.md).
 
 ### Admin override (`override_bytes`)
 
@@ -178,7 +182,8 @@ see docs/SAAS_ONBOARDING.md.
   value, including 0 (unlimited), wins over `quota_bytes`.
 
 The effective quota is `COALESCE(override_bytes, quota_bytes)`; a missing row
-falls back to `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`. `PUT
+falls back to `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES` (`SAAS_FREE_QUOTA_BYTES`
+in SaaS mode). `PUT
 /api/v1/admin/billing/owners/{user}/quota` sets the override (a null
 `quota_bytes` overrides to unlimited) and `DELETE` on the same path clears it,
 so the computed quota applies again. Billing never touches the override, and
