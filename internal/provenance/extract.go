@@ -178,7 +178,7 @@ func inflate(data []byte, limit int64) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	out, err := io.ReadAll(io.LimitReader(zr, limit+1))
 	if err != nil || int64(len(out)) > limit {
 		return nil, false

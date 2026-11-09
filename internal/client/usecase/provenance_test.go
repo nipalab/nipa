@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -231,4 +232,22 @@ func TestWorkingCopy_TrackedPaths(t *testing.T) {
 	local.snapshotErr = errors.New("snapshot failed")
 	_, err = wc.TrackedPaths()
 	require.ErrorContains(t, err, "snapshot failed")
+}
+
+func TestSaveProvenance_KeepsFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permission bits")
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, provenance.FileName)
+	require.NoError(t, SaveProvenance(root, provenance.New()))
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	require.Equal(t, materializedMode(0), info.Mode().Perm())
+
+	require.NoError(t, os.Chmod(target, 0o600))
+	require.NoError(t, SaveProvenance(root, provenance.New()))
+	info, err = os.Stat(target)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }

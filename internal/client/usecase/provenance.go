@@ -63,10 +63,15 @@ func SaveProvenance(root string, f *provenance.File) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(name, 0o644); err != nil {
+	target := filepath.Join(root, provenance.FileName)
+	perm := materializedMode(0)
+	if info, err := os.Stat(target); err == nil {
+		perm = info.Mode().Perm()
+	}
+	if err := os.Chmod(name, perm); err != nil {
 		return err
 	}
-	return replaceFile(name, filepath.Join(root, provenance.FileName))
+	return replaceFile(name, target)
 }
 
 // HashWorkingFile returns the provenance content hash of a working file.
