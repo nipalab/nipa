@@ -2,6 +2,7 @@ package output
 
 import (
 	"github.com/nipalab/nipa/internal/assetbudget"
+	"github.com/nipalab/nipa/internal/assetrefs"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 )
 
@@ -17,6 +18,7 @@ type Plan struct {
 	UploadBytes   int64        `json:"upload_bytes,omitempty"`
 
 	AssetViolations []assetbudget.Violation `json:"asset_violations,omitempty"`
+	AssetImpact     *assetrefs.Impact       `json:"asset_impact,omitempty"`
 
 	GeneratedMessage string `json:"generated_message,omitempty"`
 }

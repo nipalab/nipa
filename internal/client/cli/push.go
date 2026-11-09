@@ -40,7 +40,7 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 						return err
 					}
 				}
-				return writePlanWithBudget(cmd, plan, violations, generated)
+				return writePlanReport(cmd, plan, planReport{Violations: violations, Impact: c.pushImpact(cmd, root, plan), Generated: generated})
 			}
 			if generate {
 				if message, err = c.generateCommitMessage(cmd, root); err != nil {
