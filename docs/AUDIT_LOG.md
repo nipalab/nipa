@@ -51,6 +51,7 @@ Constants live in `internal/domain/audit_actions.go`.
 | `user.deactivated` | `User.Deactivate` | none |
 | `user.password.reset_by_admin` | `User.ResetPassword` | none |
 | `user.email.changed` | `User.UpdateEmail` | `old_email`, `new_email` |
+| `user.terms.accepted` | `registration.AcceptTerms` (`nipad-ee`, SaaS) | `version`, `source` |
 | `project.created` | `Project.Create` | `name`, `slug`, `description` |
 | `project.updated` | `Project.Update` (skipped when unchanged) | `old`, `new` (`name`, `description`) |
 | `project.deleted` | `Project.Delete` | `name`, `slug` |

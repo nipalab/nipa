@@ -48,3 +48,14 @@ DELETE FROM oauth_login_codes WHERE code = sqlc.arg(code) RETURNING *;
 
 -- name: OAuthLoginCodeDeleteExpired :execrows
 DELETE FROM oauth_login_codes WHERE expires_at < sqlc.arg(before);
+
+-- name: TermsAcceptanceCreate :exec
+INSERT INTO user_terms_acceptances (user_id, version, source, accepted_at)
+VALUES (sqlc.arg(user_id), sqlc.arg(version), sqlc.arg(source), sqlc.arg(accepted_at))
+ON CONFLICT (user_id, version) DO NOTHING;
+
+-- name: TermsAcceptanceLatest :one
+SELECT * FROM user_terms_acceptances
+WHERE user_id = sqlc.arg(user_id)
+ORDER BY accepted_at DESC, version DESC
+LIMIT 1;

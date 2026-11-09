@@ -597,7 +597,13 @@ using `EMAIL_BASE_URL`), `POST /api/v1/auth/register/resend` (always 200) and
 password here, so a squatter's registration can never set one; activates the
 account, consumes the token and returns the standard login result via the exported `usecase.Auth.LoginResult`).
 Login gates live in `internal/usecase/auth.go`: password, refresh-token and SSH
-logins refuse unverified accounts with a 403 `email not confirmed`. `ee/oauth`
+logins refuse unverified accounts with a 403 `email not confirmed`. Terms
+acceptance (`SAAS_TERMS_VERSION`, empty = off) is recorded in
+`user_terms_acceptances` (postgres migration `000002`): `register` requires
+`accept_terms`, `oauth/{provider}/start?accept_terms=1` carries the version in
+the signed state, and `GET/POST /api/v1/me/terms` (`ee/registration/terms.go`)
+back the SPA `TermsGate` in `AppShell` that asks accounts without an
+acceptance once (`user.terms.accepted` audit). `ee/oauth`
 serves the social flow: signed-HMAC state (JWT key, relative redirects only)
 through `GET /api/v1/auth/oauth/{provider}/start`, Google userinfo / GitHub
 `/user` + verified-email exchange in the callback, account resolution (linked

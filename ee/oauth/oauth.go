@@ -33,6 +33,7 @@ type identityRepository interface {
 	SetEmailVerified(ctx context.Context, userID snow.ID) error
 	ResetUnverifiedCredentials(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
+	RecordTermsAcceptance(ctx context.Context, acceptance domain.TermsAcceptance) error
 	CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, expiresAt time.Time) error
 	ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, error)
 	DeleteExpiredOAuthLoginCodes(ctx context.Context, before time.Time) error
@@ -47,6 +48,7 @@ type transactor interface {
 // Config carries the onboarding policy knobs.
 type Config struct {
 	FreeQuotaBytes int64
+	TermsVersion   string
 }
 
 // OAuth runs social login and signup: it resolves the provider profile to a
@@ -93,8 +95,9 @@ func (o *OAuth) Providers() []string {
 // Start builds the provider authorization URL for the login/signup flow
 // (linkUser = 0) or for attaching the provider to a logged-in account. The
 // returned binding must be kept by the starting browser (cookie) and presented
-// again at the callback.
-func (o *OAuth) Start(provider, redirect string, linkUser snow.ID) (target, binding string, err error) {
+// again at the callback. acceptTerms says the user ticked the terms box before
+// a login/signup; the current version then travels in the signed state.
+func (o *OAuth) Start(provider, redirect string, linkUser snow.ID, acceptTerms bool) (target, binding string, err error) {
 	p, ok := o.providers[provider]
 	if !ok {
 		return "", "", domain.NewErrorNotFound("oauth provider is not enabled")
@@ -103,7 +106,11 @@ func (o *OAuth) Start(provider, redirect string, linkUser snow.ID) (target, bind
 	if err != nil {
 		return "", "", err
 	}
-	state, err := o.states.Sign(redirect, linkUser.Int64(), binding)
+	terms := ""
+	if acceptTerms && linkUser == 0 {
+		terms = o.cfg.TermsVersion
+	}
+	state, err := o.states.Sign(redirect, linkUser.Int64(), binding, terms)
 	if err != nil {
 		return "", "", err
 	}
@@ -146,6 +153,9 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding 
 		if linkUser != 0 {
 			return withQueryParam(base, "oauth", "linked"), nil
 		}
+		if err := o.recordTerms(ctx, identity.UserID, provider, state); err != nil {
+			return "", err
+		}
 		return o.issueLoginCode(ctx, identity.UserID, base, false)
 	case !domain.IsErrorNotFound(err):
 		return "", err
@@ -171,13 +181,16 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding 
 		if err := o.attachIdentity(ctx, existing.ID, provider, profile, !existing.EmailVerified); err != nil {
 			return "", err
 		}
+		if err := o.recordTerms(ctx, existing.ID, provider, state); err != nil {
+			return "", err
+		}
 		return o.issueLoginCode(ctx, existing.ID, base, false)
 	}
 	if !domain.IsErrorNotFound(err) {
 		return "", err
 	}
 
-	userID, err := o.createAccount(ctx, provider, profile)
+	userID, err := o.createAccount(ctx, provider, profile, state)
 	if err != nil {
 		return "", err
 	}
@@ -255,7 +268,7 @@ func (o *OAuth) attachIdentity(ctx context.Context, userID snow.ID, provider str
 	})
 }
 
-func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Profile) (snow.ID, error) {
+func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Profile, state *stateData) (snow.ID, error) {
 	name := strings.TrimSpace(profile.Name)
 	if name == "" {
 		name = emailLocalPart(profile.Email)
@@ -276,9 +289,15 @@ func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Pro
 		if o.audit != nil {
 			entry := usecase.UserCreatedAudit(user, "oauth:"+provider)
 			entry.ActorType = domain.AuditActorSystem
+			if o.acceptedTerms(state) {
+				entry.Metadata["terms_version"] = state.Terms
+			}
 			if err := o.audit.Record(ctx, entry); err != nil {
 				return err
 			}
+		}
+		if err := o.recordTerms(ctx, user.ID, provider, state); err != nil {
+			return err
 		}
 		if o.cfg.FreeQuotaBytes > 0 {
 			if err := o.repo.SeedOwnerQuota(ctx, user.ID, o.cfg.FreeQuotaBytes); err != nil {
@@ -294,6 +313,25 @@ func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Pro
 		})
 	})
 	return userID, err
+}
+
+// acceptedTerms reports whether the flow carries an acceptance of the current
+// terms; a version that changed during the round-trip is not recorded, so the
+// app asks again.
+func (o *OAuth) acceptedTerms(state *stateData) bool {
+	return o.cfg.TermsVersion != "" && state.Terms == o.cfg.TermsVersion
+}
+
+func (o *OAuth) recordTerms(ctx context.Context, userID snow.ID, provider string, state *stateData) error {
+	if !o.acceptedTerms(state) {
+		return nil
+	}
+	return o.repo.RecordTermsAcceptance(ctx, domain.TermsAcceptance{
+		UserID:     userID,
+		Version:    state.Terms,
+		Source:     "oauth:" + provider,
+		AcceptedAt: o.now(),
+	})
 }
 
 func (o *OAuth) issueLoginCode(ctx context.Context, userID snow.ID, base string, created bool) (string, error) {

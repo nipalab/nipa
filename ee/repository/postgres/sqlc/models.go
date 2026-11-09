@@ -474,6 +474,13 @@ type UserIdentity struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+type UserTermsAcceptance struct {
+	UserID     int64     `json:"user_id"`
+	Version    string    `json:"version"`
+	Source     string    `json:"source"`
+	AcceptedAt time.Time `json:"accepted_at"`
+}
+
 type Webhook struct {
 	ID          int64     `json:"id"`
 	ProjectID   int64     `json:"project_id"`

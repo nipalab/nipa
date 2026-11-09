@@ -15,6 +15,7 @@ The free `nipad` never registers these routes, so every endpoint below answers
 |---|---|
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
+| `SAAS_TERMS_VERSION` | published version of the terms of service and privacy policy (e.g. `2026-11-10`); when set, sign-up requires accepting it and signed-in users without an acceptance are asked once. Empty (default) disables the step and logs a warning |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
 | `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
 | `OAUTH_BASE_URL` | public base URL used to build OAuth callback URLs |
@@ -29,6 +30,33 @@ configured, and linking an unconfigured provider answers 404. Register the
 callback URLs with the providers:
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/google/callback` and
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/github/callback`.
+
+## Terms acceptance
+
+With `SAAS_TERMS_VERSION` set, every account records which terms version it
+accepted, when and how (`user_terms_acceptances`: `user_id`, `version`,
+`source` `registration|oauth:<provider>|app`, `accepted_at`; the first
+acceptance of a version is kept).
+
+- `GET /api/v1/auth/capabilities` adds `terms: {version}`.
+- `POST /api/v1/auth/register` requires `accept_terms: true` (400 otherwise)
+  and records the acceptance in the account-creation transaction; the
+  `user.created` audit entry carries `terms_version`.
+- `GET /api/v1/auth/oauth/{provider}/start?accept_terms=1` puts the current
+  version in the signed state. The callback records it for the new or
+  signed-in account, unless the version changed during the round-trip.
+  Linking an identity never accepts terms.
+- `GET /api/v1/me/terms` returns `{version, accepted_version?, accepted_at?,
+  required}`; `required` is true while the account has no acceptance (social
+  sign-ups started from the login page, accounts created before the setting).
+  `POST /api/v1/me/terms {version}` accepts the current version (409 for an
+  outdated one) and is audited as `user.terms.accepted`.
+
+The SPA register page shows a required "I agree to the Terms of Service and
+Privacy Policy" checkbox (links to `/terms` and `/privacy`) that enables both
+the form and the social buttons, and `TermsGate` in the app shell holds every
+signed-in page until a user with `required: true` accepts. A new version does
+not ask existing users again; the terms announce material changes by email.
 
 ## Registration with email confirmation
 

@@ -66,6 +66,30 @@ type stubRepo struct {
 	createErr          error
 	passwordErr        error
 	passwords          map[snow.ID]string
+	terms              []domain.TermsAcceptance
+	termsErr           error
+	latestTermsErr     error
+}
+
+func (s *stubRepo) RecordTermsAcceptance(_ context.Context, acceptance domain.TermsAcceptance) error {
+	if s.termsErr != nil {
+		return s.termsErr
+	}
+	s.terms = append(s.terms, acceptance)
+	return nil
+}
+
+func (s *stubRepo) LatestTermsAcceptance(_ context.Context, userID snow.ID) (*domain.TermsAcceptance, error) {
+	if s.latestTermsErr != nil {
+		return nil, s.latestTermsErr
+	}
+	for i := len(s.terms) - 1; i >= 0; i-- {
+		if s.terms[i].UserID == userID {
+			acceptance := s.terms[i]
+			return &acceptance, nil
+		}
+	}
+	return nil, domain.NewErrorRecordNotFound()
 }
 
 func newStubRepo() *stubRepo {
@@ -179,7 +203,7 @@ func newRegistrationEnv(t *testing.T) *registrationEnv {
 func TestRegisterCreatesInactiveAccountAndQueuesEmail(t *testing.T) {
 	env := newRegistrationEnv(t)
 
-	err := env.registration.Register(context.Background(), " Alice ", " alice@example.com ")
+	err := env.registration.Register(context.Background(), " Alice ", " alice@example.com ", false)
 	require.NoError(t, err)
 
 	require.Len(t, env.repo.created, 1)
@@ -212,7 +236,7 @@ func TestRegisterConfirmedEmailLooksLikeASuccess(t *testing.T) {
 	env := newRegistrationEnv(t)
 	env.users.users = []*domain.User{{ID: 7, Email: "alice@example.com", EmailVerified: true}}
 
-	err := env.registration.Register(context.Background(), "Alice", "alice@example.com")
+	err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
 	require.NoError(t, err, "the response must not reveal that the address is registered")
 	require.Empty(t, env.repo.created)
 	require.Empty(t, env.repo.passwords)
@@ -224,7 +248,7 @@ func TestRegisterAgainReissuesTheTokenWithoutTouchingThePassword(t *testing.T) {
 	env.users.users = []*domain.User{{ID: 7, Name: "Alice", Email: "alice@example.com", EmailVerified: false}}
 	env.repo.verifications[7] = &verificationRow{userID: 7, tokenHash: "earlier-token", expiresAt: env.now.Add(time.Hour)}
 
-	err := env.registration.Register(context.Background(), "Mallory", "alice@example.com")
+	err := env.registration.Register(context.Background(), "Mallory", "alice@example.com", false)
 	require.NoError(t, err)
 	require.Empty(t, env.repo.created, "no second account is created")
 	require.Empty(t, env.repo.passwords, "re-registering can never set a password")
@@ -237,15 +261,15 @@ func TestRegisterLookupError(t *testing.T) {
 	env := newRegistrationEnv(t)
 	env.users.err = errors.New("db down")
 
-	err := env.registration.Register(context.Background(), "Alice", "alice@example.com")
+	err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
 	require.EqualError(t, err, "db down")
 }
 
 func TestRegisterRejectsInvalidIdentity(t *testing.T) {
 	env := newRegistrationEnv(t)
 
-	require.Error(t, env.registration.Register(context.Background(), "", "alice@example.com"))
-	require.Error(t, env.registration.Register(context.Background(), "Alice", "not-an-email"))
+	require.Error(t, env.registration.Register(context.Background(), "", "alice@example.com", false))
+	require.Error(t, env.registration.Register(context.Background(), "Alice", "not-an-email", false))
 	require.Empty(t, env.repo.created)
 }
 
@@ -254,7 +278,7 @@ func TestRegisterWithoutMailerStillCreatesTheAccount(t *testing.T) {
 	env.registration.outbox = nil
 	env.registration.kick = nil
 
-	err := env.registration.Register(context.Background(), "Alice", "alice@example.com")
+	err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
 	require.NoError(t, err)
 	require.Len(t, env.repo.created, 1)
 	require.NotEmpty(t, env.repo.verifications)
@@ -334,11 +358,11 @@ func TestVerifyPasswordWriteError(t *testing.T) {
 func TestAttackerReRegisteringCannotChooseThePasswordTheVictimConfirmsWith(t *testing.T) {
 	env := newRegistrationEnv(t)
 	ctx := context.Background()
-	require.NoError(t, env.registration.Register(ctx, "Victim", "victim@example.com"))
+	require.NoError(t, env.registration.Register(ctx, "Victim", "victim@example.com", false))
 	victim := env.repo.created[0]
 	env.users.users = append(env.users.users, &victim)
 
-	require.NoError(t, env.registration.Register(ctx, "Attacker", "victim@example.com"))
+	require.NoError(t, env.registration.Register(ctx, "Attacker", "victim@example.com", false))
 	require.Empty(t, env.repo.passwords, "the attacker has no way to attach a password")
 	require.Len(t, env.outbox.deliveries, 2)
 
@@ -407,7 +431,7 @@ func TestRegisterCreateError(t *testing.T) {
 	env := newRegistrationEnv(t)
 	env.repo.createErr = errors.New("insert failed")
 
-	err := env.registration.Register(context.Background(), "Alice", "alice@example.com")
+	err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
 	require.EqualError(t, err, "insert failed")
 	require.Empty(t, env.outbox.deliveries)
 	require.Zero(t, env.kicker.kicks)
@@ -431,7 +455,7 @@ func TestRegisterRecordsASystemAudit(t *testing.T) {
 	rec := &recordedAudit{}
 	env.registration.WithAudit(rec)
 
-	require.NoError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com"))
+	require.NoError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com", false))
 	require.Len(t, rec.entries, 1)
 	entry := rec.entries[0]
 	require.Equal(t, domain.AuditUserCreated, entry.Action)
@@ -441,6 +465,6 @@ func TestRegisterRecordsASystemAudit(t *testing.T) {
 
 	failing := newRegistrationEnv(t)
 	failing.registration.WithAudit(&recordedAudit{err: errors.New("audit down")})
-	require.EqualError(t, failing.registration.Register(context.Background(), "Bob", "bob@example.com"), "audit down")
+	require.EqualError(t, failing.registration.Register(context.Background(), "Bob", "bob@example.com", false), "audit down")
 	require.Empty(t, failing.outbox.deliveries)
 }

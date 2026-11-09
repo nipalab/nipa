@@ -145,7 +145,7 @@ describe('RegisterPage', () => {
     expect(calls[0]).toEqual({
       url: expect.stringContaining('/api/v1/auth/register'),
       method: 'POST',
-      body: { name: 'Alice', email: 'alice@example.com' },
+      body: { name: 'Alice', email: 'alice@example.com', accept_terms: false },
     })
 
     await act(async () => {
@@ -402,7 +402,7 @@ describe('SocialButtons', () => {
       findButtonIn(container, 'Continue with GitHub').click()
     })
 
-    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Fdashboard')
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Fdashboard', false)
   })
 
   it('carries the post-login destination through the OAuth round-trip', async () => {
@@ -414,7 +414,7 @@ describe('SocialButtons', () => {
       findButtonIn(container, 'Continue with GitHub').click()
     })
 
-    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Facme%2Fproj')
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Facme%2Fproj', false)
   })
 })
 
@@ -451,5 +451,114 @@ describe('IdentitiesCard', () => {
     })
     await waitFor(() => calls.length > 0)
     expect(calls[0]?.method).toBe('DELETE')
+  })
+})
+
+describe('Terms acceptance', () => {
+  const TERMS_CAPABILITIES = { ...CAPABILITIES, terms: { version: '2026-11-10' } }
+
+  it('requires accepting the terms before registering', async () => {
+    const calls: unknown[] = []
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/api/v1/auth/capabilities')) return jsonResponse(TERMS_CAPABILITIES)
+      if (url.endsWith('/api/v1/auth/register') && method === 'POST') {
+        calls.push(JSON.parse(String(init?.body)))
+        return jsonResponse({ status: 'pending_verification', email: 'alice@example.com' }, 202)
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/register')
+    await waitForText(container, 'Terms of Service')
+    expect(findButtonIn(container, 'Create account').disabled).toBe(true)
+    expect(findButtonIn(container, 'Continue with GitHub').disabled).toBe(true)
+    const links = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href'))
+    expect(links).toEqual(expect.arrayContaining(['/terms', '/privacy']))
+
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Alice')
+      setInputValue(inputs[1] as HTMLInputElement, 'alice@example.com')
+      ;(container.querySelector('input[type="checkbox"]') as HTMLInputElement).click()
+    })
+    expect(findButtonIn(container, 'Create account').disabled).toBe(false)
+
+    await act(async () => {
+      findButtonIn(container, 'Continue with GitHub').click()
+    })
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback', true)
+
+    await act(async () => {
+      findButtonIn(container, 'Create account').click()
+    })
+    await waitForText(container, 'confirmation link')
+    expect(calls[0]).toEqual({ name: 'Alice', email: 'alice@example.com', accept_terms: true })
+  })
+
+  it('asks a signed-in user who has not accepted the terms', async () => {
+    const accepted: unknown[] = []
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/v1/me/terms') && method === 'GET') {
+        return jsonResponse({ version: '2026-11-10', required: true })
+      }
+      if (url.endsWith('/api/v1/me/terms') && method === 'POST') {
+        accepted.push(JSON.parse(String(init?.body)))
+        return jsonResponse({ version: '2026-11-10', accepted_version: '2026-11-10', required: false })
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Review our terms')
+    expect(container.textContent).not.toContain('Name your workspace')
+    expect(findButtonIn(container, 'Accept and continue').disabled).toBe(true)
+
+    await act(async () => {
+      ;(container.querySelector('input[type="checkbox"]') as HTMLInputElement).click()
+    })
+    await act(async () => {
+      findButtonIn(container, 'Accept and continue').click()
+    })
+    await waitForText(container, 'Name your workspace')
+    expect(accepted).toEqual([{ version: '2026-11-10' }])
+  })
+
+  it('shows an error when saving the acceptance fails', async () => {
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/v1/me/terms') && method === 'GET') {
+        return jsonResponse({ version: '2026-11-10', required: true })
+      }
+      if (url.endsWith('/api/v1/me/terms') && method === 'POST') {
+        return jsonResponse({ error: 'the terms were updated; reload the page' }, 409)
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Review our terms')
+    await act(async () => {
+      ;(container.querySelector('input[type="checkbox"]') as HTMLInputElement).click()
+    })
+    await act(async () => {
+      findButtonIn(container, 'Accept and continue').click()
+    })
+    await waitForText(container, 'Could not save your acceptance')
+    expect(container.textContent).not.toContain('Name your workspace')
+  })
+
+  it('lets users who already accepted straight through', async () => {
+    stubRoutes((url) => {
+      if (url.endsWith('/api/v1/me/terms')) {
+        return jsonResponse({ version: '2026-11-10', accepted_version: '2026-11-10', required: false })
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Name your workspace')
+    expect(container.textContent).not.toContain('Review our terms')
   })
 })

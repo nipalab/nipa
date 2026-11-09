@@ -24,6 +24,7 @@ type stateData struct {
 	Redirect  string `json:"r"`
 	LinkUser  int64  `json:"u,omitempty"`
 	Binding   string `json:"b"`
+	Terms     string `json:"t,omitempty"`
 	ExpiresAt int64  `json:"e"`
 }
 
@@ -40,7 +41,7 @@ func newStateSigner(secret string) *stateSigner {
 // (0 = anonymous login/signup flow). The binding is a random secret the starting
 // browser keeps in a cookie; only its hash travels through the provider, so a
 // state forwarded to a different browser cannot complete the callback.
-func (s *stateSigner) Sign(redirect string, linkUser int64, binding string) (string, error) {
+func (s *stateSigner) Sign(redirect string, linkUser int64, binding, terms string) (string, error) {
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", domain.NewErrorInternalServer(err.Error())
@@ -50,6 +51,7 @@ func (s *stateSigner) Sign(redirect string, linkUser int64, binding string) (str
 		Redirect:  safeRedirect(redirect),
 		LinkUser:  linkUser,
 		Binding:   bindingHash(binding),
+		Terms:     terms,
 		ExpiresAt: s.now().Add(stateTTL).Unix(),
 	}
 	payload, err := json.Marshal(data)

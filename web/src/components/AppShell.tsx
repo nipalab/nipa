@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { APP_HOME } from '../routes'
 import { NipaLogo } from './NipaLogo'
+import { TermsGate } from './TermsGate'
 import { UserMenu } from './UserMenu'
 
 export default function AppShell() {
@@ -31,7 +32,9 @@ export default function AppShell() {
         <div style={{ flex: 1 }} />
         <UserMenu me={me} onSignOut={signOut} />
       </header>
-      <Outlet />
+      <TermsGate>
+        <Outlet />
+      </TermsGate>
     </div>
   )
 }

@@ -264,6 +264,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
+		TermsVersion:   strings.TrimSpace(cfg.SaasTermsVersion),
 	}).WithAudit(audit)
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
@@ -276,8 +277,16 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		serverapp.WithPublicRoutes(func(ws *restful.WebService) {
 			registration.RegisterPublicRoutes(ws, registrationHandler)
 		}),
+		serverapp.WithRoutes(func(ws *restful.WebService) {
+			registration.RegisterRoutes(ws, registrationHandler)
+		}),
 	}
 	slog.Info("saas self-registration enabled", "free_quota_bytes", cfg.SaasFreeQuotaBytes)
+	if registrationUsecase.TermsVersion() == "" {
+		slog.Warn("SAAS_TERMS_VERSION is empty: sign-up does not ask users to accept the terms of service and privacy policy")
+	} else {
+		slog.Info("terms acceptance required", "version", registrationUsecase.TermsVersion())
+	}
 	slog.Info("saas marketing fallback enabled", "base_path", marketing.BasePath)
 
 	providers := oauth.NewProviders(oauth.ProvidersConfig{
@@ -289,6 +298,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	})
 	oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
+		TermsVersion:   registrationUsecase.TermsVersion(),
 	}).WithAudit(audit)
 	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
 	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)

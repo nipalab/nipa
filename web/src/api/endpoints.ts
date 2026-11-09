@@ -37,6 +37,7 @@ import type {
   RegisterResponse,
   SubmitReviewRequest,
   TagResponse,
+  TermsStatusResponse,
   ThreadCommentInput,
   ThreadResponse,
   CommentResponse,
@@ -68,7 +69,11 @@ export async function getOnboardingCapabilities(): Promise<OnboardingCapabilitie
   return (await res.json()) as OnboardingCapabilities
 }
 
-export function registerAccount(input: { name: string; email: string }): Promise<RegisterResponse> {
+export function registerAccount(input: {
+  name: string
+  email: string
+  accept_terms?: boolean
+}): Promise<RegisterResponse> {
   return apiJson('/api/v1/auth/register', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -82,8 +87,25 @@ export function resendVerification(email: string): Promise<MessageResponse> {
   })
 }
 
-export function oauthStartURL(provider: string, redirect: string): string {
-  return `/api/v1/auth/oauth/${encodeURIComponent(provider)}/start?redirect=${encodeURIComponent(redirect)}`
+export function oauthStartURL(provider: string, redirect: string, acceptTerms = false): string {
+  const url = `/api/v1/auth/oauth/${encodeURIComponent(provider)}/start?redirect=${encodeURIComponent(redirect)}`
+  return acceptTerms ? `${url}&accept_terms=1` : url
+}
+
+// getTermsStatus returns null when the server does not ask for terms
+// acceptance (free edition: the route answers 404).
+export async function getTermsStatus(): Promise<TermsStatusResponse | null> {
+  const res = await apiFetch('/api/v1/me/terms')
+  if (res.status === 404) return null
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as TermsStatusResponse
+}
+
+export function acceptTerms(version: string): Promise<TermsStatusResponse> {
+  return apiJson('/api/v1/me/terms', {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
 }
 
 // listIdentities returns null when the server has no social login support

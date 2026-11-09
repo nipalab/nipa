@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { getOnboardingCapabilities, registerAccount } from '../api/endpoints'
 import { AuthCard, AuthLayout } from '../components/AuthLayout'
 import { SocialButtons } from '../components/SocialButtons'
+import { TermsCheckbox } from '../components/TermsCheckbox'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage, useAsync } from '../hooks'
 import { useResendVerification } from '../useResendVerification'
@@ -15,10 +16,13 @@ export default function RegisterPage() {
   const { data: capabilities, loading: loadingCapabilities } = useAsync(getOnboardingCapabilities, [])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
   const { resend, busy: resendBusy, notice, error: resendError } = useResendVerification()
+  const termsRequired = Boolean(capabilities?.terms)
+  const termsBlocked = termsRequired && !termsAccepted
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -27,9 +31,13 @@ export default function RegisterPage() {
       setError('Enter your name and email.')
       return
     }
+    if (termsRequired && !termsAccepted) {
+      setError('Accept the Terms of Service and Privacy Policy to create an account.')
+      return
+    }
     setBusy(true)
     try {
-      await registerAccount({ name: name.trim(), email: email.trim() })
+      await registerAccount({ name: name.trim(), email: email.trim(), accept_terms: termsAccepted })
       setSentTo(email.trim())
     } catch (err) {
       setError(errorMessage(err))
@@ -86,12 +94,15 @@ export default function RegisterPage() {
               You will choose your password when you confirm your email.
             </p>
 
+            {termsRequired && <TermsCheckbox checked={termsAccepted} onChange={setTermsAccepted} />}
+
             <ErrorBanner error={error} title="Registration failed" />
 
             <Button
               type="submit"
               variant="primary"
               block
+              disabled={termsBlocked}
               loading={busy}
               leadingVisual={busy ? undefined : <PersonAddIcon />}
             >
@@ -101,7 +112,12 @@ export default function RegisterPage() {
             {capabilities.providers.length > 0 && (
               <>
                 <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
-                <SocialButtons providers={capabilities.providers} from={from} />
+                <SocialButtons
+                  providers={capabilities.providers}
+                  from={from}
+                  acceptTerms={termsAccepted}
+                  disabled={termsBlocked}
+                />
               </>
             )}
           </AuthCard>
