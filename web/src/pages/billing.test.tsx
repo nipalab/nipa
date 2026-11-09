@@ -111,6 +111,8 @@ const BILLING = {
   orgs: [{ id: 'o1', slug: 'sticker', name: 'Sticker', used_bytes: 2048 }],
 }
 
+const GIB = 1024 ** 3
+
 const CAPABILITIES = {
   registration: true,
   providers: [],
@@ -122,6 +124,10 @@ const CAPABILITIES = {
       seat: { monthly: 'pri_seat_m', yearly: 'pri_seat_y' },
       storage: { monthly: 'pri_storage_m', yearly: 'pri_storage_y' },
     },
+    free_seats: 3,
+    free_quota_bytes: 50 * GIB,
+    seat_included_bytes: 50 * GIB,
+    storage_pack_bytes: 100 * GIB,
   },
 }
 
@@ -451,6 +457,43 @@ describe('BillingPage', () => {
     expect(document.body.textContent).toContain('3 free seats included; at least 2 paid seats needed')
     expect(disabled(iconButton('Decrease seats'))).toBe(true)
     expect(disabled(button('Upgrade'))).toBe(false)
+  })
+
+  it('shows the storage each seat and pack adds and the plan total', async () => {
+    stubServer({ capabilities: CAPABILITIES, billing: () => FREE })
+    await renderBilling()
+    await waitForText('2 of 3 seats used')
+    expect(document.body.textContent).toContain('+50 GiB storage per seat')
+    expect(document.body.textContent).toContain('+100 GiB per pack')
+    expect(document.body.textContent).toContain('3 users · 50 GiB storage')
+    await click(iconButton('Increase seats'))
+    await click(iconButton('Increase seats'))
+    await click(iconButton('Increase storage packs'))
+    expect(document.body.textContent).toContain('5 users · 250 GiB storage')
+  })
+
+  it('shows the included storage of a paid plan and unlimited storage without a free quota', async () => {
+    stubServer({
+      capabilities: { ...CAPABILITIES, billing: { ...CAPABILITIES.billing, free_quota_bytes: 0 } },
+      billing: () => TEAM,
+    })
+    await renderBilling()
+    await waitForText('Renews on')
+    expect(document.body.textContent).toContain('Included storage')
+    expect(document.body.textContent).toContain('7 users · Unlimited storage')
+  })
+
+  it('falls back to the summary free seats when the server sends no sizes', async () => {
+    const { free_seats, free_quota_bytes, seat_included_bytes, storage_pack_bytes, ...legacy } = CAPABILITIES.billing
+    void [free_seats, free_quota_bytes, seat_included_bytes, storage_pack_bytes]
+    stubServer({ capabilities: { ...CAPABILITIES, billing: legacy }, billing: () => ({ ...TEAM, seats: 2, seats_used: 4, seat_limit: 6 }) })
+    await renderBilling()
+    await waitForText('Renews on')
+    expect(document.body.textContent).toContain('4 free seats included; at least 0 paid seats needed')
+    expect(document.body.textContent).not.toContain('per seat ·')
+    expect(document.body.textContent).not.toContain('storage per seat')
+    expect(document.body.textContent).not.toContain('Your plan')
+    expect(document.body.textContent).not.toContain('Included storage')
   })
 
   it('checks out storage packs without paid seats', async () => {

@@ -3,9 +3,11 @@ import { Banner, Button, IconButton, Label, SegmentedControl, Stack, Text, TextI
 import { DashIcon, LinkExternalIcon, PlusIcon } from '@primer/octicons-react'
 import { createCheckout, getMyBilling, openBillingPortal, updateSubscription } from '../api/endpoints'
 import type { BillingCapabilities, BillingInterval, BillingSummary } from '../api/models'
+import { hasEntitlementSizes, planStorageLabel } from '../billing/entitlement'
 import { loadPaddle, previewPrices, subscribePaddleEvents, type Paddle, type PreviewLine } from '../billing/paddle'
 import { errorMessage } from '../hooks'
 import { SettingsCard, SettingsRow } from './SettingsCard'
+import { formatBytes } from './repo/format'
 import { ErrorBanner } from './ui'
 
 export const billingTiming = { pollMs: 2000, pollAttempts: 15, previewDebounceMs: 300 }
@@ -32,8 +34,9 @@ export function isPaidPlan(summary: BillingSummary): boolean {
   return summary.plan !== 'free'
 }
 
-export function PlanCard({ summary }: { summary: BillingSummary }) {
+export function PlanCard({ summary, config }: { summary: BillingSummary; config?: BillingCapabilities }) {
   const paid = isPaidPlan(summary)
+  const sizes = config && hasEntitlementSizes(config) ? config : null
   const periodEnd = formatDate(summary.current_period_end)
   return (
     <SettingsCard title="Plan" description="Your subscription covers every organization you own">
@@ -71,6 +74,11 @@ export function PlanCard({ summary }: { summary: BillingSummary }) {
       {paid && (
         <SettingsRow label="Storage packs">
           <Text>{summary.storage_packs}</Text>
+        </SettingsRow>
+      )}
+      {paid && sizes && (
+        <SettingsRow label="Included storage">
+          <Text>{planStorageLabel(sizes, summary.seats, summary.storage_packs)}</Text>
         </SettingsRow>
       )}
     </SettingsCard>
@@ -179,7 +187,8 @@ export function PlanEditor({
   onChanged: () => void
 }) {
   const paid = isPaidPlan(summary)
-  const freeSeats = Math.max(paid ? summary.seat_limit - summary.seats : summary.seat_limit, 0)
+  const sizes = hasEntitlementSizes(config) ? config : null
+  const freeSeats = Math.max(config.free_seats ?? (paid ? summary.seat_limit - summary.seats : summary.seat_limit), 0)
   const minSeats = Math.max(summary.seats_used - freeSeats, 0)
   const initialSeats = Math.max(paid ? summary.seats : minSeats, minSeats)
   const initialPacks = paid ? summary.storage_packs : 0
@@ -337,6 +346,11 @@ export function PlanEditor({
         subtext={`${freeSeats} free seats included; at least ${minSeats} paid seats needed for the seats in use`}
       >
         <Stepper label="seats" value={seats} min={minSeats} onChange={setSeats} />
+        {sizes && (
+          <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
+            {`+${formatBytes(sizes.seat_included_bytes)} storage per seat`}
+          </Text>
+        )}
         {preview.seat && (
           <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
             {seats > 0
@@ -347,6 +361,11 @@ export function PlanEditor({
       </SettingsRow>
       <SettingsRow label="Storage packs" subtext="Extra storage on top of the storage included with seats">
         <Stepper label="storage packs" value={packs} min={0} onChange={setPacks} />
+        {sizes && (
+          <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
+            {`+${formatBytes(sizes.storage_pack_bytes)} per pack`}
+          </Text>
+        )}
         {preview.storage && (
           <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
             {packs > 0
@@ -355,6 +374,11 @@ export function PlanEditor({
           </Text>
         )}
       </SettingsRow>
+      {sizes && (
+        <SettingsRow label="Your plan">
+          <Text>{`${seats + freeSeats} users · ${planStorageLabel(sizes, seats, packs)} storage`}</Text>
+        </SettingsRow>
+      )}
       <SettingsRow label="Price">
         <Text as="p" style={{ margin: 0, color: 'var(--fgColor-muted)' }}>
           {paddleFailed || preview.failed

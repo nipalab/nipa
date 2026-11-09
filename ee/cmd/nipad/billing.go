@@ -64,6 +64,10 @@ func buildBilling(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledge
 				Seat:    registration.IntervalPrices{Monthly: cfg.PaddlePriceSeatMonthly, Yearly: cfg.PaddlePriceSeatYearly},
 				Storage: registration.IntervalPrices{Monthly: cfg.PaddlePriceStorageMonthly, Yearly: cfg.PaddlePriceStorageYearly},
 			},
+			FreeSeats:         cfg.BillingFreeSeats,
+			FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
+			SeatIncludedBytes: cfg.BillingSeatIncludedBytes,
+			StoragePackBytes:  cfg.BillingStoragePackBytes,
 		},
 	}, nil
 }
