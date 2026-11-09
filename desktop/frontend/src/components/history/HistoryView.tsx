@@ -20,13 +20,14 @@ type HistoryViewProps = {
   busy: boolean;
   notify: Notify;
   onRevert: (commit: Commit) => void;
+  onSwitch: (branch: string) => void;
   path?: string;
   open?: { id: string; seq: number };
 };
 
 type Dialog = { kind: "revert" | "tag" | "branch"; commit: Commit } | null;
 
-export function HistoryView({ root, branch, detached, busy, notify, onRevert, path: initialPath = "", open }: HistoryViewProps) {
+export function HistoryView({ root, branch, detached, busy, notify, onRevert, onSwitch, path: initialPath = "", open }: HistoryViewProps) {
   const listSize = useResizableWidth("history", { initial: 340, min: 240, max: 720 });
   const queryClient = useQueryClient();
   const [path, setPath] = useState(initialPath);
@@ -68,11 +69,14 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
     onError: (err) => notify(`Could not create the tag: ${errorMessage(err)}`),
   });
   const createBranch = useMutation({
-    mutationFn: ({ name, commit }: { name: string; commit: Commit }) => desktop.createBranch(root, name, { commit: commit.id }),
-    onSuccess: (b) => {
+    mutationFn: ({ name, commit }: { name: string; commit: Commit; switchTo: boolean }) => desktop.createBranch(root, name, { commit: commit.id }),
+    onSuccess: (b, vars) => {
       setDialog(null);
       void queryClient.invalidateQueries({ queryKey: ["branches", root] });
-      notify(`Created branch ${b.name}. Switch to it from Branches & tags.`, "success");
+      if (vars.switchTo) {
+        notify(`Created branch ${b.name}`, "success");
+        onSwitch(b.name);
+      } else notify(`Created branch ${b.name}. Switch to it from Branches & tags.`, "success");
     },
     onError: (err) => notify(`Could not create the branch: ${errorMessage(err)}`),
   });
@@ -208,11 +212,12 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
           title="Create a branch here"
           label="Branch name"
           placeholder="feature/new-level"
-          note={`The branch starts at ${shortId(dialog.commit.id)} "${commitTitle(dialog.commit.message)}".`}
+          base={{ label: "Based on commit", value: `${shortId(dialog.commit.id)} "${commitTitle(dialog.commit.message)}"` }}
+          option={{ label: "Switch to the new branch", defaultChecked: true }}
           confirmLabel="Create branch"
           busy={createBranch.isPending}
           onCancel={() => setDialog(null)}
-          onConfirm={(name) => createBranch.mutate({ name, commit: dialog.commit })}
+          onConfirm={(name, _message, switchTo) => createBranch.mutate({ name, commit: dialog.commit, switchTo })}
         />
       )}
     </div>

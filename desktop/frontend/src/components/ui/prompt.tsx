@@ -6,21 +6,24 @@ type PromptProps = {
   label: string;
   confirmLabel: string;
   note?: string;
+  base?: { label: string; value: string };
+  option?: { label: string; defaultChecked?: boolean };
   placeholder?: string;
   withMessage?: boolean;
   busy?: boolean;
-  onConfirm: (name: string, message: string) => void;
+  onConfirm: (name: string, message: string, checked: boolean) => void;
   onCancel: () => void;
 };
 
 // PromptDialog asks for a name, and optionally a message, before creating a
 // branch or a tag.
-export function PromptDialog({ title, label, confirmLabel, note, placeholder, withMessage, busy, onConfirm, onCancel }: PromptProps) {
+export function PromptDialog({ title, label, confirmLabel, note, base, option, placeholder, withMessage, busy, onConfirm, onCancel }: PromptProps) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [checked, setChecked] = useState(option?.defaultChecked ?? false);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (name.trim()) onConfirm(name.trim(), message.trim());
+    if (name.trim()) onConfirm(name.trim(), message.trim(), checked);
   };
   return (
     <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onCancel()}>
@@ -28,6 +31,12 @@ export function PromptDialog({ title, label, confirmLabel, note, placeholder, wi
         <h2 id="prompt-title" className="text-sm font-semibold">
           {title}
         </h2>
+        {base && (
+          <p className="rounded-md border border-border bg-background px-2 py-1.5 text-[12px]">
+            <span className="text-muted-foreground">{base.label}: </span>
+            <span className="break-all font-mono">{base.value}</span>
+          </p>
+        )}
         {note && <p className="break-words text-xs text-muted-foreground">{note}</p>}
         <label className="block space-y-1 text-[12px]">
           <span className="text-muted-foreground">{label}</span>
@@ -48,6 +57,12 @@ export function PromptDialog({ title, label, confirmLabel, note, placeholder, wi
               rows={3}
               className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[12px] outline-none focus:border-accent"
             />
+          </label>
+        )}
+        {option && (
+          <label className="flex items-center gap-2 text-[12px]">
+            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+            {option.label}
           </label>
         )}
         <div className="flex justify-end gap-2 pt-1">

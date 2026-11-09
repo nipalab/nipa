@@ -230,6 +230,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 busy={!!op}
                 notify={notify}
                 onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
+                onSwitch={switchTo}
                 open={openCommit}
               />
             ) : current === "branches" ? (
