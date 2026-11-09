@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
 import type { ChangeSet, FileDiff, OpProgress, Repo, RepoChanged } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
@@ -124,6 +125,25 @@ beforeEach(() => {
 const view = (r: Repo = repo) => renderWithProviders(<RepoView repo={r} removing={false} onRemove={() => {}} notify={notify} />);
 
 const fileList = () => screen.findByRole("listbox", { name: "Changed files" });
+
+describe("external branch switch", () => {
+  it("refreshes the repository list when the live branch differs from the cached one", async () => {
+    const spy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    api.changes.mockResolvedValue(changeSet({ branch: "feature" }));
+    view();
+    await fileList();
+    await waitFor(() => expect(spy.mock.calls.some(([f]) => JSON.stringify(f?.queryKey) === '["repos"]')).toBe(true));
+    spy.mockRestore();
+  });
+
+  it("leaves the repository list alone while the branch matches", async () => {
+    const spy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    view();
+    await fileList();
+    expect(spy.mock.calls.some(([f]) => JSON.stringify(f?.queryKey) === '["repos"]')).toBe(false);
+    spy.mockRestore();
+  });
+});
 
 describe("Changes view", () => {
   it("lists staged and unstaged files and diffs the first one", async () => {
