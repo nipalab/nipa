@@ -216,14 +216,14 @@ func main() {
 	if billingSetup != nil {
 		billingSetup.service.WithAudit(uc.Audit)
 	}
-	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
-		reconcileQuotas(context.Background(), reconciler)
-	}
 	commonUsecase, orgUsecase, authUsecase := uc.Common, uc.Org, uc.Auth
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
+	}
+	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
+		dispatchers = append(dispatchers, newQuotaReconcileJob(reconciler))
 	}
 	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)}
 	if storageLedger != nil {

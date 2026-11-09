@@ -931,11 +931,12 @@ newer, and recomputes `quota_bytes` from the live subscription
 (`active|trialing|past_due`, newest update) with
 `entitlement.go` (`free + seats*seat_bytes + packs*pack_bytes`, 0 free =
 unlimited, saturating); it never touches `override_bytes`.
-`Service.ReconcileQuotas` (`reconcile.go`) runs synchronously at SaaS startup
-before `serverapp.Run` (provider-less service when billing is off, failures
-only logged): it keyset-pages `owner_quota` (`QuotaOwners`, 500), recomputes
+`Service.ReconcileQuotas` (`reconcile.go`) runs at SaaS startup as a
+background `serverapp.Dispatcher` (`quotaReconcileJob`, provider-less service
+when billing is off, failures only logged, cancelled on shutdown): it keyset-pages `owner_quota` (`QuotaOwners`, 500), recomputes
 each owner under `LockOwner`, rewrites only differing `quota_bytes`, skips
-deleted users and audits `billing.quotas.reconciled` when anything changed. `internal/config` carries
+deleted users and audits `billing.quotas.reconciled` when anything changed
+(also after a partial run, with `complete: false`). `internal/config` carries
 `BILLING_PROVIDER` (`off` default), `PADDLE_*` and `BILLING_*` keys with
 `ValidateBilling` (every key, `SAAS_MODE=1`, the ledger, free seats ≥ 1,
 bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with

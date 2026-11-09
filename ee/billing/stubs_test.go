@@ -192,6 +192,7 @@ type stubLedger struct {
 	compErr  error
 	stored   map[snow.ID]*int64
 	deleted  map[snow.ID]bool
+	failFor  map[snow.ID]error
 }
 
 func (l *stubLedger) ComputedQuota(_ context.Context, userID snow.ID) (*int64, error) {
@@ -215,6 +216,9 @@ func (l *stubLedger) BillingOwner(context.Context, snow.ID) (snow.ID, error) {
 func (l *stubLedger) SetComputedQuota(_ context.Context, userID snow.ID, quota int64) error {
 	if l.quotaErr != nil {
 		return l.quotaErr
+	}
+	if err := l.failFor[userID]; err != nil {
+		return err
 	}
 	if l.deleted[userID] {
 		return domain.NewErrorNotFound("user not found")

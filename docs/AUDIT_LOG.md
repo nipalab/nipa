@@ -79,7 +79,7 @@ customer, subscription and transaction ids and item quantities are recorded.
 | `billing.sync` | `Service.Sync` (admin sync route) | super admin | target = owner; `synced` |
 | `billing.event.replayed` | `Service.Replay` (admin replay route) | super admin | target = event; `event_id`, `event_type`, `outcome` (`processed`/`failed`), `error` |
 | `billing.seat.denied` | `Service.Admit` refusal | the caller adding the user | `org_id`, target = user; `billing_owner_id`, `used`, `limit` |
-| `billing.quotas.reconciled` | `Service.ReconcileQuotas` at startup, only when a quota changed | system | `updated` |
+| `billing.quotas.reconciled` | `Service.ReconcileQuotas` at startup, only when a quota changed (also after a partial run) | system | `updated`, `complete: false` on a partial run |
 
 `billing.subscription.applied` is attributed to the authenticated caller when
 there is one (a plan change, an admin sync or a replay; the replay keeps the

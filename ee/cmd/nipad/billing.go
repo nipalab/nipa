@@ -21,7 +21,7 @@ import (
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
-const quotaReconcileTimeout = 2 * time.Minute
+const quotaReconcileTimeout = 10 * time.Minute
 
 type billingSetup struct {
 	service      *billing.Service
@@ -114,11 +114,44 @@ type quotaReconcile interface {
 	ReconcileQuotas(ctx context.Context) (int, error)
 }
 
-// reconcileQuotas runs before the server starts serving; a failure is only
-// logged so startup goes on with the stored quotas.
+// quotaReconcileJob runs the reconcile in the background so a slow run never
+// delays readiness; shutdown cancels it between owner transactions.
+type quotaReconcileJob struct {
+	reconciler quotaReconcile
+	cancel     context.CancelFunc
+	done       chan struct{}
+}
+
+func newQuotaReconcileJob(r quotaReconcile) *quotaReconcileJob {
+	return &quotaReconcileJob{reconciler: r}
+}
+
+func (j *quotaReconcileJob) Start() {
+	ctx, cancel := context.WithTimeout(context.Background(), quotaReconcileTimeout)
+	j.cancel = cancel
+	j.done = make(chan struct{})
+	go func() {
+		defer close(j.done)
+		defer cancel()
+		reconcileQuotas(ctx, j.reconciler)
+	}()
+}
+
+func (j *quotaReconcileJob) Stop(ctx context.Context) error {
+	if j.cancel == nil {
+		return nil
+	}
+	j.cancel()
+	select {
+	case <-j.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// reconcileQuotas only logs a failure: the stored quotas stay in effect.
 func reconcileQuotas(ctx context.Context, r quotaReconcile) {
-	ctx, cancel := context.WithTimeout(ctx, quotaReconcileTimeout)
-	defer cancel()
 	updated, err := r.ReconcileQuotas(ctx)
 	if err != nil {
 		slog.Warn("owner quota reconcile failed", "updated", updated, "err", err)

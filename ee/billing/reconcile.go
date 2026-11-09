@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -11,8 +12,26 @@ const reconcilePageSize = 500
 
 // ReconcileQuotas recomputes every stored owner quota from the current
 // entitlement settings and returns how many changed. Deleted users are
-// skipped and the admin override is never touched.
+// skipped and the admin override is never touched. Changes that landed are
+// audited even when the run stops early.
 func (s *Service) ReconcileQuotas(ctx context.Context) (int, error) {
+	updated, err := s.reconcileAll(ctx)
+	if updated == 0 {
+		return 0, err
+	}
+	metadata := map[string]any{"updated": updated}
+	if err != nil {
+		metadata["complete"] = false
+	}
+	recordErr := s.record(context.WithoutCancel(ctx), domain.AuditEntry{
+		ActorType: domain.AuditActorSystem,
+		Action:    domain.AuditBillingQuotasReconciled,
+		Metadata:  metadata,
+	})
+	return updated, errors.Join(err, recordErr)
+}
+
+func (s *Service) reconcileAll(ctx context.Context) (int, error) {
 	updated := 0
 	var after snow.ID
 	for {
@@ -33,18 +52,10 @@ func (s *Service) ReconcileQuotas(ctx context.Context) (int, error) {
 			}
 		}
 		if len(owners) < reconcilePageSize {
-			break
+			return updated, nil
 		}
 		after = owners[len(owners)-1]
 	}
-	if updated == 0 {
-		return 0, nil
-	}
-	return updated, s.record(ctx, domain.AuditEntry{
-		ActorType: domain.AuditActorSystem,
-		Action:    domain.AuditBillingQuotasReconciled,
-		Metadata:  map[string]any{"updated": updated},
-	})
 }
 
 func (s *Service) reconcileOwner(ctx context.Context, owner snow.ID) (bool, error) {

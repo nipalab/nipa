@@ -135,3 +135,43 @@ func TestReconcileQuotas_Errors(t *testing.T) {
 		})
 	}
 }
+
+type ctxRecorder struct {
+	captureRecorder
+	ctxErr error
+}
+
+func (c *ctxRecorder) Record(ctx context.Context, entry domain.AuditEntry) error {
+	c.ctxErr = ctx.Err()
+	return c.captureRecorder.Record(ctx, entry)
+}
+
+func TestReconcileQuotas_PartialFailureStillAudits(t *testing.T) {
+	svc, repo, ledger, _ := newStubService()
+	rec := &ctxRecorder{}
+	svc.WithAudit(rec)
+	boom := errors.New("boom")
+	repo.owners = []snow.ID{1, 2, 3}
+	ledger.failFor = map[snow.ID]error{2: boom}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	updated, err := svc.ReconcileQuotas(ctx)
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 1, updated)
+	require.Len(t, rec.entries, 1)
+	require.Equal(t, map[string]any{"updated": 1, "complete": false}, rec.entries[0].Metadata)
+	require.NoError(t, rec.ctxErr, "the audit entry survives a cancelled run")
+}
+
+func TestReconcileQuotas_PartialFailureAndAuditFailure(t *testing.T) {
+	svc, repo, ledger, _, rec := reconcileService()
+	boom, auditErr := errors.New("boom"), errors.New("audit")
+	repo.owners = []snow.ID{1, 2}
+	ledger.failFor = map[snow.ID]error{2: boom}
+	rec.err = auditErr
+
+	_, err := svc.ReconcileQuotas(context.Background())
+	require.ErrorIs(t, err, boom)
+	require.ErrorIs(t, err, auditErr)
+}

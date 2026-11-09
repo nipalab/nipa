@@ -88,19 +88,57 @@ type stubReconcile struct {
 	updated  int
 	err      error
 	deadline bool
+	block    bool
+	ran      chan struct{}
 }
 
 func (s *stubReconcile) ReconcileQuotas(ctx context.Context) (int, error) {
 	_, s.deadline = ctx.Deadline()
+	if s.ran != nil {
+		close(s.ran)
+	}
+	if s.block {
+		<-ctx.Done()
+		return s.updated, ctx.Err()
+	}
 	return s.updated, s.err
 }
 
 func TestReconcileQuotas(t *testing.T) {
-	ok := &stubReconcile{updated: 3}
-	reconcileQuotas(context.Background(), ok)
-	require.True(t, ok.deadline, "the run is bounded")
-
-	failing := &stubReconcile{err: errors.New("db down")}
-	reconcileQuotas(context.Background(), failing)
-	require.True(t, failing.deadline)
+	reconcileQuotas(context.Background(), &stubReconcile{updated: 3})
+	reconcileQuotas(context.Background(), &stubReconcile{err: errors.New("db down")})
 }
+
+func TestQuotaReconcileJob(t *testing.T) {
+	require.NoError(t, newQuotaReconcileJob(&stubReconcile{}).Stop(context.Background()), "never started")
+
+	done := &stubReconcile{updated: 1, ran: make(chan struct{})}
+	job := newQuotaReconcileJob(done)
+	job.Start()
+	<-done.ran
+	require.NoError(t, job.Stop(context.Background()))
+	require.True(t, done.deadline, "the run is bounded")
+
+	blocked := &stubReconcile{block: true, ran: make(chan struct{})}
+	job = newQuotaReconcileJob(blocked)
+	job.Start()
+	<-blocked.ran
+	require.NoError(t, job.Stop(context.Background()), "stop cancels a running reconcile")
+}
+
+func TestQuotaReconcileJob_StopDeadline(t *testing.T) {
+	release := make(chan struct{})
+	job := newQuotaReconcileJob(reconcileFunc(func(context.Context) (int, error) {
+		<-release
+		return 0, nil
+	}))
+	job.Start()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, job.Stop(ctx), context.Canceled)
+	close(release)
+}
+
+type reconcileFunc func(context.Context) (int, error)
+
+func (f reconcileFunc) ReconcileQuotas(ctx context.Context) (int, error) { return f(ctx) }

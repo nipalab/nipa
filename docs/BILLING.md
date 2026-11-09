@@ -117,11 +117,13 @@ change of `SAAS_FREE_QUOTA_BYTES`, `BILLING_SEAT_INCLUDED_BYTES`,
 `BILLING_STORAGE_PACK_BYTES` or the formula therefore reaches free and paying
 owners on the next deploy, without waiting for a Paddle event. Deleted users
 are skipped, `override_bytes` is never touched, and one
-`billing.quotas.reconciled` audit entry (system actor, `updated` count) is
-written when anything changed. It runs synchronously before the server starts
-serving (2 minute bound); with `BILLING_PROVIDER=off` a provider-less service
-does the same with the free entitlement. A failure is only logged and startup
-continues. The admin sync route stays for re-reading one owner's
+`billing.quotas.reconciled` audit entry (system actor, `updated` count, plus
+`complete: false` when the run stopped early) is written when anything
+changed. It runs in the background as a server dispatcher (10 minute bound,
+cancelled on shutdown between owner transactions), so readiness never waits
+for it; with `BILLING_PROVIDER=off` a provider-less service does the same with
+the free entitlement. A failure is only logged; the next start finishes the
+remaining owners. The admin sync route stays for re-reading one owner's
 subscriptions from Paddle.
 
 ### Admin override
