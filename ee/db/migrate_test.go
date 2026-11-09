@@ -103,6 +103,7 @@ func (s *MigrateSuite) TestQueryPerformanceIndexes() {
 		"idx_tree_nodes_hash_id",
 		"idx_organizations_created_by",
 		"idx_pbac_rules_org_wide",
+		"idx_pbac_rules_org_users",
 		"idx_refresh_tokens_user",
 		"idx_merge_requests_source_status",
 		"idx_merge_requests_target_status",
@@ -128,5 +129,6 @@ func (s *MigrateSuite) TestQueryPerformanceIndexes() {
 	s.Contains(indexes["idx_tree_nodes_hash_id"], "(hash, id)")
 	s.Contains(indexes["idx_organizations_created_by"], "WHERE (deleted = false)")
 	s.Contains(indexes["idx_pbac_rules_org_wide"], "WHERE (project_id IS NULL)")
+	s.Contains(indexes["idx_pbac_rules_org_users"], "WHERE (user_id IS NOT NULL)")
 	s.Contains(indexes["idx_branches_project_updated_id"], "WHERE (deleted = false)")
 }

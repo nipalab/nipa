@@ -56,16 +56,20 @@ LIMIT 1;
 SELECT t.*
 FROM tree_nodes t
 WHERE t.parent_tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND (
+                  EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+                  OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+              )
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = sqlc.arg(parent_tree_id)
-          AND (
-              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
-              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
-          )
-        ORDER BY content.id
-        LIMIT 1
     )
     AND t.name = sqlc.arg(name)
 LIMIT 1;
@@ -74,16 +78,20 @@ LIMIT 1;
 SELECT t.*
 FROM tree_nodes t
 WHERE t.parent_tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND (
+                  EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+                  OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+              )
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = sqlc.arg(parent_tree_id)
-          AND (
-              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
-              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
-          )
-        ORDER BY content.id
-        LIMIT 1
     )
 ORDER BY t.name;
 
@@ -91,13 +99,17 @@ ORDER BY t.name;
 SELECT f.*
 FROM files f
 WHERE f.tree_id = (
-        SELECT content.id
-        FROM tree_nodes content
-        JOIN tree_nodes ref ON ref.hash = content.hash
+        SELECT x.id
+        FROM tree_nodes ref
+        CROSS JOIN LATERAL (
+            SELECT content.id
+            FROM tree_nodes content
+            WHERE content.hash = ref.hash
+              AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+            ORDER BY content.id
+            LIMIT 1
+        ) x
         WHERE ref.id = sqlc.arg(tree_id)
-          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
-        ORDER BY content.id
-        LIMIT 1
     )
 ORDER BY f.name;
 
@@ -109,13 +121,17 @@ WHERE file_chunks.file_id IN (
         SELECT f.id
         FROM files f
         WHERE f.tree_id = (
-                SELECT content.id
-                FROM tree_nodes content
-                JOIN tree_nodes ref ON ref.hash = content.hash
+                SELECT x.id
+                FROM tree_nodes ref
+                CROSS JOIN LATERAL (
+                    SELECT content.id
+                    FROM tree_nodes content
+                    WHERE content.hash = ref.hash
+                      AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+                    ORDER BY content.id
+                    LIMIT 1
+                ) x
                 WHERE ref.id = sqlc.arg(tree_id)
-                  AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
-                ORDER BY content.id
-                LIMIT 1
             )
     )
 ORDER BY file_chunks.file_id, file_chunks.chunk_index;

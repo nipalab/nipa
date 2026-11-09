@@ -540,6 +540,99 @@ func (s *BranchRepositorySuite) TestListFilesByTree_Empty() {
 	s.Empty(files)
 }
 
+func seedTreeNodeWithHash(t *testing.T, db *sql.DB, hash []byte, name string, parentID sql.NullInt64) int64 {
+	t.Helper()
+
+	var id int64
+	err := db.QueryRowContext(context.Background(),
+		`INSERT INTO tree_nodes (hash, name, mode, parent_tree_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+		hash, name, 0o755, parentID,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func (s *BranchRepositorySuite) TestTreeLookupsResolveStubToContentByHash() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+
+	hash := testHashBytes()
+	for range 5 {
+		seedTreeNode(s.T(), s.db, "unrelated", sql.NullInt64{})
+	}
+	emptyTwin := seedTreeNodeWithHash(s.T(), s.db, hash, "textures", sql.NullInt64{})
+	content := seedTreeNodeWithHash(s.T(), s.db, hash, "textures", sql.NullInt64{})
+	subID := seedTreeNode(s.T(), s.db, "sub", sql.NullInt64{Int64: content, Valid: true})
+	aID := seedFile(s.T(), s.db, content, "a.png", 10)
+	chunk0 := seedChunk(s.T(), s.db, aID, 0)
+	chunk1 := seedChunk(s.T(), s.db, aID, 1)
+	seedFile(s.T(), s.db, content, "b.png", 20)
+	for range 5 {
+		seedTreeNode(s.T(), s.db, "unrelated", sql.NullInt64{})
+	}
+	stubs := []int64{
+		seedTreeNodeWithHash(s.T(), s.db, hash, "textures", sql.NullInt64{}),
+		seedTreeNodeWithHash(s.T(), s.db, hash, "textures", sql.NullInt64{}),
+		seedTreeNodeWithHash(s.T(), s.db, hash, "textures", sql.NullInt64{}),
+	}
+
+	for _, id := range append([]int64{emptyTwin, content}, stubs...) {
+		files, err := repo.ListFilesByTree(ctx, id)
+		s.Require().NoError(err)
+		s.Require().Len(files, 2)
+		s.Equal("a.png", files[0].Name)
+		s.Require().Len(files[0].Chunks, 2)
+		s.Equal(chunk0, files[0].Chunks[0].ID)
+		s.Equal(chunk1, files[0].Chunks[1].ID)
+		s.Equal("b.png", files[1].Name)
+		s.Empty(files[1].Chunks)
+
+		children, err := repo.ListTreeChildren(ctx, id)
+		s.Require().NoError(err)
+		s.Require().Len(children, 1)
+		s.Equal(subID, children[0].ID)
+
+		child, err := repo.GetTreeChildByName(ctx, id, "sub")
+		s.Require().NoError(err)
+		s.Equal(subID, child.ID)
+	}
+
+	orphanHash := testHashBytes()
+	seedTreeNodeWithHash(s.T(), s.db, orphanHash, "orphan", sql.NullInt64{})
+	orphan := seedTreeNodeWithHash(s.T(), s.db, orphanHash, "orphan", sql.NullInt64{})
+
+	files, err := repo.ListFilesByTree(ctx, orphan)
+	s.Require().NoError(err)
+	s.Empty(files)
+	children, err := repo.ListTreeChildren(ctx, orphan)
+	s.Require().NoError(err)
+	s.Empty(children)
+	_, err = repo.GetTreeChildByName(ctx, orphan, "sub")
+	requireRecordNotFound(s.T(), err)
+}
+
+func (s *BranchRepositorySuite) TestTreeLookupsResolveChildrenOnlyContent() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+
+	hash := testHashBytes()
+	content := seedTreeNodeWithHash(s.T(), s.db, hash, "dirs", sql.NullInt64{})
+	childID := seedTreeNode(s.T(), s.db, "nested", sql.NullInt64{Int64: content, Valid: true})
+	seedTreeNode(s.T(), s.db, "unrelated", sql.NullInt64{})
+	stub := seedTreeNodeWithHash(s.T(), s.db, hash, "dirs", sql.NullInt64{})
+
+	children, err := repo.ListTreeChildren(ctx, stub)
+	s.Require().NoError(err)
+	s.Require().Len(children, 1)
+	s.Equal(childID, children[0].ID)
+	child, err := repo.GetTreeChildByName(ctx, stub, "nested")
+	s.Require().NoError(err)
+	s.Equal(childID, child.ID)
+	files, err := repo.ListFilesByTree(ctx, stub)
+	s.Require().NoError(err)
+	s.Empty(files)
+}
+
 func (s *BranchRepositorySuite) TestCreateBranch() {
 	ctx := context.Background()
 	repo := NewBranchRepository(s.db)
