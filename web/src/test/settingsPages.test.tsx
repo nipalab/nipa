@@ -145,29 +145,53 @@ describe('OrgSettingsPage', () => {
     expect(container.textContent).not.toContain('Storage')
   })
 
+  async function memberMenu(name: string, label: string) {
+    await click(byName(document.body, `Manage ${name}`))
+    await waitFor(() => document.querySelector('[role="menuitem"]') !== null)
+    await click([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes(label)))
+  }
+
   it('changes a role after confirmation and can cancel', async () => {
     api.updateOrgMember.mockResolvedValue(undefined as never)
     const { container } = await renderRoute(pattern, url, <OrgSettingsPage />)
-    await waitFor(() => buttonsByText(container, 'Make owner').length === 1)
+    await waitFor(() => byName(document.body, 'Manage Dana') !== null)
+    expect(container.textContent).toContain('Member')
 
-    await click(buttonByText(container, 'Make owner'))
+    await memberMenu('Dana', 'Change role to owner')
     await cancelDialog()
     expect(api.updateOrgMember).not.toHaveBeenCalled()
 
-    await click(buttonByText(container, 'Make owner'))
+    await memberMenu('Dana', 'Change role to owner')
     await confirmDialog('Make owner')
     expect(api.updateOrgMember).toHaveBeenCalledWith('sticker', '2', 'owner')
 
-    await click(buttonByText(container, 'Make member'))
+    await memberMenu('Eve', 'Change role to member')
     await confirmDialog('Make member')
     expect(api.updateOrgMember).toHaveBeenCalledWith('sticker', '3', 'member')
+  })
+
+  it('filters members by role and name', async () => {
+    const { container } = await renderRoute(pattern, url, <OrgSettingsPage />)
+    await waitFor(() => (container.textContent ?? '').includes('Eve'))
+    const tab = (label: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="Member role"] button')].find((button) =>
+        button.textContent?.startsWith(label),
+      ) as HTMLButtonElement
+    expect(tab('All').textContent).toBe('All2')
+    await click(tab('Owners'))
+    expect(container.textContent).not.toContain('dana@example.com')
+    await click(tab('Members'))
+    expect(container.textContent).not.toContain('eve@example.com')
+    await click(tab('All'))
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Find a member"]'), 'zzz')
+    expect(container.textContent).toContain('No members match these filters.')
   })
 
   it('removes a member after confirmation and reports failures', async () => {
     api.removeOrgMember.mockRejectedValueOnce(new Error('last owner')).mockResolvedValue(undefined as never)
     const { container } = await renderRoute(pattern, url, <OrgSettingsPage />)
-    await waitFor(() => buttonsByText(container, 'Remove').length === 2)
-    await click(buttonsByText(container, 'Remove')[0])
+    await waitFor(() => byName(document.body, 'Manage Dana') !== null)
+    await memberMenu('Dana', 'Remove from organization')
     await confirmDialog('Remove')
     await waitFor(() => (container.textContent ?? '').includes('last owner'))
     expect(api.removeOrgMember).toHaveBeenCalledWith('sticker', '2')
@@ -184,7 +208,11 @@ describe('OrgSettingsPage', () => {
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
     expect(submit()?.disabled).toBe(true)
     await click(buttonByText(document.body, 'pick subject'))
-    await choose(document.body.querySelector<HTMLSelectElement>('[role="dialog"] select'), 'owner')
+    const picked = () => document.body.querySelector('[aria-label="Selected user or group"]')
+    expect(picked()?.textContent).toContain('Nina')
+    await click(buttonByText(picked() as HTMLElement, 'Change'))
+    await click(buttonByText(document.body, 'pick subject'))
+    await click(document.body.querySelector('[role="dialog"] input[type="radio"][value="owner"]'))
     await click(submit())
     await flush()
     expect(api.addOrgMember).toHaveBeenCalledWith('sticker', '9', 'owner')
@@ -204,12 +232,11 @@ describe('OrgSettingsPage', () => {
   it('explains a seat-limit 402 when adding a group member', async () => {
     api.addGroupMember.mockRejectedValue(SEAT_LIMIT)
     const { container, location } = await renderRoute(pattern, `${url}?tab=groups`, <OrgSettingsPage />)
-    await waitFor(() => buttonByText(container, 'View') !== null)
-    await click(buttonByText(container, 'View'))
-    await waitFor(() => (container.textContent ?? '').includes('Coder members'))
-    const addButtons = buttonsByText(container, 'Add member')
-    await click(addButtons[addButtons.length - 1])
-    await waitFor(() => document.body.textContent?.includes('Add group member') ?? false)
+    await waitFor(() => buttonByText(container, 'Coder') !== null)
+    await click(buttonByText(container, 'Coder'))
+    await waitFor(() => (container.textContent ?? '').includes('All groups'))
+    await click(buttonByText(container, 'Add member'))
+    await waitFor(() => document.body.textContent?.includes('Add a member to Coder') ?? false)
     await click(buttonByText(document.body, 'pick subject'))
     await click(document.body.querySelector('button[type="submit"]'))
     await expectSeatLimitBanner(location)
@@ -234,25 +261,29 @@ describe('OrgSettingsPage', () => {
     const { container } = await renderRoute(pattern, `${url}?tab=groups`, <OrgSettingsPage />)
     await waitFor(() => (container.textContent ?? '').includes('Coder'))
 
-    await click(buttonByText(container, 'Create group'))
+    expect(container.textContent).toContain('1 member')
+    await click(buttonByText(container, 'New group'))
     await waitFor(() => document.body.textContent?.includes('Group name') ?? false)
-    const inputs = document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input')
-    await type(inputs[0], 'artists')
-    await type(inputs[1], 'draw things')
+    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), 'artists')
+    await type(document.body.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea'), 'draw things')
     await click(document.body.querySelector('button[type="submit"]'))
     await flush()
     expect(api.createGroup).toHaveBeenCalledWith('sticker', 'artists', 'draw things')
 
-    await click(buttonByText(container, 'View'))
-    await waitFor(() => (container.textContent ?? '').includes('Coder members'))
-    await click(buttonByText(container, 'Hide'))
-    await waitFor(() => !(container.textContent ?? '').includes('Coder members'))
-    await click(buttonByText(container, 'View'))
-    await waitFor(() => (container.textContent ?? '').includes('dana@example.com'))
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Find a group"]'), 'zzz')
+    expect(container.textContent).toContain('No groups match this search.')
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Find a group"]'), 'cod')
 
-    const addButtons = buttonsByText(container, 'Add member')
-    await click(addButtons[addButtons.length - 1])
-    await waitFor(() => document.body.textContent?.includes('Add group member') ?? false)
+    await click(buttonByText(container, 'Coder'))
+    await waitFor(() => (container.textContent ?? '').includes('All groups'))
+    await click(buttonByText(container, 'All groups'))
+    await waitFor(() => buttonByText(container, 'New group') !== null)
+    await click(buttonByText(container, 'Coder'))
+    await waitFor(() => (container.textContent ?? '').includes('dana@example.com'))
+    expect(container.textContent).toContain('coders')
+
+    await click(buttonByText(container, 'Add member'))
+    await waitFor(() => document.body.textContent?.includes('Add a member to Coder') ?? false)
     await click(buttonByText(document.body, 'pick subject'))
     await click(document.body.querySelector('button[type="submit"]'))
     await flush()
@@ -276,10 +307,9 @@ describe('OrgSettingsPage', () => {
   it('shows group detail with no members', async () => {
     api.getGroup.mockResolvedValue({ ...GROUP, members: [], member_ids: [], member_count: 0 })
     const { container } = await renderRoute(pattern, `${url}?tab=groups`, <OrgSettingsPage />)
-    await waitFor(() => buttonByText(container, 'View') !== null)
-    await click(buttonByText(container, 'View'))
-    await waitFor(() => (container.textContent ?? '').includes('Coder members'))
-    expect(container.textContent).toContain('No members.')
+    await waitFor(() => buttonByText(container, 'Coder') !== null)
+    await click(buttonByText(container, 'Coder'))
+    await waitFor(() => (container.textContent ?? '').includes('This group has no members yet'))
   })
 
   it('offers the storage tab when the ledger is enabled', async () => {

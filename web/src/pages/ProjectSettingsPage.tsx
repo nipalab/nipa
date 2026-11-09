@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Button, FormControl, Label, Stack, Text, TextInput } from '@primer/react'
-import { PeopleIcon } from '@primer/octicons-react'
+import { Button, FormControl, Stack, Text, TextInput } from '@primer/react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   createProjectRule,
@@ -12,7 +11,7 @@ import {
   setProjectDefault,
 } from '../api/endpoints'
 import { PERMISSION_READ, type BranchResponse, type PBACRuleResponse, type PermissionEntry } from '../api/models'
-import { ActorAvatar } from '../components/ActorAvatar'
+import { PickedSubject } from '../components/PickedSubject'
 import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
 import { PermissionBadge } from '../components/PermissionBadge'
@@ -393,23 +392,7 @@ function AddRuleDialog({
       <FormControl required>
         <FormControl.Label>User or group</FormControl.Label>
         {subject ? (
-          <div className="nipa-picked-subject" aria-label="Selected user or group">
-            {subject.isGroup ? (
-              <span className="nipa-picked-group">
-                <PeopleIcon />
-              </span>
-            ) : (
-              <ActorAvatar actor={{ user_id: subject.id, name: subject.label, photo_url: subject.avatarUrl }} size={32} />
-            )}
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span className="nipa-picked-name">{subject.label}</span>
-              <span className="nipa-picked-sub">{subject.sublabel}</span>
-            </span>
-            <Label variant="secondary">{subject.isGroup ? 'Group' : 'User'}</Label>
-            <Button size="small" onClick={() => setSubject(null)}>
-              Change
-            </Button>
-          </div>
+          <PickedSubject subject={subject} onChange={() => setSubject(null)} />
         ) : (
           <UserGroupPicker
             org={org}
