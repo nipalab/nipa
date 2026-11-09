@@ -77,6 +77,7 @@ LEFT JOIN branches b ON b.id = mr.source_branch_id AND b.deleted = FALSE
 WHERE mr.project_id = sqlc.arg(project_id)
   AND r.dismissed_at IS NULL
   AND r.state != 'commented'
+  AND mr.number = ANY(sqlc.arg(numbers)::bigint[])
   AND r.head_commit_id = COALESCE(b.commit_id, r.head_commit_id)
 GROUP BY mr.number, b.commit_id, r.state;
 

@@ -414,7 +414,7 @@ func TestMergeRequestReview_ReviewState(t *testing.T) {
 
 func TestMergeRequestReview_AttachSummaries(t *testing.T) {
 	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
-	repo.EXPECT().ReviewSummaries(gomock.Any(), snow.ID(1)).Return(map[int64]*domain.MergeRequestReviewState{
+	repo.EXPECT().ReviewSummaries(gomock.Any(), snow.ID(1), []int64{5, 6}).Return(map[int64]*domain.MergeRequestReviewState{
 		5: {Approvals: 2, HeadCommitID: 11},
 	}, nil)
 	withReview := &domain.MergeRequest{Number: 5}

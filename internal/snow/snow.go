@@ -2,6 +2,7 @@ package snow
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -82,6 +83,18 @@ func (n *node) Generate() ID {
 	)
 
 	return r
+}
+
+// FloorAt returns the lowest ID a node could generate at t.
+func FloorAt(t time.Time) ID {
+	ms := t.UnixMilli() - epoch
+	if ms <= 0 {
+		return 0
+	}
+	if ms > math.MaxInt64>>timeShift {
+		return ID(math.MaxInt64)
+	}
+	return ID(ms << timeShift)
 }
 
 // String returns a string of the snowflake ID

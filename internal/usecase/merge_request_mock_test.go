@@ -117,18 +117,18 @@ func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, opts any)
 }
 
 // ListAssignees mocks base method.
-func (m *MockmergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
+func (m *MockmergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64][]domain.ReviewActor, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAssignees", ctx, projectID)
+	ret := m.ctrl.Call(m, "ListAssignees", ctx, projectID, numbers)
 	ret0, _ := ret[0].(map[int64][]domain.ReviewActor)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListAssignees indicates an expected call of ListAssignees.
-func (mr *MockmergeRequestRepositoryMockRecorder) ListAssignees(ctx, projectID any) *gomock.Call {
+func (mr *MockmergeRequestRepositoryMockRecorder) ListAssignees(ctx, projectID, numbers any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignees", reflect.TypeOf((*MockmergeRequestRepository)(nil).ListAssignees), ctx, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignees", reflect.TypeOf((*MockmergeRequestRepository)(nil).ListAssignees), ctx, projectID, numbers)
 }
 
 // RecordMerge mocks base method.

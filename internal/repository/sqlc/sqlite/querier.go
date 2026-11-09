@@ -36,6 +36,7 @@ type Querier interface {
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
+	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
@@ -88,7 +89,7 @@ type Querier interface {
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
-	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
+	MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error)
 	MergeRequestAssigneeListByMergeRequest(ctx context.Context, mergeRequestID int64) ([]MergeRequestAssigneeListByMergeRequestRow, error)
 	MergeRequestCheckList(ctx context.Context, arg MergeRequestCheckListParams) ([]MergeRequestCheckListRow, error)
 	MergeRequestCheckUpsert(ctx context.Context, arg MergeRequestCheckUpsertParams) (MergeRequestCheck, error)
@@ -126,7 +127,7 @@ type Querier interface {
 	// The head comparison mirrors the read-time staleness rule the usecase applies
 	// to individual reviews: a decision given for a head other than the current
 	// source branch head no longer counts.
-	MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error)
+	MergeRequestReviewSummary(ctx context.Context, arg MergeRequestReviewSummaryParams) ([]MergeRequestReviewSummaryRow, error)
 	// sqlc only numbers the parameters of the VALUES clause, so the conflict branch
 	// reads the pending row through excluded instead of repeating named parameters.
 	MergeRequestReviewUpsert(ctx context.Context, arg MergeRequestReviewUpsertParams) (MergeRequestReview, error)
@@ -170,6 +171,7 @@ type Querier interface {
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
+	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

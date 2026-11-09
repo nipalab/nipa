@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
@@ -45,6 +46,8 @@ func (r *AuditRepository) Insert(ctx context.Context, entry domain.AuditEntry) e
 	}))
 }
 
+const auditIDSkew = time.Minute
+
 // List returns entries newest first, narrowed by the filter.
 func (r *AuditRepository) List(ctx context.Context, filter domain.AuditFilter) ([]*domain.AuditEntry, error) {
 	params := sqlcPostgres.AuditLogListParams{
@@ -61,6 +64,12 @@ func (r *AuditRepository) List(ctx context.Context, filter domain.AuditFilter) (
 	}
 	if filter.TargetID != "" {
 		params.TargetID = sql.NullString{String: filter.TargetID, Valid: true}
+	}
+	if filter.Since != nil {
+		params.MinID = sql.NullInt64{Int64: snow.FloorAt(filter.Since.Add(-auditIDSkew)).Int64(), Valid: true}
+	}
+	if filter.Until != nil {
+		params.MaxID = sql.NullInt64{Int64: snow.FloorAt(filter.Until.Add(auditIDSkew)).Int64(), Valid: true}
 	}
 	rows, err := r.queries.AuditLogList(ctx, params)
 	if err != nil {

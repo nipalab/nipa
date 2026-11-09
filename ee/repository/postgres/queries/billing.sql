@@ -1,10 +1,15 @@
 -- name: CountOwnerSeats :one
 WITH owner_orgs AS (
+    SELECT b.org_id AS id
+    FROM org_billing_owner b
+    JOIN organizations o ON o.id = b.org_id AND o.deleted = false
+    WHERE b.user_id = sqlc.arg(owner_id)::bigint
+    UNION
     SELECT o.id
     FROM organizations o
-    LEFT JOIN org_billing_owner b ON b.org_id = o.id
-    WHERE o.deleted = false
-      AND COALESCE(b.user_id, o.created_by_user_id) = sqlc.arg(owner_id)::bigint
+    WHERE o.created_by_user_id = sqlc.arg(owner_id)::bigint
+      AND o.deleted = false
+      AND NOT EXISTS (SELECT 1 FROM org_billing_owner b WHERE b.org_id = o.id)
 ), seats AS (
     SELECT sqlc.arg(owner_id)::bigint AS user_id
     UNION
@@ -24,11 +29,16 @@ WHERE u.deleted = false;
 
 -- name: IsOwnerSeat :one
 WITH owner_orgs AS (
+    SELECT b.org_id AS id
+    FROM org_billing_owner b
+    JOIN organizations o ON o.id = b.org_id AND o.deleted = false
+    WHERE b.user_id = sqlc.arg(owner_id)::bigint
+    UNION
     SELECT o.id
     FROM organizations o
-    LEFT JOIN org_billing_owner b ON b.org_id = o.id
-    WHERE o.deleted = false
-      AND COALESCE(b.user_id, o.created_by_user_id) = sqlc.arg(owner_id)::bigint
+    WHERE o.created_by_user_id = sqlc.arg(owner_id)::bigint
+      AND o.deleted = false
+      AND NOT EXISTS (SELECT 1 FROM org_billing_owner b WHERE b.org_id = o.id)
 )
 SELECT EXISTS (
     SELECT 1 FROM users u

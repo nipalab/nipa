@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const mergeRequestCommentCreate = `-- name: MergeRequestCommentCreate :one
@@ -703,9 +705,15 @@ LEFT JOIN branches b ON b.id = mr.source_branch_id AND b.deleted = FALSE
 WHERE mr.project_id = $1
   AND r.dismissed_at IS NULL
   AND r.state != 'commented'
+  AND mr.number = ANY($2::bigint[])
   AND r.head_commit_id = COALESCE(b.commit_id, r.head_commit_id)
 GROUP BY mr.number, b.commit_id, r.state
 `
+
+type MergeRequestReviewSummaryParams struct {
+	ProjectID int64   `json:"project_id"`
+	Numbers   []int64 `json:"numbers"`
+}
 
 type MergeRequestReviewSummaryRow struct {
 	MergeRequestNumber int64         `json:"merge_request_number"`
@@ -715,8 +723,8 @@ type MergeRequestReviewSummaryRow struct {
 }
 
 // Aggregates the live review decisions per merge request for the list view.
-func (q *Queries) MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestReviewSummary, projectID)
+func (q *Queries) MergeRequestReviewSummary(ctx context.Context, arg MergeRequestReviewSummaryParams) ([]MergeRequestReviewSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, mergeRequestReviewSummary, arg.ProjectID, pq.Array(arg.Numbers))
 	if err != nil {
 		return nil, err
 	}

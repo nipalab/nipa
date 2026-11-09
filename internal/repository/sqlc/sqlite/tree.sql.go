@@ -68,6 +68,60 @@ func (q *Queries) ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkLis
 	return items, nil
 }
 
+const commitAncestors = `-- name: CommitAncestors :many
+WITH RECURSIVE anc(id) AS (
+    SELECT ?3 AS id
+    UNION
+    SELECT c.parent_1_id FROM anc JOIN commits c ON c.id = anc.id WHERE c.parent_1_id IS NOT NULL
+    UNION
+    SELECT c.parent_2_id FROM anc JOIN commits c ON c.id = anc.id WHERE c.parent_2_id IS NOT NULL
+    LIMIT ?2
+)
+SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at
+FROM anc
+JOIN commits c ON c.id = anc.id
+WHERE c.project_id = ?1
+`
+
+type CommitAncestorsParams struct {
+	ProjectID     int64 `json:"project_id"`
+	Limit         int64 `json:"limit"`
+	StartCommitID int64 `json:"start_commit_id"`
+}
+
+func (q *Queries) CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error) {
+	rows, err := q.db.QueryContext(ctx, commitAncestors, arg.ProjectID, arg.Limit, arg.StartCommitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Commit
+	for rows.Next() {
+		var i Commit
+		if err := rows.Scan(
+			&i.ID,
+			&i.Hash,
+			&i.ProjectID,
+			&i.TreeID,
+			&i.Parent1ID,
+			&i.Parent2ID,
+			&i.UserID,
+			&i.Message,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const commitGet = `-- name: CommitGet :one
 SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at
 FROM commits
@@ -126,7 +180,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT ?3 AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL
+    WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < ?2
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email
@@ -198,7 +252,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT ?4 AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL AND c.id <> ?2
+    WHERE c.parent_1_id IS NOT NULL AND c.id <> ?2 AND cc.depth + 1 < ?3
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email

@@ -54,6 +54,20 @@ func (q *Queries) RefreshTokenDeleteByUser(ctx context.Context, userID int64) er
 	return err
 }
 
+const refreshTokenDeleteExpiredByUser = `-- name: RefreshTokenDeleteExpiredByUser :exec
+DELETE FROM refresh_tokens WHERE user_id = $1 AND expires_at < $2
+`
+
+type RefreshTokenDeleteExpiredByUserParams struct {
+	UserID    int64     `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (q *Queries) RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error {
+	_, err := q.db.ExecContext(ctx, refreshTokenDeleteExpiredByUser, arg.UserID, arg.ExpiresAt)
+	return err
+}
+
 const sSHLoginChallengeConsume = `-- name: SSHLoginChallengeConsume :one
 DELETE FROM ssh_login_challenges
 WHERE nonce = $1

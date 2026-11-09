@@ -165,7 +165,14 @@ func TestMergeRequestReviewRepository_SummariesFollowSourceHead(t *testing.T) {
 	review(6001, f.reviewerID, domain.MergeRequestReviewApproved, f.headCommit)
 	review(6002, f.authorID, domain.MergeRequestReviewChangesRequested, f.headCommit)
 
-	summaries, err := f.repo.ReviewSummaries(ctx, f.projectID)
+	none, err := f.repo.ReviewSummaries(ctx, f.projectID, nil)
+	require.NoError(t, err)
+	require.Empty(t, none)
+	other, err := f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber + 1})
+	require.NoError(t, err)
+	require.Empty(t, other)
+
+	summaries, err := f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	require.NoError(t, err)
 	require.Equal(t, 1, summaries[f.mrNumber].Approvals)
 	require.Equal(t, 1, summaries[f.mrNumber].ChangesRequested)
@@ -174,13 +181,13 @@ func TestMergeRequestReviewRepository_SummariesFollowSourceHead(t *testing.T) {
 	// a new head invalidates both decisions, leaving the merge request absent
 	// from the summary map until a decision is given for the new head
 	newHead := f.pushSourceHead(t)
-	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID)
+	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	require.NoError(t, err)
 	require.NotContains(t, summaries, f.mrNumber)
 
 	review(6003, f.reviewerID, domain.MergeRequestReviewApproved, newHead)
 	review(6004, f.authorID, domain.MergeRequestReviewApproved, newHead)
-	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID)
+	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	require.NoError(t, err)
 	require.Equal(t, 2, summaries[f.mrNumber].Approvals)
 	require.Equal(t, newHead, summaries[f.mrNumber].HeadCommitID)

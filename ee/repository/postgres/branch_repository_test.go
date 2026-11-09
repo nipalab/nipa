@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1083,4 +1084,120 @@ func (s *BranchRepositorySuite) TestClosedDatabaseErrors() {
 	s.Require().Error(err)
 	_, err = repo.CommitLogUntil(ctx, projectID, snow.ID(2), snow.ID(3), 10)
 	s.Require().Error(err)
+}
+
+func seedGraph(t *testing.T, db *sql.DB, projectID snow.ID, treeID int64, parents ...[2]snow.ID) []snow.ID {
+	t.Helper()
+	node := newTestNode(t)
+	ids := make([]snow.ID, 0, len(parents))
+	for i, p := range parents {
+		id := node.Generate()
+		parent := func(idx snow.ID) sql.NullInt64 {
+			if idx == 0 {
+				return sql.NullInt64{}
+			}
+			return sql.NullInt64{Int64: ids[idx-1].Int64(), Valid: true}
+		}
+		_, err := db.ExecContext(context.Background(),
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			id.Int64(), testHashBytes(), projectID.Int64(), treeID, parent(p[0]), parent(p[1]), 1, fmt.Sprintf("commit %d", i+1),
+		)
+		require.NoError(t, err)
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func linearGraph(n int) [][2]snow.ID {
+	parents := make([][2]snow.ID, n)
+	for i := 1; i < n; i++ {
+		parents[i] = [2]snow.ID{snow.ID(i)}
+	}
+	return parents
+}
+
+func logIDs(entries []*domain.CommitLogEntry) []snow.ID {
+	out := make([]snow.ID, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.ID)
+	}
+	return out
+}
+
+func commitSet(commits []*domain.Commit) []snow.ID {
+	out := make([]snow.ID, 0, len(commits))
+	for _, c := range commits {
+		out = append(out, c.ID)
+	}
+	return out
+}
+
+func (s *BranchRepositorySuite) TestCommitLog_HistoryLongerThanLimit() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+	projectID := seedProject(s.T(), s.q, 1, "test-project")
+	treeID := seedTreeNode(s.T(), s.db, "root", sql.NullInt64{})
+
+	parents := linearGraph(20)
+	parents = append(parents, [2]snow.ID{20, 3})
+	ids := seedGraph(s.T(), s.db, projectID, treeID, parents...)
+	newestFirst := make([]snow.ID, 0, len(ids))
+	for i := len(ids) - 1; i >= 0; i-- {
+		newestFirst = append(newestFirst, ids[i])
+	}
+
+	for _, limit := range []int{1, 2, 5, 20, 21, 50} {
+		got, err := repo.CommitLog(ctx, projectID, ids[20], limit)
+		s.Require().NoError(err)
+		s.Equal(newestFirst[:min(limit, len(newestFirst))], logIDs(got), "limit %d", limit)
+	}
+
+	stop := ids[2]
+	for _, c := range []struct{ limit, want int }{{1, 1}, {5, 5}, {18, 18}, {19, 18}, {50, 18}} {
+		got, err := repo.CommitLogUntil(ctx, projectID, ids[20], stop, c.limit)
+		s.Require().NoError(err)
+		s.Equal(newestFirst[:c.want], logIDs(got), "limit %d", c.limit)
+	}
+}
+
+func (s *BranchRepositorySuite) TestCommitAncestors() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+	projectID := seedProject(s.T(), s.q, 1, "test-project")
+	otherID := seedProject(s.T(), s.q, 1, "other-project")
+	treeID := seedTreeNode(s.T(), s.db, "root", sql.NullInt64{})
+
+	chain := seedGraph(s.T(), s.db, projectID, treeID, linearGraph(10)...)
+	got, err := repo.CommitAncestors(ctx, projectID, chain[9], 4)
+	s.Require().NoError(err)
+	s.ElementsMatch(chain[6:], commitSet(got))
+	all, err := repo.CommitAncestors(ctx, projectID, chain[9], 100)
+	s.Require().NoError(err)
+	s.ElementsMatch(chain, commitSet(all))
+	for _, c := range all {
+		s.Equal(projectID, c.ProjectID)
+	}
+
+	diamond := seedGraph(s.T(), s.db, projectID, treeID, [2]snow.ID{}, [2]snow.ID{1}, [2]snow.ID{1}, [2]snow.ID{2, 3})
+	got, err = repo.CommitAncestors(ctx, projectID, diamond[3], 100)
+	s.Require().NoError(err)
+	s.ElementsMatch(diamond, commitSet(got))
+	var merge *domain.Commit
+	for _, c := range got {
+		if c.ID == diamond[3] {
+			merge = c
+		}
+	}
+	s.Require().NotNil(merge)
+	s.Require().NotNil(merge.Parent2ID)
+	s.Equal(diamond[2], *merge.Parent2ID)
+
+	foreign := seedGraph(s.T(), s.db, otherID, treeID, linearGraph(2)...)
+	got, err = repo.CommitAncestors(ctx, projectID, foreign[1], 100)
+	s.Require().NoError(err)
+	s.Empty(got)
+
+	s.Require().NoError(s.db.Close())
+	_, err = repo.CommitAncestors(ctx, projectID, chain[9], 4)
+	s.Error(err)
 }

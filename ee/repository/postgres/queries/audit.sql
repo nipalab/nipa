@@ -13,10 +13,12 @@ SELECT * FROM audit_log
 WHERE (sqlc.narg('actor_user_id')::bigint IS NULL OR actor_user_id = sqlc.narg('actor_user_id')::bigint)
   AND (sqlc.narg('org_id')::bigint IS NULL OR org_id = sqlc.narg('org_id')::bigint)
   AND (sqlc.narg('project_id')::bigint IS NULL OR project_id = sqlc.narg('project_id')::bigint)
-  AND (sqlc.narg('action_prefix')::text IS NULL OR left(action, length(sqlc.narg('action_prefix')::text)) = sqlc.narg('action_prefix')::text)
+  AND (sqlc.narg('action_prefix')::text IS NULL OR (action COLLATE "C" >= sqlc.narg('action_prefix')::text AND action COLLATE "C" < (sqlc.narg('action_prefix')::text || chr(1114111))))
   AND (sqlc.narg('target_id')::text IS NULL OR target_id = sqlc.narg('target_id')::text)
   AND (sqlc.narg('since')::timestamptz IS NULL OR occurred_at >= sqlc.narg('since')::timestamptz)
   AND (sqlc.narg('until')::timestamptz IS NULL OR occurred_at < sqlc.narg('until')::timestamptz)
+  AND (sqlc.narg('min_id')::bigint IS NULL OR id >= sqlc.narg('min_id')::bigint)
+  AND (sqlc.narg('max_id')::bigint IS NULL OR id < sqlc.narg('max_id')::bigint)
   AND (sqlc.narg('after')::bigint IS NULL OR id < sqlc.narg('after')::bigint)
 ORDER BY id DESC
 LIMIT sqlc.arg('limit')::bigint;

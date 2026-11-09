@@ -73,6 +73,7 @@ FROM merge_request_assignees a
 JOIN merge_requests mr ON mr.id = a.merge_request_id
 JOIN users u ON u.id = a.user_id
 WHERE mr.project_id = sqlc.arg(project_id)
+  AND mr.number = ANY(sqlc.arg(numbers)::bigint[])
 ORDER BY mr.number, u.id;
 
 -- name: MergeRequestAssigneeClear :exec

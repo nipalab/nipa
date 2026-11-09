@@ -157,8 +157,18 @@ func (s *MergeRequestRepositorySuite) TestAssigneesAndSearch() {
 	s.Require().NoError(repo.AddAssignee(ctx, first.ID, userID))
 	s.Require().NoError(repo.AddAssignee(ctx, first.ID, otherID))
 
-	assignees, err := repo.ListAssignees(ctx, projectID)
+	s.Require().NoError(repo.AddAssignee(ctx, second.ID, otherID))
+	empty, err := repo.ListAssignees(ctx, projectID, nil)
 	s.Require().NoError(err)
+	s.Empty(empty)
+	only, err := repo.ListAssignees(ctx, projectID, []int64{second.Number})
+	s.Require().NoError(err)
+	s.Len(only, 1)
+	s.Len(only[second.Number], 1)
+
+	assignees, err := repo.ListAssignees(ctx, projectID, []int64{first.Number})
+	s.Require().NoError(err)
+	s.Len(assignees, 1)
 	s.Len(assignees[first.Number], 2)
 	names := []string{assignees[first.Number][0].Name, assignees[first.Number][1].Name}
 	s.Contains(names, "user42")
@@ -175,7 +185,7 @@ func (s *MergeRequestRepositorySuite) TestAssigneesAndSearch() {
 	s.Equal(second.Number, searched[0].Number)
 
 	s.Require().NoError(repo.ClearAssignees(ctx, first.ID))
-	assignees, err = repo.ListAssignees(ctx, projectID)
+	assignees, err = repo.ListAssignees(ctx, projectID, []int64{first.Number, second.Number})
 	s.Require().NoError(err)
 	s.Empty(assignees[first.Number])
 }
@@ -191,7 +201,7 @@ func (s *MergeRequestRepositorySuite) TestErrors() {
 	_, err = repo.List(ctx, 1, domain.MergeRequestListOptions{Limit: 1})
 	s.Error(err)
 
-	_, err = repo.ListAssignees(ctx, 1)
+	_, err = repo.ListAssignees(ctx, 1, []int64{1})
 	s.Error(err)
 
 	s.Error(repo.ClearAssignees(ctx, 1))

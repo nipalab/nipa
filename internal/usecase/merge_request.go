@@ -20,7 +20,7 @@ type mergeRequestRepository interface {
 	SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
 	RecordMerge(ctx context.Context, projectID snow.ID, number int64, sourceCommitID, mergeBaseID *snow.ID) error
-	ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error)
+	ListAssignees(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64][]domain.ReviewActor, error)
 	ClearAssignees(ctx context.Context, mergeRequestID int64) error
 	AddAssignee(ctx context.Context, mergeRequestID int64, userID snow.ID) error
 }
@@ -311,7 +311,7 @@ func (m *MergeRequest) attachAssignees(ctx context.Context, projectID snow.ID, r
 	if len(requests) == 0 {
 		return nil
 	}
-	assignees, err := m.repo.ListAssignees(ctx, projectID)
+	assignees, err := m.repo.ListAssignees(ctx, projectID, mergeRequestNumbers(requests))
 	if err != nil {
 		return err
 	}
@@ -319,6 +319,14 @@ func (m *MergeRequest) attachAssignees(ctx context.Context, projectID snow.ID, r
 		mr.Assignees = assignees[mr.Number]
 	}
 	return nil
+}
+
+func mergeRequestNumbers(requests []*domain.MergeRequest) []int64 {
+	numbers := make([]int64, 0, len(requests))
+	for _, mr := range requests {
+		numbers = append(numbers, mr.Number)
+	}
+	return numbers
 }
 
 // SetAssignees replaces the assignees of an open merge request. Any project

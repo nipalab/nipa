@@ -128,7 +128,7 @@ func TestMergeRequest_Create_WithReviewersAndAssignees(t *testing.T) {
 			requested = append(requested, req.Reviewer.UserID)
 			return &req, nil
 		}).Times(2)
-	f.repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).
+	f.repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), gomock.Any()).
 		Return(map[int64][]domain.ReviewActor{5: {{UserID: 8}, {UserID: 9}}}, nil)
 	f.hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRCreated, snow.ID(1), gomock.Any(), snow.ID(7)).DoAndReturn(
 		func(_ context.Context, _ string, _ snow.ID, mr *domain.MergeRequest, _ snow.ID) error {
@@ -156,7 +156,7 @@ func TestMergeRequest_Create_AssigneesOnlyWithoutReviewSeam(t *testing.T) {
 	f.expectBranches()
 	f.expectCreate(t)
 	f.repo.EXPECT().AddAssignee(gomock.Any(), gomock.Any(), snow.ID(8)).Return(nil)
-	f.repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, errors.New("boom"))
+	f.repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil, errors.New("boom"))
 	f.hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRCreated, snow.ID(1), gomock.Any(), snow.ID(7)).Return(nil)
 
 	created, err := f.mr.Create(permissionCtx(7), snow.ID(1), participantsInput(nil, []snow.ID{8}))

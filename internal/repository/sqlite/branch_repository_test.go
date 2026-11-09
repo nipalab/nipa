@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1343,5 +1344,122 @@ func TestBranchRepositorySQLite_ClosedDatabaseErrors(t *testing.T) {
 	_, err = repo.ListFilesByTree(ctx, 2)
 	require.Error(t, err)
 	_, err = repo.CommitLogUntil(ctx, projectID, snow.ID(2), snow.ID(3), 10)
+	require.Error(t, err)
+}
+
+func seedGraph(t *testing.T, db *sql.DB, projectID snow.ID, parents ...[2]snow.ID) []snow.ID {
+	t.Helper()
+	node := newTestNode(t)
+	ids := make([]snow.ID, 0, len(parents))
+	for i, p := range parents {
+		id := node.Generate()
+		parent := func(idx snow.ID) sql.NullInt64 {
+			if idx == 0 {
+				return sql.NullInt64{}
+			}
+			return sql.NullInt64{Int64: ids[idx-1].Int64(), Valid: true}
+		}
+		_, err := db.ExecContext(context.Background(),
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			id.Int64(), testHashBytes(), projectID.Int64(), 1, parent(p[0]), parent(p[1]), 1, fmt.Sprintf("commit %d", i+1),
+		)
+		require.NoError(t, err)
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func linearGraph(n int) [][2]snow.ID {
+	parents := make([][2]snow.ID, n)
+	for i := 1; i < n; i++ {
+		parents[i] = [2]snow.ID{snow.ID(i)}
+	}
+	return parents
+}
+
+func TestBranchRepositorySQLite_CommitLog_HistoryLongerThanLimit(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+	projectID := seedProject(t, q, 1, "test-project")
+
+	parents := linearGraph(20)
+	parents = append(parents, [2]snow.ID{20, 3})
+	ids := seedGraph(t, db, projectID, parents...)
+	newestFirst := make([]snow.ID, 0, len(ids))
+	for i := len(ids) - 1; i >= 0; i-- {
+		newestFirst = append(newestFirst, ids[i])
+	}
+
+	for _, limit := range []int{1, 2, 5, 20, 21, 50} {
+		got, err := repo.CommitLog(ctx, projectID, ids[20], limit)
+		require.NoError(t, err)
+		want := newestFirst[:min(limit, len(newestFirst))]
+		require.Equal(t, want, logIDs(got), "limit %d", limit)
+	}
+
+	stop := ids[2]
+	for _, c := range []struct{ limit, want int }{{1, 1}, {5, 5}, {18, 18}, {19, 18}, {50, 18}} {
+		got, err := repo.CommitLogUntil(ctx, projectID, ids[20], stop, c.limit)
+		require.NoError(t, err)
+		require.Equal(t, newestFirst[:c.want], logIDs(got), "limit %d", c.limit)
+	}
+}
+
+func logIDs(entries []*domain.CommitLogEntry) []snow.ID {
+	out := make([]snow.ID, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.ID)
+	}
+	return out
+}
+
+func commitSet(commits []*domain.Commit) []snow.ID {
+	out := make([]snow.ID, 0, len(commits))
+	for _, c := range commits {
+		out = append(out, c.ID)
+	}
+	return out
+}
+
+func TestBranchRepositorySQLite_CommitAncestors(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+	projectID := seedProject(t, q, 1, "test-project")
+	otherID := seedProject(t, q, 1, "other-project")
+
+	chain := seedGraph(t, db, projectID, linearGraph(10)...)
+	got, err := repo.CommitAncestors(ctx, projectID, chain[9], 4)
+	require.NoError(t, err)
+	require.ElementsMatch(t, chain[6:], commitSet(got))
+	all, err := repo.CommitAncestors(ctx, projectID, chain[9], 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, chain, commitSet(all))
+	for _, c := range all {
+		require.Equal(t, projectID, c.ProjectID)
+	}
+
+	diamond := seedGraph(t, db, projectID, [2]snow.ID{}, [2]snow.ID{1}, [2]snow.ID{1}, [2]snow.ID{2, 3})
+	got, err = repo.CommitAncestors(ctx, projectID, diamond[3], 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, diamond, commitSet(got))
+	var merge *domain.Commit
+	for _, c := range got {
+		if c.ID == diamond[3] {
+			merge = c
+		}
+	}
+	require.NotNil(t, merge)
+	require.NotNil(t, merge.Parent2ID)
+	require.Equal(t, diamond[2], *merge.Parent2ID)
+
+	foreign := seedGraph(t, db, otherID, linearGraph(2)...)
+	got, err = repo.CommitAncestors(ctx, projectID, foreign[1], 100)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	require.NoError(t, db.Close())
+	_, err = repo.CommitAncestors(ctx, projectID, chain[9], 4)
 	require.Error(t, err)
 }

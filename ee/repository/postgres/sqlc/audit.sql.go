@@ -65,13 +65,15 @@ SELECT id, occurred_at, actor_type, actor_user_id, actor_label, action, org_id, 
 WHERE ($1::bigint IS NULL OR actor_user_id = $1::bigint)
   AND ($2::bigint IS NULL OR org_id = $2::bigint)
   AND ($3::bigint IS NULL OR project_id = $3::bigint)
-  AND ($4::text IS NULL OR left(action, length($4::text)) = $4::text)
+  AND ($4::text IS NULL OR (action COLLATE "C" >= $4::text AND action COLLATE "C" < ($4::text || chr(1114111))))
   AND ($5::text IS NULL OR target_id = $5::text)
   AND ($6::timestamptz IS NULL OR occurred_at >= $6::timestamptz)
   AND ($7::timestamptz IS NULL OR occurred_at < $7::timestamptz)
-  AND ($8::bigint IS NULL OR id < $8::bigint)
+  AND ($8::bigint IS NULL OR id >= $8::bigint)
+  AND ($9::bigint IS NULL OR id < $9::bigint)
+  AND ($10::bigint IS NULL OR id < $10::bigint)
 ORDER BY id DESC
-LIMIT $9::bigint
+LIMIT $11::bigint
 `
 
 type AuditLogListParams struct {
@@ -82,6 +84,8 @@ type AuditLogListParams struct {
 	TargetID     sql.NullString `json:"target_id"`
 	Since        sql.NullTime   `json:"since"`
 	Until        sql.NullTime   `json:"until"`
+	MinID        sql.NullInt64  `json:"min_id"`
+	MaxID        sql.NullInt64  `json:"max_id"`
 	After        sql.NullInt64  `json:"after"`
 	Limit        int64          `json:"limit"`
 }
@@ -95,6 +99,8 @@ func (q *Queries) AuditLogList(ctx context.Context, arg AuditLogListParams) ([]A
 		arg.TargetID,
 		arg.Since,
 		arg.Until,
+		arg.MinID,
+		arg.MaxID,
 		arg.After,
 		arg.Limit,
 	)

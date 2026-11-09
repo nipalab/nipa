@@ -9,6 +9,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const mergeRequestAssigneeAdd = `-- name: MergeRequestAssigneeAdd :exec
@@ -45,8 +47,14 @@ FROM merge_request_assignees a
 JOIN merge_requests mr ON mr.id = a.merge_request_id
 JOIN users u ON u.id = a.user_id
 WHERE mr.project_id = $1
+  AND mr.number = ANY($2::bigint[])
 ORDER BY mr.number, u.id
 `
+
+type MergeRequestAssigneeListParams struct {
+	ProjectID int64   `json:"project_id"`
+	Numbers   []int64 `json:"numbers"`
+}
 
 type MergeRequestAssigneeListRow struct {
 	MergeRequestNumber int64          `json:"merge_request_number"`
@@ -55,8 +63,8 @@ type MergeRequestAssigneeListRow struct {
 	UserPhotoUrl       sql.NullString `json:"user_photo_url"`
 }
 
-func (q *Queries) MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestAssigneeList, projectID)
+func (q *Queries) MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error) {
+	rows, err := q.db.QueryContext(ctx, mergeRequestAssigneeList, arg.ProjectID, pq.Array(arg.Numbers))
 	if err != nil {
 		return nil, err
 	}

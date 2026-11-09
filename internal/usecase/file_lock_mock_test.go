@@ -222,3 +222,41 @@ func (mr *MockfileLockGateMockRecorder) ReleaseLanded(ctx, projectID, branch, pa
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseLanded", reflect.TypeOf((*MockfileLockGate)(nil).ReleaseLanded), ctx, projectID, branch, paths, holder)
 }
+
+// MocklockSerializer is a mock of lockSerializer interface.
+type MocklockSerializer struct {
+	ctrl     *gomock.Controller
+	recorder *MocklockSerializerMockRecorder
+	isgomock struct{}
+}
+
+// MocklockSerializerMockRecorder is the mock recorder for MocklockSerializer.
+type MocklockSerializerMockRecorder struct {
+	mock *MocklockSerializer
+}
+
+// NewMocklockSerializer creates a new mock instance.
+func NewMocklockSerializer(ctrl *gomock.Controller) *MocklockSerializer {
+	mock := &MocklockSerializer{ctrl: ctrl}
+	mock.recorder = &MocklockSerializerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocklockSerializer) EXPECT() *MocklockSerializerMockRecorder {
+	return m.recorder
+}
+
+// LockProject mocks base method.
+func (m *MocklockSerializer) LockProject(ctx context.Context, projectID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockProject", ctx, projectID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockProject indicates an expected call of LockProject.
+func (mr *MocklockSerializerMockRecorder) LockProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockProject", reflect.TypeOf((*MocklockSerializer)(nil).LockProject), ctx, projectID)
+}
