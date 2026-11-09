@@ -863,3 +863,35 @@ func TestMergeRequestReview_RequestReview_RequiresProjectAccess(t *testing.T) {
 	_, err := review.WithAccessChecker(stubAccessChecker{}).RequestReview(permissionCtx(9), snow.ID(1), 5, snow.ID(8))
 	requireUserError(t, err)
 }
+
+func TestMergeRequestReview_MergedUsesRecordedHead(t *testing.T) {
+	base, head := snow.ID(9), snow.ID(11)
+	merged := mergedMergeRequest(&base, &head)
+
+	t.Run("threads are outdated against the merged head", func(t *testing.T) {
+		review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
+		permUC.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		mrRepo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(merged, nil)
+		repo.EXPECT().ListThreads(gomock.Any(), int64(5), nil).Return([]*domain.MergeRequestThread{
+			{ID: 1, FilePath: "main.go", HeadCommitID: snowPtr(11)},
+			{ID: 2, FilePath: "main.go", HeadCommitID: snowPtr(10)},
+		}, nil)
+		permUC.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
+
+		threads, err := review.Threads(permissionCtx(9), snow.ID(1), 5, nil)
+		require.NoError(t, err)
+		require.False(t, threads[0].Outdated)
+		require.True(t, threads[1].Outdated)
+	})
+
+	t.Run("anchors resolve against the recorded range", func(t *testing.T) {
+		review, _, _, _, _, merger, _ := newTestMergeRequestReview(t)
+		merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), &base, head).Return(textFileDiff(), nil)
+
+		line := 3
+		path, _, newLine, err := review.anchor(context.Background(), snow.ID(1), merged, "main.go", nil, &line)
+		require.NoError(t, err)
+		require.Equal(t, "main.go", path)
+		require.Equal(t, 3, *newLine)
+	})
+}

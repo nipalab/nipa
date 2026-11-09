@@ -548,6 +548,102 @@ func TestMergeRequest_Commits_EmptySource(t *testing.T) {
 	require.Empty(t, commits)
 }
 
+func mergedMergeRequest(base, head *snow.ID) *domain.MergeRequest {
+	mr := openMergeRequest()
+	mr.Status = domain.MergeRequestMerged
+	mr.MergeBaseCommitID = base
+	mr.MergedSourceCommitID = head
+	return mr
+}
+
+func TestMergeRequest_MergedUsesRecordedRange(t *testing.T) {
+	base, head := snow.ID(9), snow.ID(11)
+
+	t.Run("diff without the source branch", func(t *testing.T) {
+		mr, repo, _, perm, merger := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(mergedMergeRequest(&base, &head), nil)
+		merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), &base, head).Return(nil, nil)
+
+		_, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+	})
+
+	t.Run("commits without the source branch", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(mergedMergeRequest(&base, &head), nil)
+		branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(1), head, base, mergeRequestCommitLimit).
+			Return([]*domain.CommitLogEntry{{Commit: domain.Commit{ID: head}}}, nil)
+
+		commits, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+		require.Len(t, commits, 1)
+	})
+
+	t.Run("commits of a root merge log the whole source", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(mergedMergeRequest(nil, &head), nil)
+		branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(1), head, snow.ID(0), mergeRequestCommitLimit).Return(nil, nil)
+
+		_, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+	})
+
+	t.Run("merged without a recorded head falls back to the branches", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(mergedMergeRequest(nil, nil), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
+
+		_, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.True(t, domain.IsErrorNotFound(err))
+	})
+}
+
+func TestMergeRequest_Diff_EdgeCases(t *testing.T) {
+	sourceHead := snow.ID(11)
+
+	t.Run("empty source", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(&domain.Branch{ID: 3, ProjectID: 1}, nil)
+
+		files, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+		require.Empty(t, files)
+	})
+
+	t.Run("empty target diffs the whole source", func(t *testing.T) {
+		mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(&domain.Branch{ID: 2, ProjectID: 1}, nil)
+		merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), (*snow.ID)(nil), sourceHead).Return(nil, nil)
+
+		_, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+	})
+
+	t.Run("branch lookup errors", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		boom := errors.New("boom")
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).Times(2)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, boom)
+		_, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.ErrorIs(t, err, boom)
+
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, boom)
+		_, err = mr.Diff(permissionCtx(7), snow.ID(1), 5)
+		require.ErrorIs(t, err, boom)
+	})
+}
+
 func TestMergeRequest_ErrorPaths(t *testing.T) {
 	t.Run("create needs a claim and read access", func(t *testing.T) {
 		mr, _, _, perm, _ := newTestMergeRequest(t)

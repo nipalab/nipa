@@ -661,30 +661,50 @@ func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64
 	if err != nil {
 		return nil, err
 	}
-	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
-	if domain.IsErrorNotFound(err) {
-		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", mr.SourceBranch))
-	}
+	base, head, err := m.changeRange(ctx, projectID, mr)
 	if err != nil {
 		return nil, err
 	}
-	if source.CommitID == nil {
+	if head == nil {
 		return []diff.FileDiff{}, nil
 	}
+	return m.merger.TreeDiffBetween(ctx, projectID, base, *head)
+}
 
-	var baseID *snow.ID
-	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
-	if err == nil && target.CommitID != nil {
-		info, err := m.merger.GetMergeBase(ctx, projectID,
-			MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
-		if err != nil {
-			return nil, err
-		}
-		baseID = info.MergeBaseCommitID
-	} else if err != nil && !domain.IsErrorNotFound(err) {
-		return nil, err
+// changeRange returns the merge base and source head a request's changes span.
+// A merged request keeps the range recorded when it landed, so its diff and
+// commits survive the source branch being deleted or moving on; otherwise the
+// live branch heads are used. A nil head means the source has no commits.
+func (m *MergeRequest) changeRange(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest) (*snow.ID, *snow.ID, error) {
+	if mr.Status == domain.MergeRequestMerged && mr.MergedSourceCommitID != nil {
+		return mr.MergeBaseCommitID, mr.MergedSourceCommitID, nil
 	}
-	return m.merger.TreeDiffBetween(ctx, projectID, baseID, *source.CommitID)
+	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
+	if domain.IsErrorNotFound(err) {
+		return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", mr.SourceBranch))
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if source.CommitID == nil {
+		return nil, nil, nil
+	}
+	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
+	if domain.IsErrorNotFound(err) {
+		return nil, source.CommitID, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if target.CommitID == nil {
+		return nil, source.CommitID, nil
+	}
+	info, err := m.merger.GetMergeBase(ctx, projectID,
+		MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
+	if err != nil {
+		return nil, nil, err
+	}
+	return info.MergeBaseCommitID, source.CommitID, nil
 }
 
 // Commits lists the source-branch commits the merge request adds on top of the
@@ -695,32 +715,18 @@ func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number in
 	if err != nil {
 		return nil, err
 	}
-	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
-	if domain.IsErrorNotFound(err) {
-		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", mr.SourceBranch))
-	}
+	base, head, err := m.changeRange(ctx, projectID, mr)
 	if err != nil {
 		return nil, err
 	}
-	if source.CommitID == nil {
+	if head == nil {
 		return []*domain.CommitLogEntry{}, nil
 	}
-
 	var stop snow.ID
-	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
-	if err == nil && target.CommitID != nil {
-		info, err := m.merger.GetMergeBase(ctx, projectID,
-			MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
-		if err != nil {
-			return nil, err
-		}
-		if info.MergeBaseCommitID != nil {
-			stop = *info.MergeBaseCommitID
-		}
-	} else if err != nil && !domain.IsErrorNotFound(err) {
-		return nil, err
+	if base != nil {
+		stop = *base
 	}
-	return m.branchRepo.CommitLogUntil(ctx, projectID, *source.CommitID, stop, mergeRequestCommitLimit)
+	return m.branchRepo.CommitLogUntil(ctx, projectID, *head, stop, mergeRequestCommitLimit)
 }
 
 func (m *MergeRequest) load(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {

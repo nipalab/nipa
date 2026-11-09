@@ -167,6 +167,15 @@ func TestEndToEnd_MergeRequestSquashStrategy(t *testing.T) {
 
 	_, err = env.rpc.GetBranchByName(env.adminCtx, &pb.GetBranchByNameRequest{Context: env.project, Name: "feature"})
 	require.Equal(t, codes.NotFound, status.Code(err), "delete_source must remove the merged branch")
+
+	diffRes, err := env.rpc.GetMergeRequestDiff(env.adminCtx, &pb.GetMergeRequestDiffRequest{Context: env.project, Number: number})
+	require.NoError(t, err, "a merged request keeps its diff after the source branch is gone")
+	require.Len(t, diffRes.GetFiles(), 1)
+	require.Equal(t, "a.txt", diffRes.GetFiles()[0].GetPath())
+	commitsRes, err := env.rpc.ListMergeRequestCommits(env.adminCtx, &pb.ListMergeRequestCommitsRequest{Context: env.project, Number: number})
+	require.NoError(t, err)
+	require.Len(t, commitsRes.GetCommits(), 1)
+	require.Equal(t, "feature edit", commitsRes.GetCommits()[0].GetMessage())
 }
 
 func TestEndToEnd_MergeRequestMergeCommitStrategy(t *testing.T) {
