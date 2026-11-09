@@ -869,12 +869,13 @@ describe('BranchesPage', () => {
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'feature')
     await act(async () => {
-      findButton('Add branch').click()
+      findButton('New branch').click()
     })
     await waitFor(() => window.location.pathname === '/acme/game/branches/new')
-    await waitFor(() => container.querySelector('input') !== null)
+    await waitFor(() => container.querySelector('input[placeholder="e.g. feature-new-level"]') !== null)
+    expect(byName('Choose a source branch')?.textContent).toContain('main')
 
-    const nameInput = container.querySelector('input') as HTMLInputElement
+    const nameInput = container.querySelector('input[placeholder="e.g. feature-new-level"]') as HTMLInputElement
     await act(async () => {
       setInputValue(nameInput, 'feature')
     })
@@ -902,8 +903,9 @@ describe('BranchesPage', () => {
 
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'feature')
+    expect(byName('Delete branch main')).toBeNull()
     await act(async () => {
-      findButton('Delete').click()
+      byName('Delete branch feature')?.click()
     })
     await waitFor(() => (document.body.textContent?.includes('Delete branch feature') ?? false))
     await act(async () => {
@@ -928,10 +930,7 @@ describe('BranchesPage', () => {
 
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'trunk')
-    const deleteButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Delete',
-    )
-    expect(deleteButton).toBeUndefined()
+    expect(byName('Delete branch trunk')).toBeNull()
     act(() => root.unmount())
   })
 })
@@ -952,7 +951,101 @@ describe('CommitsPage', () => {
     const { container, root } = await renderApp('/acme/game/commits?branch=main&path=src/main.ts')
     await waitForText(container, 'touch file')
     expect(urls.some((url) => url.includes('path=src%2Fmain.ts'))).toBe(true)
-    expect(container.textContent).toContain('src/main.ts')
+    expect(container.textContent).toContain('History for src/main.ts')
+    expect(container.textContent).toContain('Bob committed')
+    expect(container.textContent).toMatch(/Commits on /)
+    expect(container.querySelector('a[href="/acme/game/commits/c2?branch=main"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/tree/c2"]')).not.toBeNull()
+    act(() => root.unmount())
+  })
+
+  it('shows a commit page with its header and diff summary', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/commits/c2/diff')) {
+        return jsonResponse({
+          commit_id: 'c2',
+          files: [
+            {
+              path: 'src/main.ts',
+              status: 'modified',
+              binary: false,
+              additions: 3,
+              deletions: 1,
+              hunks: [{ old_start: 1, old_lines: 1, new_start: 1, new_lines: 1, lines: [{ kind: 'add', new_line: 1, text: 'hello' }] }],
+            },
+          ],
+        })
+      }
+      if (url.includes('/commits?')) {
+        expect(url).toContain('start=c2')
+        return jsonResponse([
+          {
+            id: 'c2',
+            parent_1_id: 'c1',
+            message: 'touch file\n\nlonger body',
+            author_name: 'Bob',
+            created_at: new Date().toISOString(),
+          },
+        ])
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/commits/c2')
+    await waitForText(container, 'longer body')
+    expect(container.querySelector('.nipa-commit-title')?.textContent).toBe('touch file')
+    expect(container.textContent).toContain('Bob committed')
+    expect(container.textContent).toContain('1 parent c1')
+    expect(container.textContent).toContain('commit c2')
+    expect(container.textContent).toContain('Showing 1 changed file with 3 additions and 1 deletions.')
+    expect(container.querySelector('a[href="/acme/game/tree/c2"]')?.textContent).toContain('Browse files')
+    expect(container.querySelector('a[href="/acme/game/commits"]')?.textContent).toContain('Commits')
+    act(() => root.unmount())
+  })
+})
+
+describe('RepoPage toolbar', () => {
+  it('offers clone instructions, branch counts and a parent directory row', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/tree')) {
+        return jsonResponse({
+          path: 'src',
+          entries: [{ name: 'main.ts', path: 'src/main.ts', type: 'file', size: 10 }],
+          latest_commit: { id: 'abcdef1234', message: 'touch file\nbody', author_name: 'Bob', created_at: new Date().toISOString() },
+        })
+      }
+      return null
+    })
+    const { container, root } = await renderApp('/acme/game/tree/main')
+    await waitForText(container, 'main.ts')
+    expect(container.textContent).toContain('1 branch')
+    expect(container.querySelector('a[href="/acme/game/tags"]')).not.toBeNull()
+    expect(container.textContent).toContain('Bob')
+    expect(container.querySelector('a[href="/acme/game/commits/abcdef1234?branch=main"]')?.textContent).toBe('touch file')
+    expect(container.textContent).toContain('abcdef1')
+
+    await act(async () => {
+      findButton('Code').click()
+    })
+    await waitFor(() => (document.body.textContent ?? '').includes('Clone with the nipa CLI'))
+    expect(document.body.textContent).toContain(`nipa clone ${window.location.origin}/acme/game`)
+    act(() => root.unmount())
+
+    const nested = await renderApp('/acme/game/tree/main/src')
+    await waitForText(nested.container, 'main.ts')
+    expect(nested.container.querySelector('a[aria-label="Parent directory"]')?.getAttribute('href')).toBe('/acme/game/tree/main')
+    act(() => nested.root.unmount())
+  })
+
+  it('shows quick setup for an empty repository', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/branches')) return jsonResponse([])
+      return null
+    })
+    const { container, root } = await renderApp('/acme/game')
+    await waitForText(container, 'Quick setup')
+    expect(container.textContent).toContain('nipa push -m "Initial commit"')
+    expect(container.textContent).toContain('cd game')
     act(() => root.unmount())
   })
 })

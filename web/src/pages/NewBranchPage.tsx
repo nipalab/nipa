@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Button, FormControl, TextInput } from '@primer/react'
+import { Button, FormControl, Stack, TextInput } from '@primer/react'
+import { GitBranchIcon } from '@primer/octicons-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createBranch } from '../api/endpoints'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { SourcePicker } from '../components/repo/SourcePicker'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { FormCard } from '../components/SettingsCard'
 import { ErrorBanner, NoPermission } from '../components/ui'
@@ -23,7 +25,7 @@ function branchNameError(name: string): string | null {
 export default function NewBranchPage() {
   const { org = '', project = '' } = useParams()
   const navigate = useNavigate()
-  const { permissionsLoading, branchesLoading, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, permissionsLoading, branchesLoading, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const [name, setName] = useState('')
   const [from, setFrom] = useState('')
   const [saving, setSaving] = useState(false)
@@ -37,7 +39,6 @@ export default function NewBranchPage() {
     active: 'branches' as const,
     rev: defaultBranch,
     canAdmin,
-    canWrite,
     heading: 'New branch',
     crumbs: [{ label: 'Branches', to: `/${org}/${project}/branches` }, { label: 'New branch' }],
   }
@@ -71,18 +72,31 @@ export default function NewBranchPage() {
       <ErrorBanner error={actionError} />
       <FormCard onSubmit={handleSubmit}>
         <FormControl required>
-          <FormControl.Label>Name</FormControl.Label>
-          <TextInput block autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-          {name !== '' && nameError && <FormControl.Validation variant="error">{nameError}</FormControl.Validation>}
+          <FormControl.Label>New branch name</FormControl.Label>
+          <TextInput
+            block
+            autoFocus
+            leadingVisual={GitBranchIcon}
+            placeholder="e.g. feature-new-level"
+            value={name}
+            validationStatus={name !== '' && nameError ? 'error' : undefined}
+            onChange={(event) => setName(event.target.value)}
+          />
+          {name !== '' && nameError ? (
+            <FormControl.Validation variant="error">{nameError}</FormControl.Validation>
+          ) : (
+            <FormControl.Caption>No spaces or slashes.</FormControl.Caption>
+          )}
         </FormControl>
-        <FormControl>
-          <FormControl.Label>From (optional)</FormControl.Label>
-          <TextInput block value={from} onChange={(event) => setFrom(event.target.value)} />
-          <FormControl.Caption>Branch name or commit id. Forks from the default branch when empty.</FormControl.Caption>
-        </FormControl>
-        <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving} style={{ alignSelf: 'flex-start' }}>
-          Create branch
-        </Button>
+        <SourcePicker label="Source" branches={branches ?? []} defaultBranch={defaultBranch} onChange={setFrom} />
+        <Stack direction="horizontal" gap="condensed">
+          <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving}>
+            Create branch
+          </Button>
+          <Button onClick={() => navigate(`/${org}/${project}/branches`)} disabled={saving}>
+            Cancel
+          </Button>
+        </Stack>
       </FormCard>
     </RepoPageShell>
   )

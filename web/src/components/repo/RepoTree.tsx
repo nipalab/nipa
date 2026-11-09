@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { TreeEntryResponse } from '../../api/models'
 import { fileIcon } from './fileIcon'
 import { absoluteTime, commitTitle, relativeTime } from './format'
-import { blobUrl, commitUrl, commitsUrl, treeUrl } from './repoPaths'
+import { blobUrl, commitUrl, commitsUrl, parentPath, treeUrl } from './repoPaths'
 
 function TreeRow({
   org,
@@ -99,11 +99,13 @@ export function RepoTree({
   org,
   project,
   rev,
+  path = '',
   entries,
 }: {
   org: string
   project: string
   rev: string
+  path?: string
   entries: TreeEntryResponse[]
 }) {
   return (
@@ -111,12 +113,21 @@ export function RepoTree({
       <thead>
         <tr style={{ background: 'var(--bgColor-muted)', color: 'var(--fgColor-muted)', fontSize: 12 }}>
           <th style={{ textAlign: 'left', fontWeight: 500, padding: '8px 8px 8px 16px' }}>Name</th>
-          <th style={{ textAlign: 'left', fontWeight: 500, padding: '8px 8px' }}>Last commit</th>
-          <th style={{ textAlign: 'right', fontWeight: 500, padding: '8px 16px 8px 8px' }}>Last modified</th>
+          <th style={{ textAlign: 'left', fontWeight: 500, padding: '8px 8px' }}>Last commit message</th>
+          <th style={{ textAlign: 'right', fontWeight: 500, padding: '8px 16px 8px 8px' }}>Last commit date</th>
           <th />
         </tr>
       </thead>
       <tbody>
+        {path && (
+          <tr style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
+            <td colSpan={4} style={{ padding: '6px 16px' }}>
+              <PrimerLink as={Link} to={treeUrl(org, project, rev, parentPath(path))} aria-label="Parent directory" style={{ fontWeight: 600 }}>
+                ..
+              </PrimerLink>
+            </td>
+          </tr>
+        )}
         {entries.map((entry) => (
           <TreeRow key={entry.path} org={org} project={project} rev={rev} entry={entry} />
         ))}

@@ -17,7 +17,6 @@ import ProjectSettingsPage from '../pages/ProjectSettingsPage'
 import TagsPage from '../pages/TagsPage'
 import {
   buttonByText,
-  buttonsByText,
   cancelDialog,
   click,
   confirmDialog,
@@ -136,6 +135,18 @@ describe('usePaged', () => {
   })
 })
 
+function byName(name: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
 describe('TagsPage', () => {
   const pattern = '/:org/:project/tags'
   const url = '/acme/game/tags'
@@ -154,18 +165,23 @@ describe('TagsPage', () => {
     await waitFor(() => document.body.textContent?.includes('Tag name') ?? false)
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
     expect(submit()?.disabled).toBe(true)
-    const inputs = document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input')
-    await type(inputs[0], 'v3')
-    await type(inputs[1], 'feature')
+    const nameInput = () => document.body.querySelector<HTMLInputElement>('[role="dialog"] input[placeholder="e.g. v1.0.0"]')
+    await type(nameInput(), 'v 3')
+    expect(document.body.textContent).toContain('Tag names cannot contain spaces.')
+    expect(submit()?.disabled).toBe(true)
+    await type(nameInput(), 'v3')
+    expect(byName('Choose a source branch')?.textContent).toContain('main')
+    await click(buttonByText(document.body, 'Use a specific commit instead'))
+    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input[aria-label="Commit ID"]'), ' c9 ')
     await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] textarea'), 'notes')
     await click(submit())
     await flush()
-    expect(api.createTag).toHaveBeenCalledWith('acme', 'game', 'v3', 'feature', 'notes')
+    expect(api.createTag).toHaveBeenCalledWith('acme', 'game', 'v3', 'c9', 'notes')
 
-    await click(buttonsByText(container, 'Delete')[0])
+    await click(byName('Delete tag v1'))
     await cancelDialog()
     expect(api.deleteTag).not.toHaveBeenCalled()
-    await click(buttonsByText(container, 'Delete')[0])
+    await click(byName('Delete tag v1'))
     await confirmDialog('Delete tag')
     expect(api.deleteTag).toHaveBeenCalledWith('acme', 'game', 'v1')
   })
@@ -175,10 +191,12 @@ describe('TagsPage', () => {
     api.listTags.mockResolvedValueOnce(page).mockResolvedValueOnce([tag(51)])
     const { container } = await renderRoute(pattern, url, <TagsPage />)
     await waitFor(() => buttonByText(container, 'Load more') !== null)
+    const tagLinks = () => [...container.querySelectorAll('a.nipa-list-row-title')].map((link) => link.textContent)
     expect(container.textContent).toContain('50+')
-    expect(container.textContent).not.toContain('v51')
+    expect(tagLinks()).toHaveLength(50)
+    expect(tagLinks()).not.toContain('v51')
     await click(buttonByText(container, 'Load more'))
-    await waitFor(() => (container.textContent ?? '').includes('v51'))
+    await waitFor(() => tagLinks().includes('v51'))
     expect(api.listTags).toHaveBeenLastCalledWith('acme', 'game', { limit: 51, after: page[49] })
     expect(buttonByText(container, 'Load more')).toBeNull()
   })
@@ -188,7 +206,7 @@ describe('TagsPage', () => {
     allow(PERMISSION_READ)
     api.listTags.mockResolvedValue([])
     const empty = await renderRoute(pattern, url, <TagsPage />)
-    await waitFor(() => (empty.container.textContent ?? '').includes('No tags yet.'))
+    await waitFor(() => (empty.container.textContent ?? '').includes('There aren’t any tags yet'))
     expect(buttonByText(empty.container, 'New tag')).toBeNull()
 
     allow(PERMISSION_READ | PERMISSION_WRITE)
@@ -206,8 +224,8 @@ describe('TagsPage', () => {
     api.listTags.mockResolvedValue([tag(1)])
     api.deleteTag.mockRejectedValue(new Error('tag is in use'))
     const { container } = await renderRoute(pattern, url, <TagsPage />)
-    await waitFor(() => buttonByText(container, 'Delete') !== null)
-    await click(buttonByText(container, 'Delete'))
+    await waitFor(() => byName('Delete tag v1') !== null)
+    await click(byName('Delete tag v1'))
     await confirmDialog('Delete tag')
     await waitFor(() => (container.textContent ?? '').includes('tag is in use'))
     await click(container.querySelector('button[class*="BannerDismiss"]'))

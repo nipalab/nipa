@@ -894,3 +894,237 @@
   line-height: 18px;
   text-align: center;
 }
+
+.nipa-code-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nipa-code-toolbar-left,
+.nipa-code-toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nipa-code-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  color: var(--fgColor-muted);
+  font-size: 14px;
+}
+
+.nipa-code-count strong {
+  color: var(--fgColor-default);
+}
+
+.nipa-clone-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.nipa-clone-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nipa-clone-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fgColor-muted);
+}
+
+.nipa-clone-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 6px;
+  background: var(--bgColor-inset);
+}
+
+.nipa-clone-field code,
+.nipa-clone-field pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--fontStack-monospace);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.nipa-setup-steps {
+  align-items: flex-start;
+  padding: 10px 4px 10px 12px;
+}
+
+.nipa-commit-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bgColor-muted);
+  border-bottom: 1px solid var(--borderColor-default);
+  font-size: 14px;
+}
+
+.nipa-commit-bar-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-bar-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-bar-history {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fgColor-default);
+}
+
+.nipa-mono-link {
+  font-family: var(--fontStack-monospace);
+  font-size: 12px;
+  color: var(--fgColor-muted);
+}
+
+.nipa-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.nipa-commit-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bgColor-muted);
+  border-bottom: 1px solid var(--borderColor-default);
+}
+
+.nipa-commit-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nipa-commit-body {
+  margin: 8px 0 0;
+  font-family: inherit;
+  font-size: 14px;
+  white-space: pre-wrap;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-author,
+.nipa-commit-ids,
+.nipa-commit-ids > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nipa-commit-author strong {
+  color: var(--fgColor-default);
+}
+
+.nipa-commit-ids {
+  gap: 16px;
+}
+
+.nipa-diff-summary {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nipa-commit-day {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--fgColor-muted);
+}
+
+.nipa-commit-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.nipa-commit-row-meta strong {
+  color: var(--fgColor-default);
+}
+
+.nipa-sha-group {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 8px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 6px;
+}
+
+.nipa-branch-name {
+  font-family: var(--fontStack-monospace);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nipa-tag-message {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--fgColor-default);
+  white-space: pre-wrap;
+}
