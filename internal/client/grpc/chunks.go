@@ -169,6 +169,7 @@ func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient,
 	if len(hashes) == 0 {
 		return nil, nil
 	}
+	domain.NotifyVerify(ctx, len(hashes))
 	c.confirmMu.Lock()
 	res, err := client.ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
 		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},

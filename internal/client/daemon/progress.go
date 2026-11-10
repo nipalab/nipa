@@ -66,6 +66,10 @@ func (p *progressAdapter) UploadProgress(objectsDone int, bytesDone int64) {
 	p.emit(p.uploadProgress(int64(objectsDone), bytesDone))
 }
 
+func (p *progressAdapter) UploadVerify(objects int) {
+	p.emit(opProgressEvent("verify", 0, int64(objects), 0, 0))
+}
+
 func (p *progressAdapter) UploadEnd() {
 	p.mu.Lock()
 	total := p.upTotal

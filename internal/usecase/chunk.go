@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -431,9 +432,37 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	for _, proof := range proofs {
 		proofByHash[proof.Hash] = proof
 	}
+	type possession struct {
+		size    int64
+		present bool
+	}
+	checks := make(map[domain.Hash]possession)
+	var checkMu sync.Mutex
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(presignExistsConcurrency)
+	for _, hash := range hashes {
+		_, isLinked := linked[hash]
+		proof, supplied := proofByHash[hash]
+		if isLinked && !supplied {
+			continue
+		}
+		group.Go(func() error {
+			size, present, err := c.verifyPossession(groupCtx, project, hash, proof)
+			if err != nil {
+				return err
+			}
+			checkMu.Lock()
+			checks[hash] = possession{size: size, present: present}
+			checkMu.Unlock()
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, 0, err
+	}
 	for _, hash := range hashes {
 		linkedSize, isLinked := linked[hash]
-		proof, supplied := proofByHash[hash]
+		_, supplied := proofByHash[hash]
 		if isLinked && !supplied {
 			confirmedBytes += linkedSize
 			if c.ledger != nil {
@@ -441,23 +470,20 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			}
 			continue
 		}
-		size, present, err := c.verifyPossession(ctx, project, hash, proof)
-		if err != nil {
-			return nil, 0, err
-		}
-		if present && !isLinked {
+		check := checks[hash]
+		if check.present && !isLinked {
 			toLink = append(toLink, hash)
 		}
-		if !present {
+		if !check.present {
 			missing = append(missing, hash)
 			continue
 		}
-		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
+		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, check.size); err != nil {
 			return nil, 0, err
 		}
-		confirmedBytes += size
+		confirmedBytes += check.size
 		if c.ledger != nil {
-			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: size})
+			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: check.size})
 		}
 	}
 	if len(attributed) > 0 {

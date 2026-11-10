@@ -41,6 +41,10 @@ func (p *progressRenderer) UploadProgress(objectsDone int, bytesDone int64) {
 	p.update(objectsDone, bytesDone)
 }
 
+func (p *progressRenderer) UploadVerify(objects int) {
+	p.writeLine(fmt.Sprintf("  verifying %d objects on the server...", objects))
+}
+
 func (p *progressRenderer) UploadEnd() {
 	p.finish("Uploaded")
 }

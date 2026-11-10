@@ -268,6 +268,13 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	var onChunk func(ch *serverDomain.ChunkData)
 	if prog != nil {
 		prog.UploadStart(estObjects, estBytes)
+		if verify, ok := prog.(UploadVerifyProgress); ok {
+			ctx = domain.WithVerifyObserver(ctx, func(objects int) {
+				progressMu.Lock()
+				defer progressMu.Unlock()
+				verify.UploadVerify(objects)
+			})
+		}
 		onChunk = func(ch *serverDomain.ChunkData) {
 			progressMu.Lock()
 			defer progressMu.Unlock()

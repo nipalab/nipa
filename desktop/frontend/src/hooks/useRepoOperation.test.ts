@@ -95,6 +95,8 @@ describe("describeProgress", () => {
     expect(
       describeProgress({ op: "push", cancelling: false, progress: progress({ phase: "upload", objectsDone: 1, objectsTotal: 4, bytesDone: 1024, bytesTotal: 4096 }) }),
     ).toEqual({ label: "Uploading 1/4 · 1.0 KB of 4.0 KB", percent: 25 });
+    expect(describeProgress({ op: "push", cancelling: false, progress: progress({ phase: "verify", objectsTotal: 65 }) }).label).toBe("Verifying 65 objects on the server…");
+    expect(describeProgress({ op: "push", cancelling: false, progress: progress({ phase: "verify", objectsTotal: 1 }) }).label).toBe("Verifying 1 object on the server…");
     expect(describeProgress({ op: "update", cancelling: false, progress: progress({ phase: "download", objectsDone: 1, objectsTotal: 2 }) })).toEqual({
       label: "Downloading 1/2",
       percent: 50,

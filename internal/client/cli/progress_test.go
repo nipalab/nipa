@@ -140,3 +140,15 @@ func TestProgressRenderer_SmallTransfer(t *testing.T) {
 	require.Contains(t, out, "Uploading 1 objects (512 B)...")
 	require.Contains(t, out, "Uploaded 1 objects (512 B)")
 }
+
+func TestProgressRenderer_UploadVerify(t *testing.T) {
+	var buf bytes.Buffer
+	p := newProgressRenderer(&buf)
+	p.UploadStart(65, 2<<20)
+	p.UploadVerify(65)
+	require.Contains(t, buf.String(), "verifying 65 objects on the server...")
+	p.UploadProgress(65, 2<<20)
+	p.UploadEnd()
+	lines := replayTerminal(buf.String())
+	require.Contains(t, lines[len(lines)-1], "Uploaded 65 objects")
+}
