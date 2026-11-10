@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider, RequireAuth, useAuth } from './auth'
+import { AuthProvider, RedirectIfAuthenticated, RequireAuth, useAuth } from './auth'
 import { Loading } from './components/ui'
 import { APP_HOME } from './routes'
 import AppShell from './components/AppShell'
@@ -38,8 +38,10 @@ export default function App() {
         <Suspense fallback={<Loading />}>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route element={<RedirectIfAuthenticated />}>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+            </Route>
             <Route path="/verify" element={<VerifyPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route element={<RequireAuth />}>

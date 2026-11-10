@@ -70,6 +70,13 @@ function stubRoutes(extra: RouteStub = () => null) {
   )
 }
 
+function stubAnonymous(extra: RouteStub = () => null) {
+  stubRoutes((url, init) => {
+    if (url.includes('/auth/refresh')) return jsonResponse({ error: 'refresh token required' }, 401)
+    return extra(url, init)
+  })
+}
+
 function setInputValue(el: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
   setter?.call(el, value)
@@ -115,7 +122,7 @@ afterEach(() => {
 describe('RegisterPage', () => {
   it('registers an account and offers resending the confirmation email', async () => {
     const calls: { url: string; method: string; body: unknown }[] = []
-    stubRoutes((url, init) => {
+    stubAnonymous((url, init) => {
       const method = init?.method ?? 'GET'
       if (url.endsWith('/api/v1/auth/register') && method === 'POST') {
         calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
@@ -394,7 +401,7 @@ describe('SocialButtons', () => {
   })
 
   it('routes social sign-in through the OAuth callback page', async () => {
-    stubRoutes()
+    stubAnonymous()
 
     const { container } = await renderApp('/login')
     await waitForText(container, 'Continue with GitHub')
@@ -406,7 +413,7 @@ describe('SocialButtons', () => {
   })
 
   it('carries the post-login destination through the OAuth round-trip', async () => {
-    stubRoutes()
+    stubAnonymous()
 
     const { container } = await renderApp('/login', { from: '/acme/proj' })
     await waitForText(container, 'Continue with GitHub')
@@ -459,7 +466,7 @@ describe('Terms acceptance', () => {
 
   it('states the terms on sign-up and records the acceptance', async () => {
     const calls: unknown[] = []
-    stubRoutes((url, init) => {
+    stubAnonymous((url, init) => {
       const method = init?.method ?? 'GET'
       if (url.includes('/api/v1/auth/capabilities')) return jsonResponse(TERMS_CAPABILITIES)
       if (url.endsWith('/api/v1/auth/register') && method === 'POST') {
@@ -494,7 +501,7 @@ describe('Terms acceptance', () => {
   })
 
   it('shows the legal footer on the login page only in SaaS mode', async () => {
-    stubRoutes()
+    stubAnonymous()
     const { container, root } = await renderApp('/login')
     await waitForText(container, 'Create an account')
     expect(container.textContent).toContain('Sign in to Nipa')
@@ -509,7 +516,7 @@ describe('Terms acceptance', () => {
     act(() => root.unmount())
     container.remove()
 
-    stubRoutes((url) => (url.includes('/api/v1/auth/capabilities') ? jsonResponse({ error: 'not found' }, 404) : null))
+    stubAnonymous((url) => (url.includes('/api/v1/auth/capabilities') ? jsonResponse({ error: 'not found' }, 404) : null))
     const selfHosted = await renderApp('/login')
     await waitForText(selfHosted.container, 'Sign in to Nipa')
     expect(selfHosted.container.querySelector('nav[aria-label="Legal and help"]')).toBeNull()

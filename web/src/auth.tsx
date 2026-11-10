@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { APP_HOME } from './routes'
 import { Spinner, Stack } from '@primer/react'
 import { bootstrap, clearSession, logout as apiLogout, subscribeSession } from './api/client'
 import { getMe } from './api/endpoints'
@@ -113,6 +114,24 @@ export function RequireAuth() {
   }
   if (status === 'anonymous') {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />
+  }
+  return <Outlet />
+}
+
+export function RedirectIfAuthenticated() {
+  const { status } = useAuth()
+  const location = useLocation()
+
+  if (status === 'loading') {
+    return (
+      <Stack direction="vertical" align="center" style={{ marginTop: 64 }}>
+        <Spinner size="large" />
+      </Stack>
+    )
+  }
+  if (status === 'authenticated') {
+    const from = (location.state as { from?: string } | null)?.from ?? APP_HOME
+    return <Navigate to={from} replace />
   }
   return <Outlet />
 }

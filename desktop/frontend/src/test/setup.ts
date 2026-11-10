@@ -1,12 +1,16 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterAll, afterEach } from "vitest";
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
   document.documentElement.classList.remove("dark");
 });
+
+// The Wails runtime polls window every 50 ms once imported; let that poll end
+// before jsdom is torn down.
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 60)));
 
 // jsdom lays nothing out, so virtualized lists would render no rows. Give
 // scroll containers a viewport and measured rows a line height.
