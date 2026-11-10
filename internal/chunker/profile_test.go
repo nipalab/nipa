@@ -27,6 +27,35 @@ func TestConfigForFile(t *testing.T) {
 		{"audio is packed", "boom.wav", true, PackedAssetConfig},
 		{"nested asset is packed", "assets/audio/boom.ogg", true, PackedAssetConfig},
 		{"no extension binary is default binary", "blob", true, DefaultBinaryConfig},
+		{"unreal asset keeps small chunks", "Content/Hero.uasset", true, DefaultConfig},
+		{"unreal map keeps small chunks", "Maps/Level.UMAP", true, DefaultConfig},
+		{"houdini scene keeps small chunks", "fx/smoke.hiplc", true, DefaultConfig},
+		{"substance painter keeps small chunks", "tex/hero.spp", true, DefaultConfig},
+		{"aif audio is packed", "sfx/hit.aif", true, PackedAssetConfig},
+		{"opus audio is packed", "voice/line.opus", true, PackedAssetConfig},
+		{"fmod bank is packed", "audio/Master.bank", true, PackedAssetConfig},
+		{"bink video is packed", "movies/intro.bk2", true, PackedAssetConfig},
+		{"avif image is packed", "ui/logo.avif", true, PackedAssetConfig},
+		{"alembic cache is packed", "cache/cloth.abc", true, PackedAssetConfig},
+		{"godot pack is packed", "build/game.pck", true, PackedAssetConfig},
+		{"tarball is packed", "deps/sdk.tar", true, PackedAssetConfig},
+		{"android bundle is packed", "build/app.aab", true, PackedAssetConfig},
+		{"font is packed", "fonts/ui.woff2", true, PackedAssetConfig},
+		{"gltf text keeps default", "models/hero.gltf", false, DefaultConfig},
+		{"executable is default binary", "bin/tool.exe", true, DefaultBinaryConfig},
+		{"roblox place keeps small chunks", "game.rbxl", true, DefaultConfig},
+		{"rpg maker data keeps small chunks", "Data/Map001.rvdata2", true, DefaultConfig},
+		{"aseprite keeps small chunks", "art/hero.aseprite", true, DefaultConfig},
+		{"source texture is packed", "materials/wall.vtf", true, PackedAssetConfig},
+		{"godot imported texture is packed", ".godot/imported/a.ctex", true, PackedAssetConfig},
+		{"spine binary skeleton is packed", "anim/hero.skel", true, PackedAssetConfig},
+		{"truetype font is packed", "fonts/ui.ttf", true, PackedAssetConfig},
+		{"quake package is packed", "baseq3/pak0.pk3", true, PackedAssetConfig},
+		{"binary unity terrain keeps small chunks", "Assets/Terrain.asset", true, DefaultConfig},
+		{"binary unity scene keeps small chunks", "Assets/Main.unity", true, DefaultConfig},
+		{"text unity scene keeps default", "Assets/Main.unity", false, DefaultConfig},
+		{"binary ply is packed", "scans/statue.ply", true, PackedAssetConfig},
+		{"binary stl is packed", "print/part.STL", true, PackedAssetConfig},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,6 +74,18 @@ func TestProfileConfigsAreValid(t *testing.T) {
 			_, err := cfg.sanitized()
 			require.NoError(t, err)
 		})
+	}
+}
+
+func TestProfileListsAreDisjoint(t *testing.T) {
+	for ext := range editableBinaryExtensions {
+		_, packed := packedAssetExtensions[ext]
+		_, binaryOnly := binaryOnlyProfiles[ext]
+		require.False(t, packed || binaryOnly, ext)
+	}
+	for ext := range packedAssetExtensions {
+		_, binaryOnly := binaryOnlyProfiles[ext]
+		require.False(t, binaryOnly, ext)
 	}
 }
 
@@ -96,6 +137,21 @@ func TestIsLockablePath(t *testing.T) {
 		{"data/items.tres", false},
 		{"audio/loop.wav", true},
 		{"models/rig.fbx", true},
+		{"Content/Hero.uasset", true},
+		{"sfx/hit.aif", true},
+		{"audio/Master.bank", true},
+		{"deps/sdk.tar.zst", true},
+		{"models/hero.gltf", false},
+		{"models/hero.obj", false},
+		{"bin/tool.exe", false},
+		{"game.rbxl", true},
+		{"materials/wall.vtf", true},
+		{"fonts/ui.ttf", true},
+		{"Assets/Main.unity", false},
+		{"Assets/Terrain.asset", false},
+		{"Assets/Hero.prefab", false},
+		{"scans/statue.ply", false},
+		{"game.rbxlx", false},
 		{"src/main.go", false},
 		{"data/values.json", false},
 		{"README.md", false},
