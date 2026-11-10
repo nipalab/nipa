@@ -63,6 +63,7 @@ type OAuth struct {
 	node      snow.Node
 	audit     usecase.AuditRecorder
 	cfg       Config
+	terms     func() string
 	now       func() time.Time
 }
 
@@ -83,8 +84,19 @@ func New(providers map[string]Provider, jwtKey string, users userRepository, rep
 		tx:        tx,
 		node:      node,
 		cfg:       cfg,
+		terms:     func() string { return cfg.TermsVersion },
 		now:       time.Now,
 	}
+}
+
+// WithTermsVersion replaces the configured terms version with a live source.
+func (o *OAuth) WithTermsVersion(version func() string) *OAuth {
+	o.terms = version
+	return o
+}
+
+func (o *OAuth) termsVersion() string {
+	return strings.TrimSpace(o.terms())
 }
 
 // Providers lists the enabled provider names.
@@ -108,7 +120,7 @@ func (o *OAuth) Start(provider, redirect string, linkUser snow.ID, acceptTerms b
 	}
 	terms := ""
 	if acceptTerms && linkUser == 0 {
-		terms = o.cfg.TermsVersion
+		terms = o.termsVersion()
 	}
 	state, err := o.states.Sign(redirect, linkUser.Int64(), binding, terms)
 	if err != nil {
@@ -319,7 +331,8 @@ func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Pro
 // terms; a version that changed during the round-trip is not recorded, so the
 // app asks again.
 func (o *OAuth) acceptedTerms(state *stateData) bool {
-	return o.cfg.TermsVersion != "" && state.Terms == o.cfg.TermsVersion
+	current := o.termsVersion()
+	return current != "" && state.Terms == current
 }
 
 func (o *OAuth) recordTerms(ctx context.Context, userID snow.ID, provider string, state *stateData) error {

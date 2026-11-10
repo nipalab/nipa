@@ -598,7 +598,10 @@ password here, so a squatter's registration can never set one; activates the
 account, consumes the token and returns the standard login result via the exported `usecase.Auth.LoginResult`).
 Login gates live in `internal/usecase/auth.go`: password, refresh-token and SSH
 logins refuse unverified accounts with a 403 `email not confirmed`. Terms
-acceptance (`SAAS_TERMS_VERSION`, empty = off) is recorded in
+acceptance is recorded against the version the website publishes
+(`SAAS_TERMS_URL`, nipa-web `/legal.json` from `LEGAL.version`, refreshed by
+`registration.TermsRefreshJob`; `SAAS_TERMS_VERSION` is the fallback, neither =
+off) in
 `user_terms_acceptances` (postgres migration `000002`): `register` requires
 `accept_terms`, `oauth/{provider}/start?accept_terms=1` carries the version in
 the signed state, and `GET/POST /api/v1/me/terms` (`ee/registration/terms.go`)

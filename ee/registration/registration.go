@@ -85,6 +85,7 @@ type Registration struct {
 	kick   dispatcherKicker
 	audit  usecase.AuditRecorder
 	cfg    Config
+	terms  func() string
 	now    func() time.Time
 }
 
@@ -98,8 +99,16 @@ func New(node snow.Node, hasher passwordHasher, users userRepository, repo onboa
 		repo:   repo,
 		tx:     tx,
 		cfg:    cfg,
+		terms:  func() string { return cfg.TermsVersion },
 		now:    time.Now,
 	}
+}
+
+// WithTermsVersion replaces the configured terms version with a live source,
+// such as the version the website publishes.
+func (r *Registration) WithTermsVersion(version func() string) *Registration {
+	r.terms = version
+	return r
 }
 
 // WithAudit records the accounts created by self-registration.
@@ -128,7 +137,8 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 	if err != nil {
 		return err
 	}
-	if r.cfg.TermsVersion != "" && !acceptTerms {
+	termsVersion := r.TermsVersion()
+	if termsVersion != "" && !acceptTerms {
 		return errTermsRequired()
 	}
 	existing, err := r.users.GetByEmail(ctx, email)
@@ -152,11 +162,11 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 		if err != nil {
 			return err
 		}
-		if err := recordSignup(ctx, r.audit, user, "registration", r.cfg.TermsVersion); err != nil {
+		if err := recordSignup(ctx, r.audit, user, "registration", termsVersion); err != nil {
 			return err
 		}
-		if r.cfg.TermsVersion != "" {
-			if err := r.recordTerms(ctx, user.ID, TermsSourceRegistration); err != nil {
+		if termsVersion != "" {
+			if err := r.recordTerms(ctx, user.ID, termsVersion, TermsSourceRegistration); err != nil {
 				return err
 			}
 		}

@@ -21,7 +21,7 @@ const testTermsVersion = "2026-11-10"
 func newTermsEnv(t *testing.T) *registrationEnv {
 	t.Helper()
 	env := newRegistrationEnv(t)
-	env.registration.cfg.TermsVersion = testTermsVersion
+	env.registration.WithTermsVersion(func() string { return testTermsVersion })
 	return env
 }
 

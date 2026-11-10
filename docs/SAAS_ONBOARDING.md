@@ -15,7 +15,8 @@ The free `nipad` never registers these routes, so every endpoint below answers
 |---|---|
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
-| `SAAS_TERMS_VERSION` | published version of the terms of service and privacy policy (e.g. `2026-11-10`); when set, sign-up requires accepting it and signed-in users without an acceptance are asked once. Empty (default) disables the step and logs a warning |
+| `SAAS_TERMS_URL` | JSON document the website publishes with the current terms version (`https://nipalab.com/legal.json` → `{"version":"2026-11-10"}`); fetched at startup and every 15 minutes, a failed fetch keeps the last good version |
+| `SAAS_TERMS_VERSION` | fallback terms version used until the first successful fetch, or on its own without `SAAS_TERMS_URL`. With neither, the acceptance step is off and startup logs a warning |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
 | `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
 | `OAUTH_BASE_URL` | public base URL used to build OAuth callback URLs |
@@ -33,7 +34,15 @@ callback URLs with the providers:
 
 ## Terms acceptance
 
-With `SAAS_TERMS_VERSION` set, every account records which terms version it
+The version lives in the nipa-web repository (`LEGAL.version` in
+`src/consts.ts`), which renders the pages' "Last updated" date and builds
+`/legal.json` from it (Caddy mirrors the path with the marketing site). To
+publish new terms, change the text and `LEGAL.version` there and deploy the
+website: within one refresh interval the server records new acceptances
+against the new version, with no server change or restart. Keep
+`SAAS_TERMS_VERSION` close to the current version as the fallback.
+
+With a terms version available, every account records which terms version it
 accepted, when and how (`user_terms_acceptances`: `user_id`, `version`,
 `source` `registration|oauth:<provider>|app`, `accepted_at`; the first
 acceptance of a version is kept).

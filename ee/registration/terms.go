@@ -2,6 +2,7 @@ package registration
 
 import (
 	"context"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -27,11 +28,11 @@ func errTermsRequired() error {
 // TermsVersion is the published version users accept; empty disables the
 // acceptance step.
 func (r *Registration) TermsVersion() string {
-	return r.cfg.TermsVersion
+	return strings.TrimSpace(r.terms())
 }
 
 func (r *Registration) TermsStatus(ctx context.Context, userID snow.ID) (*TermsStatus, error) {
-	status := &TermsStatus{Version: r.cfg.TermsVersion}
+	status := &TermsStatus{Version: r.TermsVersion()}
 	if status.Version == "" {
 		return status, nil
 	}
@@ -49,14 +50,15 @@ func (r *Registration) TermsStatus(ctx context.Context, userID snow.ID) (*TermsS
 // AcceptTerms records that the signed-in user accepted the given version,
 // which must be the current one so a stale page cannot accept old text.
 func (r *Registration) AcceptTerms(ctx context.Context, userID snow.ID, version string) error {
-	if r.cfg.TermsVersion == "" {
+	current := r.TermsVersion()
+	if current == "" {
 		return domain.NewErrorNotFound("terms acceptance is not enabled")
 	}
-	if version != r.cfg.TermsVersion {
+	if version != current {
 		return domain.NewErrorConflict("the terms were updated; reload the page and review the current version")
 	}
 	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := r.recordTerms(ctx, userID, TermsSourceApp); err != nil {
+		if err := r.recordTerms(ctx, userID, current, TermsSourceApp); err != nil {
 			return err
 		}
 		if r.audit == nil {
@@ -71,10 +73,10 @@ func (r *Registration) AcceptTerms(ctx context.Context, userID snow.ID, version 
 	})
 }
 
-func (r *Registration) recordTerms(ctx context.Context, userID snow.ID, source string) error {
+func (r *Registration) recordTerms(ctx context.Context, userID snow.ID, version, source string) error {
 	return r.repo.RecordTermsAcceptance(ctx, domain.TermsAcceptance{
 		UserID:     userID,
-		Version:    r.cfg.TermsVersion,
+		Version:    version,
 		Source:     source,
 		AcceptedAt: r.now(),
 	})

@@ -17,7 +17,7 @@ const testTermsVersion = "2026-11-10"
 func newTermsOAuthEnv(t *testing.T) *oauthEnv {
 	t.Helper()
 	env := newOAuthEnv(t)
-	env.oauth.cfg.TermsVersion = testTermsVersion
+	env.oauth.WithTermsVersion(func() string { return testTermsVersion })
 	return env
 }
 
@@ -154,7 +154,7 @@ func TestCallbackTermsWriteFailures(t *testing.T) {
 
 func TestStartEndpointPassesAcceptTerms(t *testing.T) {
 	server := newOAuthHandlerServer(t, 42)
-	server.env.oauth.cfg.TermsVersion = testTermsVersion
+	server.env.oauth.WithTermsVersion(func() string { return testTermsVersion })
 
 	for _, value := range []string{"1", "true"} {
 		resp, _ := server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/start?accept_terms="+value, "")
