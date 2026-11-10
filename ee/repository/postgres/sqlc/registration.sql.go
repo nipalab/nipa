@@ -110,6 +110,48 @@ func (q *Queries) OAuthLoginCodeGetAndDelete(ctx context.Context, code string) (
 	return i, err
 }
 
+const termsAcceptanceCreate = `-- name: TermsAcceptanceCreate :exec
+INSERT INTO user_terms_acceptances (user_id, version, source, accepted_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, version) DO NOTHING
+`
+
+type TermsAcceptanceCreateParams struct {
+	UserID     int64     `json:"user_id"`
+	Version    string    `json:"version"`
+	Source     string    `json:"source"`
+	AcceptedAt time.Time `json:"accepted_at"`
+}
+
+func (q *Queries) TermsAcceptanceCreate(ctx context.Context, arg TermsAcceptanceCreateParams) error {
+	_, err := q.db.ExecContext(ctx, termsAcceptanceCreate,
+		arg.UserID,
+		arg.Version,
+		arg.Source,
+		arg.AcceptedAt,
+	)
+	return err
+}
+
+const termsAcceptanceLatest = `-- name: TermsAcceptanceLatest :one
+SELECT user_id, version, source, accepted_at FROM user_terms_acceptances
+WHERE user_id = $1
+ORDER BY accepted_at DESC, version DESC
+LIMIT 1
+`
+
+func (q *Queries) TermsAcceptanceLatest(ctx context.Context, userID int64) (UserTermsAcceptance, error) {
+	row := q.db.QueryRowContext(ctx, termsAcceptanceLatest, userID)
+	var i UserTermsAcceptance
+	err := row.Scan(
+		&i.UserID,
+		&i.Version,
+		&i.Source,
+		&i.AcceptedAt,
+	)
+	return i, err
+}
+
 const userCreateUnverified = `-- name: UserCreateUnverified :one
 INSERT INTO users (id, name, email, password, photo_url, is_admin, email_verified)
 VALUES ($1, $2, $3, $4, $5, false, false)

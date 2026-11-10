@@ -43,6 +43,14 @@ export interface OnboardingCapabilities {
   registration: boolean
   providers: string[]
   billing?: BillingCapabilities
+  terms?: { version: string }
+}
+
+export interface TermsStatusResponse {
+  version: string
+  accepted_version?: string
+  accepted_at?: string
+  required: boolean
 }
 
 export interface RegisterResponse {

@@ -23,6 +23,13 @@ type User struct {
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 }
 
+type TermsAcceptance struct {
+	UserID     snow.ID   `json:"user_id"`
+	Version    string    `json:"version"`
+	Source     string    `json:"source"`
+	AcceptedAt time.Time `json:"accepted_at"`
+}
+
 const (
 	OrgRoleOwner  = "owner"
 	OrgRoleMember = "member"

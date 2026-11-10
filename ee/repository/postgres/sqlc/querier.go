@@ -239,6 +239,8 @@ type Querier interface {
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)
 	TagList(ctx context.Context, arg TagListParams) ([]Tag, error)
+	TermsAcceptanceCreate(ctx context.Context, arg TermsAcceptanceCreateParams) error
+	TermsAcceptanceLatest(ctx context.Context, userID int64) (UserTermsAcceptance, error)
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)

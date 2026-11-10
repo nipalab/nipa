@@ -241,7 +241,11 @@ func main() {
 	}
 	runOpts = append(runOpts, billingSetup.runOptions()...)
 	if cfg.SaaSMode {
-		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil())...)
+		termsSource := newTermsSource(cfg)
+		if termsSource.URL() != "" {
+			dispatchers = append(dispatchers, registration.NewTermsRefreshJob(termsSource, registration.TermsRefreshInterval))
+		}
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil(), termsSource)...)
 	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
@@ -253,7 +257,7 @@ func main() {
 // the caller's transaction.
 func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
 	authUsecase *usecase.Auth, audit usecase.AuditRecorder, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
-	billingCapabilities *registration.BillingCapabilities,
+	billingCapabilities *registration.BillingCapabilities, termsSource *registration.TermsVersionSource,
 ) []serverapp.Option {
 	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
 		panic("SAAS_MODE requires EMAIL_BASE_URL: the confirmation link has no public base URL")
@@ -264,7 +268,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
-	}).WithAudit(audit)
+	}).WithAudit(audit).WithTermsVersion(termsSource.Version)
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)
@@ -276,8 +280,16 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		serverapp.WithPublicRoutes(func(ws *restful.WebService) {
 			registration.RegisterPublicRoutes(ws, registrationHandler)
 		}),
+		serverapp.WithRoutes(func(ws *restful.WebService) {
+			registration.RegisterRoutes(ws, registrationHandler)
+		}),
 	}
 	slog.Info("saas self-registration enabled", "free_quota_bytes", cfg.SaasFreeQuotaBytes)
+	if registrationUsecase.TermsVersion() == "" {
+		slog.Warn("no terms version: set SAAS_TERMS_URL or SAAS_TERMS_VERSION so sign-up asks users to accept the terms of service and privacy policy")
+	} else {
+		slog.Info("terms acceptance required", "version", registrationUsecase.TermsVersion(), "url", termsSource.URL())
+	}
 	slog.Info("saas marketing fallback enabled", "base_path", marketing.BasePath)
 
 	providers := oauth.NewProviders(oauth.ProvidersConfig{
@@ -289,7 +301,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	})
 	oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
-	}).WithAudit(audit)
+	}).WithAudit(audit).WithTermsVersion(termsSource.Version)
 	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
 	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)
 	options = append(options,
@@ -393,4 +405,20 @@ func newRedisRateLimitStore(cfg *config.Config) (ratelimit.Store, error) {
 		TLS:      cfg.RateLimitRedisTLS,
 		Prefix:   cfg.RateLimitRedisPrefix,
 	})
+}
+
+// newTermsSource follows the terms version the website publishes at
+// SAAS_TERMS_URL, starting from SAAS_TERMS_VERSION; a failed first fetch only
+// warns so an unreachable website never blocks startup.
+func newTermsSource(cfg *config.Config) *registration.TermsVersionSource {
+	source := registration.NewTermsVersionSource(cfg.SaasTermsURL, cfg.SaasTermsVersion, nil)
+	if source.URL() == "" {
+		return source
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := source.Refresh(ctx); err != nil {
+		slog.Warn("terms version fetch failed; using SAAS_TERMS_VERSION until the next refresh", "fallback", source.Version(), "err", err)
+	}
+	return source
 }

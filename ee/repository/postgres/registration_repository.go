@@ -185,6 +185,31 @@ func (r *RegistrationRepository) DeleteExpiredOAuthLoginCodes(ctx context.Contex
 	return handleError(err)
 }
 
+// RecordTermsAcceptance stores that the user accepted a terms version; the
+// first acceptance of a version is kept.
+func (r *RegistrationRepository) RecordTermsAcceptance(ctx context.Context, acceptance domain.TermsAcceptance) error {
+	err := r.queries.TermsAcceptanceCreate(ctx, sqlcPostgres.TermsAcceptanceCreateParams{
+		UserID:     acceptance.UserID.Int64(),
+		Version:    acceptance.Version,
+		Source:     acceptance.Source,
+		AcceptedAt: acceptance.AcceptedAt,
+	})
+	return handleError(err)
+}
+
+func (r *RegistrationRepository) LatestTermsAcceptance(ctx context.Context, userID snow.ID) (*domain.TermsAcceptance, error) {
+	row, err := r.queries.TermsAcceptanceLatest(ctx, userID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.TermsAcceptance{
+		UserID:     snow.ID(row.UserID),
+		Version:    row.Version,
+		Source:     row.Source,
+		AcceptedAt: row.AcceptedAt,
+	}, nil
+}
+
 func toDomainIdentity(row sqlcPostgres.UserIdentity) *domain.UserIdentity {
 	return &domain.UserIdentity{
 		ID:                snow.ID(row.ID),

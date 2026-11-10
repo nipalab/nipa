@@ -261,3 +261,34 @@ func (s *RegistrationRepositorySuite) TestSetPasswordHash() {
 	s.Require().NoError(err)
 	s.Equal("new-hash", got.Password)
 }
+
+func (s *RegistrationRepositorySuite) TestTermsAcceptance() {
+	ctx := context.Background()
+	repo := NewRegistrationRepository(s.db)
+	user := s.createUser()
+
+	_, err := repo.LatestTermsAcceptance(ctx, user.ID)
+	requireRecordNotFound(s.T(), err)
+
+	first := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+	s.Require().NoError(repo.RecordTermsAcceptance(ctx, domain.TermsAcceptance{
+		UserID: user.ID, Version: "2026-11-10", Source: "registration", AcceptedAt: first,
+	}))
+	s.Require().NoError(repo.RecordTermsAcceptance(ctx, domain.TermsAcceptance{
+		UserID: user.ID, Version: "2026-11-10", Source: "settings", AcceptedAt: first.Add(time.Hour),
+	}))
+
+	got, err := repo.LatestTermsAcceptance(ctx, user.ID)
+	s.Require().NoError(err)
+	s.Equal(user.ID, got.UserID)
+	s.Equal("2026-11-10", got.Version)
+	s.Equal("registration", got.Source)
+	s.True(first.Equal(got.AcceptedAt))
+
+	s.Require().NoError(repo.RecordTermsAcceptance(ctx, domain.TermsAcceptance{
+		UserID: user.ID, Version: "2027-01-01", Source: "onboarding", AcceptedAt: first.Add(48 * time.Hour),
+	}))
+	got, err = repo.LatestTermsAcceptance(ctx, user.ID)
+	s.Require().NoError(err)
+	s.Equal("2027-01-01", got.Version)
+}

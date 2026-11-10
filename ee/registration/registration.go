@@ -43,6 +43,8 @@ type onboardingRepository interface {
 	SetEmailVerified(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
 	SetPasswordHash(ctx context.Context, userID snow.ID, passwordHash string) error
+	RecordTermsAcceptance(ctx context.Context, acceptance domain.TermsAcceptance) error
+	LatestTermsAcceptance(ctx context.Context, userID snow.ID) (*domain.TermsAcceptance, error)
 }
 
 type passwordHasher interface {
@@ -67,6 +69,7 @@ type transactor interface {
 type Config struct {
 	FreeQuotaBytes int64
 	BaseURL        string
+	TermsVersion   string
 }
 
 // Registration runs the self-registration flow: it creates an inactive account,
@@ -82,6 +85,7 @@ type Registration struct {
 	kick   dispatcherKicker
 	audit  usecase.AuditRecorder
 	cfg    Config
+	terms  func() string
 	now    func() time.Time
 }
 
@@ -95,8 +99,16 @@ func New(node snow.Node, hasher passwordHasher, users userRepository, repo onboa
 		repo:   repo,
 		tx:     tx,
 		cfg:    cfg,
+		terms:  func() string { return cfg.TermsVersion },
 		now:    time.Now,
 	}
+}
+
+// WithTermsVersion replaces the configured terms version with a live source,
+// such as the version the website publishes.
+func (r *Registration) WithTermsVersion(version func() string) *Registration {
+	r.terms = version
+	return r
 }
 
 // WithAudit records the accounts created by self-registration.
@@ -120,10 +132,14 @@ func (r *Registration) WithMailer(outbox outbox, kicker dispatcherKicker) *Regis
 // gains nothing: the account stays unusable until its mailbox owner confirms
 // and sets a password. An address that already has an account looks the same as
 // a new signup.
-func (r *Registration) Register(ctx context.Context, name, email string) error {
+func (r *Registration) Register(ctx context.Context, name, email string, acceptTerms bool) error {
 	name, email, err := usecase.ValidateUserIdentity(name, email)
 	if err != nil {
 		return err
+	}
+	termsVersion := r.TermsVersion()
+	if termsVersion != "" && !acceptTerms {
+		return errTermsRequired()
 	}
 	existing, err := r.users.GetByEmail(ctx, email)
 	switch {
@@ -146,8 +162,13 @@ func (r *Registration) Register(ctx context.Context, name, email string) error {
 		if err != nil {
 			return err
 		}
-		if err := recordSignup(ctx, r.audit, user, "registration"); err != nil {
+		if err := recordSignup(ctx, r.audit, user, "registration", termsVersion); err != nil {
 			return err
+		}
+		if termsVersion != "" {
+			if err := r.recordTerms(ctx, user.ID, termsVersion, TermsSourceRegistration); err != nil {
+				return err
+			}
 		}
 		if err := r.repo.DeleteExpiredEmailVerifications(ctx, now); err != nil {
 			return err
@@ -343,11 +364,14 @@ func errInvalidVerification() error {
 	return domain.NewErrorNotFound("invalid or expired verification link")
 }
 
-func recordSignup(ctx context.Context, rec usecase.AuditRecorder, user *domain.User, source string) error {
+func recordSignup(ctx context.Context, rec usecase.AuditRecorder, user *domain.User, source, termsVersion string) error {
 	if rec == nil {
 		return nil
 	}
 	entry := usecase.UserCreatedAudit(user, source)
 	entry.ActorType = domain.AuditActorSystem
+	if termsVersion != "" {
+		entry.Metadata["terms_version"] = termsVersion
+	}
 	return rec.Record(ctx, entry)
 }

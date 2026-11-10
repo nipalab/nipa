@@ -3,14 +3,17 @@ package registration
 import (
 	nethttp "net/http"
 	"strings"
+	"time"
 
 	restfulspec "github.com/emicklei/go-restful-openapi/v2"
 	"github.com/emicklei/go-restful/v3"
 
+	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/http/handler"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -68,11 +71,28 @@ type capabilitiesResponse struct {
 	Registration bool                 `json:"registration"`
 	Providers    []string             `json:"providers"`
 	Billing      *BillingCapabilities `json:"billing,omitempty"`
+	Terms        *termsCapabilities   `json:"terms,omitempty"`
+}
+
+type termsCapabilities struct {
+	Version string `json:"version"`
 }
 
 type registerRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	AcceptTerms bool   `json:"accept_terms"`
+}
+
+type termsStatusResponse struct {
+	Version         string `json:"version"`
+	AcceptedVersion string `json:"accepted_version,omitempty"`
+	AcceptedAt      string `json:"accepted_at,omitempty"`
+	Required        bool   `json:"required"`
+}
+
+type acceptTermsRequest struct {
+	Version string `json:"version"`
 }
 
 type registerResponse struct {
@@ -134,6 +154,30 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 }
 
+// RegisterRoutes attaches the authenticated terms endpoints to the /api/v1
+// WebService.
+func RegisterRoutes(ws *restful.WebService, h *Handler) {
+	tags := []string{"Auth"}
+
+	ws.Route(
+		ws.GET("/me/terms").
+			To(api.Wrap(h.TermsStatus)).
+			Doc("Report the terms version the account accepted").
+			Returns(nethttp.StatusOK, "terms status", termsStatusResponse{}).
+			Operation("termsStatus").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.POST("/me/terms").
+			To(api.Wrap(h.AcceptTerms)).
+			Reads(acceptTermsRequest{}).
+			Doc("Accept the current terms of service and privacy policy").
+			Notes("The version must be the current one; an outdated version is a 409").
+			Returns(nethttp.StatusOK, "terms status", termsStatusResponse{}).
+			Operation("acceptTerms").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+}
+
 func (h *Handler) Capabilities(appCtx httpApp.AppContext) {
 	providers := []string{}
 	if h.providers != nil {
@@ -142,7 +186,11 @@ func (h *Handler) Capabilities(appCtx httpApp.AppContext) {
 	if providers == nil {
 		providers = []string{}
 	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, capabilitiesResponse{Registration: true, Providers: providers, Billing: h.billing})
+	response := capabilitiesResponse{Registration: true, Providers: providers, Billing: h.billing}
+	if version := h.reg.TermsVersion(); version != "" {
+		response.Terms = &termsCapabilities{Version: version}
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, response)
 }
 
 func (h *Handler) Register(appCtx httpApp.AppContext) {
@@ -151,7 +199,7 @@ func (h *Handler) Register(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	if err := h.reg.Register(appCtx.Context(), body.Name, body.Email); err != nil {
+	if err := h.reg.Register(appCtx.Context(), body.Name, body.Email, body.AcceptTerms); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -193,4 +241,45 @@ func (h *Handler) Verify(appCtx httpApp.AppContext) {
 		TokenType:   result.TokenType,
 		ExpiresIn:   result.ExpiresIn,
 	})
+}
+
+func (h *Handler) TermsStatus(appCtx httpApp.AppContext) {
+	claim := appCtx.Claims()
+	if claim == nil {
+		appCtx.HandleError(domain.NewErrorUnauthorized("authentication required"))
+		return
+	}
+	h.writeTermsStatus(appCtx, claim.UserID)
+}
+
+func (h *Handler) AcceptTerms(appCtx httpApp.AppContext) {
+	claim := appCtx.Claims()
+	if claim == nil {
+		appCtx.HandleError(domain.NewErrorUnauthorized("authentication required"))
+		return
+	}
+	body := &acceptTermsRequest{}
+	if err := appCtx.ReadJson(body); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	if err := h.reg.AcceptTerms(appCtx.Context(), claim.UserID, strings.TrimSpace(body.Version)); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	h.writeTermsStatus(appCtx, claim.UserID)
+}
+
+func (h *Handler) writeTermsStatus(appCtx httpApp.AppContext, userID snow.ID) {
+	status, err := h.reg.TermsStatus(appCtx.Context(), userID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	response := termsStatusResponse{Version: status.Version, Required: status.Required}
+	if status.Accepted != nil {
+		response.AcceptedVersion = status.Accepted.Version
+		response.AcceptedAt = status.Accepted.AcceptedAt.UTC().Format(time.RFC3339)
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, response)
 }

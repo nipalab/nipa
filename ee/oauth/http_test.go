@@ -126,7 +126,7 @@ func (s *oauthServer) doWithBinding(t *testing.T, method, path, binding string) 
 func (s *oauthServer) signedState(t *testing.T, redirect string, linkUser int64) string {
 	t.Helper()
 
-	state, err := s.env.oauth.states.Sign(redirect, linkUser, testBinding)
+	state, err := s.env.oauth.states.Sign(redirect, linkUser, testBinding, "")
 	require.NoError(t, err)
 	return state
 }

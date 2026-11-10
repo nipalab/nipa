@@ -35,7 +35,15 @@ export function socialRedirect(from: string): string {
   return destination === '/' ? '/oauth/callback' : `/oauth/callback?from=${encodeURIComponent(destination)}`
 }
 
-export function SocialButtons({ providers, from }: { providers: string[]; from: string }) {
+export function SocialButtons({
+  providers,
+  from,
+  acceptTerms = false,
+}: {
+  providers: string[]
+  from: string
+  acceptTerms?: boolean
+}) {
   if (providers.length === 0) return null
   const redirect = socialRedirect(from)
   return (
@@ -46,7 +54,7 @@ export function SocialButtons({ providers, from }: { providers: string[]; from: 
           block
           leadingVisual={provider === 'github' ? <MarkGithubIcon /> : <GoogleIcon />}
           onClick={() => {
-            window.location.href = oauthStartURL(provider, redirect)
+            window.location.href = oauthStartURL(provider, redirect, acceptTerms)
           }}
         >
           Continue with {providerLabel(provider)}

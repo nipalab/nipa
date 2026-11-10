@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/client'
 import { getOnboardingCapabilities } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { AuthCard, AuthLayout } from '../components/AuthLayout'
+import { AuthAside, AuthCard, AuthLayout } from '../components/AuthLayout'
 import { SocialButtons } from '../components/SocialButtons'
 import { errorMessage, useAsync } from '../hooks'
 import { useResendVerification } from '../useResendVerification'
@@ -62,7 +62,7 @@ export default function LoginPage() {
   const shownError = resendError ?? error
 
   return (
-    <AuthLayout>
+    <AuthLayout title="Sign in to Nipa" footer={Boolean(capabilities)}>
       <AuthCard onSubmit={handleSubmit}>
         <FormControl required>
           <FormControl.Label>Username/Email</FormControl.Label>
@@ -113,12 +113,12 @@ export default function LoginPage() {
       </AuthCard>
 
       {capabilities?.registration && (
-        <p style={{ fontSize: 14, color: 'var(--fgColor-muted)', margin: 0 }}>
+        <AuthAside>
           New to Nipa?{' '}
           <PrimerLink as={Link} to="/register" state={{ from }}>
             Create an account
           </PrimerLink>
-        </p>
+        </AuthAside>
       )}
     </AuthLayout>
   )

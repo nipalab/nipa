@@ -15,6 +15,8 @@ The free `nipad` never registers these routes, so every endpoint below answers
 |---|---|
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
+| `SAAS_TERMS_URL` | JSON document the website publishes with the current terms version (`https://nipalab.com/legal.json` → `{"version":"2026-11-10"}`); fetched at startup and every 15 minutes, a failed fetch keeps the last good version |
+| `SAAS_TERMS_VERSION` | fallback terms version used until the first successful fetch, or on its own without `SAAS_TERMS_URL`. With neither, the acceptance step is off and startup logs a warning |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
 | `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
 | `OAUTH_BASE_URL` | public base URL used to build OAuth callback URLs |
@@ -29,6 +31,45 @@ configured, and linking an unconfigured provider answers 404. Register the
 callback URLs with the providers:
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/google/callback` and
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/github/callback`.
+
+## Terms acceptance
+
+The version lives in the nipa-web repository (`LEGAL.version` in
+`src/consts.ts`), which renders the pages' "Last updated" date and builds
+`/legal.json` from it (Caddy mirrors the path with the marketing site). To
+publish new terms, change the text and `LEGAL.version` there and deploy the
+website: within one refresh interval the server records new acceptances
+against the new version, with no server change or restart. Keep
+`SAAS_TERMS_VERSION` close to the current version as the fallback.
+
+With a terms version available, every account records which terms version it
+accepted, when and how (`user_terms_acceptances`: `user_id`, `version`,
+`source` `registration|oauth:<provider>|app`, `accepted_at`; the first
+acceptance of a version is kept).
+
+- `GET /api/v1/auth/capabilities` adds `terms: {version}`.
+- `POST /api/v1/auth/register` requires `accept_terms: true` (400 otherwise)
+  and records the acceptance in the account-creation transaction; the
+  `user.created` audit entry carries `terms_version`.
+- `GET /api/v1/auth/oauth/{provider}/start?accept_terms=1` puts the current
+  version in the signed state. The callback records it for the new or
+  signed-in account, unless the version changed during the round-trip.
+  Linking an identity never accepts terms.
+- `GET /api/v1/me/terms` returns `{version, accepted_version?, accepted_at?,
+  required}`; `required` is true while the account has no acceptance (social
+  sign-ups started from the login page, accounts created before the setting).
+  `POST /api/v1/me/terms {version}` accepts the current version (409 for an
+  outdated one) and is audited as `user.terms.accepted`.
+
+Like GitHub, the SPA sign-up page states "By creating an account, you agree to
+the Terms of Service ... see the Privacy Policy" (links to `/terms` and
+`/privacy`) under the form; creating the account or continuing with a social
+provider from that page sends the acceptance. The login and sign-up pages show
+a Terms · Privacy · Docs · Contact footer in SaaS mode. `TermsGate` in the app
+shell holds every signed-in page until a user with `required: true` ticks the
+checkbox and accepts (social sign-ups started from the login page, accounts
+created before terms acceptance existed). A new version does
+not ask existing users again; the terms announce material changes by email.
 
 ## Registration with email confirmation
 

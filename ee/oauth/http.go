@@ -48,7 +48,7 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 		ws.GET("/oauth/{provider}/start").
 			To(api.Wrap(h.Start)).
 			Doc("Redirect to a social login provider").
-			Notes("The optional redirect query parameter names the SPA path to return to").
+			Notes("The optional redirect query parameter names the SPA path to return to; accept_terms=1 records that the user accepted the current terms").
 			Operation("startOAuth").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
@@ -118,7 +118,8 @@ func bindingCookie(value string, maxAge int) *nethttp.Cookie {
 }
 
 func (h *Handler) Start(appCtx httpApp.AppContext) {
-	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), 0)
+	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), 0,
+		acceptTermsParam(appCtx.QueryParameter("accept_terms")))
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -200,7 +201,7 @@ func (h *Handler) StartLink(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUnauthorized("authentication required"))
 		return
 	}
-	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), claim.UserID)
+	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), claim.UserID, false)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -225,4 +226,8 @@ func (h *Handler) DisconnectIdentity(appCtx httpApp.AppContext) {
 		return
 	}
 	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "identity unlinked"})
+}
+
+func acceptTermsParam(value string) bool {
+	return value == "1" || value == "true"
 }

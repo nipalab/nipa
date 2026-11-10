@@ -31,6 +31,7 @@ const (
 	AuditUserDeactivated          = "user.deactivated"
 	AuditUserPasswordResetByAdmin = "user.password.reset_by_admin"
 	AuditUserEmailChanged         = "user.email.changed"
+	AuditUserTermsAccepted        = "user.terms.accepted"
 
 	AuditProjectCreated = "project.created"
 	AuditProjectUpdated = "project.updated"

@@ -53,6 +53,8 @@ type Config struct {
 	StorageLedgerDefaultQuotaBytes int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
 	SaaSMode                       bool    `mapstructure:"SAAS_MODE"`
 	SaasFreeQuotaBytes             int64   `mapstructure:"SAAS_FREE_QUOTA_BYTES"`
+	SaasTermsVersion               string  `mapstructure:"SAAS_TERMS_VERSION"`
+	SaasTermsURL                   string  `mapstructure:"SAAS_TERMS_URL"`
 	BillingProvider                string  `mapstructure:"BILLING_PROVIDER"`
 	BillingFreeSeats               int64   `mapstructure:"BILLING_FREE_SEATS"`
 	BillingSeatIncludedBytes       int64   `mapstructure:"BILLING_SEAT_INCLUDED_BYTES"`
@@ -138,6 +140,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SAAS_MODE", false)
 	v.SetDefault("ALLOW_INSECURE_DEV_SECRETS", false)
 	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
+	v.SetDefault("SAAS_TERMS_VERSION", "")
+	v.SetDefault("SAAS_TERMS_URL", "")
 	v.SetDefault("BILLING_PROVIDER", BillingProviderOff)
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")

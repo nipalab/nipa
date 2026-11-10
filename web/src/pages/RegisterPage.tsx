@@ -3,8 +3,9 @@ import { Banner, Button, FormControl, Link as PrimerLink, Stack, TextInput } fro
 import { PersonAddIcon } from '@primer/octicons-react'
 import { Link, useLocation } from 'react-router-dom'
 import { getOnboardingCapabilities, registerAccount } from '../api/endpoints'
-import { AuthCard, AuthLayout } from '../components/AuthLayout'
+import { AuthAside, AuthCard, AuthLayout } from '../components/AuthLayout'
 import { SocialButtons } from '../components/SocialButtons'
+import { PRIVACY_URL, TERMS_URL } from '../components/TermsCheckbox'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage, useAsync } from '../hooks'
 import { useResendVerification } from '../useResendVerification'
@@ -19,6 +20,7 @@ export default function RegisterPage() {
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
   const { resend, busy: resendBusy, notice, error: resendError } = useResendVerification()
+  const termsRequired = Boolean(capabilities?.terms)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -27,9 +29,10 @@ export default function RegisterPage() {
       setError('Enter your name and email.')
       return
     }
+
     setBusy(true)
     try {
-      await registerAccount({ name: name.trim(), email: email.trim() })
+      await registerAccount({ name: name.trim(), email: email.trim(), accept_terms: termsRequired })
       setSentTo(email.trim())
     } catch (err) {
       setError(errorMessage(err))
@@ -39,7 +42,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout title="Sign up for Nipa" footer={Boolean(capabilities)}>
       {!loadingCapabilities && capabilities === null && (
         <Banner variant="info" title="Registration is not enabled on this server.">
           <PrimerLink as={Link} to="/login">
@@ -101,20 +104,34 @@ export default function RegisterPage() {
             {capabilities.providers.length > 0 && (
               <>
                 <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
-                <SocialButtons providers={capabilities.providers} from={from} />
+                <SocialButtons providers={capabilities.providers} from={from} acceptTerms={termsRequired} />
               </>
+            )}
+
+            {termsRequired && (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--fgColor-muted)' }}>
+                By creating an account, you agree to the{' '}
+                <PrimerLink href={TERMS_URL} target="_blank" rel="noopener">
+                  Terms of Service
+                </PrimerLink>
+                . For more information about our privacy practices, see the{' '}
+                <PrimerLink href={PRIVACY_URL} target="_blank" rel="noopener">
+                  Privacy Policy
+                </PrimerLink>
+                .
+              </p>
             )}
           </AuthCard>
         )
       )}
 
       {!sentTo && (
-        <p style={{ fontSize: 14, color: 'var(--fgColor-muted)' }}>
+        <AuthAside>
           Already have an account?{' '}
           <PrimerLink as={Link} to="/login">
             Sign in
           </PrimerLink>
-        </p>
+        </AuthAside>
       )}
     </AuthLayout>
   )
