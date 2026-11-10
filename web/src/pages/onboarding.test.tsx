@@ -457,7 +457,7 @@ describe('IdentitiesCard', () => {
 describe('Terms acceptance', () => {
   const TERMS_CAPABILITIES = { ...CAPABILITIES, terms: { version: '2026-11-10' } }
 
-  it('requires accepting the terms before registering', async () => {
+  it('states the terms on sign-up and records the acceptance', async () => {
     const calls: unknown[] = []
     stubRoutes((url, init) => {
       const method = init?.method ?? 'GET'
@@ -470,30 +470,51 @@ describe('Terms acceptance', () => {
     })
 
     const { container } = await renderApp('/register')
-    await waitForText(container, 'Terms of Service')
-    expect(findButtonIn(container, 'Create account').disabled).toBe(true)
-    expect(findButtonIn(container, 'Continue with GitHub').disabled).toBe(true)
+    await waitForText(container, 'By creating an account, you agree to the')
+    expect(container.textContent).toContain('Sign up for Nipa')
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull()
     const links = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href'))
-    expect(links).toEqual(expect.arrayContaining(['/terms', '/privacy']))
-
-    const inputs = container.querySelectorAll('input')
-    await act(async () => {
-      setInputValue(inputs[0] as HTMLInputElement, 'Alice')
-      setInputValue(inputs[1] as HTMLInputElement, 'alice@example.com')
-      ;(container.querySelector('input[type="checkbox"]') as HTMLInputElement).click()
-    })
-    expect(findButtonIn(container, 'Create account').disabled).toBe(false)
+    expect(links).toEqual(expect.arrayContaining(['/terms', '/privacy', '/guides', '/contact']))
 
     await act(async () => {
       findButtonIn(container, 'Continue with GitHub').click()
     })
     expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback', true)
 
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Alice')
+      setInputValue(inputs[1] as HTMLInputElement, 'alice@example.com')
+    })
     await act(async () => {
       findButtonIn(container, 'Create account').click()
     })
     await waitForText(container, 'confirmation link')
     expect(calls[0]).toEqual({ name: 'Alice', email: 'alice@example.com', accept_terms: true })
+  })
+
+  it('shows the legal footer on the login page only in SaaS mode', async () => {
+    stubRoutes()
+    const { container, root } = await renderApp('/login')
+    await waitForText(container, 'Create an account')
+    expect(container.textContent).toContain('Sign in to Nipa')
+    expect(container.textContent).toContain('New to Nipa?')
+    const footer = container.querySelector('nav[aria-label="Legal and help"]') as HTMLElement
+    expect(Array.from(footer.querySelectorAll('a')).map((a) => a.textContent)).toEqual([
+      'Terms',
+      'Privacy',
+      'Docs',
+      'Contact',
+    ])
+    act(() => root.unmount())
+    container.remove()
+
+    stubRoutes((url) => (url.includes('/api/v1/auth/capabilities') ? jsonResponse({ error: 'not found' }, 404) : null))
+    const selfHosted = await renderApp('/login')
+    await waitForText(selfHosted.container, 'Sign in to Nipa')
+    expect(selfHosted.container.querySelector('nav[aria-label="Legal and help"]')).toBeNull()
+    act(() => selfHosted.root.unmount())
+    selfHosted.container.remove()
   })
 
   it('asks a signed-in user who has not accepted the terms', async () => {

@@ -39,12 +39,10 @@ export function SocialButtons({
   providers,
   from,
   acceptTerms = false,
-  disabled = false,
 }: {
   providers: string[]
   from: string
   acceptTerms?: boolean
-  disabled?: boolean
 }) {
   if (providers.length === 0) return null
   const redirect = socialRedirect(from)
@@ -54,7 +52,6 @@ export function SocialButtons({
         <Button
           key={provider}
           block
-          disabled={disabled}
           leadingVisual={provider === 'github' ? <MarkGithubIcon /> : <GoogleIcon />}
           onClick={() => {
             window.location.href = oauthStartURL(provider, redirect, acceptTerms)

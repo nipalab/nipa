@@ -61,10 +61,14 @@ acceptance of a version is kept).
   `POST /api/v1/me/terms {version}` accepts the current version (409 for an
   outdated one) and is audited as `user.terms.accepted`.
 
-The SPA register page shows a required "I agree to the Terms of Service and
-Privacy Policy" checkbox (links to `/terms` and `/privacy`) that enables both
-the form and the social buttons, and `TermsGate` in the app shell holds every
-signed-in page until a user with `required: true` accepts. A new version does
+Like GitHub, the SPA sign-up page states "By creating an account, you agree to
+the Terms of Service ... see the Privacy Policy" (links to `/terms` and
+`/privacy`) under the form; creating the account or continuing with a social
+provider from that page sends the acceptance. The login and sign-up pages show
+a Terms · Privacy · Docs · Contact footer in SaaS mode. `TermsGate` in the app
+shell holds every signed-in page until a user with `required: true` ticks the
+checkbox and accepts (social sign-ups started from the login page, accounts
+created before terms acceptance existed). A new version does
 not ask existing users again; the terms announce material changes by email.
 
 ## Registration with email confirmation
