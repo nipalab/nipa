@@ -58,8 +58,6 @@ jobs:
         include:
           - { goos: linux, goarch: amd64 }
           - { goos: linux, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
           - { goos: windows, goarch: arm64 }
     steps:
@@ -103,8 +101,88 @@ jobs:
           path: out/
           if-no-files-found: error
 
+  macos:
+    needs: web
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/server/dist
+
+      - name: Import the signing certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$pass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          if [ -n "$MACOS_NOTARY_KEY_P8" ]; then
+            echo "$MACOS_NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          fi
+
+      - name: Build, sign, notarize and package
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+        run: |
+          rev="$(git rev-parse --short HEAD)"
+          flags=(-trimpath -ldflags "-s -w -X 'github.com/nipalab/nipa/internal/version.Version=$TAG' -X 'github.com/nipalab/nipa/internal/version.Revision=$rev'")
+          mkdir -p dist out
+          for arch in amd64 arm64; do
+            name="nipa-$TAG-darwin-$arch"
+            mkdir -p "dist/$name"
+            GOARCH=$arch go build "${flags[@]}" -o "dist/$name/nipa" ./cmd/nipa
+            GOARCH=$arch go build "${flags[@]}" -o "dist/$name/nipad" ./cmd/nipad
+            cp LICENSE README.md "dist/$name/"
+            if [ -n "$MACOS_CERTIFICATE" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
+              codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "dist/$name/nipa" "dist/$name/nipad"
+              codesign --verify --strict --verbose=2 "dist/$name/nipa" "dist/$name/nipad"
+              if [ -f "$RUNNER_TEMP/notary.p8" ]; then
+                ditto -c -k --keepParent "dist/$name" "$RUNNER_TEMP/$name.zip"
+                xcrun notarytool submit "$RUNNER_TEMP/$name.zip" \
+                  --key "$RUNNER_TEMP/notary.p8" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
+              else
+                echo "::warning::No notarization key, $name is signed but not notarized"
+              fi
+            else
+              echo "::warning::No signing certificate, $name is unsigned"
+            fi
+            tar -C dist -czf "out/$name.tar.gz" "$name"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-darwin
+          path: out/
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
