@@ -66,9 +66,18 @@ jobs:
       - name: Install wails3
         run: go -C build/tools install tool
 
-      - name: Put NSIS on PATH
+      - name: Install NSIS
         if: runner.os == 'Windows'
-        run: command -v makensis || echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+        shell: pwsh
+        run: |
+          $nsis = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path "$nsis\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+          if (-not (Test-Path "$nsis\makensis.exe")) {
+            throw "makensis.exe not found in $nsis"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $nsis
 
       - name: Import the macOS signing certificate
         if: runner.os == 'macOS' && env.MACOS_CERTIFICATE != ''
