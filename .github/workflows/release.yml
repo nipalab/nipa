@@ -1,0 +1,132 @@
+name: Release binaries
+
+# Builds the standalone nipa (CLI) and nipad (free server) for Linux, macOS and
+# Windows on a version tag and attaches them to the GitHub release. The desktop
+# app is built by desktop-release.yml on the same tag. Tags with a suffix
+# (v0.1.0-beta.1) are published as prereleases.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v0.1.0-beta.1
+        required: true
+
+permissions: {}
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/server/dist/
+          if-no-files-found: error
+
+  build:
+    needs: web
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/server/dist
+
+      - name: Build and package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          rev="$(git rev-parse --short HEAD)"
+          flags=(-trimpath -ldflags "-s -w -X 'github.com/nipalab/nipa/internal/version.Version=$TAG' -X 'github.com/nipalab/nipa/internal/version.Revision=$rev'")
+          exe=""; [ "$GOOS" = windows ] && exe=".exe"
+          name="nipa-$TAG-$GOOS-$GOARCH"
+          mkdir -p "dist/$name" out
+          go build "${flags[@]}" -o "dist/$name/nipa$exe" ./cmd/nipa
+          go build "${flags[@]}" -o "dist/$name/nipad$exe" ./cmd/nipad
+          cp LICENSE README.md "dist/$name/"
+          if [ "$GOOS" = windows ]; then
+            (cd dist && zip -qr "../out/$name.zip" "$name")
+          else
+            tar -C dist -czf "out/$name.tar.gz" "$name"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bin-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: (cd dist && sha256sum * > SHA256SUMS-cli.txt)
+
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          # desktop-release.yml may create the release at the same time
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --generate-notes $prerelease \
+            || gh release view "$TAG" >/dev/null
+          gh release upload "$TAG" dist/* --clobber
