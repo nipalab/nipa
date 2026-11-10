@@ -22,6 +22,26 @@ var editableBinaryExtensions = map[string]struct{}{
 	".mb": {}, ".max": {}, ".kra": {},
 	".sqlite": {}, ".sqlite3": {}, ".db": {},
 	".scn": {}, ".res": {},
+	".uasset": {}, ".umap": {},
+	".c4d": {}, ".hip": {}, ".hiplc": {}, ".hipnc": {},
+	".spp": {}, ".xcf": {}, ".clip": {}, ".aep": {},
+	".upk": {}, ".udk": {}, ".flax": {},
+	".rbxl": {}, ".rbxm": {},
+	".rxdata": {}, ".rvdata": {}, ".rvdata2": {},
+	".lxo": {}, ".3b": {}, ".tbscene": {},
+	".afphoto": {}, ".afdesign": {}, ".aseprite": {}, ".ase": {},
+	".spine": {}, ".cmo3": {}, ".can3": {}, ".flp": {},
+}
+
+// binaryOnlyProfiles cover extensions that are often text, so they stay out
+// of the lockable lists, but get a specific profile when the content is binary.
+var binaryOnlyProfiles = map[string]Config{
+	".unity": DefaultConfig, ".prefab": DefaultConfig, ".asset": DefaultConfig,
+	".mat": DefaultConfig, ".anim": DefaultConfig, ".controller": DefaultConfig,
+	".overridecontroller": DefaultConfig, ".lighting": DefaultConfig,
+	".terrainlayer": DefaultConfig, ".cubemap": DefaultConfig,
+	".mixer": DefaultConfig, ".playable": DefaultConfig,
+	".ply": PackedAssetConfig, ".stl": PackedAssetConfig,
 }
 
 // packedAssetExtensions are formats that are written once or already
@@ -30,10 +50,24 @@ var packedAssetExtensions = map[string]struct{}{
 	".png": {}, ".jpg": {}, ".jpeg": {}, ".gif": {}, ".webp": {},
 	".tga": {}, ".bmp": {}, ".tif": {}, ".tiff": {},
 	".dds": {}, ".ktx": {}, ".ktx2": {}, ".exr": {}, ".hdr": {},
-	".wav": {}, ".ogg": {}, ".mp3": {}, ".flac": {}, ".aiff": {}, ".wem": {}, ".bnk": {},
+	".avif": {}, ".heic": {}, ".jxl": {}, ".astc": {}, ".basis": {},
+	".wav": {}, ".ogg": {}, ".mp3": {}, ".flac": {}, ".aif": {}, ".aiff": {}, ".aifc": {}, ".wem": {}, ".bnk": {},
+	".m4a": {}, ".aac": {}, ".opus": {}, ".wma": {}, ".fsb": {}, ".bank": {},
 	".mp4": {}, ".mov": {}, ".avi": {}, ".webm": {}, ".mkv": {},
+	".m4v": {}, ".mpg": {}, ".bik": {}, ".bk2": {},
 	".fbx": {}, ".glb": {}, ".usd": {}, ".usdc": {}, ".usdz": {},
-	".pak": {}, ".zip": {}, ".7z": {}, ".rar": {}, ".gz": {}, ".unitypackage": {},
+	".abc": {}, ".vdb": {}, ".3ds": {}, ".sbsar": {},
+	".pvr": {}, ".crn": {}, ".tx": {}, ".vtf": {}, ".ctex": {}, ".stex": {},
+	".usm": {}, ".ogv": {}, ".wmv": {}, ".xma": {}, ".at9": {}, ".caf": {},
+	".bgeo": {}, ".cgf": {}, ".chr": {}, ".mdl": {}, ".bsp": {},
+	".skel": {}, ".moc3": {}, ".xnb": {},
+	".ttf": {}, ".otf": {}, ".ttc": {}, ".woff": {}, ".woff2": {},
+	".pak": {}, ".pck": {}, ".uexp": {}, ".ubulk": {}, ".ucas": {}, ".utoc": {},
+	".vpk": {}, ".pk3": {}, ".wad": {}, ".rgss3a": {}, ".unity3d": {},
+	".zip": {}, ".7z": {}, ".rar": {}, ".gz": {}, ".unitypackage": {},
+	".tar": {}, ".xz": {}, ".bz2": {}, ".zst": {}, ".lz4": {},
+	".apk": {}, ".aab": {}, ".ipa": {}, ".xapk": {}, ".appx": {}, ".msix": {},
+	".ztl": {}, ".procreate": {}, ".als": {},
 }
 
 // ConfigForFile returns the chunking configuration for a file. Text content
@@ -48,6 +82,9 @@ func ConfigForFile(path string, isBinary bool) Config {
 	}
 	if _, ok := packedAssetExtensions[ext]; ok {
 		return PackedAssetConfig
+	}
+	if cfg, ok := binaryOnlyProfiles[ext]; ok {
+		return cfg
 	}
 	return DefaultBinaryConfig
 }
