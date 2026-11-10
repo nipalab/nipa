@@ -46,6 +46,8 @@ func TestConfigForFile(t *testing.T) {
 		{"roblox place keeps small chunks", "game.rbxl", true, DefaultConfig},
 		{"rpg maker data keeps small chunks", "Data/Map001.rvdata2", true, DefaultConfig},
 		{"aseprite keeps small chunks", "art/hero.aseprite", true, DefaultConfig},
+		{"fl studio project keeps small chunks", "music/theme.flp", true, DefaultConfig},
+		{"zbrush tool is packed", "sculpt/head.ztl", true, PackedAssetConfig},
 		{"source texture is packed", "materials/wall.vtf", true, PackedAssetConfig},
 		{"godot imported texture is packed", ".godot/imported/a.ctex", true, PackedAssetConfig},
 		{"spine binary skeleton is packed", "anim/hero.skel", true, PackedAssetConfig},

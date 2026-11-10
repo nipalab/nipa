@@ -30,7 +30,7 @@ var editableBinaryExtensions = map[string]struct{}{
 	".rxdata": {}, ".rvdata": {}, ".rvdata2": {},
 	".lxo": {}, ".3b": {}, ".tbscene": {},
 	".afphoto": {}, ".afdesign": {}, ".aseprite": {}, ".ase": {},
-	".spine": {}, ".cmo3": {}, ".can3": {},
+	".spine": {}, ".cmo3": {}, ".can3": {}, ".flp": {},
 }
 
 // binaryOnlyProfiles cover extensions that are often text, so they stay out
@@ -67,7 +67,7 @@ var packedAssetExtensions = map[string]struct{}{
 	".zip": {}, ".7z": {}, ".rar": {}, ".gz": {}, ".unitypackage": {},
 	".tar": {}, ".xz": {}, ".bz2": {}, ".zst": {}, ".lz4": {},
 	".apk": {}, ".aab": {}, ".ipa": {}, ".xapk": {}, ".appx": {}, ".msix": {},
-	".ztl": {}, ".procreate": {}, ".als": {}, ".flp": {},
+	".ztl": {}, ".procreate": {}, ".als": {},
 }
 
 // ConfigForFile returns the chunking configuration for a file. Text content
