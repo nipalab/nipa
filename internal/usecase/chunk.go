@@ -30,6 +30,8 @@ type chunkRepository interface {
 
 var presignExistsConcurrency = 16
 
+var confirmVerifyConcurrency = 4
+
 // ChunkRef identifies a chunk and the exact size of its content.
 type ChunkRef struct {
 	Hash      domain.Hash
@@ -439,7 +441,7 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	checks := make(map[domain.Hash]possession)
 	var checkMu sync.Mutex
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(presignExistsConcurrency)
+	group.SetLimit(confirmVerifyConcurrency)
 	for _, hash := range hashes {
 		_, isLinked := linked[hash]
 		proof, supplied := proofByHash[hash]
