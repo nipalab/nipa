@@ -64,6 +64,39 @@ describe('App', () => {
     act(() => root.unmount())
   })
 
+  it('redirects /login to the dashboard when already signed in', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) {
+          return jsonResponse({
+            id: '1',
+            name: 'Alice',
+            email: 'alice@example.com',
+            photo_url: '',
+            is_admin: true,
+            is_super_admin: false,
+            deleted: false,
+          })
+        }
+        if (url.includes('/api/v1/orgs')) {
+          return jsonResponse([])
+        }
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    window.history.pushState({}, '', '/login')
+
+    const { container, root } = await renderApp()
+    await waitForText(container, 'Organizations')
+    expect(window.location.pathname).toBe('/dashboard')
+    act(() => root.unmount())
+  })
+
   it('shows repositories after a silent refresh', async () => {
     vi.stubGlobal(
       'fetch',
