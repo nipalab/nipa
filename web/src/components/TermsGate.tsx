@@ -6,16 +6,27 @@ import { TermsCheckbox } from './TermsCheckbox'
 import { ErrorBanner, Loading } from './ui'
 
 // TermsGate holds the app back until the signed-in user accepted the current
-// terms. Servers that do not ask (free edition) answer 404 and pass through.
+// terms. Servers that do not ask (free edition) answer 404 and pass through;
+// any other failure keeps the app blocked behind a retry.
 export function TermsGate({ children }: { children: ReactNode }) {
-  const { data: status, loading, error: loadError } = useAsync(getTermsStatus, [])
+  const { data: status, loading, error: loadError, reload } = useAsync(getTermsStatus, [])
   const [accepted, setAccepted] = useState(false)
   const [checked, setChecked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (loading) return <Loading />
-  if (loadError || !status?.required || accepted) return <>{children}</>
+  if (loadError) {
+    return (
+      <div style={{ maxWidth: 560, margin: '48px auto', padding: '0 16px' }}>
+        <Stack direction="vertical" gap="normal">
+          <ErrorBanner error={loadError} title="Could not check the terms you accepted" />
+          <Button onClick={reload}>Retry</Button>
+        </Stack>
+      </div>
+    )
+  }
+  if (!status?.required || accepted) return <>{children}</>
 
   async function handleAccept() {
     if (!status) return

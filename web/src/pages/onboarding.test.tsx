@@ -570,6 +570,30 @@ describe('Terms acceptance', () => {
     expect(container.textContent).not.toContain('Name your workspace')
   })
 
+  it('keeps the app blocked when the terms status cannot be loaded', async () => {
+    let failing = true
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/v1/me/terms') && method === 'GET') {
+        return failing
+          ? jsonResponse({ error: 'unavailable' }, 500)
+          : jsonResponse({ version: '2026-11-10', required: true })
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Could not check the terms you accepted')
+    expect(container.textContent).not.toContain('Name your workspace')
+
+    failing = false
+    await act(async () => {
+      findButtonIn(container, 'Retry').click()
+    })
+    await waitForText(container, 'Review our terms')
+    expect(container.textContent).not.toContain('Name your workspace')
+  })
+
   it('lets users who already accepted straight through', async () => {
     stubRoutes((url) => {
       if (url.endsWith('/api/v1/me/terms')) {
