@@ -52,6 +52,7 @@ type stubPushClient struct {
 	uploadActive   int
 	uploadMax      int
 	uploadGate     chan struct{}
+	verifyChunks   bool
 	manifest       *serverDomain.TreeNode
 	manifestErr    error
 }
@@ -84,7 +85,7 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return s.pushResult, s.pushErr
 }
 
-func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (s *stubPushClient) UploadChunks(ctx context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.uploadMu.Lock()
 	s.uploadCalls++
 	s.uploadActive++
@@ -94,6 +95,9 @@ func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, ch
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
 	s.uploadMu.Unlock()
 
+	if s.verifyChunks {
+		domain.NotifyVerify(ctx, len(chunks))
+	}
 	if s.uploadGate != nil {
 		<-s.uploadGate
 	}
@@ -409,6 +413,30 @@ func TestPush_Run_ReportsUploadProgress(t *testing.T) {
 	require.Equal(t, []progressStart{{objects: 1, bytes: int64(len(content))}}, prog.starts)
 	require.Equal(t, []progressCount{{objects: 1, bytes: int64(len(content))}}, prog.counts)
 	require.True(t, prog.endCalled)
+}
+
+type verifyProgress struct {
+	stubProgress
+	verifies []int
+}
+
+func (v *verifyProgress) UploadVerify(objects int) { v.verifies = append(v.verifies, objects) }
+
+func TestPush_Run_ReportsVerifyStage(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "new upload bytes")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}, verifyChunks: true}
+	pusher := newTestPush(t, local, client)
+	prog := &verifyProgress{}
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add a.txt", prog))
+
+	require.Equal(t, []int{1}, prog.verifies)
 }
 
 func TestPush_Run_Error_UploadFails(t *testing.T) {

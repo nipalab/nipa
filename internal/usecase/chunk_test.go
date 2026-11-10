@@ -832,3 +832,51 @@ func TestChunk_ConfirmUploads_LinkedChunksUseStoredSizes(t *testing.T) {
 	require.Zero(t, store.sizeCalls.Load())
 	require.Contains(t, scrapeUsecaseMetrics(t, metrics), fmt.Sprintf(`nipa_chunk_bytes_total{op="confirm"} %d`, storedSize+len(freshData)))
 }
+
+type gettingChunkStore struct {
+	*stubChunkStore
+	inFlight    atomic.Int64
+	maxInFlight atomic.Int64
+}
+
+func (s *gettingChunkStore) Get(_ context.Context, hash domain.Hash) ([]byte, error) {
+	n := s.inFlight.Add(1)
+	defer s.inFlight.Add(-1)
+	for {
+		peak := s.maxInFlight.Load()
+		if n <= peak || s.maxInFlight.CompareAndSwap(peak, n) {
+			break
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+	return s.data[hash], nil
+}
+
+func TestChunk_ConfirmUploads_BoundsConcurrentVerificationReads(t *testing.T) {
+	prev := confirmVerifyConcurrency
+	confirmVerifyConcurrency = 3
+	t.Cleanup(func() { confirmVerifyConcurrency = prev })
+
+	store := &gettingChunkStore{stubChunkStore: newStubChunkStore()}
+	hashes := make([]domain.Hash, 0, 30)
+	for i := 0; i < 30; i++ {
+		data := []byte(fmt.Sprintf("verify-%d", i))
+		hash := chunker.Sum(data)
+		store.data[hash] = data
+		hashes = append(hashes, hash)
+	}
+	repo := NewMockchunkRepository(gomock.NewController(t))
+	linkEverything(repo, store)
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	uc := NewChunk(repo, store, ChunkTransferConfig{SigningKey: linkTestKey, PresignTTL: time.Hour})
+
+	proofs := make([]ChunkProof, 0, len(hashes))
+	for _, hash := range hashes {
+		proofs = append(proofs, proofFor(t, uc, hash, store.data[hash]))
+	}
+	missing, err := uc.ConfirmUploads(context.Background(), testOrg, testProject, hashes, proofs)
+	require.NoError(t, err)
+	require.Empty(t, missing)
+	require.LessOrEqual(t, store.maxInFlight.Load(), int64(3))
+	require.Greater(t, store.maxInFlight.Load(), int64(1))
+}

@@ -65,6 +65,9 @@ export function describeProgress(state: OpState): { label: string; percent?: num
   if (p.phase === "queued") {
     return { label: p.ahead > 0 ? `Waiting for ${p.ahead} other operation${p.ahead === 1 ? "" : "s"}…` : "Waiting for another operation…" };
   }
+  if (p.phase === "verify" && p.objectsTotal > 0) {
+    return { label: `Verifying ${p.objectsTotal} object${p.objectsTotal === 1 ? "" : "s"} on the server…` };
+  }
   if ((p.phase === "upload" || p.phase === "download") && p.objectsTotal > 0) {
     const verb = p.phase === "upload" ? "Uploading" : "Downloading";
     const bytes = p.bytesTotal > 0 ? ` · ${formatBytes(p.bytesDone)} of ${formatBytes(p.bytesTotal)}` : "";

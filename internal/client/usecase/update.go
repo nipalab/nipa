@@ -44,6 +44,12 @@ type UploadProgress interface {
 	UploadEnd()
 }
 
+// UploadVerifyProgress is implemented by progress sinks that want to show the
+// server-side verification that follows the transfer of every upload window.
+type UploadVerifyProgress interface {
+	UploadVerify(objects int)
+}
+
 type workingCopyLocalRepo interface {
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
