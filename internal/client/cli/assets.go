@@ -107,6 +107,12 @@ func warnImpactSkipped(cmd *cobra.Command, err error) {
 }
 
 func writeImpact(out io.Writer, impact *assetrefs.Impact) {
+	if impact.Empty() {
+		if impact != nil && impact.Truncated {
+			_, _ = fmt.Fprintf(out, "warning: reference scan truncated after %d files; broken references may be missed\n", impact.Scanned)
+		}
+		return
+	}
 	_, _ = fmt.Fprintf(out, "warning: %d broken reference(s), %d newly unused asset(s) (unstaged working changes included):\n", len(impact.Broken), len(impact.NewlyUnused))
 	for _, b := range impact.Broken {
 		detail := b.Reason

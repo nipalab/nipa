@@ -75,3 +75,19 @@ func TestPushReport_Impact(t *testing.T) {
 	require.Error(t, out.ImpactErr)
 	assert.Nil(t, out.Impact)
 }
+
+func TestPushReport_TruncatedImpactKept(t *testing.T) {
+	root := unityRepo(t)
+	writeFile(t, root, "Assets/Hero.prefab", matYAML(matGUID))
+	plan := &domain.Plan{Changes: []domain.PlanChange{{Path: "Assets/Hero.prefab", Status: "M"}}}
+
+	out := pushReport(context.Background(), offlineDiff(), root, plan, assetrefs.Options{MaxFiles: 1})
+	require.NoError(t, out.ImpactErr)
+	require.NotNil(t, out.Impact)
+	assert.True(t, out.Impact.Truncated)
+	assert.Empty(t, out.Impact.Broken)
+
+	out = PushReport(context.Background(), offlineDiff(), root, plan)
+	require.NoError(t, out.ImpactErr)
+	assert.Nil(t, out.Impact)
+}

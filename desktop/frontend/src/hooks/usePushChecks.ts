@@ -11,7 +11,7 @@ export function hasPushIssues(checks: PushChecks | undefined): boolean {
 }
 
 export function hasPushReport(checks: PushChecks | undefined): boolean {
-  return hasPushIssues(checks) || (checks?.warnings.length ?? 0) > 0;
+  return hasPushIssues(checks) || !!checks?.truncated || (checks?.warnings.length ?? 0) > 0;
 }
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -27,7 +27,7 @@ function useDebounced<T>(value: T, ms: number): T {
 // and refreshed when the working copy changes.
 export function usePushChecks(root: string, staged: string[]) {
   const queryClient = useQueryClient();
-  const stagedKey = useDebounced([...staged].sort().join("\n"), PUSH_CHECKS_DEBOUNCE_MS);
+  const stagedKey = useDebounced([...staged].sort((a, b) => a.localeCompare(b)).join("\n"), PUSH_CHECKS_DEBOUNCE_MS);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;

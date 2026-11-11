@@ -32,18 +32,22 @@ func PlanChanges(plan *domain.Plan) *Changes {
 }
 
 // PushReport checks the staged changes of a push plan against the budget and
-// for broken asset references, offline. An empty impact is nil.
+// for broken asset references, offline. An empty, complete impact is nil.
 func PushReport(ctx context.Context, d *usecase.Diff, root string, plan *domain.Plan) *PushChecks {
+	return pushReport(ctx, d, root, plan, assetrefs.Options{})
+}
+
+func pushReport(ctx context.Context, d *usecase.Diff, root string, plan *domain.Plan, opts assetrefs.Options) *PushChecks {
 	out := &PushChecks{}
 	if plan == nil || d == nil {
 		return out
 	}
 	changes := PlanChanges(plan)
 	out.Violations, out.BudgetErr = pushBudget(ctx, d, root, changes)
-	impact, err := Impact(ctx, d, root, changes, assetrefs.Options{})
+	impact, err := Impact(ctx, d, root, changes, opts)
 	if err != nil {
 		out.ImpactErr = err
-	} else if !impact.Empty() {
+	} else if !impact.Empty() || (impact != nil && impact.Truncated) {
 		out.Impact = impact
 	}
 	return out

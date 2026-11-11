@@ -39,6 +39,7 @@ describe("hasPushIssues / hasPushReport", () => {
     expect(hasPushReport(undefined)).toBe(false);
     expect(hasPushReport({ ...none, warnings: ["w"] })).toBe(true);
     expect(hasPushReport(none)).toBe(false);
+    expect(hasPushReport({ ...none, truncated: true, scanned: 5000 })).toBe(true);
   });
 });
 

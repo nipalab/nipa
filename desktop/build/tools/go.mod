@@ -1,6 +1,6 @@
 module github.com/nipalab/nipa/desktop/build/tools
 
-go 1.27.3
+go 1.27.4
 
 tool github.com/wailsapp/wails/v3/cmd/wails3
 

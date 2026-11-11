@@ -164,6 +164,16 @@ func TestWriteImpact(t *testing.T) {
 		"  a.prefab -> guid:x (unresolved)\n  unused: old.png\n  (scan truncated after 5 files)\n", buf.String())
 }
 
+func TestWriteImpact_TruncatedOnly(t *testing.T) {
+	var buf bytes.Buffer
+	writeImpact(&buf, &assetrefs.Impact{Scanned: 5000, Truncated: true})
+	require.Equal(t, "warning: reference scan truncated after 5000 files; broken references may be missed\n", buf.String())
+
+	buf.Reset()
+	writeImpact(&buf, &assetrefs.Impact{Scanned: 3})
+	require.Empty(t, buf.String())
+}
+
 func TestWarnImpactSkipped(t *testing.T) {
 	cmd := &cobra.Command{}
 	var errOut bytes.Buffer
