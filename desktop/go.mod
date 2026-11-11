@@ -1,6 +1,6 @@
 module github.com/nipalab/nipa/desktop
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/nipalab/nipa v0.0.0

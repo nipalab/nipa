@@ -69,6 +69,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `.tscn`/`.tres`/`project.godot`/`.import` through
   `preview.ParseGodotResource`),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
+  warn-only pre-push checks via `PushChecks` (daemon `PushPlan`; the
+  collapsible "Checks" block above Push in `CommitBox`, budget violations
+  and broken/unused references, "Push anyway"; `usePushChecks` keyed on the
+  staged set, debounced, refreshed on `repo:changed`),
   clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
   SSH key or password → project → branch, folder tree, location) and sparse
@@ -366,7 +370,8 @@ matching limits (`Config.NeedsDecode`). Surfaces: `nipa assets check [<rev>
 [<rev>]] [--staged] [--json] [-- <path>...]` (`cli/assets.go`, exit 2 via
 `cli.ErrBudgetViolations`), the MCP read tool `nipa_asset_check`, and
 `nipa push --dry-run` (`asset_violations` in JSON, warning block in text;
-offline over the plan's staged changes). The budget always comes from the
+offline over the plan's staged changes, assembled by `assetscan.PushReport`
+together with the impact below and shared with the daemon `PushPlan`). The budget always comes from the
 working copy; push itself does not enforce it.
 
 Flow for AI asset provenance (`.nipaprovenance.yml` at the repo root,
@@ -424,9 +429,9 @@ excluded; empty when truncated or `Graph.Partial` (sparse)). `assetscan.Graph`/`
 (`refs.go`) list files through `usecase.Diff.WorkingFiles` (walk + ignores +
 sparse) and skip the scan unless `Relevant` (an engine asset or sidecar
 changed). Surfaces: MCP read tools `nipa_asset_refs` / `nipa_asset_impact`
-and `nipa push --dry-run` (`pushImpact`: `asset_impact` in JSON, warning
-block in text, a failure only warns on stderr; `planReport` in
-`cli/dryrun.go`). The new side is the working copy, so unstaged edits are
+and `nipa push --dry-run` (`assetscan.PushReport`: `asset_impact` in JSON,
+warning block in text, a failure only warns on stderr; `planReport` in
+`cli/dryrun.go`) plus the daemon `PushPlan`. The new side is the working copy, so unstaged edits are
 included.
 
 Flow for generation (reference in `docs/AI.md`; the server never calls an
@@ -983,7 +988,12 @@ HTTP statuses, non-loopback `Host`/`Origin` refused). `MetaWarnings`
 (`daemon/metawarnings.go` over `internal/unitymeta` / `internal/godotmeta`,
 `engine` = `unity|godot`, empty detects `project.godot` then
 `ProjectSettings/ProjectVersion.txt`) is the sidecar lint RPC the desktop
-service and engine plugins call. `LoginSSH` takes an optional `key_path` +
+service and engine plugins call. `PushPlan` (`daemon/pushplan.go`, shared
+slot) returns the push plan's changes with `assetscan.PushReport`'s
+`asset_violations` and `asset_impact` (broken, newly_unused, truncated);
+budget/impact failures become `warnings`, never an RPC error. It runs over
+`RepoOps.PushCheck` (`NewPushChecker`: its own `Push` + `Diff` usecases,
+serialized). `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):

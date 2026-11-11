@@ -27,6 +27,7 @@ type RepoOps struct {
 	Diff       DiffRunner
 	Proxy      ProxyConn
 	Pins       PinRunner
+	PushCheck  PushCheckRunner
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/nipalab/nipa/internal/assetbudget"
 	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/assetscan"
-	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 )
@@ -101,54 +100,19 @@ func writeViolations(out io.Writer, indent string, violations []assetbudget.Viol
 	}
 }
 
-// pushBudget checks the staged changes of a push plan against the budget,
-// offline: only working files are read.
-func (c *Cli) pushBudget(cmd *cobra.Command, root string, plan *domain.Plan) ([]assetbudget.Violation, error) {
-	d := c.useCase.Diff()
-	if plan == nil || d == nil {
-		return nil, nil
-	}
-	cfg, err := assetbudget.Load(root)
-	if err != nil || cfg == nil {
-		return nil, err
-	}
-	report, err := assetscan.CheckChanges(cmd.Context(), assetscan.BlobLoader(d, root), cfg, planChanges(plan))
-	if err != nil {
-		return nil, err
-	}
-	return report.Violations, nil
-}
-
-func planChanges(plan *domain.Plan) *assetscan.Changes {
-	changes := &assetscan.Changes{Old: assetscan.SideSnapshot, New: assetscan.SideWorking}
-	for _, ch := range plan.Changes {
-		changes.Files = append(changes.Files, assetscan.Change{
-			Item:    assetscan.ChangeItem(ch.Path, "", ch.Status, assetscan.SideSnapshot, assetscan.SideWorking),
-			NewSize: ch.SizeBytes,
-		})
-	}
-	return changes
-}
-
-// pushImpact checks the staged changes of a push plan for broken asset
-// references, offline. It only warns: a failure is printed and skipped.
-func (c *Cli) pushImpact(cmd *cobra.Command, root string, plan *domain.Plan) *assetrefs.Impact {
-	d := c.useCase.Diff()
-	if plan == nil || d == nil {
-		return nil
-	}
-	impact, err := assetscan.Impact(cmd.Context(), d, root, planChanges(plan), assetrefs.Options{})
+func warnImpactSkipped(cmd *cobra.Command, err error) {
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: impact check skipped: %v\n", err)
-		return nil
 	}
-	if impact.Empty() {
-		return nil
-	}
-	return impact
 }
 
 func writeImpact(out io.Writer, impact *assetrefs.Impact) {
+	if impact.Empty() {
+		if impact != nil && impact.Truncated {
+			_, _ = fmt.Fprintf(out, "warning: reference scan truncated after %d files; broken references may be missed\n", impact.Scanned)
+		}
+		return
+	}
 	_, _ = fmt.Fprintf(out, "warning: %d broken reference(s), %d newly unused asset(s) (unstaged working changes included):\n", len(impact.Broken), len(impact.NewlyUnused))
 	for _, b := range impact.Broken {
 		detail := b.Reason

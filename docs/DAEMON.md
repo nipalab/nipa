@@ -380,6 +380,18 @@ detects `project.godot`, then `ProjectSettings/ProjectVersion.txt`, at the
 clone root; with neither, both run and each only reports inside its own
 projects. Paths are clone-relative; an unknown engine is `InvalidArgument`.
 
+`PushPlan(root)` is the offline `nipa push --dry-run` report under the shared
+slot: the staged changes from `usecase.Push.Plan` (`changes`, `up_to_date`,
+`upload_objects`, `upload_bytes`) plus `assetscan.PushReport`'s
+`asset_violations` (path, rule, limit, actual, max, message; `.nipaassets.yml`
+from the working copy) and `asset_impact` (`broken` from/raw/target/reason,
+`newly_unused`, `scanned`, `truncated`; absent when nothing broke). A budget
+or impact failure is a `warnings` string (`budget check skipped: ...`,
+`impact check skipped: ...`), never an RPC error; plan errors (nothing
+staged, detached at a tag, mid revert sequence) are. It runs over its own
+`Push` and `Diff` usecases (`RepoOps.PushCheck`, `NewPushChecker`, serialized
+per root).
+
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.
 

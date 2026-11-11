@@ -16,6 +16,7 @@ const service = vi.hoisted(() => ({
   AudioDiff: vi.fn(),
   TableDiff: vi.fn(),
   MetaWarnings: vi.fn(),
+  PushChecks: vi.fn(),
   LockStatus: vi.fn(),
   Lock: vi.fn(),
   Unlock: vi.fn(),
@@ -156,6 +157,21 @@ describe("desktop api", () => {
     expect(await desktop.metaWarnings("/a")).toEqual([{ path: "Assets/a" }]);
     expect(service.AudioDiff).toHaveBeenCalledWith("/a", ref, null);
     expect(service.TableDiff).toHaveBeenCalledWith("/a", null, ref);
+  });
+
+  it("loads push checks with empty lists for nulls", async () => {
+    const violation = { path: "a.png", rule: "textures", limit: "power_of_two", actual: "6x4", max: "", message: "not a power of two" };
+    service.PushChecks.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      violations: [violation],
+      broken: null,
+      newlyUnused: ["old.png"],
+      warnings: null,
+      truncated: true,
+      scanned: 4,
+    });
+    expect(await desktop.pushChecks("/a")).toEqual({ truncated: false, scanned: 0, violations: [], broken: [], newlyUnused: [], warnings: [] });
+    expect(await desktop.pushChecks("/a")).toEqual({ truncated: true, scanned: 4, violations: [violation], broken: [], newlyUnused: ["old.png"], warnings: [] });
+    expect(service.PushChecks).toHaveBeenCalledWith("/a");
   });
 
   it("locks, releases and opens files", async () => {

@@ -34,6 +34,8 @@ type repo struct {
 	proxy  ProxyConn
 	pins   PinRunner
 
+	pushCheck PushCheckRunner
+
 	watcher    *watcher
 	reconciler *reconciler
 	changes    *changeHub
@@ -177,6 +179,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.diff = ops.Diff
 		rp.proxy = ops.Proxy
 		rp.pins = ops.Pins
+		rp.pushCheck = ops.PushCheck
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

@@ -52,6 +52,18 @@ describe("demo service", () => {
     expect((await s.RemoteTree("x", "o", "p", "main", "Assets"))!.dirs).toHaveLength(0);
   });
 
+  it("reports push checks for the staged files", async () => {
+    const s = createService("default");
+    const checks = await s.PushChecks(ROOT);
+    expect(checks.violations!.map((v) => v.limit)).toEqual(["max_texture_size", "max_triangles"]);
+    expect(checks.broken).toHaveLength(1);
+    await s.Unstage(ROOT, ["Assets/Characters/Hero/hero_albedo.png", "Assets/Characters/Hero/ring_of_dawn.glb"]);
+    const none = await s.PushChecks(ROOT);
+    expect(none.violations).toEqual([]);
+    expect(none.broken).toEqual([]);
+    expect(none.newlyUnused).toEqual([]);
+  });
+
   it("models write operations", async () => {
     const s = createService("default");
     expect((await s.CreateBranch(ROOT, "x", "", ""))!.name).toBe("x");

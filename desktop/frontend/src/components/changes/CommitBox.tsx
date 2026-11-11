@@ -1,5 +1,8 @@
-import { ArrowUpFromLine, Lock, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, ArrowUpFromLine, ChevronDown, ChevronRight, Lock, X } from "lucide-react";
+import type { PushChecks } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
+import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
 
 export type LockIssue = { message: string; action?: { label: string; onClick: () => void; busy?: boolean } };
@@ -8,6 +11,8 @@ type CommitBoxProps = {
   stagedCount: number;
   blockedReason?: string;
   lockIssue?: LockIssue;
+  checks?: PushChecks;
+  onSelectPath?: (paths: string[]) => void;
   op: OpState | null;
   busy?: boolean;
   message: string;
@@ -16,8 +21,10 @@ type CommitBoxProps = {
   onCancel: () => void;
 };
 
-export function CommitBox({ stagedCount, blockedReason, lockIssue, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
+export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
   const trimmed = message.trim();
+  const report = stagedCount > 0 && hasPushReport(checks) ? checks : undefined;
+  const anyway = hasPushIssues(report);
   const canPush = stagedCount > 0 && trimmed !== "" && !op && !busy && !blockedReason && !lockIssue;
 
   const submit = () => {
@@ -43,10 +50,11 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, op, busy, mes
         className="no-drag w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
       />
       {op ? <Progress op={op} onCancel={onCancel} /> : null}
+      {!op && report && <ChecksBlock checks={report} onSelect={onSelectPath} />}
       {!op && (
         <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason ?? lockIssue?.message}>
           <ArrowUpFromLine />
-          {stagedCount > 0 ? `Push ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : "Push"}
+          {anyway ? "Push anyway" : stagedCount > 0 ? `Push ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : "Push"}
         </Button>
       )}
       {!op && blockedReason && <p className="text-[11px] text-muted-foreground">{blockedReason}</p>}
@@ -66,6 +74,81 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, op, busy, mes
       )}
       {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to push.</p>}
     </div>
+  );
+}
+
+function ChecksBlock({ checks, onSelect }: { checks: PushChecks; onSelect?: (paths: string[]) => void }) {
+  const [open, setOpen] = useState(true);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  const issues = checks.violations.length + checks.broken.length + checks.newlyUnused.length;
+  const select = (...paths: string[]) => onSelect?.(paths.filter(Boolean));
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning/10 text-[11px]" role="region" aria-label="Checks">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left">
+        <AlertTriangle className="size-3 shrink-0 text-warning" />
+        <span className="flex-1 font-medium">{issues > 0 ? `Checks: ${issues} warning${issues === 1 ? "" : "s"}` : "Checks"}</span>
+        <Chevron className="size-3 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="max-h-48 space-y-2 overflow-y-auto px-2 pb-2">
+          {checks.violations.length > 0 && (
+            <CheckGroup title="Over budget">
+              {checks.violations.map((v) => (
+                <CheckRow key={`${v.path}:${v.limit}`} title={v.path} onClick={() => select(v.path)}>
+                  <span className="block truncate font-mono">{v.path}</span>
+                  <span className="block text-muted-foreground">
+                    <span className="font-medium text-warning">{v.limit}</span> (rule {v.rule}): {v.message}
+                  </span>
+                </CheckRow>
+              ))}
+            </CheckGroup>
+          )}
+          {checks.broken.length + checks.newlyUnused.length > 0 && (
+            <CheckGroup title="Broken references / No longer used">
+              {checks.broken.map((b) => (
+                <CheckRow key={`${b.from}:${b.raw}`} title={b.from} onClick={() => select(b.from, b.target)}>
+                  <span className="block truncate font-mono">{b.from}</span>
+                  <span className="block text-muted-foreground">
+                    <span className="font-medium text-warning">{b.reason}</span> {b.target || b.raw}
+                  </span>
+                </CheckRow>
+              ))}
+              {checks.newlyUnused.map((p) => (
+                <CheckRow key={`unused:${p}`} title={p} onClick={() => select(p)}>
+                  <span className="block truncate font-mono">{p}</span>
+                  <span className="block text-muted-foreground">No longer used by any scene or asset</span>
+                </CheckRow>
+              ))}
+            </CheckGroup>
+          )}
+          {checks.truncated && <p className="text-muted-foreground">Reference scan stopped after {checks.scanned} files; the list may be incomplete.</p>}
+          {checks.warnings.map((w) => (
+            <p key={w} className="text-muted-foreground">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-0.5 font-medium">{title}</p>
+      <ul aria-label={title}>{children}</ul>
+    </div>
+  );
+}
+
+function CheckRow({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <li>
+      <button type="button" onClick={onClick} title={title} className="w-full rounded px-1 py-0.5 text-left hover:bg-background">
+        {children}
+      </button>
+    </li>
   );
 }
 
