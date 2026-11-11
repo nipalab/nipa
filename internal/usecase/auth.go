@@ -319,16 +319,30 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.C
 		}
 		return []byte(a.secret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-
 	if err != nil {
-		return nil, domain.NewErrorUser("invalid token")
+		return nil, errInvalidToken()
 	}
+	claims, ok := token.Claims.(*domain.Claims)
+	if !ok || !token.Valid {
+		return nil, errInvalidToken()
+	}
+	user, err := a.userRepo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, errInvalidToken()
+		}
+		return nil, err
+	}
+	if user.TokenVersion != claims.TokenVersion {
+		return nil, errInvalidToken()
+	}
+	claims.IsAdmin = user.IsAdmin
+	claims.IsSuperAdmin = user.IsSuperAdmin
+	return claims, nil
+}
 
-	if claims, ok := token.Claims.(*domain.Claims); ok && token.Valid {
-		return claims, nil
-	} else {
-		return nil, domain.NewErrorUser("invalid token")
-	}
+func errInvalidToken() error {
+	return domain.NewErrorUnauthorized("invalid token")
 }
 
 // LoginResult issues the access token and refresh token for an already authenticated
@@ -346,6 +360,7 @@ func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginRe
 		IsSuperAdmin: user.IsSuperAdmin,
 		IsAdmin:      user.IsAdmin,
 		OrgID:        []snow.ID{},
+		TokenVersion: user.TokenVersion,
 	}
 	jwt, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.secret))
 	if err != nil {

@@ -283,3 +283,41 @@ func TestUserRepositorySQLite_EmailIsCaseInsensitive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "alice2@example.com", got.Email)
 }
+
+func TestUserRepositorySQLite_RevocationsBumpTokenVersion(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	users := NewUserRepository(db)
+	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
+
+	version := func() int64 {
+		t.Helper()
+		var v int64
+		require.NoError(t, db.QueryRowContext(ctx, "SELECT token_version FROM users WHERE id = ?", userID.Int64()).Scan(&v))
+		return v
+	}
+
+	got, err := users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), got.TokenVersion)
+
+	require.NoError(t, users.UpdatePasswordAndRevokeTokens(ctx, userID, "new-hash"))
+	require.Equal(t, int64(1), version())
+	require.NoError(t, users.UpdateEmailAndRevokeTokens(ctx, userID, "alice2@example.com"))
+	require.Equal(t, int64(2), version())
+	got, err = users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.NoError(t, users.UpdateAdminFlags(ctx, userID, got.IsAdmin, got.IsSuperAdmin))
+	require.Equal(t, int64(2), version(), "unchanged flags keep sessions")
+	require.NoError(t, users.UpdateAdminFlags(ctx, userID, !got.IsAdmin, got.IsSuperAdmin))
+	require.Equal(t, int64(3), version())
+	require.NoError(t, users.UpdateAdminFlags(ctx, userID, !got.IsAdmin, !got.IsSuperAdmin))
+	require.Equal(t, int64(4), version())
+
+	got, err = users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), got.TokenVersion)
+
+	require.NoError(t, users.DeactivateAndRevokeTokens(ctx, userID))
+	require.Equal(t, int64(5), version())
+}

@@ -248,3 +248,37 @@ func (s *UserRepositorySuite) TestCreate_DuplicateEmail() {
 	})
 	s.Require().Error(err)
 }
+
+func (s *UserRepositorySuite) TestRevocationsBumpTokenVersion() {
+	ctx := context.Background()
+	users := NewUserRepository(s.db)
+	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
+
+	version := func() int64 {
+		var v int64
+		s.Require().NoError(s.db.QueryRowContext(ctx, "SELECT token_version FROM users WHERE id = $1", userID.Int64()).Scan(&v))
+		return v
+	}
+
+	got, err := users.GetByID(ctx, userID)
+	s.Require().NoError(err)
+	s.Equal(int64(0), got.TokenVersion)
+
+	s.Require().NoError(users.UpdatePasswordAndRevokeTokens(ctx, userID, "new-hash"))
+	s.Equal(int64(1), version())
+	s.Require().NoError(users.UpdateEmailAndRevokeTokens(ctx, userID, "alice2@example.com"))
+	s.Equal(int64(2), version())
+	s.Require().NoError(users.UpdateAdminFlags(ctx, userID, got.IsAdmin, got.IsSuperAdmin))
+	s.Equal(int64(2), version(), "unchanged flags keep sessions")
+	s.Require().NoError(users.UpdateAdminFlags(ctx, userID, !got.IsAdmin, got.IsSuperAdmin))
+	s.Equal(int64(3), version())
+	s.Require().NoError(users.UpdateAdminFlags(ctx, userID, !got.IsAdmin, !got.IsSuperAdmin))
+	s.Equal(int64(4), version())
+
+	got, err = users.GetByID(ctx, userID)
+	s.Require().NoError(err)
+	s.Equal(int64(4), got.TokenVersion)
+
+	s.Require().NoError(users.DeactivateAndRevokeTokens(ctx, userID))
+	s.Equal(int64(5), version())
+}

@@ -34,8 +34,8 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 		ws.POST("/me/password").
 			To(Wrap(h.ChangeMyPassword)).
 			Reads(model.ChangePasswordRequest{}).
-			Doc("Change the authenticated user password").
-			Returns(http.StatusOK, "updated", model.MessageResponse{}).
+			Doc("Change the authenticated user password; revokes every session and returns a fresh one").
+			Returns(http.StatusOK, "new session", model.LoginResponse{}).
 			Operation("changeMyPassword").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 

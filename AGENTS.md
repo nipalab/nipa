@@ -504,6 +504,23 @@ base36 commit id or hash and walks the ref's parents (no id-order pruning,
 capped at 10000 commits, then 400) to answer `{contains}`; read permission
 required. Service tokens are REST only.
 
+Flow for session revocation: `users.token_version` (both dialects) is bumped
+inside the statement that changes the account: `UserUpdatePassword`
+(`UpdatePasswordAndRevokeTokens`, `SetPasswordHash`,
+`ResetUnverifiedCredentials`), `UserUpdateEmail`, `UserDeleteByID`
+(deactivate) and `UserUpdateAdminFlags` (only when a flag changes).
+`Auth.LoginResult` signs it as the `tv` claim (absent = 0, so older tokens
+stay valid until a bump). `Auth.ValidateToken`, the only access-token check
+(REST `AuthFilter`, gRPC `JWTUnary`/`JWTStream`), loads the user by id on
+every request (no cache): a missing (deleted) user or a `tv` mismatch is a 401
+`invalid token`, and `IsAdmin`/`IsSuperAdmin` are overwritten from the row, so
+admin gates never trust the token's flags. A lookup failure that is not "not
+found" passes through as a 5xx error (`domain.IsServerError`): REST answers
+500 and gRPC `Internal`, so a database blip never triggers a client token
+refresh. `POST /me/password` revokes the caller too and answers with a fresh
+`LoginResponse` + refresh cookie that the SPA installs. Service tokens keep
+their own per-request creator check.
+
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
 login behind every command, the profile page card): an SSH key is an alternate
 credential that bootstraps the normal JWT session over the same gRPC transport;

@@ -125,7 +125,7 @@ function PasswordTab() {
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setNotice('Password updated.')
+      setNotice('Password updated. Your other sessions were signed out.')
     } catch (err) {
       setError(errorMessage(err))
     } finally {

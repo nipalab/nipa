@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,9 +278,8 @@ func TestAuth_Logout(t *testing.T) {
 	})
 }
 
-func TestAuth_ValidateToken_Valid(t *testing.T) {
-	ctx := context.Background()
-	want := domain.Claims{
+func validTokenClaims(version int64) domain.Claims {
+	return domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   "42",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -289,19 +289,112 @@ func TestAuth_ValidateToken_Valid(t *testing.T) {
 		IsSuperAdmin: true,
 		IsAdmin:      true,
 		OrgID:        []snow.ID{snow.ID(1), snow.ID(2), snow.ID(3)},
+		TokenVersion: version,
 	}
+}
 
+func authWithUser(t *testing.T, user *domain.User, err error) *Auth {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	userRepo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(user, err)
+	return NewAuth("secret", nil, userRepo, nil)
+}
+
+func TestAuth_ValidateToken_Valid(t *testing.T) {
+	want := validTokenClaims(3)
 	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), want)
 
-	got, err := NewAuth("secret", nil, nil, nil).ValidateToken(ctx, token)
+	auth := authWithUser(t, &domain.User{ID: 42, IsSuperAdmin: true, IsAdmin: true, TokenVersion: 3}, nil)
+	got, err := auth.ValidateToken(context.Background(), token)
 	require.NoError(t, err)
 
 	require.Equal(t, "42", got.Subject)
 	require.Equal(t, snow.ID(42), got.UserID)
 	require.True(t, got.IsSuperAdmin)
 	require.True(t, got.IsAdmin)
+	require.Equal(t, int64(3), got.TokenVersion)
 	require.Equal(t, []snow.ID{snow.ID(1), snow.ID(2), snow.ID(3)}, got.OrgID)
 	require.WithinDuration(t, want.ExpiresAt.Time, got.ExpiresAt.Time, time.Second)
+}
+
+func TestAuth_ValidateToken_AdminFlagsComeFromRow(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
+
+	demoted := authWithUser(t, &domain.User{ID: 42}, nil)
+	got, err := demoted.ValidateToken(context.Background(), token)
+	require.NoError(t, err)
+	require.False(t, got.IsAdmin)
+	require.False(t, got.IsSuperAdmin)
+
+	plain := validTokenClaims(0)
+	plain.IsAdmin, plain.IsSuperAdmin = false, false
+	token = signToken(t, jwt.SigningMethodHS256, []byte("secret"), plain)
+	promoted := authWithUser(t, &domain.User{ID: 42, IsAdmin: true}, nil)
+	got, err = promoted.ValidateToken(context.Background(), token)
+	require.NoError(t, err)
+	require.True(t, got.IsAdmin)
+	require.False(t, got.IsSuperAdmin)
+}
+
+func TestAuth_ValidateToken_WithoutVersionClaimIsVersionZero(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
+	payload, err := jwt.NewParser().DecodeSegment(strings.Split(token, ".")[1])
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"tv"`)
+
+	got, err := authWithUser(t, &domain.User{ID: 42, IsAdmin: true}, nil).ValidateToken(context.Background(), token)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), got.TokenVersion)
+	require.True(t, got.IsAdmin)
+
+	_, err = authWithUser(t, &domain.User{ID: 42, TokenVersion: 1}, nil).ValidateToken(context.Background(), token)
+	assertUnauthorizedToken(t, err)
+}
+
+func TestAuth_ValidateToken_VersionMismatch(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(2))
+
+	got, err := authWithUser(t, &domain.User{ID: 42, IsAdmin: true, TokenVersion: 3}, nil).ValidateToken(context.Background(), token)
+	assertUnauthorizedToken(t, err)
+	require.Nil(t, got)
+}
+
+func TestAuth_ValidateToken_DeletedUser(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
+
+	got, err := authWithUser(t, nil, domain.NewErrorRecordNotFound()).ValidateToken(context.Background(), token)
+	assertUnauthorizedToken(t, err)
+	require.False(t, domain.IsServerError(err))
+	require.Nil(t, got)
+}
+
+func TestAuth_ValidateToken_DatabaseErrorIsNotAnAuthFailure(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
+	dbErr := domain.NewErrorDatabase("connection refused")
+
+	got, err := authWithUser(t, nil, dbErr).ValidateToken(context.Background(), token)
+	require.ErrorIs(t, err, dbErr)
+	require.True(t, domain.IsServerError(err))
+	require.Nil(t, got)
+}
+
+func TestAuth_LoginResult_CarriesTokenVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	authRepo := NewMockauthRepository(ctrl)
+	authRepo.EXPECT().SaveRefreshToken(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any()).Return(nil)
+
+	got, err := NewAuth("secret", nil, nil, authRepo).LoginResult(context.Background(), &domain.User{ID: 42, TokenVersion: 7})
+	require.NoError(t, err)
+	require.Equal(t, int64(7), parseAccessToken(t, got.AccessToken, "secret").TokenVersion)
+}
+
+func assertUnauthorizedToken(t *testing.T, err error) {
+	t.Helper()
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 401, domErr.Code)
+	require.Equal(t, "invalid token", domErr.Message)
 }
 
 func TestAuth_ValidateToken_Expired(t *testing.T) {
@@ -406,11 +499,7 @@ func signToken(t *testing.T, method jwt.SigningMethod, key interface{}, claims d
 
 func assertInvalidTokenError(t *testing.T, err error) {
 	t.Helper()
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 400, domErr.Code)
-	require.Equal(t, "invalid token", domErr.Message)
+	assertUnauthorizedToken(t, err)
 }
 
 type countingHasher struct{ hashes, compares int }

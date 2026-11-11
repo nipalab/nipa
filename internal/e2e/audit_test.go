@@ -41,7 +41,7 @@ func auditLogin(t *testing.T, base, email, password string) string {
 }
 
 // The REST container is process-global, so this is the only e2e test that
-// mounts it.
+// mounts it; other REST scenarios run as its subtests.
 func TestEndToEnd_AuditLog(t *testing.T) {
 	ctx := context.Background()
 	dbConn := openTestDB(t)
@@ -149,6 +149,10 @@ func TestEndToEnd_AuditLog(t *testing.T) {
 	denied := auditREST(t, http.MethodGet, server.URL+"/api/v1/admin/audit", "", carolToken)
 	require.Equal(t, http.StatusForbidden, denied.StatusCode)
 	_ = denied.Body.Close()
+
+	t.Run("deactivated admin loses access", func(t *testing.T) {
+		testDeactivatedAdminLosesAccess(t, server.URL, host, superToken)
+	})
 }
 
 func carolTokenForInvite(t *testing.T, base string) string {

@@ -56,7 +56,22 @@ func (h *Handler) ChangeMyPassword(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "password updated"})
+	user, err := h.useCase.User().Get(appCtx.Context(), claims.UserID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	result, err := h.useCase.Auth().LoginResult(appCtx.Context(), user)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
+		AccessToken: result.AccessToken,
+		TokenType:   result.TokenType,
+		ExpiresIn:   result.ExpiresIn,
+	})
 }
 
 func (h *Handler) ListUsers(appCtx http.AppContext) {

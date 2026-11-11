@@ -39,7 +39,7 @@ func (q *Queries) UserCreate(ctx context.Context, arg UserCreateParams) (int64, 
 }
 
 const userDeleteByID = `-- name: UserDeleteByID :exec
-UPDATE users SET deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted = false
+UPDATE users SET deleted = true, deleted_at = CURRENT_TIMESTAMP, token_version = token_version + 1 WHERE id = ? AND deleted = false
 `
 
 func (q *Queries) UserDeleteByID(ctx context.Context, id int64) error {
@@ -48,7 +48,7 @@ func (q *Queries) UserDeleteByID(ctx context.Context, id int64) error {
 }
 
 const userGetByEmail = `-- name: UserGetByEmail :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE email = ? AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at, token_version FROM users WHERE email = ? AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error) {
@@ -69,12 +69,13 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error
 		&i.UpdatedAt,
 		&i.Deleted,
 		&i.DeletedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const userGetById = `-- name: UserGetById :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE id = ? AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at, token_version FROM users WHERE id = ? AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
@@ -95,12 +96,13 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 		&i.UpdatedAt,
 		&i.Deleted,
 		&i.DeletedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const userList = `-- name: UserList :many
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at, token_version FROM users WHERE deleted = false ORDER BY name, id
 `
 
 func (q *Queries) UserList(ctx context.Context) ([]User, error) {
@@ -127,6 +129,7 @@ func (q *Queries) UserList(ctx context.Context) ([]User, error) {
 			&i.UpdatedAt,
 			&i.Deleted,
 			&i.DeletedAt,
+			&i.TokenVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -142,7 +145,10 @@ func (q *Queries) UserList(ctx context.Context) ([]User, error) {
 }
 
 const userUpdateAdminFlags = `-- name: UserUpdateAdminFlags :exec
-UPDATE users SET is_admin = ?, is_super_admin = ? WHERE id = ? AND deleted = false
+UPDATE users SET
+    token_version = token_version + CASE WHEN is_admin <> ?1 OR is_super_admin <> ?2 THEN 1 ELSE 0 END,
+    is_admin = ?1, is_super_admin = ?2
+WHERE id = ?3 AND deleted = false
 `
 
 type UserUpdateAdminFlagsParams struct {
@@ -157,7 +163,7 @@ func (q *Queries) UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminF
 }
 
 const userUpdateEmail = `-- name: UserUpdateEmail :exec
-UPDATE users SET email = ? WHERE id = ? AND deleted = false
+UPDATE users SET email = ?, token_version = token_version + 1 WHERE id = ? AND deleted = false
 `
 
 type UserUpdateEmailParams struct {
@@ -171,7 +177,7 @@ func (q *Queries) UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams
 }
 
 const userUpdatePassword = `-- name: UserUpdatePassword :exec
-UPDATE users SET password = ?
+UPDATE users SET password = ?, token_version = token_version + 1
 WHERE id = ? AND deleted = false
 `
 

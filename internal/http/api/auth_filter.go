@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -77,6 +78,11 @@ func (f *AuthFilter) Auth() restful.FilterFunction {
 			var er error
 			claim, er = f.tokenValidator.ValidateToken(req.Request.Context(), tokenString)
 			if er != nil {
+				if domain.IsServerError(er) {
+					slog.Error("token validation failed", "error", er)
+					_ = resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError("internal server error"), restful.MIME_JSON)
+					return
+				}
 				_ = resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access, token not valid"), restful.MIME_JSON)
 				return
 			}

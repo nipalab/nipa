@@ -21,6 +21,7 @@ type User struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 	Deleted         bool       `json:"deleted"`
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
+	TokenVersion    int64      `json:"-"`
 }
 
 type TermsAcceptance struct {

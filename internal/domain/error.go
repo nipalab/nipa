@@ -38,6 +38,16 @@ func IsErrorConflict(err error) bool {
 	return isDomainError(err, 409)
 }
 
+// IsServerError reports whether err is a server-side failure: a 5xx domain
+// error or any error that is not a domain error.
+func IsServerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var e *Error
+	return !errors.As(err, &e) || e.Code >= 500
+}
+
 func isDomainError(err error, code int) bool {
 	if err == nil {
 		return false

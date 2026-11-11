@@ -722,6 +722,67 @@ func TestAPIRoutes(t *testing.T) {
 		_ = change.Body.Close()
 	})
 
+	t.Run("session revocation", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+		createDave := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"dave","email":"dave@example.com","password":"password123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createDave.StatusCode)
+		dave := decodeBody[model.UserResponse](t, createDave)
+		promote := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/"+dave.ID+"/admin",
+			`{"is_admin":true,"is_super_admin":false}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, promote.StatusCode)
+		_ = promote.Body.Close()
+
+		status := func(token string) int {
+			resp := doGet(t, server.URL+"/api/v1/me", token)
+			_ = resp.Body.Close()
+			return resp.StatusCode
+		}
+
+		daveLogin, _ := loginAs(t, "dave@example.com")
+		require.Equal(t, http.StatusOK, status(daveLogin.AccessToken))
+		demote := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/"+dave.ID+"/admin",
+			`{"is_admin":false,"is_super_admin":false}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, demote.StatusCode)
+		_ = demote.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, status(daveLogin.AccessToken), "demotion revokes")
+
+		daveLogin, _ = loginAs(t, "dave@example.com")
+		reset := doMethod(t, http.MethodPost, server.URL+"/api/v1/users/"+dave.ID+"/password",
+			`{"password":"newpassword123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, reset.StatusCode)
+		_ = reset.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, status(daveLogin.AccessToken), "admin password reset revokes")
+
+		daveLogin, _ = loginAs(t, "dave@example.com")
+		email := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/"+dave.ID,
+			`{"email":"dave2@example.com"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, email.StatusCode)
+		_ = email.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, status(daveLogin.AccessToken), "email change revokes")
+
+		daveLogin, _ = loginAs(t, "dave2@example.com")
+		change := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
+			`{"old_password":"whatever","new_password":"longenough1"}`, daveLogin.AccessToken)
+		require.Equal(t, http.StatusOK, change.StatusCode)
+		var refreshed *http.Cookie
+		for _, cookie := range change.Cookies() {
+			if cookie.Name == "nipa_refresh" {
+				refreshed = cookie
+			}
+		}
+		fresh := decodeBody[model.LoginResponse](t, change)
+		require.NotNil(t, refreshed)
+		require.NotEmpty(t, refreshed.Value)
+		require.Equal(t, http.StatusUnauthorized, status(daveLogin.AccessToken), "the old session is revoked")
+		require.Equal(t, http.StatusOK, status(fresh.AccessToken), "the caller gets a fresh session")
+
+		deactivate := doMethod(t, http.MethodDelete, server.URL+"/api/v1/users/"+dave.ID, "", superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, deactivate.StatusCode)
+		_ = deactivate.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, status(fresh.AccessToken), "deactivation revokes")
+	})
+
 	t.Run("project lifecycle", func(t *testing.T) {
 		aliceLogin, _ := login(t)
 		bobLogin, _ := loginAs(t, "bob@example.com")

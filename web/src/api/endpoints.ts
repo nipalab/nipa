@@ -1,4 +1,4 @@
-import { apiFetch, apiJson, errorFromResponse } from './client'
+import { apiFetch, apiJson, errorFromResponse, establishSession } from './client'
 import type {
   AuditListFilters,
   AuditListResponse,
@@ -28,6 +28,7 @@ import type {
   SSHKeyResponse,
   ServiceTokenResponse,
   MessageResponse,
+  TokenResponse,
   OrgMemberResponse,
   OrgResponse,
   PBACRuleResponse,
@@ -132,11 +133,10 @@ export function updateMyProfile(name: string, photoUrl: string, notifyEmail: boo
   })
 }
 
-export function changeMyPassword(oldPassword: string, newPassword: string): Promise<MessageResponse> {
-  return apiJson('/api/v1/me/password', {
-    method: 'POST',
-    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
-  })
+// changeMyPassword revokes every session of the account; the server answers
+// with a fresh one for this browser, which replaces the current session.
+export function changeMyPassword(oldPassword: string, newPassword: string): Promise<TokenResponse> {
+  return establishSession('/api/v1/me/password', { old_password: oldPassword, new_password: newPassword })
 }
 
 export function listMySSHKeys(): Promise<SSHKeyResponse[]> {

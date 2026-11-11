@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
-import { clearSession } from '../api/client'
+import { clearSession, getAccessToken } from '../api/client'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -51,7 +51,7 @@ function stubRoutes(extra: (url: string, init?: RequestInit) => Response | null 
         return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
       }
       if (url.includes('/api/v1/me/password') && method === 'POST') {
-        return jsonResponse({ message: 'password updated' })
+        return jsonResponse({ access_token: 'rotated', token_type: 'Bearer', expires_in: 1800 })
       }
       if (url.endsWith('/api/v1/me') && method === 'GET') return jsonResponse(ME)
       if (url.endsWith('/api/v1/keys') && method === 'GET') return jsonResponse([])
@@ -164,7 +164,7 @@ describe('ProfilePage', () => {
       const method = init?.method ?? 'GET'
       if (url.includes('/api/v1/me/password') && method === 'POST') {
         calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
-        return jsonResponse({ message: 'password updated' })
+        return jsonResponse({ access_token: 'rotated', token_type: 'Bearer', expires_in: 1800 })
       }
       return null
     })
@@ -195,6 +195,7 @@ describe('ProfilePage', () => {
     await waitFor(() => calls.length > 0)
     expect(calls[0]?.body).toEqual({ old_password: 'oldpass', new_password: 'secret123' })
     await waitForText(container, 'Password updated.')
+    expect(getAccessToken()).toBe('rotated')
     act(() => root.unmount())
   })
 
