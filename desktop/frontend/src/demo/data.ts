@@ -13,6 +13,7 @@ import type {
   ImageInfo,
   LockStatus,
   MergeRequest,
+  PushChecks,
   RemoteProject,
   Repo,
   SceneCompare,
@@ -393,6 +394,22 @@ export const locks = (): LockStatus => ({
     { path: ICON, state: "free", lockPath: "", heldByName: "", tracked: false },
   ],
 });
+
+export const pushChecks = (staged: string[]): PushChecks => {
+  const violations = [
+    { path: HERO, rule: "characters", limit: "max_texture_size", actual: "4096", max: "2048", message: "4096x4096 exceeds 2048x2048" },
+    { path: MODEL, rule: "characters", limit: "max_triangles", actual: "48210", max: "30000", message: "48,210 triangles exceed 30,000" },
+  ].filter((v) => staged.includes(v.path));
+  const touchesHero = staged.includes(HERO);
+  return {
+    violations,
+    broken: touchesHero ? [{ from: SCENE, raw: "guid:7f3c9a2e41d84b0c9e5a1f6b2d8c4e07", target: "Assets/Characters/Hero/hero_old.mat", reason: "removed" }] : [],
+    newlyUnused: touchesHero ? ["Assets/Characters/Hero/hero_albedo_old.png"] : [],
+    truncated: false,
+    scanned: touchesHero ? 1284 : 0,
+    warnings: [],
+  };
+};
 
 export const projects: RemoteProject[] = [
   { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "starfall", name: "Starfall", description: "Action RPG, Unity 6" },

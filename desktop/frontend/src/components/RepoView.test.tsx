@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   discard: vi.fn(),
   fileDiff: vi.fn(),
   metaWarnings: vi.fn(),
+  pushChecks: vi.fn(),
   lockStatus: vi.fn(),
   lock: vi.fn(),
   unlock: vi.fn(),
@@ -102,7 +103,8 @@ const imageDiff: FileDiff = {
   hunks: null,
 };
 
-let changed: (c: RepoChanged) => void = () => {};
+const repoListeners = new Set<(c: RepoChanged) => void>();
+const changed = (c: RepoChanged) => repoListeners.forEach((fn) => fn(c));
 let progressed: (p: OpProgress) => void = () => {};
 const notify = vi.fn();
 
@@ -110,11 +112,13 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.changes.mockResolvedValue(changeSet());
   api.metaWarnings.mockResolvedValue([]);
+  api.pushChecks.mockResolvedValue({ violations: [], broken: [], newlyUnused: [], warnings: [], truncated: false, scanned: 0 });
   api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
+  repoListeners.clear();
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
-    changed = fn;
-    return () => {};
+    repoListeners.add(fn);
+    return () => repoListeners.delete(fn);
   });
   api.onOpProgress.mockImplementation((fn: (p: OpProgress) => void) => {
     progressed = fn;
@@ -224,6 +228,24 @@ describe("Changes view", () => {
     expect(within(list).getByRole("option", { selected: true })).toHaveAttribute("title", "Assets/old.png");
     await userEvent.click(toggle);
     expect(screen.queryByRole("list", { name: "Unity .meta warnings" })).not.toBeInTheDocument();
+  });
+
+  it("shows push checks and jumps to the file", async () => {
+    api.pushChecks.mockResolvedValue({
+      violations: [{ path: "src/player.go", rule: "code", limit: "max_bytes", actual: "12", max: "4", message: "12 B exceeds 4 B" }],
+      broken: [{ from: "notes.txt", raw: "res://gone.png", target: "", reason: "unresolved" }],
+      newlyUnused: [],
+      warnings: [],
+      truncated: false,
+      scanned: 3,
+    });
+    view();
+    const list = await fileList();
+    const checks = await screen.findByRole("region", { name: "Checks" });
+    expect(screen.getByRole("button", { name: /Push anyway/ })).toBeInTheDocument();
+    await userEvent.click(within(checks).getByTitle("notes.txt"));
+    expect(within(list).getByRole("option", { selected: true })).toHaveAttribute("title", "notes.txt");
+    expect(api.pushChecks).toHaveBeenCalledWith("/work/game");
   });
 
   it("moves the selection with the arrow keys", async () => {

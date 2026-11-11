@@ -8,6 +8,7 @@ import { FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
+import { usePushChecks } from "@/hooks/usePushChecks";
 import type { OpState } from "@/hooks/useRepoOperation";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
@@ -89,6 +90,8 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
     }
     return map;
   }, [meta.data]);
+  const stagedPaths = useMemo(() => (data?.staged ?? []).map((f) => f.path), [data]);
+  const pushChecks = usePushChecks(root, stagedPaths);
   const lockStatus = useLockStatus(root);
   const lockStates = useMemo(() => lockStateMap(lockStatus.data), [lockStatus.data]);
   const { lock } = useLockActions(root, notify);
@@ -118,6 +121,12 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const blocked = c.detached ? `HEAD is at tag ${c.detached}. Switch to a branch to push.` : undefined;
   const openConflicts = c.conflicts.filter((p) => !c.resolved.includes(p)).length;
   const lockIssue = stagedLockIssue(c, lockStates, lockPaths, lock.isPending);
+  const selectFirst = (paths: string[]) => {
+    for (const path of paths) {
+      const staged = c.staged.some((f) => f.path === path);
+      if (staged || c.unstaged.some((f) => f.path === path)) return setPicked({ path, staged });
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0">
@@ -134,12 +143,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
         {!empty && (meta.data ?? []).length > 0 && (
           <MetaWarnings
             warnings={meta.data!}
-            onSelect={(w) => {
-              for (const path of [w.path, w.related]) {
-                const staged = c.staged.some((f) => f.path === path);
-                if (staged || c.unstaged.some((f) => f.path === path)) return setPicked({ path, staged });
-              }
-            }}
+            onSelect={(w) => selectFirst([w.path, w.related])}
           />
         )}
         {empty ? (
@@ -166,6 +170,8 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
           stagedCount={c.staged.length}
           blockedReason={blocked}
           lockIssue={blocked ? undefined : lockIssue}
+          checks={blocked ? undefined : pushChecks.data}
+          onSelectPath={selectFirst}
           op={op?.op === "push" ? op : null}
           busy={busy}
           message={message}

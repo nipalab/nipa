@@ -75,6 +75,22 @@ export interface Branch {
     "protected": boolean;
 }
 
+export interface BrokenReference {
+    "from": string;
+    "raw": string;
+    "target": string;
+    "reason": string;
+}
+
+export interface BudgetViolation {
+    "path": string;
+    "rule": string;
+    "limit": string;
+    "actual": string;
+    "max": string;
+    "message": string;
+}
+
 export interface Changes {
     "branch": string;
 
@@ -664,6 +680,15 @@ export interface PropChange {
     "key": string;
     "old": string;
     "new": string;
+}
+
+export interface PushChecks {
+    "violations": BudgetViolation[] | null;
+    "broken": BrokenReference[] | null;
+    "newlyUnused": string[] | null;
+    "truncated": boolean;
+    "scanned": number;
+    "warnings": string[] | null;
 }
 
 export interface RefChange {

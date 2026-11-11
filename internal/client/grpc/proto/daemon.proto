@@ -758,6 +758,50 @@ message MetaWarningsResponse {
     repeated MetaWarning warnings = 1;
 }
 
+message PushPlanRequest {
+    string root = 1;
+}
+
+message PushPlanChange {
+    string path = 1;
+    string status = 2;
+    bool binary = 3;
+    int64 size_bytes = 4;
+}
+
+message AssetViolation {
+    string path = 1;
+    string rule = 2;
+    string limit = 3;
+    string actual = 4;
+    string max = 5;
+    string message = 6;
+}
+
+message BrokenReference {
+    string from = 1;
+    string raw = 2;
+    string target = 3;
+    string reason = 4;
+}
+
+message AssetImpact {
+    repeated BrokenReference broken = 1;
+    repeated string newly_unused = 2;
+    int32 scanned = 3;
+    bool truncated = 4;
+}
+
+message PushPlanResponse {
+    bool up_to_date = 1;
+    repeated PushPlanChange changes = 2;
+    int32 upload_objects = 3;
+    int64 upload_bytes = 4;
+    repeated AssetViolation asset_violations = 5;
+    AssetImpact asset_impact = 6;
+    repeated string warnings = 7;
+}
+
 message LockStatusRequest {
     string root = 1;
 }
@@ -910,6 +954,7 @@ service NipaDaemon {
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
     rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
     rpc MetaWarnings(MetaWarningsRequest) returns (MetaWarningsResponse);
+    rpc PushPlan(PushPlanRequest) returns (PushPlanResponse);
 
     rpc AccountStatus(AccountStatusRequest) returns (AccountStatusResponse);
     rpc LoginSSH(LoginSSHRequest) returns (LoginResponse);

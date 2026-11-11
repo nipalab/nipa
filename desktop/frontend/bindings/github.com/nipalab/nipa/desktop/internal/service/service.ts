@@ -384,6 +384,14 @@ export function Push(root: string, message: string): $CancellablePromise<$models
 }
 
 /**
+ * PushChecks reports the asset budget violations and reference impact of the
+ * staged changes. They only warn; pushing stays allowed.
+ */
+export function PushChecks(root: string): $CancellablePromise<$models.PushChecks> {
+    return $Call.ByID(2589770285, root);
+}
+
+/**
  * RemoteBranches lists a project's branches.
  */
 export function RemoteBranches(server: string, org: string, project: string): $CancellablePromise<$models.RemoteBranch[] | null> {

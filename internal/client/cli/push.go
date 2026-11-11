@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 )
 
@@ -30,9 +31,9 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				violations, err := c.pushBudget(cmd, root, plan)
-				if err != nil {
-					return err
+				checks := assetscan.PushReport(cmd.Context(), c.useCase.Diff(), root, plan)
+				if checks.BudgetErr != nil {
+					return checks.BudgetErr
 				}
 				generated := ""
 				if generate {
@@ -40,7 +41,8 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 						return err
 					}
 				}
-				return writePlanReport(cmd, plan, planReport{Violations: violations, Impact: c.pushImpact(cmd, root, plan), Generated: generated})
+				warnImpactSkipped(cmd, checks.ImpactErr)
+				return writePlanReport(cmd, plan, planReport{Violations: checks.Violations, Impact: checks.Impact, Generated: generated})
 			}
 			if generate {
 				if message, err = c.generateCommitMessage(cmd, root); err != nil {

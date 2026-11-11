@@ -57,7 +57,7 @@ Sonar never compile it.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `SceneDiff`, `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `SceneDiff`, `MetaWarnings`, `PushChecks`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
@@ -174,6 +174,18 @@ Sonar never compile it.
   new folders without a `.meta`, `.meta` files left without their asset or
   deleted while the asset stays, a `.meta` not staged with its staged asset,
   and a changed GUID (old content read from the snapshot, 256 checks max).
+- Pre-push checks: `PushChecks` calls the daemon's `PushPlan` (the
+  `nipa push --dry-run` report) and the Changes screen shows a collapsible
+  "Checks" block above the Push button (`usePushChecks`: query keyed on the
+  staged set, debounced 400 ms, refreshed on `repo:changed`). "Over budget"
+  rows name the file, the `.nipaassets.yml` limit and rule with the message;
+  "Broken references / No longer used" rows name the referring file and the
+  reason/target, or the asset nothing uses any more; a truncated reference
+  scan and skipped checks are noted. Clicking a row selects that file (or the
+  broken target) in the changes list. Warn only: the button stays enabled and
+  reads "Push anyway" while anything is reported. The block is hidden with
+  nothing staged or nothing to report (no budget file and no engine asset
+  change gives an empty report).
 - Clone and sign in: "Clone a repository…" (welcome screen and the sidebar)
   opens a dialog: server address (remembered) → `AccountStatus` tells
   whether the daemon holds a session for it; without one the dialog tries
@@ -509,3 +521,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 14. Conflict resolution. **(done)**
 15. Tray, notifications, deep links, settings. **(done)**
 16. Packaging and auto-update. **(done)**
+17. Pre-push checks (budgets, broken references) above the Push button. **(done)**

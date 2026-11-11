@@ -2,8 +2,8 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"os"
@@ -16,7 +16,6 @@ import (
 
 	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/assetscan"
-	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -165,16 +164,14 @@ func TestWriteImpact(t *testing.T) {
 		"  a.prefab -> guid:x (unresolved)\n  unused: old.png\n  (scan truncated after 5 files)\n", buf.String())
 }
 
-func TestPushImpact_SkipsOnError(t *testing.T) {
-	c := newPushDiffCli(t)
+func TestWarnImpactSkipped(t *testing.T) {
 	cmd := &cobra.Command{}
 	var errOut bytes.Buffer
 	cmd.SetErr(&errOut)
-	cmd.SetContext(context.Background())
-	plan := &domain.Plan{Changes: []domain.PlanChange{{Path: "Assets/a.png", Status: "A"}}}
-	require.Nil(t, c.pushImpact(cmd, filepath.Join(t.TempDir(), "missing"), plan))
-	require.Contains(t, errOut.String(), "warning: impact check skipped:")
-	require.Nil(t, c.pushImpact(cmd, t.TempDir(), nil))
+	warnImpactSkipped(cmd, nil)
+	require.Empty(t, errOut.String())
+	warnImpactSkipped(cmd, errors.New("boom"))
+	require.Equal(t, "warning: impact check skipped: boom\n", errOut.String())
 }
 
 func TestSetupPushCmd_DryRunAssetViolations(t *testing.T) {
@@ -204,11 +201,4 @@ func TestSetupPushCmd_DryRunAssetViolations(t *testing.T) {
 	writeFile(t, root, ".nipaassets.yml", "rules: 3\n")
 	_, err = runCmdInDir(t, root, newPushDiffCli(t).setupPushCmd(), "--dry-run")
 	require.Error(t, err)
-}
-
-func TestPushBudget_NoPlanOrDiff(t *testing.T) {
-	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
-	v, err := c.pushBudget(&cobra.Command{}, t.TempDir(), &domain.Plan{})
-	require.NoError(t, err)
-	require.Nil(t, v)
 }

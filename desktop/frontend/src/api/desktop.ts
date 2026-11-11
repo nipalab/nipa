@@ -50,6 +50,9 @@ import type {
   LockFailure,
   LockStatus as RawLockStatus,
   MetaWarning,
+  BrokenReference,
+  BudgetViolation,
+  PushChecks as RawPushChecks,
   ModelCompare,
   ModelSide,
   ModelStats,
@@ -128,6 +131,13 @@ export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
 export type RemoteListing = Omit<RawRemoteListing, "dirs"> & { dirs: RemoteDir[] };
 export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
 export type LockResult = { locked: string[]; failed: LockFailure[] };
+export type { BrokenReference, BudgetViolation };
+export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnused" | "warnings"> & {
+  violations: BudgetViolation[];
+  broken: BrokenReference[];
+  newlyUnused: string[];
+  warnings: string[];
+};
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
@@ -177,6 +187,17 @@ export const desktop = {
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next),
   sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
+  pushChecks: async (root: string): Promise<PushChecks> => {
+    const c = await Service.PushChecks(root);
+    return {
+      truncated: c?.truncated ?? false,
+      scanned: c?.scanned ?? 0,
+      violations: c?.violations ?? [],
+      broken: c?.broken ?? [],
+      newlyUnused: c?.newlyUnused ?? [],
+      warnings: c?.warnings ?? [],
+    };
+  },
   lockStatus: async (root: string): Promise<LockStatus> => {
     const s = await Service.LockStatus(root);
     if (!s) throw new Error("No lock information");
