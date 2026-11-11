@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpFromLine, ChevronDown, ChevronRight, Lock, X } from "lucide-react";
-import type { PushChecks } from "@/api/desktop";
+import { AlertTriangle, ArrowUpFromLine, ChevronDown, ChevronRight, Loader2, Lock, Sparkles, X } from "lucide-react";
+import type { Draft, PushChecks } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
+import { useDraft } from "@/hooks/useGenerate";
 import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
 
@@ -19,9 +20,11 @@ type CommitBoxProps = {
   onMessage: (message: string) => void;
   onPush: (message: string) => void;
   onCancel: () => void;
+  onGenerate?: () => Promise<Draft>;
 };
 
-export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
+export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel, onGenerate }: CommitBoxProps) {
+  const draft = useDraft(message, (d) => onMessage(d.text));
   const trimmed = message.trim();
   const report = stagedCount > 0 && hasPushReport(checks) ? checks : undefined;
   const anyway = hasPushIssues(report);
@@ -29,7 +32,7 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
 
   const submit = () => {
     if (!canPush) return;
-    onPush(trimmed);
+    onPush(draft.finalize(trimmed));
   };
 
   return (
@@ -49,6 +52,20 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
         disabled={!!op}
         className="no-drag w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
       />
+      {!op && onGenerate && (
+        <div className="flex items-center gap-2 text-[11px]">
+          <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => void draft.run(onGenerate)} disabled={draft.busy || busy || stagedCount === 0}>
+            {draft.busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            {draft.busy ? "Generating…" : "Generate"}
+          </Button>
+          {draft.model && !draft.busy && <span className="min-w-0 truncate text-muted-foreground">Drafted by {draft.model}; review it before pushing</span>}
+        </div>
+      )}
+      {!op && draft.error && (
+        <p role="alert" className="text-[11px] text-danger">
+          Could not generate a message: {draft.error}
+        </p>
+      )}
       {op ? <Progress op={op} onCancel={onCancel} /> : null}
       {!op && report && <ChecksBlock checks={report} onSelect={onSelectPath} />}
       {!op && (

@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   fileDiff: vi.fn(),
   metaWarnings: vi.fn(),
   pushChecks: vi.fn(),
+  llmSettings: vi.fn(),
+  generateCommitMessage: vi.fn(),
   lockStatus: vi.fn(),
   lock: vi.fn(),
   unlock: vi.fn(),
@@ -113,6 +115,7 @@ beforeEach(() => {
   api.changes.mockResolvedValue(changeSet());
   api.metaWarnings.mockResolvedValue([]);
   api.pushChecks.mockResolvedValue({ violations: [], broken: [], newlyUnused: [], warnings: [], truncated: false, scanned: 0 });
+  api.llmSettings.mockResolvedValue({ endpoint: "", model: "", keySaved: false, configured: false });
   api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   repoListeners.clear();
@@ -459,6 +462,25 @@ describe("push and update", () => {
     await act(async () => call.resolve({ commitId: "c42" }));
     expect(notify).toHaveBeenCalledWith("Pushed to main (c42)", "success");
     expect(screen.getByRole("textbox", { name: "Push message" })).toHaveValue("");
+  });
+
+  it("generates a push message and pushes it with the trailer", async () => {
+    api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "qwen", keySaved: false, configured: true });
+    api.generateCommitMessage.mockResolvedValue({ title: "", text: "feat: faster player", model: "qwen", source: "", target: "" });
+    api.push.mockResolvedValue({ commitId: "c43" });
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: /Generate/ }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Push message" })).toHaveValue("feat: faster player"));
+    expect(api.generateCommitMessage).toHaveBeenCalledWith("/work/game");
+    expect(api.push).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Push 1 file" }));
+    expect(api.push).toHaveBeenCalledWith("/work/game", "feat: faster player\n\nNipa-Generated: qwen");
+  });
+
+  it("hides Generate while AI is not configured", async () => {
+    view();
+    await screen.findByRole("button", { name: "Push 1 file" });
+    expect(screen.queryByRole("button", { name: /Generate/ })).not.toBeInTheDocument();
   });
 
   it("keeps the message when a push fails", async () => {

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/client/aicontext"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
@@ -67,6 +68,18 @@ func TestServeRepoOps_BuildsEveryRunner(t *testing.T) {
 	require.NotNil(t, ops.Revert)
 	require.NotNil(t, ops.Diff)
 	require.NotNil(t, ops.Proxy)
+	require.NotNil(t, ops.Generate)
+}
+
+func TestServeGenerator_BuildsCollector(t *testing.T) {
+	gen := serveGenerator(newTestAuth(), newServeTestClient())
+	src, err := gen.Sources("/work/game")
+	require.NoError(t, err)
+	col, ok := src.(*aicontext.Collector)
+	require.True(t, ok)
+	require.NotNil(t, col.Diff)
+	require.NotNil(t, col.History)
+	require.NotNil(t, col.Connector)
 }
 
 func TestServeCommand_Flags(t *testing.T) {

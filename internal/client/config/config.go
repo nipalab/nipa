@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -192,6 +193,48 @@ func SetUploadWorkers(workers int) error {
 	if workers < 0 {
 		return fmt.Errorf("upload workers must not be negative")
 	}
+	return update(func(raw map[string]json.RawMessage) error {
+		if workers == 0 {
+			delete(raw, "uploadWorkers")
+		} else {
+			raw["uploadWorkers"] = json.RawMessage(strconv.Itoa(workers))
+		}
+		return nil
+	})
+}
+
+// SetLLM stores the generation endpoint and model, keeping apiKeyEnv and
+// every other key. Both empty removes them. A key is never written here.
+func SetLLM(endpoint, model string) error {
+	endpoint, model = strings.TrimSpace(endpoint), strings.TrimSpace(model)
+	if endpoint != "" {
+		u, err := url.Parse(endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("the endpoint must be an http(s) URL such as http://localhost:11434/v1")
+		}
+	}
+	return update(func(raw map[string]json.RawMessage) error {
+		block := LLMConfig{}
+		if data, ok := raw["llm"]; ok {
+			if err := json.Unmarshal(data, &block); err != nil {
+				return fmt.Errorf("parse llm: %w", err)
+			}
+		}
+		block.Endpoint, block.Model = endpoint, model
+		if block == (LLMConfig{}) {
+			delete(raw, "llm")
+			return nil
+		}
+		data, err := json.Marshal(block)
+		if err != nil {
+			return err
+		}
+		raw["llm"] = data
+		return nil
+	})
+}
+
+func update(edit func(raw map[string]json.RawMessage) error) error {
 	path, err := Path()
 	if err != nil {
 		return err
@@ -209,10 +252,8 @@ func SetUploadWorkers(workers int) error {
 	if raw == nil {
 		raw = map[string]json.RawMessage{}
 	}
-	if workers == 0 {
-		delete(raw, "uploadWorkers")
-	} else {
-		raw["uploadWorkers"] = json.RawMessage(strconv.Itoa(workers))
+	if err := edit(raw); err != nil {
+		return err
 	}
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {

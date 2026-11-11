@@ -87,6 +87,8 @@ type Service struct {
 	Autostart func(enabled bool) error
 	// Prefs stores the settings; nil uses the defaults.
 	Prefs SettingsStore
+	// Keys stores the generation API key; nil uses the OS keyring.
+	Keys LLMKeyStore
 
 	dial  Dialer
 	store RepoStore

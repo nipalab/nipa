@@ -392,6 +392,24 @@ staged, detached at a tag, mid revert sequence) are. It runs over its own
 `Push` and `Diff` usecases (`RepoOps.PushCheck`, `NewPushChecker`, serialized
 per root).
 
+`Generate(root, kind, source, target)` drafts text with the configured
+OpenAI-compatible endpoint (`internal/client/generate`, see
+[AI.md](AI.md#generation---generate)): `kind` `commit` describes the staged
+changes (offline), `mr` the merge base vs `source` diff plus the source
+commits since the merge base (`source` empty = the clone's branch, `target`
+empty = the project default branch; branches and the log come from the
+server). It answers `{title, text, model, source, target}`: `title` is only
+set for `mr`, `text` never carries the `Nipa-Generated` trailer (the caller
+adds it where the text is used), and nothing is pushed or created. The input
+is gathered under the shared slot through its own `Diff`/`Repo` usecases
+(`RepoOps.Generate`, `SerialGenerator`); the model is asked after the slot is
+released, so a slow endpoint never holds up a push. The endpoint, model and
+key are resolved on every call (config file, `NIPA_LLM_*`, then the
+`llm-api-key` keyring entry), so settings saved from the desktop app apply
+without a restart. No endpoint or model is `FailedPrecondition` (`AI
+generation is not configured: ...`); an unknown `kind` is `InvalidArgument`;
+endpoint failures carry the redacted `llm` message.
+
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.
 

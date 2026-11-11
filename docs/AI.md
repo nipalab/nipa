@@ -447,6 +447,24 @@ Configuration in `~/.config/nipa/config.json` (the environment wins):
 | `llm.model` | `NIPA_LLM_MODEL` | model name sent in the request and the trailer |
 | `llm.apiKeyEnv` | `NIPA_LLM_API_KEY` | the config names the variable holding the key; `NIPA_LLM_API_KEY` holds the key itself and wins. Keys are never written to the config file, logs or error messages |
 
+The key is resolved in this order: `NIPA_LLM_API_KEY`, the variable named by
+`llm.apiKeyEnv`, then the `llm-api-key` entry of the OS keyring (service
+`nipa`, written by the desktop app's Settings; with `NIPA_TOKEN_FILE` set it
+is the `llm-api-key` entry of that file instead). The keyring is only read
+once an endpoint and a model are configured, and an unreadable keyring counts
+as no key, so a keyless local endpoint keeps working without one.
+
+The desktop app has the same generator: a Generate button in the push box and
+in the New merge request dialog (shown once an endpoint and a model are set)
+fills the message, or the title and description, for editing through the
+daemon's `Generate` RPC; it never pushes or opens anything by itself. The
+`Nipa-Generated` trailer is added to the push message or the description when
+the generated text is used, as is or edited, and dropped when the field was
+cleared and rewritten. Settings › AI assistance edits `llm.endpoint` and
+`llm.model` in the shared config, stores the key in the keyring (write-only:
+the app only shows that a key is saved) and has a Test button that sends one
+small request.
+
 Without an endpoint or model `--generate` fails with `set NIPA_LLM_ENDPOINT
 and NIPA_LLM_MODEL or llm in ~/.config/nipa/config.json`. There is no default
 endpoint: nothing is sent anywhere unless you configure it.

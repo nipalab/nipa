@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   reply: vi.fn(),
   resolveThread: vi.fn(),
   imageDiff: vi.fn(),
+  llmSettings: vi.fn(),
+  generateMergeRequest: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -119,6 +121,7 @@ beforeEach(() => {
     { name: "art", commitId: "s2", default: false, protected: false },
   ]);
   api.imageDiff.mockResolvedValue({ old: null, new: null, stats: null, unsupported: "no preview" });
+  api.llmSettings.mockResolvedValue({ endpoint: "", model: "", keySaved: false, configured: false });
 });
 
 const view = () => renderWithProviders(<MergeRequestsView root="/work/game" branch="art" notify={notify} />);
@@ -175,6 +178,43 @@ describe("MergeRequestsView list", () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Opened !13", "success"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Drafts" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("drafts the title and description and marks only kept drafts", async () => {
+    api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "qwen", keySaved: false, configured: true });
+    api.generateMergeRequest
+      .mockRejectedValueOnce(new Error("source and target branches must differ"))
+      .mockResolvedValue({ title: "Sky pass", text: "## Summary\n\nNew sky", model: "qwen", source: "art", target: "main" });
+    api.createMergeRequest.mockResolvedValue(mr({ number: 14 }));
+    view();
+    await list();
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const dialog = screen.getByRole("dialog");
+    const generate = await within(dialog).findByRole("button", { name: /Generate title and description/ });
+    await waitFor(() => expect(generate).toBeEnabled());
+    await userEvent.click(generate);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Could not generate a description: source and target branches must differ");
+
+    await userEvent.click(generate);
+    const title = within(dialog).getByRole("textbox", { name: "Title" });
+    const description = within(dialog).getByRole("textbox", { name: "Description" });
+    await waitFor(() => expect(title).toHaveValue("Sky pass"));
+    expect(description).toHaveValue("## Summary\n\nNew sky");
+    expect(api.generateMergeRequest).toHaveBeenLastCalledWith("/work/game", "art", "main");
+    expect(api.createMergeRequest).not.toHaveBeenCalled();
+    await userEvent.type(description, ".");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Open merge request" }));
+    await waitFor(() => expect(api.createMergeRequest).toHaveBeenCalled());
+    expect(api.createMergeRequest.mock.calls[0][1]).toMatchObject({ title: "Sky pass", description: "## Summary\n\nNew sky.\n\nNipa-Generated: qwen" });
+  });
+
+  it("hides Generate while AI is not configured", async () => {
+    view();
+    await list();
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Target branch" })).toHaveValue("main"));
+    expect(within(dialog).queryByRole("button", { name: /Generate/ })).not.toBeInTheDocument();
   });
 
   it("closes the new request dialog and picks other branches", async () => {

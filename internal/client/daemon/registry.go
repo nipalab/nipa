@@ -35,6 +35,7 @@ type repo struct {
 	pins   PinRunner
 
 	pushCheck PushCheckRunner
+	generate  GenerateRunner
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -180,6 +181,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.proxy = ops.Proxy
 		rp.pins = ops.Pins
 		rp.pushCheck = ops.PushCheck
+		rp.generate = ops.Generate
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

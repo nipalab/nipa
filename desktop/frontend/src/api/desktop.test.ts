@@ -17,6 +17,13 @@ const service = vi.hoisted(() => ({
   TableDiff: vi.fn(),
   MetaWarnings: vi.fn(),
   PushChecks: vi.fn(),
+  LLMSettings: vi.fn(),
+  SetLLM: vi.fn(),
+  SetLLMKey: vi.fn(),
+  ClearLLMKey: vi.fn(),
+  TestLLM: vi.fn(),
+  GenerateCommitMessage: vi.fn(),
+  GenerateMergeRequest: vi.fn(),
   LockStatus: vi.fn(),
   Lock: vi.fn(),
   Unlock: vi.fn(),
@@ -366,6 +373,30 @@ describe("desktop api", () => {
     expect(service.ResolveConflict).toHaveBeenCalledWith("/a", { path: "f", choice: "content", content: "x" });
     await desktop.resolveConflict("/a", "f", "ours");
     expect(service.ResolveConflict).toHaveBeenLastCalledWith("/a", { path: "f", choice: "ours", content: "" });
+  });
+
+  it("forwards AI settings and generation calls", async () => {
+    const llm = { endpoint: "http://localhost:11434/v1", model: "qwen", keySaved: true, configured: true };
+    service.LLMSettings.mockResolvedValueOnce(llm).mockResolvedValueOnce(null);
+    expect(await desktop.llmSettings()).toEqual(llm);
+    await expect(desktop.llmSettings()).rejects.toThrow("No AI settings was returned");
+    service.SetLLM.mockResolvedValueOnce(llm);
+    expect(await desktop.setLLM("http://localhost:11434/v1", "qwen")).toEqual(llm);
+    expect(service.SetLLM).toHaveBeenCalledWith("http://localhost:11434/v1", "qwen");
+    await desktop.setLLMKey("sk");
+    expect(service.SetLLMKey).toHaveBeenCalledWith("sk");
+    await desktop.clearLLMKey();
+    expect(service.ClearLLMKey).toHaveBeenCalled();
+    await desktop.testLLM("http://x", "m", "");
+    expect(service.TestLLM).toHaveBeenCalledWith("http://x", "m", "");
+
+    const draft = { title: "", text: "feat: a", model: "qwen", source: "", target: "" };
+    service.GenerateCommitMessage.mockResolvedValueOnce(draft).mockResolvedValueOnce(null);
+    expect(await desktop.generateCommitMessage("/a")).toEqual(draft);
+    await expect(desktop.generateCommitMessage("/a")).rejects.toThrow("No draft");
+    service.GenerateMergeRequest.mockResolvedValueOnce({ ...draft, title: "T" });
+    expect((await desktop.generateMergeRequest("/a", "feature", "main")).title).toBe("T");
+    expect(service.GenerateMergeRequest).toHaveBeenCalledWith("/a", "feature", "main");
   });
 
   it("forwards settings, activity and navigation calls", async () => {

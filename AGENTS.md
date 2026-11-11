@@ -73,6 +73,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   collapsible "Checks" block above Push in `CommitBox`, budget violations
   and broken/unused references, "Push anyway"; `usePushChecks` keyed on the
   staged set, debounced, refreshed on `repo:changed`),
+  generated push messages and MR descriptions via `GenerateCommitMessage`/
+  `GenerateMergeRequest` (daemon `Generate`; Generate buttons in `CommitBox`
+  and the New merge request dialog, shown when `LLMSettings.configured`;
+  the draft only fills the fields, `useDraft` appends the `Nipa-Generated`
+  trailer to kept/edited drafts and forgets it once the field is cleared)
+  and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
+  shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
+  OS keyring through `Service.Keys`, `TestLLM` one-request check),
   clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
   SSH key or password → project → branch, folder tree, location) and sparse
@@ -450,12 +458,22 @@ and `Review` (MR view/diff/commits/threads, sides from `MRSides`, shared with
 the MCP asset tools). The MCP prompts `nipa_commit_message`,
 `nipa_mr_description` and `nipa_review_mr` (`mcp/prompts.go`, always
 registered) return one user message (system text, `---`, user text).
-`nipa push --generate` and `nipa mr create --generate` (`cli/generate.go`)
-call `internal/client/llm` — one non-streaming OpenAI-compatible
+`internal/client/generate` holds the non-interactive part: `Generator`
+(`LLM`/`Sources` seams; `Model`, `CommitInput`, `MRInput`, `Commit`,
+`MergeRequest`), `CommitMessage`/`MergeRequestDraft`/`Text` (clean output,
+`SplitTitle` for MRs, `Result{Title, Text, Model, Source, Target}` without the
+trailer), `Ping`, and `Settings`/`NewLLM`/`Default` (`config.ResolveLLM`,
+then the `securestorage` `llm-api-key` keyring entry — the `NIPA_TOKEN_FILE`
+entry in file-backed mode — read only once endpoint+model are set, errors =
+no key; a missing endpoint/model wraps `ErrNotConfigured`). `nipa push
+--generate` and `nipa mr create --generate` (`cli/generate.go`, flags, trailer
+placement and `y/N` only) call it; the model is `internal/client/llm` — one non-streaming OpenAI-compatible
 `POST <endpoint>/chat/completions` (endpoint used as-is, trailing `/` trimmed,
 60 s timeout, 1 MiB response cap, key redacted from errors) — configured by
 `config.ResolveLLM` (`llm: {endpoint, model, apiKeyEnv}` in the client config,
-`NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`/`NIPA_LLM_API_KEY` win, keys never stored);
+`NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`/`NIPA_LLM_API_KEY` win, key order
+`NIPA_LLM_API_KEY` > `apiKeyEnv` > keyring, keys never in the config file;
+`config.SetLLM` writes endpoint/model and keeps the rest);
 the draft is confirmed with `y/N` (`--yes` skips, non-TTY refuses) and
 `push --dry-run --generate` only prints it (`generated_message` in JSON).
 
@@ -993,7 +1011,14 @@ slot) returns the push plan's changes with `assetscan.PushReport`'s
 `asset_violations` and `asset_impact` (broken, newly_unused, truncated);
 budget/impact failures become `warnings`, never an RPC error. It runs over
 `RepoOps.PushCheck` (`NewPushChecker`: its own `Push` + `Diff` usecases,
-serialized). `LoginSSH` takes an optional `key_path` +
+serialized). `Generate` (`daemon/generate.go`, `kind` = `commit|mr`,
+optional `source`/`target`) gathers the `aicontext` input under the shared
+slot over `RepoOps.Generate` (`SerialGenerator` around `serveGenerator`: a
+`generate.Generator` with its own `Diff`/`Repo` usecases and the root's
+client as `Connector`), then asks the model outside the slot and answers
+`{title, text, model, source, target}` without the trailer; the model is
+resolved per call (no restart after a settings change) and a missing
+endpoint/model is `FailedPrecondition`. `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):

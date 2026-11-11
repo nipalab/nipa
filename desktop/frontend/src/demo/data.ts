@@ -7,10 +7,12 @@ import type {
   ConflictSet,
   ConflictTexts,
   DiffHunk,
+  Draft,
   FileChange,
   FileDiff,
   FileSide,
   ImageInfo,
+  LLMSettings,
   LockStatus,
   MergeRequest,
   PushChecks,
@@ -410,6 +412,27 @@ export const pushChecks = (staged: string[]): PushChecks => {
     warnings: [],
   };
 };
+
+export const llmSettings: LLMSettings = { endpoint: "http://localhost:11434/v1", model: "qwen2.5-coder:14b", keySaved: false, configured: true };
+
+export const commitDraft = (staged: string[]): Draft => ({
+  title: "",
+  text: `Update hero textures and ring model\n\n${staged
+    .slice(0, 4)
+    .map((p) => `- ${p.split("/").pop()}`)
+    .join("\n")}`,
+  model: llmSettings.model,
+  source: "",
+  target: "",
+});
+
+export const mrDraft = (source: string, target: string): Draft => ({
+  title: "Hero art pass: new albedo and ring model",
+  text: "## Summary\n\nRepaints the hero albedo at 4K and replaces the ring model with a lighter mesh.\n\n## Notes\n\n- The old hero material is no longer used.",
+  model: llmSettings.model,
+  source: source || "art/hero-pass",
+  target: target || "main",
+});
 
 export const projects: RemoteProject[] = [
   { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "starfall", name: "Starfall", description: "Action RPG, Unity 6" },

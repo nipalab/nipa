@@ -57,20 +57,21 @@ Sonar never compile it.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `SceneDiff`, `MetaWarnings`, `PushChecks`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
   `DeleteBranch`, `SwitchBranch`, `Tags`, `CreateTag`, `DeleteTag`,
   `CheckoutTag`, `Revert`; Merge requests: `MergeRequests`, `MergeRequest`,
   `MergeRequestActivity`, `MergeRequestCommits`, `RevisionFiles`,
-  `CreateMergeRequest`, `EditMergeRequest`, `SetDraft`, `MergeMergeRequest`,
+  `CreateMergeRequest`, `GenerateMergeRequest`, `EditMergeRequest`, `SetDraft`, `MergeMergeRequest`,
   `CloseMergeRequest`, `ReopenMergeRequest`, `SubmitReview`, `Comment`,
   `Reply`, `ResolveThread`; Conflicts: `Merge`, `AbortMerge`, `Conflicts`,
   `ConflictTexts`, `ConflictDiff`, `ResolveConflict`; Activity and links:
   `Activity`, `OpenLink`, `Navigate`, `TakeNavigation`; Settings:
   `Settings`, `SaveSettings`, `UploadWorkers`, `SetUploadWorkers`,
-  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`; Updates:
+  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`,
+  `LLMSettings`, `SetLLM`, `SetLLMKey`, `ClearLLMKey`, `TestLLM`; Updates:
   `UpdateStatus`, `CheckForUpdate`, `InstallUpdate`, `RestartToUpdate`,
   `OpenUpdatePage`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
@@ -186,6 +187,24 @@ Sonar never compile it.
   reads "Push anyway" while anything is reported. The block is hidden with
   nothing staged or nothing to report (no budget file and no engine asset
   change gives an empty report).
+- Generated text: with an endpoint and a model set (Settings › AI
+  assistance, or `NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`), the push box and the
+  New merge request dialog show a Generate button (`useLLMSettings`,
+  `useDraft`). `GenerateCommitMessage` / `GenerateMergeRequest` call the
+  daemon's `Generate` and the draft fills the push message, or the MR title
+  and description, for editing; nothing is pushed or opened by itself. A busy
+  state and the daemon's error are shown under the button. The
+  `Nipa-Generated: <model>` trailer is appended at push/open time while the
+  field holds generated text (kept or edited) and forgotten once the field is
+  cleared, like `nipa push --generate` (message) and `nipa mr create
+  --generate` (description, never the title). Settings › AI assistance edits
+  the endpoint and model through `LLMSettings`/`SetLLM` (the shared
+  `~/.config/nipa/config.json` `llm` block, `apiKeyEnv` kept), the key
+  through `SetLLMKey`/`ClearLLMKey` (OS keyring entry `llm-api-key`; the
+  field is write-only and only shows "Saved") and checks them with `TestLLM`
+  (one small request from the app process, typed key first, then
+  `NIPA_LLM_API_KEY`/`apiKeyEnv`, then the saved key; errors redacted). The
+  daemon resolves the settings on every call, so no restart is needed.
 - Clone and sign in: "Clone a repository…" (welcome screen and the sidebar)
   opens a dialog: server address (remembered) → `AccountStatus` tells
   whether the daemon holds a session for it; without one the dialog tries
@@ -522,3 +541,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 15. Tray, notifications, deep links, settings. **(done)**
 16. Packaging and auto-update. **(done)**
 17. Pre-push checks (budgets, broken references) above the Push button. **(done)**
+18. Generate the push message and MR description, AI settings with a keyring key. **(done)**

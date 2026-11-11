@@ -9,6 +9,7 @@ import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { usePushChecks } from "@/hooks/usePushChecks";
+import { useLLMSettings } from "@/hooks/useGenerate";
 import type { OpState } from "@/hooks/useRepoOperation";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
@@ -92,6 +93,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   }, [meta.data]);
   const stagedPaths = useMemo(() => (data?.staged ?? []).map((f) => f.path), [data]);
   const pushChecks = usePushChecks(root, stagedPaths);
+  const llm = useLLMSettings();
   const lockStatus = useLockStatus(root);
   const lockStates = useMemo(() => lockStateMap(lockStatus.data), [lockStatus.data]);
   const { lock } = useLockActions(root, notify);
@@ -178,6 +180,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
           onMessage={onMessage}
           onPush={onPush}
           onCancel={onCancelOp}
+          onGenerate={llm.data?.configured ? () => desktop.generateCommitMessage(root) : undefined}
         />
         <PaneResizer size={listSize} label="Resize file list" />
       </div>

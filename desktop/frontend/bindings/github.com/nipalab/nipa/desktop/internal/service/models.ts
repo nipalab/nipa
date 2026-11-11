@@ -243,6 +243,14 @@ export interface DiffLine {
     "noNewline"?: boolean;
 }
 
+export interface Draft {
+    "title": string;
+    "text": string;
+    "model": string;
+    "source": string;
+    "target": string;
+}
+
 export interface FileChange {
     "path": string;
 
@@ -456,6 +464,16 @@ export interface ImageStats {
     "formatChanged": boolean;
     "bitDepthChanged": boolean;
     "alphaChanged": boolean;
+}
+
+/**
+ * LLMSettings never carries the key: KeySaved only says one is stored.
+ */
+export interface LLMSettings {
+    "endpoint": string;
+    "model": string;
+    "keySaved": boolean;
+    "configured": boolean;
 }
 
 export interface LockFailure {
