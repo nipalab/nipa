@@ -211,10 +211,14 @@ type Querier interface {
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
 	RebuildProjectChunks(ctx context.Context, projectID int64) error
-	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
-	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
+	RefreshSessionCreate(ctx context.Context, arg RefreshSessionCreateParams) (int64, error)
+	RefreshSessionDelete(ctx context.Context, id int64) (int64, error)
+	RefreshSessionGet(ctx context.Context, id int64) (RefreshToken, error)
+	RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
+	RefreshTokenGetLegacy(ctx context.Context, token string) (RefreshToken, error)
+	RefreshTokenUpgradeLegacy(ctx context.Context, arg RefreshTokenUpgradeLegacyParams) (int64, error)
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

@@ -7,33 +7,53 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
-const refreshTokenCreate = `-- name: RefreshTokenCreate :one
-INSERT INTO refresh_tokens (user_id, token, expires_at)
-VALUES ($1, $2, $3) RETURNING id
+const refreshSessionCreate = `-- name: RefreshSessionCreate :one
+INSERT INTO refresh_tokens (user_id, token, token_hash, session_started_at, expires_at)
+VALUES ($1, $2, $2, $3, $4)
+RETURNING id
 `
 
-type RefreshTokenCreateParams struct {
-	UserID    int64     `json:"user_id"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
+type RefreshSessionCreateParams struct {
+	UserID           int64        `json:"user_id"`
+	TokenHash        string       `json:"token_hash"`
+	SessionStartedAt sql.NullTime `json:"session_started_at"`
+	ExpiresAt        time.Time    `json:"expires_at"`
 }
 
-func (q *Queries) RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, refreshTokenCreate, arg.UserID, arg.Token, arg.ExpiresAt)
+func (q *Queries) RefreshSessionCreate(ctx context.Context, arg RefreshSessionCreateParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, refreshSessionCreate,
+		arg.UserID,
+		arg.TokenHash,
+		arg.SessionStartedAt,
+		arg.ExpiresAt,
+	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
-const refreshTokenDeleteByToken = `-- name: RefreshTokenDeleteByToken :one
-DELETE FROM refresh_tokens WHERE token = $1 RETURNING id, user_id, token, expires_at, created_at
+const refreshSessionDelete = `-- name: RefreshSessionDelete :execrows
+DELETE FROM refresh_tokens WHERE id = $1
 `
 
-func (q *Queries) RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error) {
-	row := q.db.QueryRowContext(ctx, refreshTokenDeleteByToken, token)
+func (q *Queries) RefreshSessionDelete(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, refreshSessionDelete, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const refreshSessionGet = `-- name: RefreshSessionGet :one
+SELECT id, user_id, token, expires_at, created_at, token_hash, previous_hash, rotated_at, session_started_at FROM refresh_tokens WHERE id = $1
+`
+
+func (q *Queries) RefreshSessionGet(ctx context.Context, id int64) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, refreshSessionGet, id)
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
@@ -41,8 +61,44 @@ func (q *Queries) RefreshTokenDeleteByToken(ctx context.Context, token string) (
 		&i.Token,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.TokenHash,
+		&i.PreviousHash,
+		&i.RotatedAt,
+		&i.SessionStartedAt,
 	)
 	return i, err
+}
+
+const refreshSessionRotate = `-- name: RefreshSessionRotate :execrows
+UPDATE refresh_tokens
+SET token = $1,
+    token_hash = $1,
+    previous_hash = $2,
+    rotated_at = $3,
+    expires_at = $4
+WHERE id = $5 AND token_hash = $2
+`
+
+type RefreshSessionRotateParams struct {
+	NewHash     string         `json:"new_hash"`
+	CurrentHash sql.NullString `json:"current_hash"`
+	RotatedAt   sql.NullTime   `json:"rotated_at"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	ID          int64          `json:"id"`
+}
+
+func (q *Queries) RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, refreshSessionRotate,
+		arg.NewHash,
+		arg.CurrentHash,
+		arg.RotatedAt,
+		arg.ExpiresAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const refreshTokenDeleteByUser = `-- name: RefreshTokenDeleteByUser :exec
@@ -66,6 +122,62 @@ type RefreshTokenDeleteExpiredByUserParams struct {
 func (q *Queries) RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error {
 	_, err := q.db.ExecContext(ctx, refreshTokenDeleteExpiredByUser, arg.UserID, arg.ExpiresAt)
 	return err
+}
+
+const refreshTokenGetLegacy = `-- name: RefreshTokenGetLegacy :one
+SELECT id, user_id, token, expires_at, created_at, token_hash, previous_hash, rotated_at, session_started_at FROM refresh_tokens
+WHERE token = $1 AND token_hash IS NULL
+`
+
+func (q *Queries) RefreshTokenGetLegacy(ctx context.Context, token string) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, refreshTokenGetLegacy, token)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.TokenHash,
+		&i.PreviousHash,
+		&i.RotatedAt,
+		&i.SessionStartedAt,
+	)
+	return i, err
+}
+
+const refreshTokenUpgradeLegacy = `-- name: RefreshTokenUpgradeLegacy :execrows
+UPDATE refresh_tokens
+SET token = $1,
+    token_hash = $1,
+    session_started_at = $2,
+    rotated_at = $3,
+    expires_at = $4
+WHERE id = $5 AND token = $6 AND token_hash IS NULL
+`
+
+type RefreshTokenUpgradeLegacyParams struct {
+	NewHash          string       `json:"new_hash"`
+	SessionStartedAt sql.NullTime `json:"session_started_at"`
+	RotatedAt        sql.NullTime `json:"rotated_at"`
+	ExpiresAt        time.Time    `json:"expires_at"`
+	ID               int64        `json:"id"`
+	LegacyToken      string       `json:"legacy_token"`
+}
+
+func (q *Queries) RefreshTokenUpgradeLegacy(ctx context.Context, arg RefreshTokenUpgradeLegacyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, refreshTokenUpgradeLegacy,
+		arg.NewHash,
+		arg.SessionStartedAt,
+		arg.RotatedAt,
+		arg.ExpiresAt,
+		arg.ID,
+		arg.LegacyToken,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const sSHLoginChallengeConsume = `-- name: SSHLoginChallengeConsume :one

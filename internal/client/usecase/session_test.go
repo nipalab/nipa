@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -183,4 +184,117 @@ func TestSession_Refresh_NoRefreshTokenFallsBackToPasswordLogin(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "password-access", token)
 	require.Equal(t, "apin", executor.lastUsername)
+}
+
+type sequenceStorage struct {
+	loads []*domain.LoginResult
+	calls int
+	err   error
+	saved []*domain.LoginResult
+}
+
+func (s *sequenceStorage) SaveToken(data *domain.LoginResult) error {
+	s.saved = append(s.saved, data)
+	return nil
+}
+
+func (s *sequenceStorage) LoadToken(string) (*domain.LoginResult, error) {
+	i := min(s.calls, len(s.loads)-1)
+	s.calls++
+	if s.err != nil && s.calls > 1 {
+		return nil, s.err
+	}
+	return s.loads[i], nil
+}
+
+func noWait(context.Context, time.Duration) error { return nil }
+
+func TestSession_Refresh_UsesTokensRotatedByAnotherProcess(t *testing.T) {
+	storage := &sequenceStorage{loads: []*domain.LoginResult{
+		{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"},
+		{AccessToken: "other-access", RefreshToken: "other-refresh", Host: "example.com"},
+	}}
+	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
+	session := NewSession(storage, executor, &stubUserInput{username: "u", password: "p"})
+	session.wait = noWait
+
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "other-access", token)
+	require.Equal(t, "old-refresh", executor.lastRefresh)
+	require.Empty(t, executor.lastUsername, "no prompt when another process rotated")
+	require.Empty(t, storage.saved)
+}
+
+func TestSession_Refresh_WaitsForAConcurrentSave(t *testing.T) {
+	old := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"}
+	storage := &sequenceStorage{loads: []*domain.LoginResult{old, old, old,
+		{AccessToken: "other-access", RefreshToken: "other-refresh", Host: "example.com"}}}
+	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
+	session := NewSession(storage, executor)
+	waits := 0
+	session.wait = func(context.Context, time.Duration) error { waits++; return nil }
+
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "other-access", token)
+	require.Equal(t, 2, waits)
+}
+
+func TestSession_Refresh_RevokedSessionFallsBackToReauth(t *testing.T) {
+	stored := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"}
+	storage := &sequenceStorage{loads: []*domain.LoginResult{stored}}
+	executor := &stubRefreshExecutor{
+		err:            &domain.Error{Code: 401, Message: "refresh token revoked"},
+		passwordResult: &domain.LoginResult{AccessToken: "fresh-access", RefreshToken: "fresh-refresh", Host: "example.com"},
+	}
+	session := NewSession(storage, executor, &stubUserInput{username: "alice@example.com", password: "pw"})
+	waits := 0
+	session.wait = func(context.Context, time.Duration) error { waits++; return nil }
+
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "fresh-access", token)
+	require.Equal(t, 2, storage.calls, "a 401 reloads the store once")
+	require.Zero(t, waits)
+	require.Equal(t, "alice@example.com", executor.lastUsername)
+}
+
+func TestSession_Refresh_NotFoundGivesUpAfterPolling(t *testing.T) {
+	stored := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"}
+	storage := &sequenceStorage{loads: []*domain.LoginResult{stored}}
+	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
+	session := NewSession(storage, executor)
+	session.wait = noWait
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.Error(t, err)
+	require.Equal(t, 1+refreshReloadAttempts, storage.calls)
+}
+
+func TestSession_Refresh_ReloadStopsOnCancelAndLoadError(t *testing.T) {
+	stored := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"}
+	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
+
+	storage := &sequenceStorage{loads: []*domain.LoginResult{stored}}
+	session := NewSession(storage, executor)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := session.Refresh(ctx, "example.com")
+	require.Error(t, err)
+	require.Equal(t, 2, storage.calls)
+
+	storage = &sequenceStorage{loads: []*domain.LoginResult{stored}, err: errors.New("keyring locked")}
+	session = NewSession(storage, executor)
+	session.wait = noWait
+	_, err = session.Refresh(context.Background(), "example.com")
+	require.Error(t, err)
+	require.Equal(t, 2, storage.calls)
+}
+
+func TestWaitContext(t *testing.T) {
+	require.NoError(t, waitContext(context.Background(), time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, waitContext(ctx, time.Hour), context.Canceled)
 }

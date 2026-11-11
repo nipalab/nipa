@@ -2,10 +2,15 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
@@ -30,6 +35,8 @@ type stubAuthRepo struct {
 	saveErr      error
 	refreshErr   error
 	refreshToken *domain.RefreshToken
+	rotateMiss   bool
+	deleted      []int64
 
 	challengeErr  error
 	challenge     *domain.SSHLoginChallenge
@@ -40,12 +47,25 @@ type stubAuthRepo struct {
 	createdExpiry time.Time
 }
 
-func (s *stubAuthRepo) SaveRefreshToken(_ context.Context, _ snow.ID, _ string, _ time.Time) error {
-	return s.saveErr
+func (s *stubAuthRepo) CreateRefreshSession(_ context.Context, _ snow.ID, _ string, _, _ time.Time) (int64, error) {
+	return 1, s.saveErr
 }
 
-func (s *stubAuthRepo) GetAndDeleteRefreshToken(_ context.Context, _ string) (*domain.RefreshToken, error) {
+func (s *stubAuthRepo) GetRefreshSession(_ context.Context, _ int64) (*domain.RefreshToken, error) {
 	return s.refreshToken, s.refreshErr
+}
+
+func (s *stubAuthRepo) GetLegacyRefreshToken(_ context.Context, _ string) (*domain.RefreshToken, error) {
+	return s.refreshToken, s.refreshErr
+}
+
+func (s *stubAuthRepo) RotateRefreshSession(_ context.Context, _ domain.RefreshRotation) (bool, error) {
+	return !s.rotateMiss, nil
+}
+
+func (s *stubAuthRepo) DeleteRefreshSession(_ context.Context, id int64) error {
+	s.deleted = append(s.deleted, id)
+	return nil
 }
 
 func (s *stubAuthRepo) CreateSSHLoginChallenge(_ context.Context, email, nonce string, expiresAt time.Time) error {
@@ -164,6 +184,7 @@ func TestLoginWithRefreshToken_Success(t *testing.T) {
 		&stubAuthRepo{
 			refreshToken: &domain.RefreshToken{
 				UserID:    snow.ID(7),
+				CreatedAt: time.Now(),
 				ExpiresAt: time.Now().Add(time.Hour),
 			},
 		},
@@ -222,4 +243,43 @@ func TestLoginWithRefreshToken_UserNotFound(t *testing.T) {
 		RefreshToken: "valid-token",
 	})
 	require.Error(t, err)
+}
+
+func TestLoginWithRefreshToken_ReuseRevokesSession(t *testing.T) {
+	user := &domain.User{ID: snow.ID(7), EmailVerified: true}
+	authRepo := &stubAuthRepo{}
+	srv := newLoginServer(t, &stubUserRepo{user: user}, authRepo)
+
+	login, err := srv.LoginWithUsernamePassword(context.Background(), &pb.LoginUsernamePasswordRequest{Username: "user@example.com", Password: "pass"})
+	require.NoError(t, err)
+	authRepo.refreshToken = &domain.RefreshToken{ID: 1, UserID: snow.ID(7), TokenHash: "rotated-elsewhere", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+
+	resp, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{RefreshToken: login.RefreshToken})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.Nil(t, resp)
+	require.Equal(t, []int64{1}, authRepo.deleted)
+}
+
+func TestLoginWithRefreshToken_RacingTabIsNotFound(t *testing.T) {
+	user := &domain.User{ID: snow.ID(7), EmailVerified: true}
+	authRepo := &stubAuthRepo{}
+	srv := newLoginServer(t, &stubUserRepo{user: user}, authRepo)
+
+	resp, err := srv.LoginWithUsernamePassword(context.Background(), &pb.LoginUsernamePasswordRequest{Username: "user@example.com", Password: "pass"})
+	require.NoError(t, err)
+	parts := strings.Split(resp.RefreshToken, ".")
+	sum := sha256.Sum256([]byte(parts[2]))
+	rotated := time.Now()
+	authRepo.refreshToken = &domain.RefreshToken{ID: 1, UserID: snow.ID(7), TokenHash: "newer", PreviousHash: hex.EncodeToString(sum[:]), RotatedAt: &rotated, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+
+	_, err = srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{RefreshToken: resp.RefreshToken})
+	require.Equal(t, codes.NotFound, status.Code(err))
+	require.Empty(t, authRepo.deleted)
+
+	authRepo.refreshToken.TokenHash = hex.EncodeToString(sum[:])
+	authRepo.refreshToken.PreviousHash = ""
+	got, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{RefreshToken: resp.RefreshToken})
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(got.RefreshToken, parts[0]+"."+parts[1]+"."))
+	require.NotEqual(t, resp.RefreshToken, got.RefreshToken)
 }

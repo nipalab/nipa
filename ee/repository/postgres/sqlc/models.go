@@ -394,11 +394,15 @@ type ProjectUsage struct {
 }
 
 type RefreshToken struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	ID               int64          `json:"id"`
+	UserID           int64          `json:"user_id"`
+	Token            string         `json:"token"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	CreatedAt        time.Time      `json:"created_at"`
+	TokenHash        sql.NullString `json:"token_hash"`
+	PreviousHash     sql.NullString `json:"previous_hash"`
+	RotatedAt        sql.NullTime   `json:"rotated_at"`
+	SessionStartedAt sql.NullTime   `json:"session_started_at"`
 }
 
 type SnowflakeNodeLease struct {

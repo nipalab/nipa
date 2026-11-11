@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
@@ -35,8 +34,11 @@ type userRepository interface {
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=auth_mock_test.go -package=usecase
 type authRepository interface {
-	SaveRefreshToken(ctx context.Context, userID snow.ID, refreshToken string, expiresAt time.Time) error
-	GetAndDeleteRefreshToken(ctx context.Context, refreshToken string) (*domain.RefreshToken, error)
+	CreateRefreshSession(ctx context.Context, userID snow.ID, tokenHash string, startedAt, expiresAt time.Time) (int64, error)
+	GetRefreshSession(ctx context.Context, id int64) (*domain.RefreshToken, error)
+	GetLegacyRefreshToken(ctx context.Context, token string) (*domain.RefreshToken, error)
+	RotateRefreshSession(ctx context.Context, rotation domain.RefreshRotation) (bool, error)
+	DeleteRefreshSession(ctx context.Context, id int64) error
 	CreateSSHLoginChallenge(ctx context.Context, email, nonce string, expiresAt time.Time) error
 	DeleteExpiredSSHLoginChallenges(ctx context.Context, before time.Time) error
 	ConsumeSSHLoginChallenge(ctx context.Context, nonce string) (*domain.SSHLoginChallenge, error)
@@ -59,6 +61,8 @@ type Auth struct {
 	authRepo       authRepository
 	sshKeyRepo     authSSHKeyRepository
 	sshAudience    string
+	audit          AuditRecorder
+	now            func() time.Time
 	dummyOnce      sync.Once
 	dummyHash      string
 }
@@ -69,10 +73,21 @@ func NewAuth(secret string, passwordHasher passwordHasher, userRepo userReposito
 		passwordHasher: passwordHasher,
 		userRepo:       userRepo,
 		authRepo:       authRepo,
+		now:            time.Now,
 	}
 }
 
-// WithSSHKeys enables SSH key login on this usecase.
+func (a *Auth) WithAudit(rec AuditRecorder) *Auth {
+	a.audit = rec
+	return a
+}
+
+// WithClock replaces the clock used for refresh sessions.
+func (a *Auth) WithClock(now func() time.Time) *Auth {
+	a.now = now
+	return a
+}
+
 func (a *Auth) WithLimiter(limiter *ratelimit.Limiter) *Auth {
 	a.limiter = limiter
 	return a
@@ -141,27 +156,6 @@ func (a *Auth) spendPasswordCheck(password string) {
 		a.dummyHash, _ = a.passwordHasher.Hash("nipa-timing-equalizer")
 	})
 	a.passwordHasher.Compare(a.dummyHash, password)
-}
-
-func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResult, error) {
-	storedToken, err := a.authRepo.GetAndDeleteRefreshToken(ctx, refreshToken)
-	if err != nil {
-		return nil, err
-	}
-
-	if storedToken.ExpiresAt.Before(time.Now()) {
-		return nil, domain.NewErrorUser("refresh token expired")
-	}
-
-	user, err := a.userRepo.GetByID(ctx, storedToken.UserID)
-	if err != nil {
-		return nil, err
-	}
-	if !user.EmailVerified {
-		return nil, errEmailNotVerified()
-	}
-
-	return a.LoginResult(ctx, user)
 }
 
 // errEmailNotVerified refuses logins of accounts that have not confirmed their
@@ -299,19 +293,6 @@ func newSSHLoginNonce() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func (a *Auth) Logout(ctx context.Context, refreshToken string) error {
-	if refreshToken == "" {
-		return nil
-	}
-	if _, err := a.authRepo.GetAndDeleteRefreshToken(ctx, refreshToken); err != nil {
-		if domain.IsErrorNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
 func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &domain.Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -349,6 +330,19 @@ func errInvalidToken() error {
 // user. SaaS flows (registration verification, OAuth completion) reuse it after
 // establishing the account.
 func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginResult, error) {
+	now := a.now()
+	secret, hash, err := newRefreshSecret()
+	if err != nil {
+		return nil, domain.NewErrorInternalServer(err.Error())
+	}
+	id, err := a.authRepo.CreateRefreshSession(ctx, user.ID, hash, now, now.Add(refreshTokenExpiration))
+	if err != nil {
+		return nil, err
+	}
+	return a.loginResult(user, a.formatRefreshToken(id, secret))
+}
+
+func (a *Auth) loginResult(user *domain.User, refreshToken string) (*dto.LoginResult, error) {
 	timeStart := time.Now()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -365,13 +359,6 @@ func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginRe
 	jwt, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.secret))
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
-	}
-
-	refreshToken := uuid.New().String()
-	tokenExpiresAt := timeStart.Add(refreshTokenExpiration)
-	err = a.authRepo.SaveRefreshToken(ctx, user.ID, refreshToken, tokenExpiresAt)
-	if err != nil {
-		return nil, err
 	}
 
 	return &dto.LoginResult{

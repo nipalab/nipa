@@ -526,6 +526,38 @@ refresh. `POST /me/password` revokes the caller too and answers with a fresh
 `LoginResponse` + refresh cookie that the SPA installs. Service tokens keep
 their own per-request creator check.
 
+Flow for refresh sessions (`internal/usecase/auth_refresh.go`, both
+dialects: sqlite migration `000020`, postgres `000004`): one `refresh_tokens`
+row per session, rotated in place. The wire token is
+`<id base36>.<tag>.<secret>`: `tag` is a 16-byte HMAC-SHA256 of the id under
+the JWT key (so a session id alone, being sequential, is never enough to touch
+a session; a bad tag is "not found"), `secret` is 32 random bytes in URL-safe
+base64, and the row keeps only `token_hash` (hex SHA-256 of the secret),
+`previous_hash`, `rotated_at`, `session_started_at` and `expires_at`.
+`Auth.LoginWithRefreshToken` (REST and gRPC share it): the current secret
+rotates through a conditional `UPDATE ... WHERE token_hash = current`
+(`RotateRefreshSession`; zero rows = another request won = "not found"),
+keeping the id and `session_started_at` and renewing 60 days; the previous
+secret within `refreshGraceWindow` (30 s) is "not found" (the REST handler
+keeps the cookie, a racing tab retries); any other secret, or the previous
+one after the grace, deletes the session and records
+`auth.refresh_token.reuse_detected` (system actor, `auditedWrite` committed
+before the 401 `refresh token revoked`); expiry or `refreshSessionMaxAge`
+(90 days from `session_started_at`) deletes it with 400 `refresh token
+expired`. `WithClock` drives grace/cap in tests. `Logout` deletes only when
+the secret matches the current or previous hash. Compatibility for one
+release: `token` stays `NOT NULL UNIQUE` and holds the current hash for
+session rows; a token without the session shape is a legacy plaintext row
+(`GetLegacyRefreshToken` matches `token` only where `token_hash IS NULL`),
+upgraded in place on refresh (`session_started_at` from `created_at`, no reuse
+detection). The old binary keeps reading/writing legacy rows during a flip and
+answers a new-format token "not found". Follow-up: a migration dropping the
+plaintext `token` column (after one release). Client: `Session.Refresh`
+reloads the shared token store when the server rejects a refresh and uses the
+stored pair when another `nipa`/`nipa serve`/`nipa mcp` process rotated it
+first (a 404 polls up to 5 x 100 ms for that process to save) before falling
+back to `reauth`.
+
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
 login behind every command, the profile page card): an SSH key is an alternate
 credential that bootstraps the normal JWT session over the same gRPC transport;

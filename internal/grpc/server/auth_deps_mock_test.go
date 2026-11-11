@@ -112,6 +112,21 @@ func (mr *MockauthRepositoryMockRecorder) ConsumeSSHLoginChallenge(ctx, nonce an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeSSHLoginChallenge", reflect.TypeOf((*MockauthRepository)(nil).ConsumeSSHLoginChallenge), ctx, nonce)
 }
 
+// CreateRefreshSession mocks base method.
+func (m *MockauthRepository) CreateRefreshSession(ctx context.Context, userID snow.ID, tokenHash string, startedAt, expiresAt time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRefreshSession", ctx, userID, tokenHash, startedAt, expiresAt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateRefreshSession indicates an expected call of CreateRefreshSession.
+func (mr *MockauthRepositoryMockRecorder) CreateRefreshSession(ctx, userID, tokenHash, startedAt, expiresAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshSession", reflect.TypeOf((*MockauthRepository)(nil).CreateRefreshSession), ctx, userID, tokenHash, startedAt, expiresAt)
+}
+
 // CreateSSHLoginChallenge mocks base method.
 func (m *MockauthRepository) CreateSSHLoginChallenge(ctx context.Context, email, nonce string, expiresAt time.Time) error {
 	m.ctrl.T.Helper()
@@ -140,33 +155,63 @@ func (mr *MockauthRepositoryMockRecorder) DeleteExpiredSSHLoginChallenges(ctx, b
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExpiredSSHLoginChallenges", reflect.TypeOf((*MockauthRepository)(nil).DeleteExpiredSSHLoginChallenges), ctx, before)
 }
 
-// GetAndDeleteRefreshToken mocks base method.
-func (m *MockauthRepository) GetAndDeleteRefreshToken(ctx context.Context, refreshToken string) (*domain.RefreshToken, error) {
+// DeleteRefreshSession mocks base method.
+func (m *MockauthRepository) DeleteRefreshSession(ctx context.Context, id int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAndDeleteRefreshToken", ctx, refreshToken)
+	ret := m.ctrl.Call(m, "DeleteRefreshSession", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteRefreshSession indicates an expected call of DeleteRefreshSession.
+func (mr *MockauthRepositoryMockRecorder) DeleteRefreshSession(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRefreshSession", reflect.TypeOf((*MockauthRepository)(nil).DeleteRefreshSession), ctx, id)
+}
+
+// GetLegacyRefreshToken mocks base method.
+func (m *MockauthRepository) GetLegacyRefreshToken(ctx context.Context, token string) (*domain.RefreshToken, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLegacyRefreshToken", ctx, token)
 	ret0, _ := ret[0].(*domain.RefreshToken)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetAndDeleteRefreshToken indicates an expected call of GetAndDeleteRefreshToken.
-func (mr *MockauthRepositoryMockRecorder) GetAndDeleteRefreshToken(ctx, refreshToken any) *gomock.Call {
+// GetLegacyRefreshToken indicates an expected call of GetLegacyRefreshToken.
+func (mr *MockauthRepositoryMockRecorder) GetLegacyRefreshToken(ctx, token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAndDeleteRefreshToken", reflect.TypeOf((*MockauthRepository)(nil).GetAndDeleteRefreshToken), ctx, refreshToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLegacyRefreshToken", reflect.TypeOf((*MockauthRepository)(nil).GetLegacyRefreshToken), ctx, token)
 }
 
-// SaveRefreshToken mocks base method.
-func (m *MockauthRepository) SaveRefreshToken(ctx context.Context, userID snow.ID, refreshToken string, expiresAt time.Time) error {
+// GetRefreshSession mocks base method.
+func (m *MockauthRepository) GetRefreshSession(ctx context.Context, id int64) (*domain.RefreshToken, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveRefreshToken", ctx, userID, refreshToken, expiresAt)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "GetRefreshSession", ctx, id)
+	ret0, _ := ret[0].(*domain.RefreshToken)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// SaveRefreshToken indicates an expected call of SaveRefreshToken.
-func (mr *MockauthRepositoryMockRecorder) SaveRefreshToken(ctx, userID, refreshToken, expiresAt any) *gomock.Call {
+// GetRefreshSession indicates an expected call of GetRefreshSession.
+func (mr *MockauthRepositoryMockRecorder) GetRefreshSession(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRefreshToken", reflect.TypeOf((*MockauthRepository)(nil).SaveRefreshToken), ctx, userID, refreshToken, expiresAt)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRefreshSession", reflect.TypeOf((*MockauthRepository)(nil).GetRefreshSession), ctx, id)
+}
+
+// RotateRefreshSession mocks base method.
+func (m *MockauthRepository) RotateRefreshSession(ctx context.Context, rotation domain.RefreshRotation) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RotateRefreshSession", ctx, rotation)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RotateRefreshSession indicates an expected call of RotateRefreshSession.
+func (mr *MockauthRepositoryMockRecorder) RotateRefreshSession(ctx, rotation any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RotateRefreshSession", reflect.TypeOf((*MockauthRepository)(nil).RotateRefreshSession), ctx, rotation)
 }
 
 // MockauthSSHKeyRepository is a mock of authSSHKeyRepository interface.

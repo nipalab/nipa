@@ -141,35 +141,37 @@ func (s *UserRepositorySuite) TestCRUD() {
 
 func (s *UserRepositorySuite) TestDeleteRefreshTokens() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewUserRepository(s.db)
 	auth := NewAuthRepository(s.db)
 
 	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
 	otherID := seedUser(s.T(), s.q, "bob", "bob@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-2", expiresAt))
-	s.Require().NoError(auth.SaveRefreshToken(ctx, otherID, "other-token", expiresAt))
+	sessions["token-1"] = s.createSession(auth, userID, "token-1", expiresAt)
+	sessions["token-2"] = s.createSession(auth, userID, "token-2", expiresAt)
+	sessions["other-token"] = s.createSession(auth, otherID, "other-token", expiresAt)
 
 	s.Require().NoError(repo.DeleteRefreshTokens(ctx, userID))
 
-	_, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err := takeSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(s.T(), err)
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-2")
+	_, err = takeSession(ctx, auth, sessions["token-2"])
 	requireRecordNotFound(s.T(), err)
-	got, err := auth.GetAndDeleteRefreshToken(ctx, "other-token")
+	got, err := takeSession(ctx, auth, sessions["other-token"])
 	s.Require().NoError(err)
 	s.Equal(otherID, got.UserID)
 }
 
 func (s *UserRepositorySuite) TestUpdateEmailAndRevokeTokens() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewUserRepository(s.db)
 	auth := NewAuthRepository(s.db)
 
 	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
+	sessions["token-1"] = s.createSession(auth, userID, "token-1", expiresAt)
 
 	s.Require().NoError(repo.UpdateEmailAndRevokeTokens(ctx, userID, "Alice2@Example.com"))
 
@@ -177,37 +179,39 @@ func (s *UserRepositorySuite) TestUpdateEmailAndRevokeTokens() {
 	s.Require().NoError(err)
 	s.Equal("alice2@example.com", got.Email)
 
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err = takeSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(s.T(), err)
 }
 
 func (s *UserRepositorySuite) TestUpdateEmailAndRevokeTokens_RollsBackOnConflict() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewUserRepository(s.db)
 	auth := NewAuthRepository(s.db)
 
 	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
 	seedUser(s.T(), s.q, "bob", "bob@example.com", sql.NullString{})
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", time.Now().Add(time.Hour)))
+	sessions["token-1"] = s.createSession(auth, userID, "token-1", time.Now().Add(time.Hour))
 
 	s.Require().Error(repo.UpdateEmailAndRevokeTokens(ctx, userID, "bob@example.com"))
 
 	got, err := repo.GetByID(ctx, userID)
 	s.Require().NoError(err)
 	s.Equal("alice@example.com", got.Email)
-	token, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	token, err := takeSession(ctx, auth, sessions["token-1"])
 	s.Require().NoError(err)
 	s.Equal(userID, token.UserID)
 }
 
 func (s *UserRepositorySuite) TestUpdatePasswordAndRevokeTokens() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewUserRepository(s.db)
 	auth := NewAuthRepository(s.db)
 
 	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
+	sessions["token-1"] = s.createSession(auth, userID, "token-1", expiresAt)
 
 	s.Require().NoError(repo.UpdatePasswordAndRevokeTokens(ctx, userID, "new-hash"))
 
@@ -215,25 +219,26 @@ func (s *UserRepositorySuite) TestUpdatePasswordAndRevokeTokens() {
 	s.Require().NoError(err)
 	s.Equal("new-hash", got.Password)
 
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err = takeSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(s.T(), err)
 }
 
 func (s *UserRepositorySuite) TestDeactivateAndRevokeTokens() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewUserRepository(s.db)
 	auth := NewAuthRepository(s.db)
 
 	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
-	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
+	sessions["token-1"] = s.createSession(auth, userID, "token-1", expiresAt)
 
 	s.Require().NoError(repo.DeactivateAndRevokeTokens(ctx, userID))
 
 	_, err := repo.GetByID(ctx, userID)
 	requireRecordNotFound(s.T(), err)
 
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err = takeSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(s.T(), err)
 }
 
