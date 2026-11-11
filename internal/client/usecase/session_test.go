@@ -211,8 +211,8 @@ func noWait(context.Context, time.Duration) error { return nil }
 
 func TestSession_Refresh_UsesTokensRotatedByAnotherProcess(t *testing.T) {
 	storage := &sequenceStorage{loads: []*domain.LoginResult{
-		{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"},
-		{AccessToken: "other-access", RefreshToken: "other-refresh", Host: "example.com"},
+		{AccessToken: "old-access", RefreshToken: "1a.tag.old-secret", Host: "example.com"},
+		{AccessToken: "other-access", RefreshToken: "1a.tag.new-secret", Host: "example.com"},
 	}}
 	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
 	session := NewSession(storage, executor, &stubUserInput{username: "u", password: "p"})
@@ -221,15 +221,15 @@ func TestSession_Refresh_UsesTokensRotatedByAnotherProcess(t *testing.T) {
 	token, err := session.Refresh(context.Background(), "example.com")
 	require.NoError(t, err)
 	require.Equal(t, "other-access", token)
-	require.Equal(t, "old-refresh", executor.lastRefresh)
+	require.Equal(t, "1a.tag.old-secret", executor.lastRefresh)
 	require.Empty(t, executor.lastUsername, "no prompt when another process rotated")
 	require.Empty(t, storage.saved)
 }
 
 func TestSession_Refresh_WaitsForAConcurrentSave(t *testing.T) {
-	old := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Host: "example.com"}
+	old := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "old-refresh", Email: "alice@example.com", Host: "example.com"}
 	storage := &sequenceStorage{loads: []*domain.LoginResult{old, old, old,
-		{AccessToken: "other-access", RefreshToken: "other-refresh", Host: "example.com"}}}
+		{AccessToken: "other-access", RefreshToken: "1a.tag.secret", Email: "alice@example.com", Host: "example.com"}}}
 	executor := &stubRefreshExecutor{err: &domain.Error{Code: 404, Message: "record not found"}}
 	session := NewSession(storage, executor)
 	waits := 0
@@ -297,4 +297,37 @@ func TestWaitContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	require.ErrorIs(t, waitContext(ctx, time.Hour), context.Canceled)
+}
+
+func TestSession_Refresh_DoesNotAdoptAnotherAccount(t *testing.T) {
+	for name, stored := range map[string]*domain.LoginResult{
+		"other session":         {AccessToken: "bob-access", RefreshToken: "2b.tag.secret", Email: "bob@example.com"},
+		"other email":           {AccessToken: "bob-access", RefreshToken: "bob-legacy", Email: "bob@example.com"},
+		"legacy without email":  {AccessToken: "bob-access", RefreshToken: "bob-legacy"},
+		"same session, no mail": {AccessToken: "", RefreshToken: "1a.tag.new-secret"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			presented := &domain.LoginResult{AccessToken: "old-access", RefreshToken: "1a.tag.old-secret", Email: "alice@example.com", Host: "example.com"}
+			storage := &sequenceStorage{loads: []*domain.LoginResult{presented, stored}}
+			executor := &stubRefreshExecutor{
+				err:            &domain.Error{Code: 401, Message: "refresh token revoked"},
+				passwordResult: &domain.LoginResult{AccessToken: "fresh-access", RefreshToken: "fresh-refresh"},
+			}
+			session := NewSession(storage, executor, &stubUserInput{username: "alice@example.com", password: "pw"})
+			session.wait = noWait
+
+			token, err := session.Refresh(context.Background(), "example.com")
+			require.NoError(t, err)
+			require.Equal(t, "fresh-access", token, "a different account in the shared store is never adopted")
+		})
+	}
+}
+
+func TestSameSession(t *testing.T) {
+	require.True(t, sameSession(&domain.LoginResult{RefreshToken: "1a.t.x"}, &domain.LoginResult{RefreshToken: "1a.t.y"}))
+	require.False(t, sameSession(&domain.LoginResult{RefreshToken: "1a.t.x"}, &domain.LoginResult{RefreshToken: "1a.u.y"}))
+	require.True(t, sameSession(&domain.LoginResult{RefreshToken: "legacy", Email: "a@x"}, &domain.LoginResult{RefreshToken: "2b.t.y", Email: "a@x"}))
+	require.False(t, sameSession(&domain.LoginResult{RefreshToken: "legacy"}, &domain.LoginResult{RefreshToken: "legacy2"}))
+	require.Empty(t, refreshSessionID(".t.x"))
+	require.Empty(t, refreshSessionID("a..x"))
 }

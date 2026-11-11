@@ -555,7 +555,8 @@ answers a new-format token "not found". Follow-up: a migration dropping the
 plaintext `token` column (after one release). Client: `Session.Refresh`
 reloads the shared token store when the server rejects a refresh and uses the
 stored pair when another `nipa`/`nipa serve`/`nipa mcp` process rotated it
-first (a 404 polls up to 5 x 100 ms for that process to save) before falling
+first, but only for the same session (`<id>.<tag>` prefix) or the same stored
+email, since the store is keyed by host (a 404 polls up to 5 x 100 ms for that process to save) before falling
 back to `reauth`.
 
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit

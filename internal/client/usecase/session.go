@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -81,7 +82,7 @@ func (s *Session) Refresh(ctx context.Context, address string) (string, error) {
 		if !isRefreshRejection(err) {
 			return "", err
 		}
-		if token, ok := s.rotatedElsewhere(ctx, host, loginResult.RefreshToken, err); ok {
+		if token, ok := s.rotatedElsewhere(ctx, host, loginResult, err); ok {
 			return token, nil
 		}
 		return s.reauth(ctx, host, err)
@@ -97,9 +98,11 @@ func (s *Session) Refresh(ctx context.Context, address string) (string, error) {
 }
 
 // rotatedElsewhere picks up tokens another process sharing this storage saved
-// after rotating the session first. A "not found" answer means a concurrent
-// rotation may still be saving, so the store is polled briefly.
-func (s *Session) rotatedElsewhere(ctx context.Context, host, presented string, cause error) (string, bool) {
+// after rotating the session first. The store is keyed by host only, so the
+// stored pair is adopted only for the same session or the same account. A
+// "not found" answer means a concurrent rotation may still be saving, so the
+// store is polled briefly.
+func (s *Session) rotatedElsewhere(ctx context.Context, host string, presented *domain.LoginResult, cause error) (string, bool) {
 	attempts := 1
 	var domErr *domain.Error
 	if errors.As(cause, &domErr) && domErr.Code == 404 {
@@ -113,11 +116,29 @@ func (s *Session) rotatedElsewhere(ctx context.Context, host, presented string, 
 		if err != nil {
 			return "", false
 		}
-		if stored.RefreshToken != "" && stored.RefreshToken != presented && stored.AccessToken != "" {
+		if stored.RefreshToken != "" && stored.RefreshToken != presented.RefreshToken && stored.AccessToken != "" && sameSession(presented, stored) {
 			return stored.AccessToken, true
 		}
 	}
 	return "", false
+}
+
+func sameSession(presented, stored *domain.LoginResult) bool {
+	if presented.Email != "" && presented.Email == stored.Email {
+		return true
+	}
+	id := refreshSessionID(presented.RefreshToken)
+	return id != "" && id == refreshSessionID(stored.RefreshToken)
+}
+
+// refreshSessionID returns the session part (`<id>.<tag>`) of a session-shaped
+// refresh token, or "" for legacy tokens.
+func refreshSessionID(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return parts[0] + "." + parts[1]
 }
 
 func isRefreshRejection(err error) bool {
