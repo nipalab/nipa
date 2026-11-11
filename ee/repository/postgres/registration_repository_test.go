@@ -93,6 +93,10 @@ func (s *RegistrationRepositorySuite) TestResetUnverifiedCredentials() {
 	s.Require().NoError(err)
 	s.Empty(reset.Password)
 	s.False(reset.EmailVerified)
+	s.Equal(user.TokenVersion+1, reset.TokenVersion)
+	untouched, err := NewUserRepository(s.db).GetByID(ctx, other.ID)
+	s.Require().NoError(err)
+	s.Equal(int64(0), untouched.TokenVersion)
 
 	_, _, err = repo.EmailVerificationByToken(ctx, "verify-1")
 	requireRecordNotFound(s.T(), err)

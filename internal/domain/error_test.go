@@ -82,3 +82,11 @@ func TestNewErrorTooManyRequests(t *testing.T) {
 		t.Fatal("expected a minimum of one second")
 	}
 }
+
+func TestIsServerError(t *testing.T) {
+	require.False(t, IsServerError(nil))
+	require.False(t, IsServerError(NewErrorUnauthorized("invalid token")))
+	require.False(t, IsServerError(fmt.Errorf("wrapped: %w", NewErrorRecordNotFound())))
+	require.True(t, IsServerError(NewErrorDatabase("down")))
+	require.True(t, IsServerError(errors.New("plain")))
+}

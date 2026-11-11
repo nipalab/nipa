@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/netip"
 	"strings"
 
@@ -89,7 +90,7 @@ func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info
 
 		claims, err := i.tokenValidator.ValidateToken(ctx, tokenString)
 		if err != nil {
-			return nil, status.Error(codes.Unauthenticated, "invalid token")
+			return nil, tokenError(err)
 		}
 
 		ctx = domain.ContextWithClaim(ctx, *claims)
@@ -131,7 +132,7 @@ func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 
 		claims, err := i.tokenValidator.ValidateToken(ss.Context(), tokenString)
 		if err != nil {
-			return status.Error(codes.Unauthenticated, "invalid token")
+			return tokenError(err)
 		}
 
 		ctx := domain.ContextWithClaim(ss.Context(), *claims)
@@ -139,6 +140,14 @@ func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 
 		return handler(srv, &wrappedStream{ServerStream: ss, ctx: ctx})
 	}
+}
+
+func tokenError(err error) error {
+	if domain.IsServerError(err) {
+		slog.Error("token validation failed", "error", err)
+		return status.Error(codes.Internal, "internal server error")
+	}
+	return status.Error(codes.Unauthenticated, "invalid token")
 }
 
 func bearerToken(header string) (string, bool) {

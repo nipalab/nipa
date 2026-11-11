@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -188,6 +189,7 @@ type handlerTestEnv struct {
 	pusher     *usecase.Push
 	chunkUc    *usecase.Chunk
 	reviewUc   *usecase.MergeRequestReview
+	db         *sql.DB
 }
 
 func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
@@ -267,6 +269,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 	}
 	return &handlerTestEnv{
+		db:         dbConn,
 		handler:    NewHandler(reg),
 		registry:   reg,
 		authRepo:   authRepo,

@@ -398,6 +398,13 @@ func TestHandler_SelfProfile(t *testing.T) {
 	}
 	env.handler.ChangeMyPassword(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	session, ok := appCtx.response.(model.LoginResponse)
+	require.True(t, ok)
+	require.NotEmpty(t, session.AccessToken)
+	require.NotEmpty(t, appCtx.cookies[refreshCookieName].Value)
+	fresh, err := env.handler.useCase.Auth().ValidateToken(context.Background(), session.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, env.userID, fresh.UserID)
 
 	appCtx = &fakeAppContext{
 		claims: &domain.Claims{UserID: env.userID},
@@ -550,4 +557,18 @@ func TestHandler_AddOrgMember_NonOwnerCannotProbeAccounts(t *testing.T) {
 		env.handler.AddOrgMember(appCtx)
 		require.Equal(t, http.StatusForbidden, appCtx.statusCode, body)
 	}
+}
+
+func TestChangeMyPassword_SessionFailureIsReported(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	_, err := env.db.Exec(`CREATE TRIGGER no_refresh BEFORE INSERT ON refresh_tokens BEGIN SELECT RAISE(ABORT, 'boom'); END`)
+	require.NoError(t, err)
+
+	appCtx := &fakeAppContext{
+		claims: &domain.Claims{UserID: env.userID},
+		body:   []byte(`{"old_password":"whatever","new_password":"longenough1"}`),
+	}
+	env.handler.ChangeMyPassword(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+	require.Empty(t, appCtx.cookies)
 }

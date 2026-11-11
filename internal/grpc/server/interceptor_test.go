@@ -114,7 +114,7 @@ func TestInterceptor_InvalidAuthorizationHeader(t *testing.T) {
 }
 
 func TestInterceptor_InvalidToken(t *testing.T) {
-	validator := &mockTokenValidator{err: errors.New("bad token")}
+	validator := &mockTokenValidator{err: domain.NewErrorUnauthorized("invalid token")}
 	interceptor := NewInterceptor(validator)
 	handler := unaryHandler(t)
 
@@ -125,6 +125,22 @@ func TestInterceptor_InvalidToken(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "invalid token")
+}
+
+func TestInterceptor_TokenServerErrorIsInternal(t *testing.T) {
+	for _, validationErr := range []error{domain.NewErrorDatabase("db down"), errors.New("boom")} {
+		interceptor := NewInterceptor(&mockTokenValidator{err: validationErr})
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
+			"authorization": []string{"Bearer token"},
+		})
+
+		_, err := interceptor.JWTUnary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/nipa.SomeService/Method"}, unaryHandler(t))
+		require.Equal(t, codes.Internal, status.Code(err))
+		require.NotContains(t, status.Convert(err).Message(), "db down")
+
+		err = interceptor.JWTStream()(nil, serverStreamWithContext(ctx), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, streamHandler(t, nil))
+		require.Equal(t, codes.Internal, status.Code(err))
+	}
 }
 
 func TestInterceptor_ValidToken(t *testing.T) {
@@ -213,7 +229,7 @@ func TestStreamInterceptor_MissingAuthorization(t *testing.T) {
 }
 
 func TestStreamInterceptor_InvalidToken(t *testing.T) {
-	validator := &mockTokenValidator{err: errors.New("bad token")}
+	validator := &mockTokenValidator{err: domain.NewErrorUnauthorized("invalid token")}
 	interceptor := NewInterceptor(validator)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{

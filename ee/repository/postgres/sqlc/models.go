@@ -462,6 +462,7 @@ type User struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 	Deleted         bool           `json:"deleted"`
 	DeletedAt       sql.NullTime   `json:"deleted_at"`
+	TokenVersion    int64          `json:"token_version"`
 }
 
 type UserIdentity struct {

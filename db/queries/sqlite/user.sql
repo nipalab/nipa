@@ -9,21 +9,24 @@ SELECT * FROM users WHERE email = ? AND deleted = false LIMIT 1;
 SELECT * FROM users WHERE id = ? AND deleted = false LIMIT 1;
 
 -- name: UserDeleteByID :exec
-UPDATE users SET deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted = false;
+UPDATE users SET deleted = true, deleted_at = CURRENT_TIMESTAMP, token_version = token_version + 1 WHERE id = ? AND deleted = false;
 
 -- name: UserUpdateProfile :exec
 UPDATE users SET name = sqlc.arg(name), photo_url = sqlc.arg(photo_url), notify_email = COALESCE(sqlc.narg('notify_email'), notify_email)
 WHERE id = sqlc.arg(id) AND deleted = false;
 
 -- name: UserUpdatePassword :exec
-UPDATE users SET password = ?
+UPDATE users SET password = ?, token_version = token_version + 1
 WHERE id = ? AND deleted = false;
 
 -- name: UserList :many
 SELECT * FROM users WHERE deleted = false ORDER BY name, id;
 
 -- name: UserUpdateEmail :exec
-UPDATE users SET email = ? WHERE id = ? AND deleted = false;
+UPDATE users SET email = ?, token_version = token_version + 1 WHERE id = ? AND deleted = false;
 
 -- name: UserUpdateAdminFlags :exec
-UPDATE users SET is_admin = ?, is_super_admin = ? WHERE id = ? AND deleted = false;
+UPDATE users SET
+    token_version = token_version + CASE WHEN is_admin <> sqlc.arg(is_admin) OR is_super_admin <> sqlc.arg(is_super_admin) THEN 1 ELSE 0 END,
+    is_admin = sqlc.arg(is_admin), is_super_admin = sqlc.arg(is_super_admin)
+WHERE id = sqlc.arg(id) AND deleted = false;

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -61,6 +62,28 @@ func TestAuthFilter_InvalidToken(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
+	resp := runFilter(t, filter, restful.NewRequest(req))
+
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode())
+}
+
+func TestAuthFilter_TokenServerErrorIs500(t *testing.T) {
+	for _, validationErr := range []error{domain.NewErrorDatabase("db down"), errors.New("boom")} {
+		filter := NewAuthFilter(&stubTokenValidator{err: validationErr}).Auth()
+
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer token")
+		resp := runFilter(t, filter, restful.NewRequest(req))
+
+		require.Equal(t, http.StatusInternalServerError, resp.StatusCode())
+	}
+}
+
+func TestAuthFilter_UnauthorizedTokenIs401(t *testing.T) {
+	filter := NewAuthFilter(&stubTokenValidator{err: domain.NewErrorUnauthorized("invalid token")}).Auth()
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer token")
 	resp := runFilter(t, filter, restful.NewRequest(req))
 
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode())

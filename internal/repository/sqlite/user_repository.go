@@ -157,6 +157,7 @@ func toDomainUser(row sqlcSqlite.User) *domain.User {
 		UpdatedAt:       row.UpdatedAt,
 		Deleted:         row.Deleted,
 		DeletedAt:       nullTimePtr(row.DeletedAt),
+		TokenVersion:    row.TokenVersion,
 	}
 	return &user
 }
