@@ -18,6 +18,11 @@ const api = vi.hoisted(() => ({
   restartToUpdate: vi.fn(),
   openUpdatePage: vi.fn(),
   onUpdate: vi.fn(),
+  llmSettings: vi.fn(),
+  setLLM: vi.fn(),
+  setLLMKey: vi.fn(),
+  clearLLMKey: vi.fn(),
+  testLLM: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -36,7 +41,10 @@ beforeEach(() => {
   api.setUploadWorkers.mockResolvedValue(undefined);
   api.updateStatus.mockResolvedValue(idle);
   api.onUpdate.mockReturnValue(() => {});
+  api.llmSettings.mockResolvedValue(noLLM);
 });
+
+const noLLM = { endpoint: "", model: "", keySaved: false, configured: false };
 
 const render = () => renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
 
@@ -120,6 +128,58 @@ describe("SettingsDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves the AI endpoint, model and key without ever showing the key", async () => {
+    api.setLLM.mockResolvedValue({ endpoint: "http://localhost:11434/v1", model: "qwen", keySaved: false, configured: true });
+    api.setLLMKey.mockResolvedValue(undefined);
+    render();
+    expect(await screen.findByText("Set an endpoint and a model to show the Generate buttons.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test" })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Endpoint"), "http://localhost:11434/v1");
+    expect(screen.getByText("Set both the endpoint and the model, or clear both.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Model"), "qwen");
+    const key = screen.getByLabelText("API key");
+    expect(key).toHaveAttribute("type", "password");
+    expect(key).toHaveAttribute("placeholder", "Optional");
+    await userEvent.type(key, " sk-1 ");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.setLLM).toHaveBeenCalledWith("http://localhost:11434/v1", "qwen");
+    expect(api.setLLMKey).toHaveBeenCalledWith("sk-1");
+  });
+
+  it("leaves unchanged AI settings alone and clears a saved key", async () => {
+    api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "m", keySaved: true, configured: true });
+    api.clearLLMKey.mockRejectedValueOnce(new Error("keychain locked")).mockResolvedValueOnce(undefined);
+    render();
+    const key = await screen.findByLabelText("API key");
+    expect(key).toHaveValue("");
+    expect(key).toHaveAttribute("placeholder", "Saved");
+    expect(screen.queryByText("Set an endpoint and a model to show the Generate buttons.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not remove the API key: keychain locked"));
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("API key removed", "success"));
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+    expect(key).toHaveAttribute("placeholder", "Optional");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.setLLM).not.toHaveBeenCalled();
+    expect(api.setLLMKey).not.toHaveBeenCalled();
+  });
+
+  it("tests the endpoint and shows the result", async () => {
+    api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "m", keySaved: false, configured: true });
+    api.testLLM.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("LLM endpoint answered 401: bad key"));
+    render();
+    await userEvent.type(await screen.findByLabelText("API key"), "sk-typed");
+    await userEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findByText("m answered")).toBeInTheDocument();
+    expect(api.testLLM).toHaveBeenCalledWith("http://x/v1", "m", "sk-typed");
+    await userEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findByText("LLM endpoint answered 401: bad key")).toBeInTheDocument();
   });
 
   it("reports a failed load", async () => {

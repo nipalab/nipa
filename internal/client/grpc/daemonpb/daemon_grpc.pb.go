@@ -77,6 +77,7 @@ const (
 	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
 	NipaDaemon_MetaWarnings_FullMethodName                  = "/nipadaemon.NipaDaemon/MetaWarnings"
 	NipaDaemon_PushPlan_FullMethodName                      = "/nipadaemon.NipaDaemon/PushPlan"
+	NipaDaemon_Generate_FullMethodName                      = "/nipadaemon.NipaDaemon/Generate"
 	NipaDaemon_AccountStatus_FullMethodName                 = "/nipadaemon.NipaDaemon/AccountStatus"
 	NipaDaemon_LoginSSH_FullMethodName                      = "/nipadaemon.NipaDaemon/LoginSSH"
 	NipaDaemon_ListProjects_FullMethodName                  = "/nipadaemon.NipaDaemon/ListProjects"
@@ -148,6 +149,7 @@ type NipaDaemonClient interface {
 	LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error)
 	MetaWarnings(ctx context.Context, in *MetaWarningsRequest, opts ...grpc.CallOption) (*MetaWarningsResponse, error)
 	PushPlan(ctx context.Context, in *PushPlanRequest, opts ...grpc.CallOption) (*PushPlanResponse, error)
+	Generate(ctx context.Context, in *GenerateRequest, opts ...grpc.CallOption) (*GenerateResponse, error)
 	AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error)
 	LoginSSH(ctx context.Context, in *LoginSSHRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
@@ -844,6 +846,16 @@ func (c *nipaDaemonClient) PushPlan(ctx context.Context, in *PushPlanRequest, op
 	return out, nil
 }
 
+func (c *nipaDaemonClient) Generate(ctx context.Context, in *GenerateRequest, opts ...grpc.CallOption) (*GenerateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_Generate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AccountStatusResponse)
@@ -994,6 +1006,7 @@ type NipaDaemonServer interface {
 	LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error)
 	MetaWarnings(context.Context, *MetaWarningsRequest) (*MetaWarningsResponse, error)
 	PushPlan(context.Context, *PushPlanRequest) (*PushPlanResponse, error)
+	Generate(context.Context, *GenerateRequest) (*GenerateResponse, error)
 	AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error)
 	LoginSSH(context.Context, *LoginSSHRequest) (*LoginResponse, error)
 	ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error)
@@ -1184,6 +1197,9 @@ func (UnimplementedNipaDaemonServer) MetaWarnings(context.Context, *MetaWarnings
 }
 func (UnimplementedNipaDaemonServer) PushPlan(context.Context, *PushPlanRequest) (*PushPlanResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PushPlan not implemented")
+}
+func (UnimplementedNipaDaemonServer) Generate(context.Context, *GenerateRequest) (*GenerateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Generate not implemented")
 }
 func (UnimplementedNipaDaemonServer) AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AccountStatus not implemented")
@@ -2194,6 +2210,24 @@ func _NipaDaemon_PushPlan_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_Generate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).Generate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_Generate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).Generate(ctx, req.(*GenerateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaDaemon_AccountStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountStatusRequest)
 	if err := dec(in); err != nil {
@@ -2500,6 +2534,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PushPlan",
 			Handler:    _NipaDaemon_PushPlan_Handler,
+		},
+		{
+			MethodName: "Generate",
+			Handler:    _NipaDaemon_Generate_Handler,
 		},
 		{
 			MethodName: "AccountStatus",

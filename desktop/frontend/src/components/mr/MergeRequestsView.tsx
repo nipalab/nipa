@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, GitPullRequest, Loader2, Plus, RefreshCw, Search, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, GitPullRequest, Loader2, Plus, RefreshCw, Search, Sparkles, XCircle } from "lucide-react";
 import { desktop, type MergeRequest } from "@/api/desktop";
 import { MergeRequestDetail, MergeRequestStatus } from "@/components/mr/MergeRequestDetail";
 import { Button } from "@/components/ui/button";
 import type { Notify } from "@/hooks/useLocks";
+import { useDraft, useLLMSettings } from "@/hooks/useGenerate";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
@@ -175,9 +176,15 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
   const [reviewers, setReviewers] = useState("");
   const [assignees, setAssignees] = useState("");
   const into = target || (defaultTarget !== source ? defaultTarget : "");
+  const llm = useLLMSettings();
+  const generated = useDraft(description, (d) => {
+    if (d.title) setTitle(d.title);
+    setDescription(d.text);
+  });
 
   const create = useMutation({
-    mutationFn: () => desktop.createMergeRequest(root, { source, target: into, title, description, draft, reviewers: userIds(reviewers), assignees: userIds(assignees) }),
+    mutationFn: () =>
+      desktop.createMergeRequest(root, { source, target: into, title, description: generated.finalize(description), draft, reviewers: userIds(reviewers), assignees: userIds(assignees) }),
     onSuccess: (mr) => {
       void queryClient.invalidateQueries({ queryKey: ["mrs", root] });
       notify(`Opened !${mr.number}`, "success");
@@ -225,6 +232,22 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
             </select>
           </label>
         </div>
+        {llm.data?.configured && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[11px]">
+              <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => void generated.run(() => desktop.generateMergeRequest(root, source, into))} disabled={generated.busy || !into || !source}>
+                {generated.busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                {generated.busy ? "Generating…" : "Generate title and description"}
+              </Button>
+              {generated.model && !generated.busy && <span className="min-w-0 truncate text-muted-foreground">Drafted by {generated.model}; review it before opening</span>}
+            </div>
+            {generated.error && (
+              <p role="alert" className="text-[11px] text-danger">
+                Could not generate a description: {generated.error}
+              </p>
+            )}
+          </div>
+        )}
         <label className="block space-y-1">
           <span className="text-muted-foreground">Title</span>
           <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" className="w-full rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />

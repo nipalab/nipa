@@ -58,3 +58,33 @@ func TestResolveLLM_InvalidConfig(t *testing.T) {
 	_, err := ResolveLLM()
 	require.ErrorContains(t, err, "parse")
 }
+
+func TestSetLLM(t *testing.T) {
+	clearLLMEnv(t)
+	writeConfig(t, `{"uploadWorkers":4,"llm":{"apiKeyEnv":"TEST_LLM_KEY"}}`)
+
+	require.NoError(t, SetLLM(" http://localhost:11434/v1 ", " qwen "))
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 4, cfg.UploadWorkers)
+	require.Equal(t, &LLMConfig{Endpoint: "http://localhost:11434/v1", Model: "qwen", APIKeyEnv: "TEST_LLM_KEY"}, cfg.LLM)
+
+	require.NoError(t, SetLLM("", ""))
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, &LLMConfig{APIKeyEnv: "TEST_LLM_KEY"}, cfg.LLM)
+
+	writeConfig(t, `{"llm":{"endpoint":"http://x","model":"m"}}`)
+	require.NoError(t, SetLLM("", ""))
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Nil(t, cfg.LLM)
+
+	require.ErrorContains(t, SetLLM("localhost:11434", "m"), "http(s) URL")
+	require.ErrorContains(t, SetLLM("ftp://x", "m"), "http(s) URL")
+
+	writeConfig(t, `{"llm":"bad"}`)
+	require.ErrorContains(t, SetLLM("http://x", "m"), "parse llm")
+	writeConfig(t, `{`)
+	require.Error(t, SetLLM("http://x", "m"))
+}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/config"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/securestorage"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -71,6 +73,7 @@ func withLLM(t *testing.T, answer string) *fakeLLM {
 	t.Setenv(config.EnvLLMEndpoint, srv.URL+"/v1")
 	t.Setenv(config.EnvLLMModel, "test-model")
 	t.Setenv(config.EnvLLMAPIKey, "")
+	t.Setenv(securestorage.TokenFileEnv, filepath.Join(t.TempDir(), "tokens.json"))
 	return f
 }
 
@@ -79,6 +82,7 @@ func noLLM(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv(config.EnvLLMEndpoint, "")
 	t.Setenv(config.EnvLLMModel, "")
+	t.Setenv(securestorage.TokenFileEnv, filepath.Join(t.TempDir(), "tokens.json"))
 }
 
 func newGeneratePushCli(t *testing.T, client *fakePushClient, tty bool) *Cli {

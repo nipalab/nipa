@@ -64,6 +64,21 @@ describe("demo service", () => {
     expect(none.newlyUnused).toEqual([]);
   });
 
+  it("models AI settings and drafts", async () => {
+    const s = createService("default");
+    expect((await s.LLMSettings())!.configured).toBe(true);
+    expect((await s.SetLLM("", ""))!.configured).toBe(false);
+    await s.SetLLMKey("k");
+    expect((await s.LLMSettings())!.keySaved).toBe(true);
+    await s.ClearLLMKey();
+    expect((await s.LLMSettings())!.keySaved).toBe(false);
+    await s.TestLLM("http://x", "m", "");
+    expect((await s.GenerateCommitMessage(ROOT))!.text).toContain("hero_albedo.png");
+    const mr = (await s.GenerateMergeRequest(ROOT, "", ""))!;
+    expect(mr.title).not.toBe("");
+    expect([mr.source, mr.target]).toEqual(["art/hero-pass", "main"]);
+  });
+
   it("models write operations", async () => {
     const s = createService("default");
     expect((await s.CreateBranch(ROOT, "x", "", ""))!.name).toBe("x");

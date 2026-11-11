@@ -802,6 +802,21 @@ message PushPlanResponse {
     repeated string warnings = 7;
 }
 
+message GenerateRequest {
+    string root = 1;
+    string kind = 2;
+    string source = 3;
+    string target = 4;
+}
+
+message GenerateResponse {
+    string title = 1;
+    string text = 2;
+    string model = 3;
+    string source = 4;
+    string target = 5;
+}
+
 message LockStatusRequest {
     string root = 1;
 }
@@ -955,6 +970,7 @@ service NipaDaemon {
     rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
     rpc MetaWarnings(MetaWarningsRequest) returns (MetaWarningsResponse);
     rpc PushPlan(PushPlanRequest) returns (PushPlanResponse);
+    rpc Generate(GenerateRequest) returns (GenerateResponse);
 
     rpc AccountStatus(AccountStatusRequest) returns (AccountStatusResponse);
     rpc LoginSSH(LoginSSHRequest) returns (LoginResponse);

@@ -1,10 +1,12 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, Plus, RotateCw, X } from "lucide-react";
-import { desktop, type Settings, type Tool } from "@/api/desktop";
+import { desktop, type LLMSettings, type Settings, type Tool } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
+import { AISection, aiFormValid, type AIForm } from "@/components/settings/AISection";
+import { llmSettingsKey, useLLMSettings } from "@/hooks/useGenerate";
 import { errorMessage } from "@/lib/utils";
 
 export const pollOptions: { seconds: number; label: string }[] = [
@@ -34,6 +36,7 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
     queryKey: ["upload-workers"],
     queryFn: desktop.uploadWorkers,
   });
+  const llm = useLLMSettings();
   return (
     <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-full w-full max-w-lg flex-col rounded-lg border border-border bg-card shadow-xl">
@@ -45,12 +48,12 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
             <X />
           </Button>
         </div>
-        {settings.isError || workers.isError ? (
+        {settings.isError || workers.isError || llm.isError ? (
           <p role="alert" className="p-5 text-xs text-danger">
-            Could not load settings: {errorMessage(settings.error ?? workers.error)}
+            Could not load settings: {errorMessage(settings.error ?? workers.error ?? llm.error)}
           </p>
-        ) : settings.data && workers.data !== undefined ? (
-          <SettingsForm initial={settings.data} initialWorkers={workers.data} onClose={onClose} notify={notify} />
+        ) : settings.data && workers.data !== undefined && llm.data ? (
+          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} />
         ) : (
           <p role="status" className="p-5 text-xs text-muted-foreground">
             Loading settings…
@@ -64,15 +67,17 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
 type FormProps = {
   initial: Settings;
   initialWorkers: number;
+  initialLLM: LLMSettings;
   onClose: () => void;
   notify: SettingsDialogProps["notify"];
 };
 
-function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
+function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: FormProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Settings>(initial);
   const [workers, setWorkers] = useState(initialWorkers > 0 ? String(initialWorkers) : "");
   const [restartHint, setRestartHint] = useState(false);
+  const [ai, setAI] = useState<AIForm>({ endpoint: initialLLM.endpoint, model: initialLLM.model, key: "" });
   const ids = { workers: useId(), poll: useId() };
   const set = (patch: Partial<Settings>) => setDraft((d) => ({ ...d, ...patch }));
   const setTool = (i: number, patch: Partial<Tool>) =>
@@ -81,13 +86,17 @@ function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
     });
   const workerCount = workers.trim() === "" ? 0 : Number(workers);
   const workersValid = Number.isInteger(workerCount) && workerCount >= 0 && workerCount <= 64;
+  const valid = workersValid && aiFormValid(ai);
 
   const save = useMutation({
     mutationFn: async () => {
       const saved = await desktop.saveSettings(draft);
       if (workerCount !== initialWorkers) await desktop.setUploadWorkers(workerCount);
+      if (ai.endpoint.trim() !== initialLLM.endpoint || ai.model.trim() !== initialLLM.model) await desktop.setLLM(ai.endpoint.trim(), ai.model.trim());
+      if (ai.key.trim() !== "") await desktop.setLLMKey(ai.key.trim());
       return saved;
     },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: llmSettingsKey }),
     onSuccess: (saved) => {
       queryClient.setQueryData(["settings"], saved);
       queryClient.setQueryData(["upload-workers"], workerCount);
@@ -123,7 +132,7 @@ function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (workersValid) save.mutate();
+    if (valid) save.mutate();
   };
 
   return (
@@ -188,6 +197,10 @@ function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
           )}
         </Section>
 
+        <Section title="AI assistance">
+          <AISection value={ai} onChange={(patch) => setAI((f) => ({ ...f, ...patch }))} keySaved={initialLLM.keySaved} configured={initialLLM.configured} notify={notify} />
+        </Section>
+
         <Section title="Updates">
           <UpdatesSection auto={!draft.manualUpdates} onAuto={(v) => set({ manualUpdates: !v })} notify={notify} />
         </Section>
@@ -241,7 +254,7 @@ function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
         <Button type="button" size="sm" onClick={onClose}>
           {restartHint ? "Close" : "Cancel"}
         </Button>
-        <Button type="submit" size="sm" variant="primary" disabled={!workersValid || save.isPending}>
+        <Button type="submit" size="sm" variant="primary" disabled={!valid || save.isPending}>
           Save
         </Button>
       </div>

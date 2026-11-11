@@ -28,6 +28,7 @@ type RepoOps struct {
 	Proxy      ProxyConn
 	Pins       PinRunner
 	PushCheck  PushCheckRunner
+	Generate   GenerateRunner
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
 }

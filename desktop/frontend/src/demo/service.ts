@@ -11,6 +11,7 @@ export const scenarioFrom = (search: string): string => new URLSearchParams(sear
 
 export function createService(scenario: string): typeof Real {
   let state = clone(d.changes(scenario));
+  let llm = clone(d.llmSettings);
   const take = (list: FileChange[], paths: string[] | null) => list.filter((f) => (paths ?? []).includes(f.path));
   const without = (list: FileChange[], paths: string[] | null) => list.filter((f) => !(paths ?? []).includes(f.path));
   const done: OpOutcome = { branch: state.branch };
@@ -191,6 +192,22 @@ export function createService(scenario: string): typeof Real {
     UploadWorkers: () => ok(16),
     SetUploadWorkers: () => ok(undefined),
     RestartDaemon: () => ok({ version: "1.4.0", pid: 4243, port: 7070, started: true }),
+    LLMSettings: () => ok(clone(llm)),
+    SetLLM: (endpoint, model) => {
+      llm = { ...llm, endpoint, model, configured: endpoint !== "" && model !== "" };
+      return ok(clone(llm));
+    },
+    SetLLMKey: () => {
+      llm = { ...llm, keySaved: true };
+      return ok(undefined);
+    },
+    ClearLLMKey: () => {
+      llm = { ...llm, keySaved: false };
+      return ok(undefined);
+    },
+    TestLLM: () => ok(undefined),
+    GenerateCommitMessage: () => ok(d.commitDraft(state.staged.map((f) => f.path))),
+    GenerateMergeRequest: (_root, source, target) => ok(d.mrDraft(source, target)),
     IgnoreRules: () => ok({ shared: "# Unity\nLibrary/\nTemp/\nLogs/\n*.csproj\n", local: "*.tmp\n.vscode/\n" }),
     SaveIgnoreRules: () => ok(undefined),
     OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "" }),

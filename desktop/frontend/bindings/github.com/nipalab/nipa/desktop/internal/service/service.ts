@@ -95,6 +95,10 @@ export function ChooseProgram(): $CancellablePromise<string> {
     return $Call.ByID(2906686191);
 }
 
+export function ClearLLMKey(): $CancellablePromise<void> {
+    return $Call.ByID(3847180959);
+}
+
 /**
  * Clone checks a project out into a new folder, reporting progress as
  * op:progress events for the target folder, then opens it like AddRepo.
@@ -216,6 +220,21 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
 }
 
 /**
+ * GenerateCommitMessage drafts a message for the staged changes.
+ */
+export function GenerateCommitMessage(root: string): $CancellablePromise<$models.Draft> {
+    return $Call.ByID(1998652661, root);
+}
+
+/**
+ * GenerateMergeRequest drafts a title and description for merging source
+ * into target.
+ */
+export function GenerateMergeRequest(root: string, source: string, target: string): $CancellablePromise<$models.Draft> {
+    return $Call.ByID(1840883266, root, source, target);
+}
+
+/**
  * History lists commits newest first.
  */
 export function History(root: string, q: $models.HistoryQuery): $CancellablePromise<$models.HistoryPage | null> {
@@ -244,6 +263,14 @@ export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $mod
  */
 export function InstallUpdate(): $CancellablePromise<$models.UpdateState> {
     return $Call.ByID(3246874434);
+}
+
+/**
+ * LLMSettings returns the endpoint and model saved in the shared nipa config
+ * and whether a key is saved; Configured also counts NIPA_LLM_* variables.
+ */
+export function LLMSettings(): $CancellablePromise<$models.LLMSettings> {
+    return $Call.ByID(4098730306);
 }
 
 /**
@@ -513,6 +540,21 @@ export function SetDraft(root: string, $number: number, draft: boolean): $Cancel
 }
 
 /**
+ * SetLLM saves the endpoint and model in the shared nipa config, which the
+ * daemon reads on every generation.
+ */
+export function SetLLM(endpoint: string, model: string): $CancellablePromise<$models.LLMSettings> {
+    return $Call.ByID(664051807, endpoint, model);
+}
+
+/**
+ * SetLLMKey stores the API key in the OS keyring; it is never returned.
+ */
+export function SetLLMKey(key: string): $CancellablePromise<void> {
+    return $Call.ByID(1115369862, key);
+}
+
+/**
  * SetSparse changes which folders the clone downloads and updates it.
  */
 export function SetSparse(root: string, paths: string[] | null): $CancellablePromise<$models.OpOutcome> {
@@ -589,6 +631,15 @@ export function Tags(root: string): $CancellablePromise<$models.Tag[] | null> {
  */
 export function TakeNavigation(): $CancellablePromise<$models.Navigation | null> {
     return $Call.ByID(198429045);
+}
+
+/**
+ * TestLLM sends one small request with the given endpoint and model; an
+ * empty key falls back to NIPA_LLM_API_KEY, then the saved key. Errors have
+ * the key redacted.
+ */
+export function TestLLM(endpoint: string, model: string, key: string): $CancellablePromise<void> {
+    return $Call.ByID(2404892771, endpoint, model, key);
 }
 
 /**

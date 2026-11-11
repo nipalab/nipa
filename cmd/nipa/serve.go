@@ -8,8 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/nipalab/nipa/internal/client/aicontext"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/generate"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/sshkey"
@@ -69,9 +71,23 @@ func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps 
 		Proxy:      client,
 		Pins:       usecase.NewLockPins(auth, client, localrepo.NewLocalRepo()),
 		PushCheck:  daemon.NewPushChecker(usecase.NewPush(auth, client, localrepo.NewLocalRepo()), usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
+		Generate:   daemon.SerialGenerator(serveGenerator(auth, client)),
 		Auth:       auth,
 		Downloader: client,
 	}
+}
+
+// serveGenerator gathers prompt input over its own diff usecase and resolves
+// the model per call, so settings saved from the app apply without a restart.
+func serveGenerator(auth *usecase.Auth, client *clientgrpc.Client) *generate.Generator {
+	diff := usecase.NewDiff(auth, client, localrepo.NewLocalRepo())
+	repo := usecase.NewRepo(auth, client, localrepo.NewLocalRepo())
+	return &generate.Generator{Sources: func(root string) (generate.Sources, error) {
+		col := aicontext.New(diff, root)
+		col.History = repo
+		col.Connector = client
+		return col, nil
+	}}
 }
 
 // daemonInput replaces the terminal prompter in the daemon: it has no

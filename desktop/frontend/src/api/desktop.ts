@@ -36,6 +36,7 @@ import type {
   DaemonInfo,
   DiffHunk,
   DiffLine,
+  Draft,
   FileChange,
   FileDiff,
   FileLock,
@@ -47,6 +48,7 @@ import type {
   ImageOptions,
   ImageRef,
   ImageStats,
+  LLMSettings,
   LockFailure,
   LockStatus as RawLockStatus,
   MetaWarning,
@@ -140,6 +142,7 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
 };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
+export type { Draft, LLMSettings };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
@@ -293,6 +296,13 @@ export const desktop = {
   uploadWorkers: (): Promise<number> => Service.UploadWorkers(),
   setUploadWorkers: (n: number): Promise<void> => Service.SetUploadWorkers(n),
   restartDaemon: (): Promise<DaemonInfo> => Service.RestartDaemon(),
+  llmSettings: async (): Promise<LLMSettings> => required(await Service.LLMSettings(), "AI settings"),
+  setLLM: async (endpoint: string, model: string): Promise<LLMSettings> => required(await Service.SetLLM(endpoint, model), "AI settings"),
+  setLLMKey: (key: string): Promise<void> => Service.SetLLMKey(key),
+  clearLLMKey: (): Promise<void> => Service.ClearLLMKey(),
+  testLLM: (endpoint: string, model: string, key: string): Promise<void> => Service.TestLLM(endpoint, model, key),
+  generateCommitMessage: async (root: string): Promise<Draft> => required(await Service.GenerateCommitMessage(root), "draft"),
+  generateMergeRequest: async (root: string, source: string, target: string): Promise<Draft> => required(await Service.GenerateMergeRequest(root, source, target), "draft"),
   chooseProgram: (): Promise<string> => Service.ChooseProgram(),
   ignoreRules: (root: string): Promise<IgnoreRules> => Service.IgnoreRules(root),
   saveIgnoreRules: (root: string, rules: IgnoreRules): Promise<void> => Service.SaveIgnoreRules(root, rules),
