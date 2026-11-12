@@ -214,18 +214,23 @@ Mini-RPCs since both flows reuse the shared login machinery:
 
 ## Schema
 
-Edited into the existing consolidated migrations (project is not live yet, no
-new migration files):
+The onboarding tables came with the initial migrations
+(`ee/db/migrations/postgres/000001_init_schema`, and
+`db/migrations/sqlite/000002_user` for the `users` columns); later changes are
+new migration files:
 
 - `users.email_verified BOOLEAN NOT NULL DEFAULT true` +
-  `email_verified_at` — pre-existing and admin/service accounts stay verified;
-  only the registration repo writes `false` (`UserCreateUnverified`).
-- `email_verifications (user_id PK, token_hash UNIQUE, expires_at)`
+  `email_verified_at` (init) — pre-existing and admin/service accounts stay
+  verified; only the registration repo writes `false`
+  (`UserCreateUnverified`).
+- `email_verifications (user_id PK, token_hash UNIQUE, expires_at)` (init)
 - `user_identities (id, user_id, provider, provider_account_id, email,
-  UNIQUE(provider, provider_account_id))`
-- `oauth_login_codes (code PK, user_id, expires_at, binding_hash)`;
-  `binding_hash` (nullable) came with postgres migration
+  UNIQUE(provider, provider_account_id))` (init)
+- `oauth_login_codes (code PK, user_id, expires_at, binding_hash)` (init);
+  the nullable `binding_hash` was added by
   `000005_oauth_login_code_binding`.
+- `user_terms_acceptances (user_id, version, source, accepted_at,
+  PK(user_id, version))` was added by `000002_user_terms_acceptances`.
 
 All of these are postgres-only apart from the `users` columns, which exist in
 both dialects because the login gate lives in shared `internal/usecase/auth.go`.

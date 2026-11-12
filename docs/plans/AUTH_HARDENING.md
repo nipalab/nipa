@@ -6,7 +6,42 @@ exploited against a running server. No authentication bypass was found; the
 work below closes one medium issue, several low ones and a set of hardening
 gaps.
 
-Status: not started.
+Status: phases 1 to 5 are merged, phase 6 is not started.
+
+| Phase | State | PR |
+|-------|-------|----|
+| 1 Session revocation | done | #204 |
+| 2 Refresh token hardening | done | #205 |
+| 3 Login surface | done | #208 |
+| 4 OAuth and SaaS | done | #210 |
+| 5 Transport and server hardening | done | #211 |
+| 6 New features | not started | |
+
+The phase sections below keep the original plan text. Where the
+implementation deliberately differs:
+
+- Phase 2 keeps one `refresh_tokens` row per session and rotates it in place
+  instead of per-token `used_at` rows with pruning. The token is
+  `<id>.<tag>.<secret>`; the row holds the current and the previous secret
+  hash (`token_hash`, `previous_hash`, `rotated_at`, `session_started_at`; no
+  `family_id` or `used_at`). The previous secret is tolerated for 30 seconds
+  after a rotation, after that it revokes the session and is audited; a
+  session ends 90 days after it started.
+- Phase 4 did not widen the binding cookie path: `/api/v1/auth/oauth` already
+  covers `/api/v1/auth/oauth/complete`.
+- Phase 5 added no key for extra origins: the only allowed origin is the one
+  of `PUBLIC_BASE_URL`. A disallowed origin is not rejected, it gets no CORS
+  headers and the browser blocks the response.
+
+Open follow-ups:
+
+- One release after phase 2: a migration that drops the plaintext
+  `refresh_tokens.token` column (plaintext only for rows older than phase 2,
+  new rows store the hash there too), together with removing the legacy-token
+  fallback (`GetLegacyRefreshToken`).
+- One release after phase 4: enforce the JWT `iss`/`aud` claims in
+  `ValidateToken`; they are set at issue and not checked yet.
+- Phase 6.
 
 ## Findings
 
@@ -55,8 +90,10 @@ fails open for login scopes.
 
 - Each phase ships on its own and stays forward compatible for one release,
   so both `nipad-ee` colors can run during a flip.
-- Schema changes go to both dialects (`make migrate-create`), followed by
-  `make sqlc`.
+- Schema changes are new migration files in both dialects, followed by
+  `make sqlc`; existing migrations are never edited. The phases added
+  sequentially numbered pairs (the next free number per dialect), not the
+  timestamp names `make migrate-create` produces.
 - New code is covered at least 80% by tests.
 - Done means `go vet ./...`, `make lint`, `go test ./...`, `npm test` and
   `make test-client-both` are green.
