@@ -35,6 +35,31 @@ describe("demo service", () => {
     expect((await s.TableDiff(ROOT, null, null))!.rowsChanged).toBe(2);
   });
 
+  it("browses the project files", async () => {
+    const s = createService("default");
+    const top = await s.Files(ROOT, "");
+    expect(top!.entries!.map((e) => e.name)).toEqual(["Assets", "ProjectSettings", "Source", ".nipaassets.yml", ".nipaignore", "README.md"]);
+    expect(top!.entries![0].childrenChanged).toBe(true);
+    const hero = await s.Files(ROOT, "Assets/Characters/Hero");
+    const albedo = hero!.entries!.find((e) => e.name === "hero_albedo.png")!;
+    expect(albedo).toMatchObject({ kind: "image", status: "modified", staged: true });
+    const ui = await s.Files(ROOT, "Assets/UI");
+    expect(ui!.entries!.find((e) => e.name === "icon_sword.png")).toMatchObject({ status: "untracked", tracked: false });
+    expect((await s.FileInfo(ROOT, "main", "Assets/Characters/Hero/hero_albedo.png"))!.lastCommit!.id).toBe("c12");
+    expect((await s.FileInfo(ROOT, "main", "Assets/UI/icon_sword.png"))!.lastCommit).toBeNull();
+    expect((await s.FileInfo(ROOT, "main", "README.md"))!.lastCommit).not.toBeNull();
+    expect((await s.FileInfo(ROOT, "main", "nope.txt"))!.entry.path).toBe("nope.txt");
+    expect((await s.FileView(ROOT, "Source/Player/Movement.cs"))!.hunks![0].lines!.length).toBeGreaterThan(5);
+    expect((await s.FileView(ROOT, "Source/Other.cs"))!.hunks![0].lines).toHaveLength(1);
+    expect((await s.FileView(ROOT, "Assets/Characters/Hero/ring_of_dawn.glb"))!.kind).toBe("model");
+    const thumb = await s.ImageDiff(ROOT, null, ref("Assets/UI/icon_shield.png"), { maxSize: 128, level: 0, face: 0 });
+    expect(thumb!.old).toBeNull();
+    expect(thumb!.new!.src).toMatch(/^data:image\/svg/);
+    expect(await s.FileLink("x", "a/b.png")).toBe("nipa://nipalab.com/acme/starfall/file/a/b.png");
+    expect(await s.RestoreRevision(ROOT, "a", "c3")).toEqual({ commitId: "c3" });
+    await s.RevealFile(ROOT, "a");
+  });
+
   it("pages history and lists projects, branches, tags and merge requests", async () => {
     const s = createService("default");
     const first = await s.History(ROOT, { branch: "", path: "", start: "", limit: 3 });

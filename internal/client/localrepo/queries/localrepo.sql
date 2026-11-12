@@ -108,3 +108,21 @@ ORDER BY path;
 -- name: SnapshotUsage :one
 SELECT CAST(COUNT(*) AS INTEGER) AS files, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS size_bytes
 FROM files;
+
+-- name: TreeNodeChildren :many
+SELECT path
+FROM tree_nodes
+WHERE parent_path = sqlc.arg(parent_path) AND path <> parent_path
+ORDER BY path;
+
+-- name: FileListByTree :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE tree_path = sqlc.arg(tree_path)
+ORDER BY path;
+
+-- name: FileGet :one
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path = sqlc.arg(path)
+LIMIT 1;

@@ -26,9 +26,10 @@ type Navigation struct {
 	Server  string `json:"server"`
 	Org     string `json:"org"`
 	Project string `json:"project"`
+	Path    string `json:"path"`
 }
 
-var errBadLink = errors.New("not a Nipa link; expected nipa://<server>/<org>/<project>[/merge-requests/<n>|/commits/<id>|/history|/branches|/locks|/changes]")
+var errBadLink = errors.New("not a Nipa link; expected nipa://<server>/<org>/<project>[/merge-requests/<n>|/commits/<id>|/file/<path>|/files|/history|/branches|/locks|/changes]")
 
 var linkTabs = map[string]string{
 	"":               "changes",
@@ -40,9 +41,12 @@ var linkTabs = map[string]string{
 	"locks":          "locks",
 	"merge-requests": "mrs",
 	"settings":       "details",
+	"files":          "files",
+	"file":           "files",
 }
 
-// ParseLink reads nipa://<host[:port]>/<org>/<project>[/<section>[/<id>]].
+// ParseLink reads nipa://<host[:port]>/<org>/<project>[/<section>[/<id>]],
+// where nipa://.../file/<path> opens the Files tab at a file.
 // A server query parameter overrides the address offered for cloning.
 func ParseLink(raw string) (Navigation, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
@@ -50,7 +54,13 @@ func ParseLink(raw string) (Navigation, error) {
 		return Navigation{}, errBadLink
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" || len(parts) > 4 {
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return Navigation{}, errBadLink
+	}
+	if len(parts) > 3 && parts[2] == "file" {
+		return Navigation{Tab: "files", Server: linkServer(u), Org: parts[0], Project: parts[1], Path: strings.Join(parts[3:], "/")}, nil
+	}
+	if len(parts) > 4 || len(parts) == 3 && parts[2] == "file" {
 		return Navigation{}, errBadLink
 	}
 	section := ""

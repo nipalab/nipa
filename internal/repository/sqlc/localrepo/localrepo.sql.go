@@ -19,6 +19,38 @@ func (q *Queries) FileDelete(ctx context.Context, path string) error {
 	return err
 }
 
+const fileGet = `-- name: FileGet :one
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path = ?1
+LIMIT 1
+`
+
+type FileGetRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileGet(ctx context.Context, path string) (FileGetRow, error) {
+	row := q.db.QueryRowContext(ctx, fileGet, path)
+	var i FileGetRow
+	err := row.Scan(
+		&i.Path,
+		&i.Hash,
+		&i.SizeBytes,
+		&i.Mode,
+		&i.IsBinary,
+		&i.Encoding,
+		&i.Chunks,
+	)
+	return i, err
+}
+
 const fileList = `-- name: FileList :many
 SELECT path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
@@ -36,6 +68,54 @@ func (q *Queries) FileList(ctx context.Context) ([]File, error) {
 		if err := rows.Scan(
 			&i.Path,
 			&i.TreePath,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const fileListByTree = `-- name: FileListByTree :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE tree_path = ?1
+ORDER BY path
+`
+
+type FileListByTreeRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileListByTree(ctx context.Context, treePath string) ([]FileListByTreeRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileListByTree, treePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListByTreeRow
+	for rows.Next() {
+		var i FileListByTreeRow
+		if err := rows.Scan(
+			&i.Path,
 			&i.Hash,
 			&i.SizeBytes,
 			&i.Mode,
@@ -389,6 +469,36 @@ func (q *Queries) StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams
 		arg.CachedAt,
 	)
 	return err
+}
+
+const treeNodeChildren = `-- name: TreeNodeChildren :many
+SELECT path
+FROM tree_nodes
+WHERE parent_path = ?1 AND path <> parent_path
+ORDER BY path
+`
+
+func (q *Queries) TreeNodeChildren(ctx context.Context, parentPath string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, treeNodeChildren, parentPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const treeNodeDelete = `-- name: TreeNodeDelete :exec

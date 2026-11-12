@@ -218,6 +218,72 @@ var _ = Describe("nipa serve", func() {
 		Expect(readText(dir, "a.txt")).To(Equal("v1\n"))
 	})
 
+	It("lists one directory with status and gets an older version of a file", func() {
+		project := newProject("daemon-files")
+		oldPNG := []byte("\x89PNG\r\n\x1a\n\x00old pixels")
+		seedRepo(orgSlug, project, map[string][]byte{"art/hero.png": oldPNG, "art/notes.txt": []byte("v1\n"), "readme.txt": []byte("hi\n")}, "first")
+		seedRepo(orgSlug, project, map[string][]byte{"art/notes.txt": []byte("v2\n")}, "second")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		writeText(dir, "art/sketch.txt", "draft\n")
+
+		top, err := d.client.ListFiles(d.ctx, &daemonpb.ListFilesRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		names := map[string]*daemonpb.FileEntry{}
+		for _, e := range top.GetEntries() {
+			names[e.GetName()] = e
+		}
+		Expect(names).To(HaveKey("art"))
+		Expect(names["art"].GetIsDir()).To(BeTrue())
+		Expect(names["art"].GetChildrenChanged()).To(BeTrue())
+		Expect(names["readme.txt"].GetStatus()).To(BeEmpty())
+
+		art, err := d.client.ListFiles(d.ctx, &daemonpb.ListFilesRequest{Root: dir, Dir: "art"})
+		Expect(err).NotTo(HaveOccurred())
+		statuses := map[string]string{}
+		kinds := map[string]string{}
+		for _, e := range art.GetEntries() {
+			statuses[e.GetName()] = e.GetStatus()
+			kinds[e.GetName()] = e.GetKind()
+		}
+		Expect(statuses).To(Equal(map[string]string{"hero.png": "", "notes.txt": "", "sketch.txt": "untracked"}))
+		Expect(kinds["hero.png"]).To(Equal("image"))
+
+		log, err := d.client.ProxyCommitLog(d.ctx, &daemonpb.ProxyCommitLogRequest{Root: dir, Request: &pb.GetCommitLogRequest{Limit: 10, Path: "art/notes.txt"}})
+		Expect(err).NotTo(HaveOccurred())
+		commits := log.GetResponse().GetCommits()
+		Expect(commits).To(HaveLen(2))
+		first := commits[1].GetCommitId()
+		writeBytes(dir, "art/hero.png", []byte("\x89PNG\r\n\x1a\n\x00local paint"))
+
+		stream, err := d.client.RestoreRevision(d.ctx, &daemonpb.RestoreRevisionRequest{Root: dir, Path: "art/hero.png", CommitId: first})
+		Expect(err).NotTo(HaveOccurred())
+		events := collectOpEvents(stream)
+		Expect(opFailure(events)).To(BeNil())
+		Expect(opResult(events).GetRestore().GetPath()).To(Equal("art/hero.png"))
+		Expect(readBytes(dir, "art/hero.png")).To(Equal(oldPNG))
+
+		stream, err = d.client.RestoreRevision(d.ctx, &daemonpb.RestoreRevisionRequest{Root: dir, Path: "art/notes.txt", CommitId: first})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opFailure(collectOpEvents(stream))).To(BeNil())
+		Expect(readText(dir, "art/notes.txt")).To(Equal("v1\n"))
+
+		st := d.status(dir)
+		Expect(st.GetModified()).To(ConsistOf("art/notes.txt"))
+		Expect(st.GetStaged()).To(BeEmpty())
+		entry, err := d.client.ListFiles(d.ctx, &daemonpb.ListFilesRequest{Root: dir, Dir: "art", Name: "notes.txt"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entry.GetEntries()[0].GetStatus()).To(Equal("modified"))
+
+		stream, err = d.client.RestoreRevision(d.ctx, &daemonpb.RestoreRevisionRequest{Root: dir, Path: "art/sketch.txt", CommitId: first})
+		Expect(err).NotTo(HaveOccurred())
+		failure := opFailure(collectOpEvents(stream))
+		Expect(failure).NotTo(BeNil())
+		Expect(failure.GetMessage()).To(ContainSubstring("does not exist"))
+	})
+
 	It("streams update results", func() {
 		project := newProject("daemon-update")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")

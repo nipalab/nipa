@@ -82,7 +82,18 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `DiskUsage`/`GC`; `details/StorageCard.tsx`: project files, local cache,
   cached objects, lock pins, "Clean up" with the freed amount as a toast or
   "Repository is busy, try again", and a sparse-editor hint for full
-  checkouts over `SPARSE_HINT_BYTES` = 20 GiB)
+  checkouts over `SPARSE_HINT_BYTES` = 20 GiB),
+  a Files tab first in the tab list (`components/files`: lazy `FolderTree`,
+  virtualized sortable `FileList`/thumbnail `FileGrid` (view kept in
+  `localStorage` `nipa.files.view`), `FileDetail` reusing the change viewers
+  on the new side only via `FileView`, last change via `FileInfo`, versions
+  with "Get this version" through `RestoreRevision` (confirmed when the file
+  has local changes); `Files` over the daemon `ListFiles`, lock state joined
+  in the frontend from `LockStatus` (`lib/files.ts` `lockFor`), 128 px
+  working-file thumbnails cached by hash, sparse clones list folders outside
+  the checkout greyed from `RemoteTree` with "Download this folder" via
+  `SetSparse`, `RevealFile`/`FileLink`, deep link `nipa://.../file/<path>`
+  (`Navigation.path`, `Intent.path`), History jumps filtered by path)
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -1078,7 +1089,16 @@ from one `SnapshotUsage` aggregate query (no working-tree walk), one pass over
 sparse prefixes. `GC` runs `usecase.PruneCache` on the root's cached handle
 under the exclusive slot (queued like an operation) and returns `{objects,
 bytes, skipped, skip_reason}`; a completed run settles the `cachePruner`'s
-pending request. `LoginSSH` takes an optional `key_path` +
+pending request. `ListFiles` (`daemon/files.go`,
+shared slot) lists one directory: `localrepo.ListDir` rows merged with a
+status cached per root (`repo.cachedStatus`: reused while the change hub's
+generation is unchanged and younger than 5 s; the `Status` RPC refreshes it)
+plus untracked/added files and on-disk-only folders; no lock data and no
+server call. `RestoreRevision` (exclusive slot, `OpEvent` stream, result
+`restore`) runs `RepoOps.Restore` (`usecase.RevisionRestore`: commit-scoped
+download of one file of a commit, `materializeFile` over the working file,
+nothing staged; refuses pending merge/revert, paths outside the sparse set,
+folders, unknown commits or paths). `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
@@ -1598,6 +1618,11 @@ and `nipa mcp` stay silent.
   `diff --no-cache` force a full rehash (and refresh the cache). Accepted blind
   spot, same as SVN/Git: an edit that preserves size and mtime is invisible until
   the mtime changes.
+- `ListDir(dir)` reads one level of the snapshot (`TreeNodeChildren` by
+  `tree_nodes.parent_path`, `FileListByTree` by `files.tree_path`, both
+  indexed; stored paths carry a leading slash, the root is `""`) and
+  `SnapshotFile(path)` one row (`FileGet`), so per-directory callers never load
+  the whole snapshot.
 - There is no schema migration: the local DB is recreated from scratch (an old
   clone just needs to be deleted and re-cloned).
 - The `localRepo` interface (used by `usecase.Repo.Clone`): `Init(target)` /

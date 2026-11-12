@@ -18,6 +18,12 @@ export const screens: Screen[] = [
   { name: "changes-audio", scenario: "default", steps: [{ text: "theme_main.wav" }], settle: 1500 },
   { name: "changes-table", scenario: "default", steps: [{ text: "items.csv" }], settle: 1000 },
   { name: "changes-text", scenario: "default", steps: [{ text: "Movement.cs" }], settle: 1000 },
+  {
+    name: "files",
+    scenario: "default",
+    steps: [{ tab: "Files" }, { text: "Assets" }, { text: "Characters" }, { text: "Hero" }, { button: "Thumbnails" }, { text: "hero_albedo.png" }],
+    settle: 1500,
+  },
   { name: "history", scenario: "default", steps: [{ tab: "History" }, { text: "Rebuild hero armor albedo" }], settle: 1500 },
   { name: "branches", scenario: "default", steps: [{ tab: "Branches & tags" }], settle: 800 },
   { name: "merge-request", scenario: "default", steps: [{ tab: "Merge requests" }, { text: "Rework hero armor textures" }], settle: 1500 },

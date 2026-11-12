@@ -106,6 +106,9 @@ func toOutcome(result *daemonpb.OpResult) OpOutcome {
 	if m := result.GetMerge(); m != nil {
 		return OpOutcome{Merge: &MergeOutcome{UpToDate: m.GetUpToDate(), FastForwarded: m.GetFastForwarded(), MergeCommitted: m.GetMergeCommitted(), Aborted: m.GetAborted(), Conflicts: append([]string{}, m.GetConflicts()...)}}
 	}
+	if r := result.GetRestore(); r != nil {
+		return OpOutcome{CommitID: r.GetCommitId()}
+	}
 	sync := result.GetSync()
 	return OpOutcome{Branch: sync.GetBranch(), CommitID: sync.GetCommitId()}
 }

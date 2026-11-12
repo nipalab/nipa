@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/grpc/metadata"
 
@@ -17,6 +18,7 @@ const maxChangePaths = 512
 // changeHub fans working-copy change notices out to WatchChanges streams.
 // Publishing never blocks: each subscriber coalesces notices until it reads.
 type changeHub struct {
+	gen    atomic.Uint64
 	mu     sync.Mutex
 	subs   map[*changeSub]struct{}
 	closed bool
@@ -57,11 +59,17 @@ func (h *changeHub) subscribe() (*changeSub, func()) {
 
 // publish records a change; nil or empty paths mean "refresh everything".
 func (h *changeHub) publish(paths []string) {
+	h.gen.Add(1)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for sub := range h.subs {
 		sub.add(paths)
 	}
+}
+
+// generation counts published notices, so cached answers know they are stale.
+func (h *changeHub) generation() uint64 {
+	return h.gen.Load()
 }
 
 func (h *changeHub) close() {

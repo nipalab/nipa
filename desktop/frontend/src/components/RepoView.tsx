@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, FileDiff, Folders, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
 import { SparseDialog } from "@/components/clone/SparseDialog";
 import { StorageCard } from "@/components/details/StorageCard";
 import { ConflictsView } from "@/components/conflicts/ConflictsView";
+import { FilesView } from "@/components/files/FilesView";
 import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
@@ -15,19 +16,22 @@ import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
+import { shortId } from "@/lib/history";
+import { normalizeSelection } from "@/lib/sparse";
 import { cn, errorMessage } from "@/lib/utils";
 
 const REPO_POLL_MS = 30_000;
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
-export type TabId = "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
+export type TabId = "files" | "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
 
-// Intent asks the view to show a tab (and a merge request or commit); seq
-// changes for every request so the same target can be opened twice.
-export type Intent = { tab: string; number?: number; commit?: string; seq: number };
+// Intent asks the view to show a tab (and a merge request, commit or file);
+// seq changes for every request so the same target can be opened twice.
+export type Intent = { tab: string; number?: number; commit?: string; path?: string; seq: number };
 
 const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
+  { id: "files", label: "Files", Icon: Folders },
   { id: "changes", label: "Changes", Icon: FileDiff },
   { id: "conflicts", label: "Conflicts", Icon: GitMerge },
   { id: "history", label: "History", Icon: History },
@@ -49,6 +53,12 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   }, [intent]);
   const openNumber = intent?.tab === "mrs" && intent.number ? { number: intent.number, seq: intent.seq } : undefined;
   const openCommit = intent?.tab === "history" && intent.commit ? { id: intent.commit, seq: intent.seq } : undefined;
+  const openFile = intent?.tab === "files" && intent.path ? { path: intent.path, seq: intent.seq } : undefined;
+  const [historyNav, setHistoryNav] = useState<{ path: string; commit?: string; seq: number }>();
+  const showHistory = (path: string, commit?: string) => {
+    setHistoryNav((prev) => ({ path, commit, seq: (prev?.seq ?? 0) + 1 }));
+    setTab("history");
+  };
   const [message, setMessage] = useState("");
   const [editingSparse, setEditingSparse] = useState(false);
 
@@ -62,10 +72,11 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
   const finishing = useRef(false);
   const tagCheckout = useRef("");
+  const restored = useRef("");
   const operation = useRepoOperation(repo.root, {
     onDone: (op, outcome) => {
       refresh();
@@ -84,6 +95,10 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
       if (op === "merge") {
         notify(...describeMerge(outcome, repo.branch));
         if (outcome.merge?.conflicts?.length) setTab("conflicts");
+        return;
+      }
+      if (op === "restore") {
+        notify(`${restored.current} is now the version from ${shortId(outcome.commitId ?? "")}. Push it to share it, or discard the change.`, "success");
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
@@ -212,6 +227,19 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
           <div className="min-h-0 flex-1">
             {current === "conflicts" ? (
               <ConflictsView root={repo.root} busy={!!op} notify={notify} />
+            ) : current === "files" ? (
+              <FilesView
+                repo={repo}
+                busy={!!op}
+                notify={notify}
+                open={openFile}
+                onHistory={showHistory}
+                onRestore={(path, commit) => {
+                  restored.current = path;
+                  operation.run("restore", () => desktop.restoreRevision(repo.root, path, commit.id));
+                }}
+                onAddSparse={(path) => operation.run("sparse", () => desktop.setSparse(repo.root, normalizeSelection([...(repo.sparse ?? []), path])))}
+              />
             ) : current === "changes" ? (
               <ChangesView
                 root={repo.root}
@@ -225,6 +253,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
               />
             ) : current === "history" ? (
               <HistoryView
+                key={historyNav?.seq ?? 0}
+                path={historyNav?.path}
                 root={repo.root}
                 branch={repo.branch}
                 detached={detached}
@@ -232,7 +262,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 notify={notify}
                 onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
                 onSwitch={switchTo}
-                open={openCommit}
+                open={openCommit ?? (historyNav?.commit ? { id: historyNav.commit, seq: historyNav.seq } : undefined)}
               />
             ) : current === "branches" ? (
               <BranchesView
@@ -272,7 +302,16 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   );
 }
 
-const opLabel: Record<OpName, string> = { push: "Push", update: "Update", sparse: "Checkout change", clone: "Clone", switch: "Switch", revert: "Revert", merge: "Merge" };
+const opLabel: Record<OpName, string> = {
+  push: "Push",
+  update: "Update",
+  sparse: "Checkout change",
+  clone: "Clone",
+  switch: "Switch",
+  revert: "Revert",
+  merge: "Merge",
+  restore: "Getting the version",
+};
 
 export function describeMerge(outcome: OpOutcome, branch: string): [string, "error" | "success" | undefined] {
   const m = outcome.merge;
