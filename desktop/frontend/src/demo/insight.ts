@@ -88,7 +88,7 @@ const seeded: Record<string, Origin> = {
     license: "Adobe Firefly terms",
     humanEdited: false,
     promptHash: "",
-    digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+    digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia", // NOSONAR: IPTC identifier, not a fetched URL
     note: "",
   },
 };
