@@ -237,6 +237,36 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
 }
 
 /**
+ * FileInfo returns one file's metadata and its last change.
+ */
+export function FileInfo(root: string, p: string): $CancellablePromise<$models.FileDetails | null> {
+    return $Call.ByID(1734976806, root, p);
+}
+
+/**
+ * FileLink builds the nipa:// link that opens a file in the Files tab.
+ */
+export function FileLink(repoURL: string, p: string): $CancellablePromise<string> {
+    return $Call.ByID(3985887342, repoURL, p);
+}
+
+/**
+ * FileView returns the working file as a one-sided diff for the viewers: text
+ * as plain lines, other kinds with their metadata. Nil means the file is not
+ * on disk.
+ */
+export function FileView(root: string, p: string): $CancellablePromise<$models.FileDiff | null> {
+    return $Call.ByID(2067956135, root, p);
+}
+
+/**
+ * Files lists one directory of the clone with each entry's status.
+ */
+export function Files(root: string, dir: string): $CancellablePromise<$models.FileListing | null> {
+    return $Call.ByID(715245375, root, dir);
+}
+
+/**
  * GenerateCommitMessage drafts a message for the staged changes.
  */
 export function GenerateCommitMessage(root: string): $CancellablePromise<$models.Draft> {
@@ -505,6 +535,22 @@ export function RestartDaemon(): $CancellablePromise<$models.DaemonInfo> {
  */
 export function RestartToUpdate(): $CancellablePromise<void> {
     return $Call.ByID(260610607);
+}
+
+/**
+ * RestoreRevision writes the file as it was in commitID over the working
+ * file; the file then shows as modified.
+ */
+export function RestoreRevision(root: string, p: string, commitID: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(2828200379, root, p, commitID);
+}
+
+/**
+ * RevealFile shows a clone file or folder in the system file manager; an
+ * empty path reveals the clone itself.
+ */
+export function RevealFile(root: string, p: string): $CancellablePromise<void> {
+    return $Call.ByID(820577331, root, p);
 }
 
 /**

@@ -69,6 +69,7 @@ func TestServeRepoOps_BuildsEveryRunner(t *testing.T) {
 	require.NotNil(t, ops.Diff)
 	require.NotNil(t, ops.Proxy)
 	require.NotNil(t, ops.Generate)
+	require.NotNil(t, ops.Restore)
 }
 
 func TestServeGenerator_BuildsCollector(t *testing.T) {

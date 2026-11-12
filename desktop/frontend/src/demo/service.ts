@@ -2,6 +2,7 @@ import type { CancellablePromise } from "@wailsio/runtime";
 import type * as Real from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/service";
 import type { FileChange, FileDiff, ImageRef, OpOutcome } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import * as d from "./data";
+import { demoFileInfo, demoFiles, demoFileView, fileImages } from "./files";
 import { torusGlb } from "./media";
 
 const ok = <T>(v: T): CancellablePromise<T> => Promise.resolve(v) as unknown as CancellablePromise<T>;
@@ -17,7 +18,13 @@ export function createService(scenario: string): typeof Real {
   const done: OpOutcome = { branch: state.branch };
 
   const diffFor = (path: string): FileDiff | null => d.diffs[path] ?? null;
-  const imageFor = (ref: ImageRef | null) => (ref ? d.images[ref.path] : undefined);
+  const imageFor = (ref: ImageRef | null) => {
+    if (!ref) return undefined;
+    const known = d.images[ref.path];
+    if (known) return known;
+    const single = fileImages[ref.path];
+    return single ? { old: single, new: single } : undefined;
+  };
 
   return {
     Connect: () => ok({ version: "1.4.0", pid: 4242, port: 7070, started: true }),
@@ -49,8 +56,8 @@ export function createService(scenario: string): typeof Real {
       if (!entry) return ok(null);
       const changed = entry.old && entry.new ? 0.37 : 1;
       return ok({
-        old: entry.old,
-        new: entry.new,
+        old: old ? entry.old : null,
+        new: next ? entry.new : null,
         stats: {
           changedPixels: Math.round(512 * 512 * changed),
           totalPixels: 512 * 512,
@@ -85,6 +92,12 @@ export function createService(scenario: string): typeof Real {
     Unlock: () => ok(undefined),
     PickFile: () => ok(""),
     OpenFile: () => ok(undefined),
+    RevealFile: () => ok(undefined),
+    Files: (_root, dir) => ok(demoFiles(dir, state)),
+    FileInfo: (_root, path) => ok(demoFileInfo(path, state)),
+    FileView: (_root, path) => ok(demoFileView(path)),
+    FileLink: (_url, path) => ok(`nipa://${d.SERVER}/acme/starfall/file/${path}`),
+    RestoreRevision: (_root, _path, commitId) => ok({ commitId }),
 
     AccountStatus: (server) => ok({ host: d.SERVER, address: server, signedIn: true, email: "alex@acme.dev", userId: d.people.me.id }),
     SignIn: () => ok(undefined),
@@ -212,7 +225,7 @@ export function createService(scenario: string): typeof Real {
     GenerateMergeRequest: (_root, source, target) => ok(d.mrDraft(source, target)),
     IgnoreRules: () => ok({ shared: "# Unity\nLibrary/\nTemp/\nLogs/\n*.csproj\n", local: "*.tmp\n.vscode/\n" }),
     SaveIgnoreRules: () => ok(undefined),
-    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "" }),
+    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "", path: "" }),
     TakeNavigation: () => ok(null),
     UpdateStatus: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(5) }),
     CheckForUpdate: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(0) }),

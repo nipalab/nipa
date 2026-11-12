@@ -36,6 +36,12 @@ type repo struct {
 
 	pushCheck PushCheckRunner
 	generate  GenerateRunner
+	restore   RevisionRestorer
+
+	statusMu  sync.Mutex
+	status    *clientDomain.Status
+	statusGen uint64
+	statusAt  time.Time
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -182,6 +188,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.pins = ops.Pins
 		rp.pushCheck = ops.PushCheck
 		rp.generate = ops.Generate
+		rp.restore = ops.Restore
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

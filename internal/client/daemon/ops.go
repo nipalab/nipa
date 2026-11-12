@@ -29,6 +29,7 @@ type RepoOps struct {
 	Pins       PinRunner
 	PushCheck  PushCheckRunner
 	Generate   GenerateRunner
+	Restore    RevisionRestorer
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
 }

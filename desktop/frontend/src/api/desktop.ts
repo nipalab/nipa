@@ -38,7 +38,10 @@ import type {
   DiffLine,
   Draft,
   FileChange,
+  FileDetails,
   FileDiff,
+  FileEntry,
+  FileListing as RawFileListing,
   FileLock,
   FileLockState,
   FileSide,
@@ -108,6 +111,8 @@ export const updateState = (u: RawUpdateState | null): UpdateState => ({
 export type { Release };
 
 export type { FileLock, FileLockState, LockFailure };
+export type { FileDetails, FileEntry };
+export type FileListing = Omit<RawFileListing, "entries"> & { entries: FileEntry[] };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
 export type { Check, Comment, CommentInput, MergeRequestFilter, Mergeability, NewMergeRequest, Person, Review, TimelineEvent };
 export type MergeRequest = Omit<RawMergeRequest, "assignees"> & { assignees: Person[] };
@@ -222,6 +227,15 @@ export const desktop = {
   unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
   pickFile: (root: string): Promise<string> => Service.PickFile(root),
   openFile: (root: string, path: string): Promise<void> => Service.OpenFile(root, path),
+  revealFile: (root: string, path: string): Promise<void> => Service.RevealFile(root, path),
+  files: async (root: string, dir: string): Promise<FileListing> => {
+    const l = await Service.Files(root, dir);
+    return { dir: l?.dir ?? dir, entries: l?.entries ?? [] };
+  },
+  fileInfo: async (root: string, path: string): Promise<FileDetails> => required(await Service.FileInfo(root, path), "file information"),
+  fileView: (root: string, path: string): Promise<FileDiff | null> => Service.FileView(root, path),
+  fileLink: (repoUrl: string, path: string): Promise<string> => Service.FileLink(repoUrl, path),
+  restoreRevision: (root: string, path: string, commitId: string): Cancellable<OpOutcome> => Service.RestoreRevision(root, path, commitId),
   accountStatus: async (server: string): Promise<Account> => {
     const a = await Service.AccountStatus(server);
     if (!a) throw new Error("No account information");

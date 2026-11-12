@@ -40,10 +40,12 @@ func (s *Server) ListRepos(context.Context, *daemonpb.ListReposRequest) (*daemon
 func (s *Server) Status(ctx context.Context, req *daemonpb.StatusRequest) (*daemonpb.StatusResponse, error) {
 	var status *clientDomain.Status
 	err := s.repos.withRepo(ctx, req.GetRoot(), false, func(rp *repo) error {
+		gen := rp.changes.generation()
 		st, err := rp.wc.Status(ctx, usecase.StatusOptions{NoCache: req.GetNoCache()})
 		if err != nil {
 			return err
 		}
+		rp.rememberStatus(gen, st)
 		status = st
 		return nil
 	})

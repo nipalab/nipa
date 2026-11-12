@@ -277,6 +277,17 @@ export interface FileChange {
     "kind": string;
 }
 
+/**
+ * FileDetails is one file's metadata plus the last commit that changed it.
+ * LastCommit is nil when the file has no history or the server could not be
+ * reached; LastCommitError then says why.
+ */
+export interface FileDetails {
+    "entry": FileEntry;
+    "lastCommit": Commit | null;
+    "lastCommitError"?: string;
+}
+
 export interface FileDiff {
     "path": string;
     "oldPath"?: string;
@@ -302,6 +313,34 @@ export interface FileDiff {
      */
     "oldRevision"?: string;
     "newRevision"?: string;
+}
+
+export interface FileEntry {
+    "name": string;
+    "path": string;
+    "isDir": boolean;
+    "size": number;
+    "binary": boolean;
+    "kind": string;
+
+    /**
+     * empty, modified, added, deleted, missing, untracked, conflict
+     */
+    "status": string;
+    "staged": boolean;
+    "childrenChanged": boolean;
+    "tracked": boolean;
+    "hash": string;
+
+    /**
+     * unix nanoseconds, set for entries with a status
+     */
+    "mtime": number;
+}
+
+export interface FileListing {
+    "dir": string;
+    "entries": FileEntry[] | null;
 }
 
 export interface FileLock {
@@ -665,6 +704,7 @@ export interface Navigation {
     "server": string;
     "org": string;
     "project": string;
+    "path": string;
 }
 
 export interface NewMergeRequest {

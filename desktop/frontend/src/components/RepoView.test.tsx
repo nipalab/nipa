@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
@@ -42,6 +42,13 @@ const api = vi.hoisted(() => ({
   mergeRequests: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
+  files: vi.fn(),
+  fileInfo: vi.fn(),
+  fileView: vi.fn(),
+  restoreRevision: vi.fn(),
+  imageDiff: vi.fn(),
+  revealFile: vi.fn(),
+  fileLink: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -776,5 +783,45 @@ describe("Activity and navigation", () => {
     expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
     rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "history", commit: "c1", seq: 3 }} />);
     expect(await screen.findAllByText("Paint hero")).not.toHaveLength(0);
+  });
+
+  it("lists Files first and opens the file a link points at", async () => {
+    api.files.mockImplementation(async (_root: string, dir: string) => ({
+      dir,
+      entries:
+        dir === ""
+          ? [{ name: "art", path: "art", isDir: true, size: 0, binary: false, kind: "", status: "", staged: false, childrenChanged: true, tracked: true, hash: "", mtime: 0 }]
+          : [{ name: "hero.png", path: "art/hero.png", isDir: false, size: 9, binary: true, kind: "image", status: "modified", staged: false, childrenChanged: false, tracked: true, hash: "h", mtime: 3 }],
+    }));
+    api.fileInfo.mockResolvedValue({ entry: { path: "art/hero.png" }, lastCommit: null });
+    api.fileView.mockResolvedValue(null);
+    api.history.mockResolvedValue({ commits: [{ id: "c7", hash: "h7", message: "Paint hero", author: "Alice", email: "", date: "", parents: [] }], next: "" });
+    api.commitFiles.mockResolvedValue([]);
+    api.tags.mockResolvedValue([]);
+    api.restoreRevision.mockResolvedValue({ commitId: "c7" });
+    renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "files", path: "art/hero.png", seq: 1 }} />);
+    expect(screen.getAllByRole("tab")[0]).toHaveTextContent("Files");
+    expect(screen.getByRole("tab", { name: /Files/ })).toHaveAttribute("aria-selected", "true");
+    const versions = await screen.findByRole("region", { name: "Versions" });
+    await userEvent.click(await within(versions).findByRole("button", { name: "Get this version" }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Get this version" }));
+    expect(api.restoreRevision).toHaveBeenCalledWith("/work/game", "art/hero.png", "c7");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("art/hero.png is now the version from c7. Push it to share it, or discard the change.", "success"));
+
+    await userEvent.click(within(screen.getByRole("toolbar", { name: "File actions" })).getByRole("button", { name: "History" }));
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.history).toHaveBeenCalledWith("/work/game", expect.objectContaining({ path: "art/hero.png" })));
+    expect(screen.getByRole("textbox", { name: "Path filter" })).toHaveValue("art/hero.png");
+  });
+
+  it("downloads a folder outside the sparse checkout from the Files tab", async () => {
+    api.files.mockResolvedValue({ dir: "", entries: [] });
+    api.remoteTree.mockResolvedValue({ files: 0, fileBytes: 0, dirs: [{ name: "Docs", path: "Docs" }] });
+    api.setSparse.mockResolvedValue({ branch: "main" });
+    renderWithProviders(<RepoView repo={{ ...repo, sparse: ["Art"] }} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "files", seq: 1 }} />);
+    const docs = await screen.findByText("Docs", { selector: "[role=row] span" });
+    fireEvent.doubleClick(docs);
+    expect(api.setSparse).toHaveBeenCalledWith("/work/game", ["Art", "Docs"]);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Checkout updated", "success"));
   });
 });

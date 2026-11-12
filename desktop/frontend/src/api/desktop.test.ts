@@ -31,6 +31,12 @@ const service = vi.hoisted(() => ({
   Unlock: vi.fn(),
   PickFile: vi.fn(),
   OpenFile: vi.fn(),
+  RevealFile: vi.fn(),
+  Files: vi.fn(),
+  FileInfo: vi.fn(),
+  FileView: vi.fn(),
+  FileLink: vi.fn(),
+  RestoreRevision: vi.fn(),
   AccountStatus: vi.fn(),
   SignIn: vi.fn(),
   SignInSSH: vi.fn(),
@@ -213,6 +219,25 @@ describe("desktop api", () => {
     service.OpenFile.mockResolvedValue(undefined);
     await desktop.openFile("/a", "art/a.psd");
     expect(service.OpenFile).toHaveBeenCalledWith("/a", "art/a.psd");
+  });
+
+  it("browses files and restores versions", async () => {
+    service.Files.mockResolvedValueOnce({ dir: "a", entries: null }).mockResolvedValueOnce(null);
+    expect(await desktop.files("/r", "a")).toEqual({ dir: "a", entries: [] });
+    expect(await desktop.files("/r", "b")).toEqual({ dir: "b", entries: [] });
+    service.FileInfo.mockResolvedValueOnce({ entry: { path: "a/x" }, lastCommit: null }).mockResolvedValueOnce(null);
+    expect((await desktop.fileInfo("/r", "a/x")).entry.path).toBe("a/x");
+    await expect(desktop.fileInfo("/r", "a/x")).rejects.toThrow("No file information");
+    service.FileView.mockResolvedValue(null);
+    expect(await desktop.fileView("/r", "a/x")).toBeNull();
+    service.FileLink.mockResolvedValue("nipa://h/o/p/file/a/x");
+    expect(await desktop.fileLink("https://h/o/p", "a/x")).toBe("nipa://h/o/p/file/a/x");
+    service.RevealFile.mockResolvedValue(undefined);
+    await desktop.revealFile("/r", "a/x");
+    expect(service.RevealFile).toHaveBeenCalledWith("/r", "a/x");
+    service.RestoreRevision.mockResolvedValue({ commitId: "c1" });
+    expect(await desktop.restoreRevision("/r", "a/x", "c1")).toEqual({ commitId: "c1" });
+    expect(service.RestoreRevision).toHaveBeenCalledWith("/r", "a/x", "c1");
   });
 
   it("signs in, browses servers and clones", async () => {

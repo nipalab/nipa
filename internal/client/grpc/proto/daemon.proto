@@ -439,7 +439,13 @@ message OpResult {
         PushResult push = 2;
         MergeResult merge = 3;
         RevertResult revert = 4;
+        RestoreRevisionResult restore = 5;
     }
+}
+
+message RestoreRevisionResult {
+    string path = 1;
+    string commit_id = 2;
 }
 
 message OpEvent {
@@ -931,6 +937,38 @@ message GCResponse {
     string skip_reason = 4; // "repository busy" or "a merge or revert is in progress"
 }
 
+message ListFilesRequest {
+    string root = 1;
+    string dir = 2; // directory to list, slash separated; empty is the root
+    string name = 3; // only this entry of dir
+}
+
+message FileEntry {
+    string name = 1;
+    string path = 2;
+    bool is_dir = 3;
+    int64 size_bytes = 4;
+    bool is_binary = 5;
+    string kind = 6; // viewer kind (internal/preview), empty for directories
+    string status = 7; // empty, modified, added, deleted, missing, untracked, conflict
+    bool staged = 8;
+    bool children_changed = 9; // directories: something below has a status
+    bool tracked = 10;
+    string hash = 11; // snapshot file hash (hex), empty when untracked
+    int64 mtime_ns = 12; // working file mtime for entries with a status
+}
+
+message ListFilesResponse {
+    string dir = 1;
+    repeated FileEntry entries = 2; // directories first, then files, by name
+}
+
+message RestoreRevisionRequest {
+    string root = 1;
+    string path = 2;
+    string commit_id = 3; // base36 commit id
+}
+
 service NipaDaemon {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
@@ -1005,4 +1043,6 @@ service NipaDaemon {
     rpc RemoteTree(RemoteTreeRequest) returns (RemoteTreeResponse);
     rpc Clone(CloneRequest) returns (stream OpEvent);
     rpc SetSparse(SetSparseRequest) returns (stream OpEvent);
+    rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+    rpc RestoreRevision(RestoreRevisionRequest) returns (stream OpEvent);
 }

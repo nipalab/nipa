@@ -9,15 +9,18 @@ import (
 
 func TestParseLink(t *testing.T) {
 	for raw, want := range map[string]Navigation{
-		"nipa://nipa.example.com/studio/game":                      {Tab: "changes", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
-		"NIPA://nipa.example.com/studio/game/":                     {Tab: "changes", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
-		"nipa://nipa.example.com/studio/game/merge-requests/12":    {Tab: "mrs", Number: 12, Server: "https://nipa.example.com", Org: "studio", Project: "game"},
-		"nipa://nipa.example.com/studio/game/merge-requests":       {Tab: "mrs", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
-		"nipa://nipa.example.com/studio/game/commits/abc12":        {Tab: "history", Commit: "abc12", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
-		"nipa://localhost:6811/studio/game/locks":                  {Tab: "locks", Server: "http://localhost:6811", Org: "studio", Project: "game"},
-		"nipa://127.0.0.1:6811/studio/game/branches":               {Tab: "branches", Server: "http://127.0.0.1:6811", Org: "studio", Project: "game"},
-		"nipa://vcs.lan/studio/game/history?server=http://vcs.lan": {Tab: "history", Server: "http://vcs.lan", Org: "studio", Project: "game"},
-		"nipa://vcs.lan/studio/game/settings?server=ftp://x":       {Tab: "details", Server: "https://vcs.lan", Org: "studio", Project: "game"},
+		"nipa://nipa.example.com/studio/game":                       {Tab: "changes", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
+		"NIPA://nipa.example.com/studio/game/":                      {Tab: "changes", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
+		"nipa://nipa.example.com/studio/game/merge-requests/12":     {Tab: "mrs", Number: 12, Server: "https://nipa.example.com", Org: "studio", Project: "game"},
+		"nipa://nipa.example.com/studio/game/merge-requests":        {Tab: "mrs", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
+		"nipa://nipa.example.com/studio/game/commits/abc12":         {Tab: "history", Commit: "abc12", Server: "https://nipa.example.com", Org: "studio", Project: "game"},
+		"nipa://localhost:6811/studio/game/locks":                   {Tab: "locks", Server: "http://localhost:6811", Org: "studio", Project: "game"},
+		"nipa://127.0.0.1:6811/studio/game/branches":                {Tab: "branches", Server: "http://127.0.0.1:6811", Org: "studio", Project: "game"},
+		"nipa://vcs.lan/studio/game/history?server=http://vcs.lan":  {Tab: "history", Server: "http://vcs.lan", Org: "studio", Project: "game"},
+		"nipa://vcs.lan/studio/game/settings?server=ftp://x":        {Tab: "details", Server: "https://vcs.lan", Org: "studio", Project: "game"},
+		"nipa://vcs.lan/studio/game/files":                          {Tab: "files", Server: "https://vcs.lan", Org: "studio", Project: "game"},
+		"nipa://vcs.lan/studio/game/file/Assets/Hero/hero%20v2.png": {Tab: "files", Server: "https://vcs.lan", Org: "studio", Project: "game", Path: "Assets/Hero/hero v2.png"},
+		"nipa://vcs.lan/studio/game/file/readme.md":                 {Tab: "files", Server: "https://vcs.lan", Org: "studio", Project: "game", Path: "readme.md"},
 	} {
 		got, err := ParseLink(raw)
 		require.NoError(t, err, raw)
@@ -32,6 +35,7 @@ func TestParseLink(t *testing.T) {
 		"nipa://host/studio/game/merge-requests/0",
 		"nipa://host/studio/game/locks/extra",
 		"nipa://host/a/b/c/d/e",
+		"nipa://host/studio/game/file",
 		"nipa://host//game",
 		"::bad",
 	} {

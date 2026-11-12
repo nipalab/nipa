@@ -87,6 +87,8 @@ const (
 	NipaDaemon_RemoteTree_FullMethodName                    = "/nipadaemon.NipaDaemon/RemoteTree"
 	NipaDaemon_Clone_FullMethodName                         = "/nipadaemon.NipaDaemon/Clone"
 	NipaDaemon_SetSparse_FullMethodName                     = "/nipadaemon.NipaDaemon/SetSparse"
+	NipaDaemon_ListFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/ListFiles"
+	NipaDaemon_RestoreRevision_FullMethodName               = "/nipadaemon.NipaDaemon/RestoreRevision"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -161,6 +163,8 @@ type NipaDaemonClient interface {
 	RemoteTree(ctx context.Context, in *RemoteTreeRequest, opts ...grpc.CallOption) (*RemoteTreeResponse, error)
 	Clone(ctx context.Context, in *CloneRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	SetSparse(ctx context.Context, in *SetSparseRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
+	RestoreRevision(ctx context.Context, in *RestoreRevisionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 }
 
 type nipaDaemonClient struct {
@@ -968,6 +972,35 @@ func (c *nipaDaemonClient) SetSparse(ctx context.Context, in *SetSparseRequest, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_SetSparseClient = grpc.ServerStreamingClient[OpEvent]
 
+func (c *nipaDaemonClient) ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFilesResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) RestoreRevision(ctx context.Context, in *RestoreRevisionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[13], NipaDaemon_RestoreRevision_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RestoreRevisionRequest, OpEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_RestoreRevisionClient = grpc.ServerStreamingClient[OpEvent]
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -1040,6 +1073,8 @@ type NipaDaemonServer interface {
 	RemoteTree(context.Context, *RemoteTreeRequest) (*RemoteTreeResponse, error)
 	Clone(*CloneRequest, grpc.ServerStreamingServer[OpEvent]) error
 	SetSparse(*SetSparseRequest, grpc.ServerStreamingServer[OpEvent]) error
+	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
+	RestoreRevision(*RestoreRevisionRequest, grpc.ServerStreamingServer[OpEvent]) error
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -1253,6 +1288,12 @@ func (UnimplementedNipaDaemonServer) Clone(*CloneRequest, grpc.ServerStreamingSe
 }
 func (UnimplementedNipaDaemonServer) SetSparse(*SetSparseRequest, grpc.ServerStreamingServer[OpEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method SetSparse not implemented")
+}
+func (UnimplementedNipaDaemonServer) ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListFiles not implemented")
+}
+func (UnimplementedNipaDaemonServer) RestoreRevision(*RestoreRevisionRequest, grpc.ServerStreamingServer[OpEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method RestoreRevision not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -2408,6 +2449,35 @@ func _NipaDaemon_SetSparse_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_SetSparseServer = grpc.ServerStreamingServer[OpEvent]
 
+func _NipaDaemon_ListFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ListFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ListFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ListFiles(ctx, req.(*ListFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_RestoreRevision_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RestoreRevisionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).RestoreRevision(m, &grpc.GenericServerStream[RestoreRevisionRequest, OpEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_RestoreRevisionServer = grpc.ServerStreamingServer[OpEvent]
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2635,6 +2705,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "RemoteTree",
 			Handler:    _NipaDaemon_RemoteTree_Handler,
 		},
+		{
+			MethodName: "ListFiles",
+			Handler:    _NipaDaemon_ListFiles_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -2700,6 +2774,11 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SetSparse",
 			Handler:       _NipaDaemon_SetSparse_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RestoreRevision",
+			Handler:       _NipaDaemon_RestoreRevision_Handler,
 			ServerStreams: true,
 		},
 	},

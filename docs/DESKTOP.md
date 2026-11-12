@@ -55,7 +55,8 @@ Sonar never compile it.
   app re-watches them on start; a clone that fails to watch stays listed with
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
-  `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
+  `AddRepo`, `RemoveRepo`; Files: `Files`, `FileInfo`, `FileView`,
+  `RestoreRevision`, `RevealFile`, `FileLink`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
   `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
@@ -187,6 +188,42 @@ Sonar never compile it.
   reads "Push anyway" while anything is reported. The block is hidden with
   nothing staged or nothing to report (no budget file and no engine asset
   change gives an empty report).
+- Files tab (first tab; Changes stays the one selected on open): a project
+  browser over the daemon's `ListFiles`. Left, a lazy folder tree (a
+  folder's children are listed the first time it is expanded); middle, the
+  folder as a sortable list (name, kind, size, status, lock; folders first)
+  or a thumbnail grid (the choice is kept in `localStorage`
+  `nipa.files.view`), both virtualized with TanStack Virtual so a 10k-file
+  folder renders a screenful of rows; right, the selected file. Entries carry
+  the working-copy status (modified, added, deleted, missing, untracked,
+  conflict) and folders a dot when something inside changed; untracked files
+  and new folders that only exist on disk are listed too. Lock state is
+  joined in the frontend from the `LockStatus` list the app already polls
+  (`lockFor`: the most specific in-scope lock covering the path), so listing
+  a folder never calls the server. Thumbnails are 128 px `ImageDiff` previews
+  of the working file (new side only), requested only for rendered grid
+  cells and cached by the snapshot hash (or the working file's stamp for
+  changed files). The detail pane reuses the change viewers with only the new
+  side (`FileView` reads the working file like an untracked change; text
+  shows as plain lines), then size, kind, status, lock owner, the last change
+  (`FileInfo`: snapshot metadata plus the last commit through
+  `ProxyCommitLog` with `path` and limit 1; offline it only says "Not
+  available offline") and the file's versions (20 newest, image thumbnails of
+  each revision). Toolbar and right-click menu: Open, Reveal in file manager
+  (`RevealFile`: `open -R` on macOS, `explorer /select,` on Windows, the
+  FileManager1 D-Bus `ShowItems` call on Linux with `xdg-open` of the folder
+  as the fallback), Lock / Unlock, History (the History tab filtered by the
+  path), Copy path and Copy `nipa://` link (`FileLink`). "Get this version"
+  on a version runs the daemon's `RestoreRevision` through the operation
+  progress like the other operations: the revision is downloaded
+  commit-scoped and written over the working file (a read-only file stays
+  read-only), nothing is staged and the file then shows as modified; when the
+  file already has local changes a confirmation comes first. In a sparse
+  clone, folders outside the checkout are listed greyed out from
+  `RemoteTree` (only for folders the sparse set does not cover, so a full
+  checkout makes no remote call) with "Download this folder", which adds the
+  prefix through `SetSparse`. `repo:changed` refreshes only the listings of
+  the folders above the changed paths (everything without paths).
 - Generated text: with an endpoint and a model set (Settings › AI
   assistance, or `NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`), the push box and the
   New merge request dialog show a Generate button (`useLLMSettings`,
@@ -283,10 +320,13 @@ Sonar never compile it.
   notifications (each kind can be switched off); clicking one opens the
   History, Locks or Merge requests tab (`Navigation`, `app:navigate`).
 - Deep links: `nipa://<server>/<org>/<project>[/merge-requests/<n>|
-  /commits/<id>|/history|/branches|/locks|/changes|/settings]` (a `server`
-  query parameter overrides the address; localhost defaults to http, other
-  hosts to https). A link to an opened clone selects it and opens the tab,
-  request or commit; a link to a project not cloned yet opens the clone
+  /commits/<id>|/file/<path>|/files|/history|/branches|/locks|/changes|/settings]`
+  (a `server` query parameter overrides the address; localhost defaults to
+  http, other hosts to https). `/file/<path>` (segments URL-escaped) opens the
+  Files tab at that file, or inside that folder; "Copy nipa:// link" produces
+  it and adds `?server=` only when the scheme differs from that default. A
+  link to an opened clone selects it and opens the tab, request, commit or
+  file; a link to a project not cloned yet opens the clone
   dialog with the server and project filled in. The scheme is registered by
   the build assets (`build/config.yml` `protocols`, Info.plist, the Linux
   `.desktop` file, the NSIS installer).
@@ -555,3 +595,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 17. Pre-push checks (budgets, broken references) above the Push button. **(done)**
 18. Generate the push message and MR description, AI settings with a keyring key. **(done)**
 19. Storage card (disk usage, clean up, sparse hint) in the Details tab. **(done)**
+20. Files tab: project browser with thumbnails, file versions and "Get this version" (daemon `ListFiles`, `RestoreRevision`). **(done)**

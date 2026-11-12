@@ -163,6 +163,8 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `Preview` | **server-streaming** | `old`/`new` `BlobRef`s + optional texture `level`/`face` → per side `ImagePreview` (dims, format, encoding, depth, alpha, levels/faces/cube and the decoded level/face, PSD `layers`, `hdr`) + downscaled PNG chunks (`max_size`, default 2048; HDR sides are `preview.PackHDR` RGBE PNGs twice as wide), then `ImageDiffStats` from `preview.CompareImages` when both sides are given; non-image or unsupported formats fail with 415 and the decoder's reason |
 | `WatchEvents` | **server-streaming** | team activity for one watched root, polled from the server every `interval_seconds` (default 60, clamped to 15–3600; `NIPA_DAEMON_EVENT_INTERVAL` overrides it for tests): `incoming` (commits on the clone's branch it does not have, up to 100), `review_requests` (open merge requests with a pending review request for the caller) and `events` since the previous poll (`pushed` with author/message/count, `lock_released` for someone else's lock, `review_requested`). The first poll is a baseline without events; later ones are sent only when something changed. A failed poll sends `error` once and keeps the counts. Ends on unwatch or shutdown |
 | `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
+| `ListFiles` | unary | one directory level of the clone (snapshot rows of that level + working-copy status, untracked files and folders included); see below |
+| `RestoreRevision` | **server-streaming** | writes a file as it was in a commit over the working file under the exclusive slot; see below |
 | `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -428,6 +430,39 @@ that was not skipped settles the pruner's pending request. The usecase rules
 still apply inside the slot: `skipped` with `repository busy` when another
 process holds `.nipa/lock`, and with `a merge or revert is in progress`
 while either is pending.
+
+`ListFiles(root, dir, name?)` lists one directory of the clone under the
+shared slot for the desktop Files tab and the engine plugins: the snapshot
+rows of that level (`localrepo.ListDir`: files by `tree_path`, sub-directories
+by `tree_nodes.parent_path`, both indexed, so a 10k-file clone never loads its
+whole snapshot) merged with the working-copy status. Each entry is `{name,
+path, is_dir, size_bytes, is_binary, kind (preview.Classify), status, staged,
+children_changed, tracked, hash, mtime_ns}`; `status` is empty, `modified`,
+`added`, `deleted`, `missing`, `untracked` or `conflict`, `children_changed`
+marks folders with anything changed below, and untracked or newly added files
+(and folders that only exist on disk, `tracked` false) come from the status
+too. Entries are folders first, then files, by name; `name` narrows the answer
+to one entry (`NotFound` otherwise), and a `dir` with `..` or inside `.nipa`
+is `InvalidArgument`. The status is the one the `Status` RPC last computed
+for the root while no change notice was published since (the `WatchChanges`
+hub's generation) and it is younger than 5 s; otherwise it is computed once
+and cached the same way, so a listing costs the directory query plus a pass
+over the changed paths. Locks are not part of the answer: callers join their
+own lock list (the desktop uses `LockStatus`), so listing never calls the
+server.
+
+`RestoreRevision(root, path, commit_id)` ("get this version") writes the file
+as it was in a commit over the working file under the exclusive slot and
+streams `OpEvent`s (phase `restore`, download progress, result `restore {path,
+commit_id}`). `usecase.RevisionRestore` resolves the commit through
+`GetCommit`, downloads the missing chunks commit-scoped to that path into the
+object cache and writes the file through `materializeFile` (zstd chunks are
+decoded; a read-only working file stays read-only, like update), then prunes
+the cache. Nothing is staged: the file shows as modified (or untracked when
+the path is not tracked any more). It refuses a pending merge or revert, a
+path outside the sparse checkout, a folder, a commit that does not exist
+(`revision "<id>" not found`) and a path the commit does not have (`<path>
+does not exist in <id>`, 404).
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.

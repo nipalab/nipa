@@ -77,6 +77,8 @@ type Service struct {
 	ChooseProgramFunc func() (string, error)
 	// LaunchFunc starts a program with a file; nil uses launch.
 	LaunchFunc func(command, path string) error
+	// RevealFunc shows a path in the file manager; nil uses the OS default.
+	RevealFunc func(path string) error
 	// Notifier shows a desktop notification; nil disables them.
 	Notifier func(Notification) error
 	// ActivityHook receives every clone's latest activity (for the tray).

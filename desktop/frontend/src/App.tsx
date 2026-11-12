@@ -83,7 +83,7 @@ export default function App() {
     if (nav.root) {
       select(nav.root);
       seq.current += 1;
-      setIntent({ root: nav.root, tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, seq: seq.current });
+      setIntent({ root: nav.root, tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined, seq: seq.current });
       return;
     }
     if (nav.project) {
