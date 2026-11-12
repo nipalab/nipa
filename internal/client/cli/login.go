@@ -29,6 +29,7 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 				return err
 			}
 			host := endpoint.Host
+			c.useCase.Auth().WarnIfCleartext(endpoint.Address)
 			prompter := NewPrompter()
 
 			username, _ := cmd.Flags().GetString("username")

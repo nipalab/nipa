@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -262,4 +263,42 @@ func TestLoginCmd_UsernamePromptError(t *testing.T) {
 
 	_, err = runLoginCmd(t, cli, "", "--host", "nipa.example.com")
 	require.Error(t, err)
+}
+
+func TestLoginCmd_CleartextWarning(t *testing.T) {
+	cases := []struct {
+		host string
+		warn bool
+	}{
+		{"nipa.example.com", true},
+		{"http://nipa.example.com:6745", true},
+		{"https://nipa.example.com", false},
+		{"localhost:6745", false},
+		{"127.0.0.1:6745", false},
+		{"http://[::1]:6745", false},
+	}
+	for _, c := range cases {
+		isolateLoginEnv(t)
+		keyPath := writeLoginTestKey(t)
+		var stderr bytes.Buffer
+		storage := &fakeStorage{}
+		auth := usecase.NewAuth(&fakeSSHExecutor{sshResult: &domain.LoginResult{AccessToken: "ssh-tok"}}, storage, &fakeInput{}).WithCleartextWarning(&stderr)
+		cli := NewCli(&fakeUsecaseContainer{auth: auth}, &fakeConnector{})
+
+		var stdout bytes.Buffer
+		cmd := cli.setupLoginCmd()
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetArgs([]string{"--host", c.host, "--ssh-key", keyPath})
+		require.NoError(t, cmd.Execute(), c.host)
+
+		require.NotContains(t, stdout.String(), "warning", c.host)
+		require.Contains(t, stdout.String(), "Logged in to", c.host)
+		if c.warn {
+			require.Contains(t, stderr.String(), "is reached without TLS", c.host)
+			require.Equal(t, 1, strings.Count(stderr.String(), "\n"), c.host)
+		} else {
+			require.Empty(t, stderr.String(), c.host)
+		}
+	}
 }

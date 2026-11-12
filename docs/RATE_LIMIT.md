@@ -41,7 +41,8 @@ never to no limit. The warning and the `error` metric are still emitted.
 | `global_ip` | every other HTTP request | client IP | 6000 / 300 |
 
 Exempt: `/healthz`, `/readyz`, `/metrics`, `/version`, pprof, gRPC health and
-`GetServerVersion`. gRPC requests skip the HTTP middleware; the interceptor
+`GetServerVersion` (`/metrics` and pprof stay exempt as 404s on the main port
+when `METRICS_ADDRESS` moves them; that listener has no limiter). gRPC requests skip the HTTP middleware; the interceptor
 applies `auth_ip` to the public login RPCs and `api_user` to the rest.
 
 Configuration lives in `config.yaml` / environment (`RATE_LIMIT_<SCOPE>_PER_MINUTE`

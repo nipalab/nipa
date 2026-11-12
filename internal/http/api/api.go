@@ -39,6 +39,7 @@ type usecaseContainer interface {
 type API struct {
 	useCase      usecaseContainer
 	metrics      *obs.Metrics
+	origins      []string
 	proxies      []netip.Prefix
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
@@ -51,6 +52,7 @@ type Option func(*apiOptions)
 
 type apiOptions struct {
 	metrics      *obs.Metrics
+	origins      []string
 	proxies      []netip.Prefix
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
@@ -62,6 +64,14 @@ type apiOptions struct {
 func WithMetrics(metrics *obs.Metrics) Option {
 	return func(o *apiOptions) {
 		o.metrics = metrics
+	}
+}
+
+// WithAllowedOrigins lists the browser origins granted CORS access. Without
+// any, no cross-origin access is granted.
+func WithAllowedOrigins(origins []string) Option {
+	return func(o *apiOptions) {
+		o.origins = origins
 	}
 }
 
@@ -117,6 +127,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	return &API{
 		useCase:      useCase,
 		metrics:      options.metrics,
+		origins:      options.origins,
 		proxies:      options.proxies,
 		rateLimit:    options.rateLimit,
 		routes:       options.routes,
@@ -126,16 +137,10 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 }
 
 func (a *API) SetupRoute() http.Handler {
-	cors := restful.CrossOriginResourceSharing{
-		AllowedMethods: []string{"POST", "GET", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Accept", "Authorization"},
-	}
-
 	h := handler.NewHandler(a.useCase)
 
 	authWs := new(restful.WebService).ApiVersion("1.0.0")
 	authWs.Path("/api/v1/auth").
-		Filter(cors.Filter).
 		Filter(sameOriginFilter).
 		Filter(RequestMetaFilter(a.proxies)).
 		Consumes(restful.MIME_JSON).
@@ -151,7 +156,6 @@ func (a *API) SetupRoute() http.Handler {
 
 	apiWs := new(restful.WebService).ApiVersion("1.0.0")
 	apiWs.Path("/api/v1").
-		Filter(cors.Filter).
 		Filter(sameOriginFilter).
 		Filter(NewAuthFilter(a.useCase.Auth()).WithServiceTokens(a.useCase.ServiceToken()).WithTrustedProxies(a.proxies).Auth()).
 		Consumes(restful.MIME_JSON).
@@ -182,7 +186,6 @@ func (a *API) SetupRoute() http.Handler {
 
 	chunkWs := new(restful.WebService).ApiVersion("1.0.0")
 	chunkWs.Path("/api/chunks").
-		Filter(cors.Filter).
 		Filter(sameOriginFilter)
 	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk()))
 	restful.Add(chunkWs)
@@ -196,6 +199,7 @@ func (a *API) SetupRoute() http.Handler {
 	if a.metrics != nil {
 		restful.DefaultContainer.Filter(metricsFilter(a.metrics))
 	}
+	restful.DefaultContainer.Filter(corsFilter(a.origins))
 
 	return restful.DefaultContainer
 }

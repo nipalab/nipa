@@ -3,6 +3,7 @@ package serverapp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 func TestSplitAllowlist(t *testing.T) {
@@ -206,4 +208,179 @@ func TestRunReturnsListenError(t *testing.T) {
 		}),
 		WithWebService(new(restful.WebService).Path("/api/webhooks/extra")),
 	))
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+	return port
+}
+
+func TestNewHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(&config.Config{}, "127.0.0.1:1", http.NotFoundHandler())
+	require.Equal(t, 30*time.Second, srv.ReadHeaderTimeout)
+	require.Equal(t, 5*time.Minute, srv.IdleTimeout)
+	require.Zero(t, srv.ReadTimeout, "a read timeout would cut chunk uploads and gRPC streams")
+	require.Zero(t, srv.WriteTimeout, "a write timeout would cut chunk downloads and gRPC streams")
+	require.True(t, srv.Protocols.UnencryptedHTTP2())
+	require.True(t, srv.Protocols.HTTP1())
+
+	srv = newHTTPServer(&config.Config{HTTPReadHeaderTimeoutSeconds: 7, HTTPIdleTimeoutSeconds: 120}, "127.0.0.1:1", http.NotFoundHandler())
+	require.Equal(t, 7*time.Second, srv.ReadHeaderTimeout)
+	require.Equal(t, 2*time.Minute, srv.IdleTimeout)
+}
+
+// On h2c the idle timeout closes a connection only once it carries no stream:
+// a request longer than the timeout completes, the idle connection then closes.
+func TestHTTPServerIdleTimeoutOnH2C(t *testing.T) {
+	srv := newHTTPServer(&config.Config{}, "", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			time.Sleep(600 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	srv.IdleTimeout = 200 * time.Millisecond
+	var closed atomic.Int32
+	srv.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			closed.Add(1)
+		}
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: protocols}, Timeout: 5 * time.Second}
+	t.Cleanup(client.CloseIdleConnections)
+
+	resp, err := client.Get("http://" + ln.Addr().String() + "/slow")
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.Equal(t, 2, resp.ProtoMajor)
+	require.Zero(t, closed.Load(), "an active stream keeps the connection open past the idle timeout")
+
+	require.Eventually(t, func() bool { return closed.Load() == 1 }, 3*time.Second, 20*time.Millisecond)
+
+	resp, err = client.Get("http://" + ln.Addr().String() + "/")
+	require.NoError(t, err, "clients reconnect transparently after an idle close")
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestObservabilityRoutes(t *testing.T) {
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	pprof := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
+	status := func(h http.Handler, path string) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec.Code
+	}
+
+	main, side := observabilityRoutes(metrics, pprof, false)
+	require.Nil(t, side)
+	require.Equal(t, http.StatusOK, status(main, "/metrics"))
+	require.Equal(t, http.StatusAccepted, status(main, "/debug/pprof/"))
+	require.Equal(t, http.StatusNotFound, status(main, "/other"))
+
+	main, side = observabilityRoutes(metrics, pprof, true)
+	require.Equal(t, http.StatusNotFound, status(main, "/metrics"))
+	require.Equal(t, http.StatusNotFound, status(main, "/debug/pprof/"))
+	require.Equal(t, http.StatusOK, status(side, "/metrics"))
+	require.Equal(t, http.StatusAccepted, status(side, "/debug/pprof/cmdline"))
+	require.Equal(t, http.StatusNotFound, status(side, "/healthz"))
+}
+
+func TestRunRejectsInvalidMetricsAddress(t *testing.T) {
+	cfg := &config.Config{ServerAddress: "127.0.0.1", ServerPort: freePort(t), MetricsAddress: "not-an-address"}
+	require.ErrorContains(t, Run(cfg, NewRegistry(Usecases{}), nil), "METRICS_ADDRESS")
+}
+
+func TestRunReturnsMetricsListenError(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = busy.Close() }()
+
+	port := freePort(t)
+	cfg := &config.Config{ServerAddress: "127.0.0.1", ServerPort: port, MetricsAddress: busy.Addr().String()}
+	require.ErrorContains(t, Run(cfg, NewRegistry(Usecases{}), nil), "metrics listener")
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	require.NoError(t, err, "the main listener is released when the metrics listener fails")
+	_ = ln.Close()
+}
+
+func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
+	mainPort, metricsPort := freePort(t), freePort(t)
+	cfg := &config.Config{
+		ServerAddress:  "127.0.0.1",
+		ServerPort:     mainPort,
+		MetricsEnabled: true,
+		PprofEnabled:   true,
+		MetricsAddress: fmt.Sprint(metricsPort),
+		PublicBaseURL:  "https://app.example.com",
+	}
+	signals := make(chan os.Signal, 1)
+	done := make(chan error, 1)
+	go func() { done <- run(cfg, NewRegistry(Usecases{}), nil, signals, WithMetrics(obs.NewMetrics())) }()
+
+	mainURL := fmt.Sprintf("http://127.0.0.1:%d", mainPort)
+	metricsURL := fmt.Sprintf("http://127.0.0.1:%d", metricsPort)
+	client := &http.Client{Timeout: 5 * time.Second}
+	get := func(url string) int {
+		resp, err := client.Get(url)
+		if err != nil {
+			return 0
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	require.Eventually(t, func() bool { return get(mainURL+"/healthz") == http.StatusOK }, 5*time.Second, 20*time.Millisecond)
+
+	require.Equal(t, http.StatusNotFound, get(mainURL+"/metrics"))
+	require.Equal(t, http.StatusNotFound, get(mainURL+"/debug/pprof/"))
+	require.Equal(t, http.StatusOK, get(metricsURL+"/metrics"))
+	require.Equal(t, http.StatusOK, get(metricsURL+"/debug/pprof/"))
+	require.Equal(t, http.StatusNotFound, get(metricsURL+"/healthz"))
+
+	req, err := http.NewRequest(http.MethodOptions, mainURL+"/api/v1/auth/login", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://app.example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, "https://app.example.com", resp.Header.Get("Access-Control-Allow-Origin"), "CORS follows PUBLIC_BASE_URL")
+
+	signals <- syscall.SIGTERM
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return after the shutdown signal")
+	}
+	_, err = net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", metricsPort), 200*time.Millisecond)
+	require.Error(t, err, "the metrics listener closes on shutdown")
+}
+
+func TestServeMetricsReturnsOnListenerFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	require.NoError(t, ln.Close())
+	done := make(chan struct{})
+	go func() {
+		serveMetrics(&http.Server{Handler: http.NotFoundHandler()}, ln)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveMetrics did not return on a closed listener")
+	}
 }

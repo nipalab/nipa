@@ -55,7 +55,8 @@ nipalab.com {
 	}
 
 	# Keep the observability endpoints off the public edge: probe the loopback
-	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
+	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true; with
+	# METRICS_ADDRESS set, /metrics and pprof live on their own port anyway.
 	@internal path /metrics /readyz /debug/pprof /debug/pprof/*
 	respond @internal 404
 

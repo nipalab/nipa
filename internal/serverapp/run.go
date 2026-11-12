@@ -2,6 +2,7 @@ package serverapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -162,7 +163,28 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		opt(&ro)
 	}
 
-	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit), api.WithTrustedProxies(ro.proxies)}
+	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
+	metricsAddress, err := cfg.MetricsListenAddress()
+	if err != nil {
+		return err
+	}
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
+	var metricsLn net.Listener
+	if metricsAddress != "" {
+		if metricsLn, err = net.Listen("tcp", metricsAddress); err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("metrics listener: %w", err)
+		}
+	}
+	origins, err := cfg.CORSAllowedOrigins()
+	if err != nil {
+		slog.Error("cross-origin access disabled", "error", err)
+	}
+
+	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit), api.WithTrustedProxies(ro.proxies), api.WithAllowedOrigins(origins)}
 	for _, register := range ro.routes {
 		apiOpts = append(apiOpts, api.WithRoutes(register))
 	}
@@ -180,7 +202,6 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		}
 	}
 
-	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
 	shutdownTimeout := defaultShutdownTimeout
 	if cfg.ShutdownTimeoutSeconds > 0 {
 		shutdownTimeout = time.Duration(cfg.ShutdownTimeoutSeconds) * time.Second
@@ -222,6 +243,11 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 	if cfg.MetricsEnabled {
 		metricsHandler = ro.metrics.Handler()
 	}
+	mainObsHandler, sideObsHandler := observabilityRoutes(metricsHandler, pprofHandler, metricsLn != nil)
+	var metricsServer *http.Server
+	if sideObsHandler != nil {
+		metricsServer = &http.Server{Handler: sideObsHandler, ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout(), IdleTimeout: cfg.HTTPIdleTimeout()}
+	}
 
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if obs.IsGRPCRequest(r) {
@@ -235,10 +261,8 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 			readyHandler.ServeHTTP(w, r)
 		case r.URL.Path == "/version":
 			versionHandler.ServeHTTP(w, r)
-		case r.URL.Path == "/metrics":
-			metricsHandler.ServeHTTP(w, r)
-		case isPprofPath(r.URL.Path):
-			pprofHandler.ServeHTTP(w, r)
+		case r.URL.Path == "/metrics" || isPprofPath(r.URL.Path):
+			mainObsHandler.ServeHTTP(w, r)
 		case isAPIPath(r.URL.Path):
 			container.ServeHTTP(w, r)
 		default:
@@ -250,15 +274,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		return !isAPIPath(r.URL.Path)
 	}, ro.rateLimit.Middleware(mainHandler)), skipTraceRequest))
 
-	protocols := new(http.Protocols)
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-
-	httpServer := &http.Server{Addr: address, Handler: handler, Protocols: protocols}
-	ln, err := net.Listen("tcp", address)
-	if err != nil {
-		return err
-	}
+	httpServer := newHTTPServer(cfg, address, handler)
 
 	shutdown := func() {
 		slog.Info("shutting down server")
@@ -294,10 +310,64 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		if err := ro.metricsPush.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("metrics push shutdown incomplete", "error", err)
 		}
+		if metricsServer != nil {
+			_ = metricsServer.Close()
+		}
 	}
 
+	if metricsServer != nil {
+		go serveMetrics(metricsServer, metricsLn)
+		slog.Info("metrics and pprof listener running", "address", metricsLn.Addr().String())
+	}
 	slog.Info("server is running", "address", address, "version", version.Resolve().Version)
-	return serveUntilShutdown(ln, httpServer, signals, shutdown)
+	err = serveUntilShutdown(ln, httpServer, signals, shutdown)
+	if err != nil && metricsServer != nil {
+		_ = metricsServer.Close()
+	}
+	return err
+}
+
+// newHTTPServer builds the multiplexed HTTP/1.1 + h2c server. Only header
+// and idle timeouts are set: a read or write timeout would cut long chunk
+// transfers and gRPC streams. On h2c the idle timeout closes a connection
+// only while it carries no stream.
+func newHTTPServer(cfg *config.Config, address string, handler http.Handler) *http.Server {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	return &http.Server{
+		Addr:              address,
+		Handler:           handler,
+		Protocols:         protocols,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout(),
+		IdleTimeout:       cfg.HTTPIdleTimeout(),
+	}
+}
+
+// observabilityRoutes returns the handler the main port uses for /metrics and
+// /debug/pprof and, when they move to the METRICS_ADDRESS listener, that
+// listener's handler (the main port then answers 404).
+func observabilityRoutes(metrics, pprof http.Handler, separate bool) (main, side http.Handler) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/metrics":
+			metrics.ServeHTTP(w, r)
+		case isPprofPath(r.URL.Path):
+			pprof.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	if !separate {
+		return h, nil
+	}
+	return http.NotFoundHandler(), h
+}
+
+func serveMetrics(srv *http.Server, ln net.Listener) {
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("metrics listener stopped", "error", err)
+	}
 }
 
 // serveUntilShutdown serves on ln until a signal arrives, runs the graceful

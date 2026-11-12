@@ -1300,8 +1300,8 @@ ships slog records over OTLP when `LOGS_OTLP_ENABLED` (endpoint and protocol
 fall back to the `TRACING_*` values, same headers), fanned out next to the
 console/JSON output via `fanoutHandler` in `obs.Setup` with a
 `levelFilterHandler` so every sink obeys `LOG_LEVEL`; both exporters flush on
-shutdown via `serverapp.WithLogs`. Metrics are pull-based (`/metrics`, `nipa_*`
-series) or pushed directly with `METRICS_OTLP_ENABLED`: `obs.SetupMetricsPush`
+shutdown via `serverapp.WithLogs`. Metrics are pull-based (`/metrics` on the main port or
+`METRICS_ADDRESS`, `nipa_*` series) or pushed directly with `METRICS_OTLP_ENABLED`: `obs.SetupMetricsPush`
 (`internal/obs/metrics_push.go`) bridges the Prometheus registry through
 `contrib/bridges/prometheus` into a periodic OTLP reader (endpoint/protocol
 fall back to `TRACING_*`, headers shared, `METRICS_OTLP_INTERVAL_SECONDS`
@@ -1439,6 +1439,28 @@ snowflake node ids are leased from postgres (never pin `SNOWFLAKE_NODE_ID`),
 email deliveries are claimed atomically, but webhooks can double-deliver in the
 overlap window (consumers must be idempotent). Migrations must stay forward
 compatible for one release.
+
+Transport hardening: neither server terminates TLS (one cleartext HTTP/1.1 +
+h2c port), so every deployment, the free `nipad` included, needs a TLS proxy in
+front (`docs/DEPLOY.md`). `newHTTPServer` (`internal/serverapp/run.go`) sets
+only `ReadHeaderTimeout`/`IdleTimeout` (`HTTP_READ_HEADER_TIMEOUT_SECONDS` 30,
+`HTTP_IDLE_TIMEOUT_SECONDS` 300; `Config.HTTPReadHeaderTimeout`/
+`HTTPIdleTimeout`, <=0 = default) and never a read/write timeout, which would
+cut chunk transfers and gRPC streams; on h2c the idle timer only runs while a
+connection has no stream. `METRICS_ADDRESS` (`Config.MetricsListenAddress`,
+bare port = `127.0.0.1`, per-color env bound) moves `/metrics` and
+`/debug/pprof` to a second listener (`observabilityRoutes`; the main port then
+404s them), opened before route setup, closed at the end of the shutdown;
+empty keeps them on the main port. CORS (`internal/http/api/cors.go`) is a
+container filter, so preflights reach it without OPTIONS routes, granting only
+`Config.CORSAllowedOrigins` (the origin of `PUBLIC_BASE_URL`, bare host =
+https; empty or invalid = none); other origins get no CORS headers and are not
+rejected there (`sameOriginFilter` still 403s cross-origin writes). Client:
+`Auth.WithCleartextWarning(os.Stderr)` (CLI main only) makes `nipa login` and
+the implicit password/SSH login behind other commands print one stderr warning
+per invocation when the dialed address (`grpc.Client.Address`) is not
+`https://` and not loopback (`domain.IsCleartextRemote`); refreshes, the daemon
+and `nipa mcp` stay silent.
 
 ## Conventions
 

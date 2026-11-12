@@ -17,6 +17,17 @@ An upgrade starts the idle color, waits for `/readyz`, flips the Caddy upstream
 and drains the previous color. New connections never see a refused port, and
 in-flight operations keep running until the server's drain window ends.
 
+**TLS is required in front of every server, including the free `nipad`.**
+Neither binary terminates TLS: the single port speaks cleartext HTTP/1.1 and
+h2c, so without a TLS proxy (Caddy as below, nginx, a cloud load balancer)
+passwords, SSH login exchanges, access/refresh tokens and repository content
+cross the network readable and replayable. Bind the server to loopback (or a
+private network) behind the proxy, and have clients use `https://` URLs;
+`nipa login` warns when it sends credentials to a non-loopback host without
+`https://`. Set `PUBLIC_BASE_URL` to that `https://` origin: SSH key login is
+bound to it and it is the only origin the REST API grants CORS to (none when
+unset; the SPA itself is same-origin and needs none).
+
 ## Host layout
 
 | Path | Purpose |
@@ -131,7 +142,7 @@ Caddy proxy); it is not part of the Netlify deployment.
    | `SAAS_MODE` | `1` (enables registration, social login and the storage ledger; the marketing site is served by Caddy from Netlify) |
    | `SAAS_FREE_QUOTA_BYTES` | free-tier quota per new account |
    | `EMAIL_BASE_URL` | `https://nipalab.com` (required in SaaS mode) |
-   | `PUBLIC_BASE_URL` | `https://nipalab.com`, the host clients dial (SSH key login is bound to it; falls back to `EMAIL_BASE_URL`) |
+   | `PUBLIC_BASE_URL` | `https://nipalab.com`, the host clients dial (SSH key login is bound to it, falling back to `EMAIL_BASE_URL`; the only CORS origin) |
    | `EMAIL_SENDER` + provider keys | e.g. `sendgrid`/`scaleway`/`smtp`; `off` logs a warning and registration emails are not delivered |
    | `OAUTH_BASE_URL`, `OAUTH_*` | optional, enable Google/GitHub sign-in |
    | `LOG_FORMAT` | `json` |
@@ -155,7 +166,9 @@ Caddy proxy); it is not part of the Netlify deployment.
    `SHUTDOWN_TIMEOUT_SECONDS` bounds the whole graceful shutdown (in-flight
    pushes/merges plus the dispatcher and exporter drain); set it above your
    longest expected operation (60 is a good start) and keep the unit's
-   `TimeoutStopSec=180` above it.
+   `TimeoutStopSec=180` above it. To take `/metrics` and pprof off the main
+   port, set `METRICS_ADDRESS` per color (e.g. `9101` blue, `9102` green;
+   a bare port binds loopback) and scrape that port.
 
 5. **Install the unit and start the blue color.**
 
@@ -366,12 +379,17 @@ version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run.
   503 while draining), `/version` (unauthenticated build info), `/metrics`
   (Prometheus, `METRICS_ENABLED=true` by default). Keep these on the loopback
   ports for probes; the sample Caddyfile answers 404 for `/metrics` and
-  `/debug/pprof` on the public host. To scrape metrics externally, add a
+  `/debug/pprof` on the public host, and `METRICS_ADDRESS` moves both to a
+  separate loopback listener (the main port then answers 404 for them). To scrape metrics externally, add a
   matcher restricted to the scraper (or a basic-auth protected route) instead
   of removing that block outright.
 - **Backups:** managed-postgres automated backups/PITR; S3 bucket versioning
   plus lifecycle rules. The VPS itself holds no state worth backing up
   (config + binaries only).
+- **Timeouts:** the server sets `HTTP_READ_HEADER_TIMEOUT_SECONDS` (30) and
+  `HTTP_IDLE_TIMEOUT_SECONDS` (300; on h2c only connections without an active
+  stream are closed, clients reconnect) but no read/write timeout, so long
+  chunk transfers and gRPC streams are never cut.
 - **Capacity:** two color instances can be live briefly during a flip, so size
   the postgres connection limit for `2 × pool + headroom` (the pool is
   currently untuned; see `docs/PERFORMANCE.md`).

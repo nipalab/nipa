@@ -14,7 +14,9 @@ identically.
 - Metrics use Prometheus (`/metrics` text format) as the primary stack; OTel
   tracing is an opt-in layer on top (see phase 3 and `docs/TRACING.md`).
 - All runtime endpoints (`/metrics`, `/healthz`, `/readyz`, pprof) live on the
-  existing server port. pprof is flag-gated and off by default.
+  existing server port by default. pprof is flag-gated and off by default.
+  `METRICS_ADDRESS` moves `/metrics` and `/debug/pprof` to a separate listener
+  (see "Separate metrics listener" below).
 
 **Status:** phase 1, phase 2, phase 3 and the phase 4 log shipping are
 implemented (`internal/obs`, wired through `internal/serverapp` and both
@@ -159,7 +161,8 @@ user-supplied (org names, branch names, paths, chunk hashes) becomes a label.
 ### 2.2 Endpoint and wiring
 
 - `Metrics.Handler()` mounts at `/metrics` on the main port (unauthenticated,
-  standard). `METRICS_ENABLED` (default true) toggles the route.
+  standard), or on the `METRICS_ADDRESS` listener when set.
+  `METRICS_ENABLED` (default true) toggles the route.
 - The metrics object is created in each main (`obs.NewMetrics()`), the DB pool
   is registered with `metrics.RegisterDB("sqlite"|"postgres", dbConn)`, and
   `serverapp.Run(..., WithMetrics(metrics))` mounts the endpoint and
@@ -355,14 +358,32 @@ so metrics reuse the trace/log endpoint, protocol and header configuration.
 
 ---
 
+## Separate metrics listener
+
+`/metrics` and pprof are unauthenticated. `METRICS_ADDRESS` (default empty)
+serves both on their own listener (`observabilityRoutes` in
+`internal/serverapp/run.go`); the main port then answers 404 for them. A bare
+port (`9101` or `:9101`) binds `127.0.0.1`, `host:port` binds as given (e.g.
+`0.0.0.0:9101` for an in-cluster scraper). Empty keeps today's behaviour: both
+paths stay on the main port. `/healthz`, `/readyz` and `/version` always stay on
+the main port (load balancers and Caddy probe them there). The listener is
+HTTP/1.1, shares the `HTTP_*_TIMEOUT_SECONDS` header/idle timeouts, keeps
+answering while the main port drains and is closed at the end of the shutdown,
+so a long pprof profile never delays the drain. On the blue/green deploy each
+color needs its own port (per-color env file, e.g. blue `9101`, green `9102`);
+point scrapers (`targets:` above) at it instead of the main port.
+
+---
+
 ## Configuration reference
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `LOG_LEVEL` | `info` | `debug\|info\|warn\|error`; unknown values warn and fall back to info |
 | `LOG_FORMAT` | `console` | `console` (text) or `json` |
-| `PPROF_ENABLED` | `false` | Serve `/debug/pprof/*` on the main port |
-| `METRICS_ENABLED` | `true` | Serve `/metrics` on the main port |
+| `PPROF_ENABLED` | `false` | Serve `/debug/pprof/*` (main port, or `METRICS_ADDRESS`) |
+| `METRICS_ENABLED` | `true` | Serve `/metrics` (main port, or `METRICS_ADDRESS`) |
+| `METRICS_ADDRESS` | empty | Separate listener for `/metrics` and pprof; a bare port binds loopback; empty keeps them on the main port |
 | `TRACING_ENABLED` | `false` | Export OTLP spans (see `docs/TRACING.md`) |
 | `TRACING_OTLP_ENDPOINT` | `localhost:4317` (gRPC) / `localhost:4318` (HTTP) | OTLP collector endpoint; an HTTP endpoint may carry a path prefix (e.g. OpenObserve's `/api/<org>`) |
 | `TRACING_OTLP_PROTOCOL` | `grpc` | `grpc` or `http` |

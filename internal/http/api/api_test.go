@@ -227,6 +227,7 @@ func TestAPIRoutes(t *testing.T) {
 	}
 
 	container := NewAPI(reg,
+		WithAllowedOrigins([]string{"https://app.example.com"}),
 		WithRoutes(func(ws *restful.WebService) {
 			ws.Route(ws.GET("/ping").To(func(_ *restful.Request, resp *restful.Response) {
 				resp.WriteHeader(http.StatusNoContent)
@@ -288,6 +289,39 @@ func TestAPIRoutes(t *testing.T) {
 
 		parsed := parseLoginAccessToken(t, loginResponse.AccessToken, "test-secret")
 		require.Equal(t, snow.ID(userID), parsed.UserID)
+	})
+
+	t.Run("cors grants only the configured origin", func(t *testing.T) {
+		preflight := func(t *testing.T, path, origin string) *http.Response {
+			t.Helper()
+			req, err := http.NewRequest(http.MethodOptions, server.URL+path, nil)
+			require.NoError(t, err)
+			req.Header.Set("Origin", origin)
+			req.Header.Set("Access-Control-Request-Method", "POST")
+			req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			return resp
+		}
+		for _, path := range []string{"/api/v1/auth/login", "/api/v1/ping", "/api/chunks/o/p/h"} {
+			resp := preflight(t, path, "https://app.example.com")
+			require.Equal(t, http.StatusOK, resp.StatusCode, path)
+			require.Equal(t, "https://app.example.com", resp.Header.Get("Access-Control-Allow-Origin"), path)
+			require.Contains(t, resp.Header.Get("Access-Control-Allow-Methods"), "POST", path)
+
+			resp = preflight(t, path, "https://evil.example.com")
+			require.NotEqual(t, http.StatusOK, resp.StatusCode, path)
+			require.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"), path)
+		}
+
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/auth/ping-public", nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", "https://evil.example.com")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		require.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
 	})
 
 	t.Run("extension routes share the authenticated webservice", func(t *testing.T) {

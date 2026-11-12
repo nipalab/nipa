@@ -40,7 +40,8 @@ func main() {
 	grpcClient := grpc.NewClient(transport, session, clientOpts...)
 
 	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter).
-		WithSSHLogin(resolveSigners(prompter.PromptPassphrase))
+		WithSSHLogin(resolveSigners(prompter.PromptPassphrase)).
+		WithCleartextWarning(os.Stderr)
 	repoUsecase := usecase.NewRepo(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	pushUsecase := usecase.NewPush(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	updateUsecase := usecase.NewUpdate(authUsecase, grpcClient, localrepo.NewLocalRepo())
