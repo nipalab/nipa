@@ -95,6 +95,15 @@ export function ChooseProgram(): $CancellablePromise<string> {
     return $Call.ByID(2906686191);
 }
 
+/**
+ * CleanUp drops cached objects the clone no longer needs. Reason is "busy"
+ * when another process holds the repository and "pending" during a merge or
+ * revert.
+ */
+export function CleanUp(root: string): $CancellablePromise<$models.CleanUpResult> {
+    return $Call.ByID(969554492, root);
+}
+
 export function ClearLLMKey(): $CancellablePromise<void> {
     return $Call.ByID(3847180959);
 }
@@ -201,6 +210,14 @@ export function DeleteTag(root: string, name: string): $CancellablePromise<void>
  */
 export function Discard(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
     return $Call.ByID(4030220442, root, paths);
+}
+
+/**
+ * DiskUsage reports the tracked project files, the local object cache and the
+ * lock pins of a clone.
+ */
+export function DiskUsage(root: string): $CancellablePromise<$models.DiskUsage> {
+    return $Call.ByID(379166928, root);
 }
 
 /**

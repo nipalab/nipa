@@ -236,6 +236,23 @@ func (q *Queries) SnapshotFileList(ctx context.Context) ([]SnapshotFileListRow, 
 	return items, nil
 }
 
+const snapshotUsage = `-- name: SnapshotUsage :one
+SELECT CAST(COUNT(*) AS INTEGER) AS files, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS size_bytes
+FROM files
+`
+
+type SnapshotUsageRow struct {
+	Files     int64 `json:"files"`
+	SizeBytes int64 `json:"size_bytes"`
+}
+
+func (q *Queries) SnapshotUsage(ctx context.Context) (SnapshotUsageRow, error) {
+	row := q.db.QueryRowContext(ctx, snapshotUsage)
+	var i SnapshotUsageRow
+	err := row.Scan(&i.Files, &i.SizeBytes)
+	return i, err
+}
+
 const stagedFileDelete = `-- name: StagedFileDelete :exec
 DELETE FROM staged_files
 WHERE path = ?1

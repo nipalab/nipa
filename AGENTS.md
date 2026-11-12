@@ -77,7 +77,12 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `GenerateMergeRequest` (daemon `Generate`; Generate buttons in `CommitBox`
   and the New merge request dialog, shown when `LLMSettings.configured`;
   the draft only fills the fields, `useDraft` appends the `Nipa-Generated`
-  trailer to kept/edited drafts and forgets it once the field is cleared)
+  trailer to kept/edited drafts and forgets it once the field is cleared),
+  a Details-tab "Storage" card via `DiskUsage`/`CleanUp` (daemon
+  `DiskUsage`/`GC`; `details/StorageCard.tsx`: project files, local cache,
+  cached objects, lock pins, "Clean up" with the freed amount as a toast or
+  "Repository is busy, try again", and a sparse-editor hint for full
+  checkouts over `SPARSE_HINT_BYTES` = 20 GiB)
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -1018,7 +1023,14 @@ slot over `RepoOps.Generate` (`SerialGenerator` around `serveGenerator`: a
 client as `Connector`), then asks the model outside the slot and answers
 `{title, text, model, source, target}` without the trailer; the model is
 resolved per call (no restart after a settings change) and a missing
-endpoint/model is `FailedPrecondition`. `LoginSSH` takes an optional `key_path` +
+endpoint/model is `FailedPrecondition`. `DiskUsage` (`daemon/storage.go`,
+shared slot) answers `localrepo.DiskUsage`: snapshot file count and bytes
+from one `SnapshotUsage` aggregate query (no working-tree walk), one pass over
+`.nipa/objects` for cache bytes and object count, the lock pins and the
+sparse prefixes. `GC` runs `usecase.PruneCache` on the root's cached handle
+under the exclusive slot (queued like an operation) and returns `{objects,
+bytes, skipped, skip_reason}`; a completed run settles the `cachePruner`'s
+pending request. `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
@@ -1467,7 +1479,10 @@ compatible for one release.
   preview or restore call (deferred `pruneAfterSuccess`: skipped for repos
   without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
   and on demand through `nipa gc` (`usecase.GC`), which prints the objects and
-  bytes freed. Processes coordinate through `.nipa/lock` (`localrepo/lock.go`,
+  bytes freed, or the daemon's `GC` RPC (the desktop "Clean up" button),
+  which takes the root's exclusive coordinator slot (queued, never beside an
+  operation or the idle pruner, which only fires when that slot is free) and
+  settles the pruner's pending request after a run that was not skipped. Processes coordinate through `.nipa/lock` (`localrepo/lock.go`,
   `flock` on Unix, `LockFileEx` on Windows, a fresh handle per acquisition so
   holders in one process conflict like separate processes): clone, update,
   switch, tag switch, push (and `Plan`), merge, revert, restore, diff and

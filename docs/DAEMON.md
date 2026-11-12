@@ -410,6 +410,25 @@ without a restart. No endpoint or model is `FailedPrecondition` (`AI
 generation is not configured: ...`); an unknown `kind` is `InvalidArgument`;
 endpoint failures carry the redacted `llm` message.
 
+`DiskUsage(root)` reports what a clone occupies under the shared slot:
+`working_files`/`working_bytes` (one aggregate query over the snapshot's
+`files` rows; the working tree is never walked, so edits not yet pushed are
+not counted), `cache_objects`/`cache_bytes` (one pass over the
+`.nipa/objects` fan-out directories; bytes include interrupted `.tmp-*`
+writes, the count only hash-named objects), `pinned_paths` (lock pins) and
+the clone's `sparse` prefixes.
+
+`GC(root)` prunes the object cache like `nipa gc` (`usecase.PruneCache` on
+the root's cached handle) and answers `{objects, bytes, skipped,
+skip_reason}`. It queues for the root's exclusive slot like an operation
+(cancelling the call leaves the queue), so it never runs beside a status,
+diff or long operation of this daemon, nor beside the idle `cachePruner`,
+which only fires when it can take the exclusive slot without waiting. A run
+that was not skipped settles the pruner's pending request. The usecase rules
+still apply inside the slot: `skipped` with `repository busy` when another
+process holds `.nipa/lock`, and with `a merge or revert is in progress`
+while either is pending.
+
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.
 

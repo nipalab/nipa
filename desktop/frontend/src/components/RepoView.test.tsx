@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   fileDiff: vi.fn(),
   metaWarnings: vi.fn(),
   pushChecks: vi.fn(),
+  diskUsage: vi.fn(),
+  cleanUp: vi.fn(),
   llmSettings: vi.fn(),
   generateCommitMessage: vi.fn(),
   lockStatus: vi.fn(),
@@ -116,6 +118,7 @@ beforeEach(() => {
   api.metaWarnings.mockResolvedValue([]);
   api.pushChecks.mockResolvedValue({ violations: [], broken: [], newlyUnused: [], warnings: [], truncated: false, scanned: 0 });
   api.llmSettings.mockResolvedValue({ endpoint: "", model: "", keySaved: false, configured: false });
+  api.diskUsage.mockResolvedValue({ workingFiles: 2, workingBytes: 2048, cacheObjects: 1, cacheBytes: 512, pins: [], sparse: [] });
   api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   repoListeners.clear();
@@ -557,6 +560,16 @@ describe("push and update", () => {
     await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("links a large full checkout to the folder picker", async () => {
+    api.diskUsage.mockResolvedValue({ workingFiles: 9000, workingBytes: 30 * 1024 ** 3, cacheObjects: 0, cacheBytes: 0, pins: [], sparse: [] });
+    api.remoteTree.mockResolvedValue({ dirs: [], files: 0, fileBytes: 0 });
+    view({ ...repo, sparse: null });
+    await userEvent.click(await screen.findByRole("tab", { name: /Details/ }));
+    expect(await screen.findByText("30 GB")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Check out only the folders you need/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("cannot edit folders of a clone with an unreadable URL", async () => {

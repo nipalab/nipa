@@ -78,6 +78,8 @@ export function createService(scenario: string): typeof Real {
     MetaWarnings: () => ok([{ path: d.ICON, kind: "missing", related: `${d.ICON}.meta`, message: "Missing .meta file: Unity will generate a new GUID" }]),
 
     PushChecks: () => ok(d.pushChecks(state.staged.map((f) => f.path))),
+    DiskUsage: (root) => ok(d.diskUsage(root)),
+    CleanUp: () => ok(clone(d.cleanUp)),
     LockStatus: () => ok(d.locks()),
     Lock: (_root, _branch, paths) => ok({ locked: paths ?? [], failed: [] }),
     Unlock: () => ok(undefined),

@@ -17,6 +17,8 @@ const service = vi.hoisted(() => ({
   TableDiff: vi.fn(),
   MetaWarnings: vi.fn(),
   PushChecks: vi.fn(),
+  DiskUsage: vi.fn(),
+  CleanUp: vi.fn(),
   LLMSettings: vi.fn(),
   SetLLM: vi.fn(),
   SetLLMKey: vi.fn(),
@@ -179,6 +181,20 @@ describe("desktop api", () => {
     expect(await desktop.pushChecks("/a")).toEqual({ truncated: false, scanned: 0, violations: [], broken: [], newlyUnused: [], warnings: [] });
     expect(await desktop.pushChecks("/a")).toEqual({ truncated: true, scanned: 4, violations: [violation], broken: [], newlyUnused: ["old.png"], warnings: [] });
     expect(service.PushChecks).toHaveBeenCalledWith("/a");
+  });
+
+  it("reports disk usage and cleans up", async () => {
+    service.DiskUsage.mockResolvedValueOnce({ workingFiles: 2, workingBytes: 10, cacheObjects: 1, cacheBytes: 4, pins: null, sparse: null })
+      .mockResolvedValueOnce({ workingFiles: 0, workingBytes: 0, cacheObjects: 0, cacheBytes: 0, pins: ["art"], sparse: ["code"] })
+      .mockResolvedValueOnce(null);
+    expect(await desktop.diskUsage("/a")).toEqual({ workingFiles: 2, workingBytes: 10, cacheObjects: 1, cacheBytes: 4, pins: [], sparse: [] });
+    expect(await desktop.diskUsage("/a")).toEqual({ workingFiles: 0, workingBytes: 0, cacheObjects: 0, cacheBytes: 0, pins: ["art"], sparse: ["code"] });
+    await expect(desktop.diskUsage("/a")).rejects.toThrow("No disk usage");
+    expect(service.DiskUsage).toHaveBeenCalledWith("/a");
+    service.CleanUp.mockResolvedValueOnce({ objects: 3, bytes: 9, skipped: false, reason: "" }).mockResolvedValueOnce(null);
+    expect(await desktop.cleanUp("/a")).toEqual({ objects: 3, bytes: 9, skipped: false, reason: "" });
+    await expect(desktop.cleanUp("/a")).rejects.toThrow("No clean-up result");
+    expect(service.CleanUp).toHaveBeenCalledWith("/a");
   });
 
   it("locks, releases and opens files", async () => {

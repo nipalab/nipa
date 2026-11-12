@@ -7,6 +7,7 @@ import type {
   ConflictSet,
   ConflictTexts,
   DiffHunk,
+  DiskUsage,
   Draft,
   FileChange,
   FileDiff,
@@ -412,6 +413,20 @@ export const pushChecks = (staged: string[]): PushChecks => {
     warnings: [],
   };
 };
+
+export const diskUsage = (root: string): DiskUsage => {
+  const repo = repos.find((r) => r.root === root);
+  return {
+    workingFiles: 18_420,
+    workingBytes: 46_800_000_000,
+    cacheObjects: 3_912,
+    cacheBytes: 1_720_000_000,
+    pins: [MUSIC],
+    sparse: repo?.sparse ?? [],
+  };
+};
+
+export const cleanUp = { objects: 1_204, bytes: 812_000_000, skipped: false, reason: "" };
 
 export const llmSettings: LLMSettings = { endpoint: "http://localhost:11434/v1", model: "qwen2.5-coder:14b", keySaved: false, configured: true };
 

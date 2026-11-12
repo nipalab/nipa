@@ -52,6 +52,16 @@ describe("demo service", () => {
     expect((await s.RemoteTree("x", "o", "p", "main", "Assets"))!.dirs).toHaveLength(0);
   });
 
+  it("reports disk usage and cleans up", async () => {
+    const s = createService("default");
+    const usage = await s.DiskUsage(ROOT);
+    expect(usage.workingBytes).toBeGreaterThan(20 * 1024 ** 3);
+    expect(usage.sparse).toEqual([]);
+    expect((await s.DiskUsage("/home/alex/studio/starfall-audio")).sparse).toEqual(["Music", "Sfx"]);
+    expect((await s.DiskUsage("/elsewhere")).sparse).toEqual([]);
+    expect((await s.CleanUp(ROOT)).skipped).toBe(false);
+  });
+
   it("reports push checks for the staged files", async () => {
     const s = createService("default");
     const checks = await s.PushChecks(ROOT);
