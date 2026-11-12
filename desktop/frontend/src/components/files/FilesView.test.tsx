@@ -94,7 +94,7 @@ beforeEach(() => {
   api.lockStatus.mockResolvedValue(lockStatus());
   api.lock.mockResolvedValue({ locked: ["Assets/hero.png"], failed: [] });
   api.unlock.mockResolvedValue(undefined);
-  api.fileInfo.mockImplementation((_root: string, path: string) => Promise.resolve({ entry: entry(path), lastCommit: commit("c9", "Repaint the hero") }));
+  api.fileInfo.mockImplementation((_root: string, _branch: string, path: string) => Promise.resolve({ entry: entry(path), lastCommit: commit("c9", "Repaint the hero") }));
   api.fileView.mockResolvedValue({ path: "x", status: "", kind: "text", old: null, new: { path: "x", mode: 420, size: 4, binary: false, hash: "" }, additions: 0, deletions: 0, hunks: [] });
   api.history.mockResolvedValue({ commits: [commit("c9", "Repaint the hero"), commit("c4", "First hero")], next: "" });
   api.imageDiff.mockResolvedValue({ old: null, new: { src: "data:image/png;base64,AAAA", hdr: false } });
@@ -192,6 +192,7 @@ describe("FilesView", () => {
     const versions = within(detail).getByRole("region", { name: "Versions" });
     await waitFor(() => expect(within(versions).getAllByRole("button", { name: "Get this version" })).toHaveLength(2));
     expect(api.history).toHaveBeenCalledWith("/work/game", { branch: "main", path: "Assets/notes.txt", limit: 20 });
+    expect(api.fileInfo).toHaveBeenCalledWith("/work/game", "main", "Assets/notes.txt");
     await userEvent.click(within(versions).getAllByRole("button", { name: "Get this version" })[1]);
     expect(props.onRestore).toHaveBeenCalledWith("Assets/notes.txt", expect.objectContaining({ id: "c4" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

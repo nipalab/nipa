@@ -94,7 +94,7 @@ export function createService(scenario: string): typeof Real {
     OpenFile: () => ok(undefined),
     RevealFile: () => ok(undefined),
     Files: (_root, dir) => ok(demoFiles(dir, state)),
-    FileInfo: (_root, path) => ok(demoFileInfo(path, state)),
+    FileInfo: (_root, _branch, path) => ok(demoFileInfo(String(path), state)),
     FileView: (_root, path) => ok(demoFileView(path)),
     FileLink: (_url, path) => ok(`nipa://${d.SERVER}/acme/starfall/file/${path}`),
     RestoreRevision: (_root, _path, commitId) => ok({ commitId }),

@@ -239,8 +239,8 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
 /**
  * FileInfo returns one file's metadata and its last change.
  */
-export function FileInfo(root: string, p: string): $CancellablePromise<$models.FileDetails | null> {
-    return $Call.ByID(1734976806, root, p);
+export function FileInfo(root: string, branch: string, p: string): $CancellablePromise<$models.FileDetails | null> {
+    return $Call.ByID(1734976806, root, branch, p);
 }
 
 /**

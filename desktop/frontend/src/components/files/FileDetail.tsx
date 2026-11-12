@@ -27,7 +27,7 @@ type DetailProps = {
 };
 
 export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit }: DetailProps) {
-  const info = useQuery({ queryKey: ["file", root, row.path, "info"], queryFn: () => desktop.fileInfo(root, row.path), retry: false });
+  const info = useQuery({ queryKey: ["file", root, row.path, "info", branch], queryFn: () => desktop.fileInfo(root, branch, row.path), retry: false });
   const onDisk = row.status !== "missing" && row.status !== "deleted";
   const view = useQuery({ queryKey: ["file", root, row.path, "view"], queryFn: () => desktop.fileView(root, row.path), enabled: onDisk, retry: false });
   const [confirm, setConfirm] = useState<Commit | null>(null);

@@ -73,7 +73,7 @@ func TestService_FileInfoJoinsLastCommit(t *testing.T) {
 	d.entries = []*daemonpb.FileEntry{{Name: "hero.png", Path: "Assets/hero.png", Kind: "image", Tracked: true}}
 	d.log = []*pb.CommitLogEntry{{CommitId: "c7", AuthorName: "Mina", Message: "Repaint"}}
 
-	info, err := svc.FileInfo(ctx, "/work/game", "/Assets/hero.png")
+	info, err := svc.FileInfo(ctx, "/work/game", "art", "/Assets/hero.png")
 	require.NoError(t, err)
 	assert.Equal(t, "Assets", d.listReqs[0].GetDir())
 	assert.Equal(t, "hero.png", d.listReqs[0].GetName())
@@ -81,28 +81,29 @@ func TestService_FileInfoJoinsLastCommit(t *testing.T) {
 	require.NotNil(t, info.LastCommit)
 	assert.Equal(t, "c7", info.LastCommit.ID)
 	assert.Equal(t, "Assets/hero.png", d.logReqs[0].GetPath())
+	assert.Equal(t, "art", d.logReqs[0].GetBranch())
 
 	d.log = nil
-	info, err = svc.FileInfo(ctx, "/work/game", "top.txt")
+	info, err = svc.FileInfo(ctx, "/work/game", "art", "top.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "", d.listReqs[1].GetDir())
 	assert.Nil(t, info.LastCommit)
 
 	d.err = status.Error(codes.Unavailable, "server down")
 	d.entries = []*daemonpb.FileEntry{{Name: "top.txt", Path: "top.txt"}}
-	info, err = svc.FileInfo(ctx, "/work/game", "top.txt")
+	info, err = svc.FileInfo(ctx, "/work/game", "art", "top.txt")
 	require.NoError(t, err, "an unreachable server leaves only the history empty")
 	assert.Nil(t, info.LastCommit)
 	assert.NotEmpty(t, info.LastCommitError)
 	d.err = nil
 
-	_, err = svc.FileInfo(ctx, "/work/game", "/")
+	_, err = svc.FileInfo(ctx, "/work/game", "art", "/")
 	require.Error(t, err)
 	d.entries = nil
-	_, err = svc.FileInfo(ctx, "/work/game", "gone.txt")
+	_, err = svc.FileInfo(ctx, "/work/game", "art", "gone.txt")
 	require.ErrorContains(t, err, "does not exist")
 	d.listErr = status.Error(codes.NotFound, "gone.txt does not exist")
-	_, err = svc.FileInfo(ctx, "/work/game", "gone.txt")
+	_, err = svc.FileInfo(ctx, "/work/game", "art", "gone.txt")
 	require.EqualError(t, err, "gone.txt does not exist")
 }
 

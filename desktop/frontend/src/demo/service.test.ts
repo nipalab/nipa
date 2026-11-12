@@ -45,10 +45,10 @@ describe("demo service", () => {
     expect(albedo).toMatchObject({ kind: "image", status: "modified", staged: true });
     const ui = await s.Files(ROOT, "Assets/UI");
     expect(ui!.entries!.find((e) => e.name === "icon_sword.png")).toMatchObject({ status: "untracked", tracked: false });
-    expect((await s.FileInfo(ROOT, "Assets/Characters/Hero/hero_albedo.png"))!.lastCommit!.id).toBe("c12");
-    expect((await s.FileInfo(ROOT, "Assets/UI/icon_sword.png"))!.lastCommit).toBeNull();
-    expect((await s.FileInfo(ROOT, "README.md"))!.lastCommit).not.toBeNull();
-    expect((await s.FileInfo(ROOT, "nope.txt"))!.entry.path).toBe("nope.txt");
+    expect((await s.FileInfo(ROOT, "main", "Assets/Characters/Hero/hero_albedo.png"))!.lastCommit!.id).toBe("c12");
+    expect((await s.FileInfo(ROOT, "main", "Assets/UI/icon_sword.png"))!.lastCommit).toBeNull();
+    expect((await s.FileInfo(ROOT, "main", "README.md"))!.lastCommit).not.toBeNull();
+    expect((await s.FileInfo(ROOT, "main", "nope.txt"))!.entry.path).toBe("nope.txt");
     expect((await s.FileView(ROOT, "Source/Player/Movement.cs"))!.hunks![0].lines!.length).toBeGreaterThan(5);
     expect((await s.FileView(ROOT, "Source/Other.cs"))!.hunks![0].lines).toHaveLength(1);
     expect((await s.FileView(ROOT, "Assets/Characters/Hero/ring_of_dawn.glb"))!.kind).toBe("model");

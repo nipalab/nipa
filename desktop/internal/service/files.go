@@ -64,7 +64,7 @@ func (s *Service) Files(ctx context.Context, root, dir string) (*FileListing, er
 }
 
 // FileInfo returns one file's metadata and its last change.
-func (s *Service) FileInfo(ctx context.Context, root, p string) (*FileDetails, error) {
+func (s *Service) FileInfo(ctx context.Context, root, branch, p string) (*FileDetails, error) {
 	p = strings.Trim(p, "/")
 	dir, name := path.Split(p)
 	if name == "" {
@@ -82,7 +82,7 @@ func (s *Service) FileInfo(ctx context.Context, root, p string) (*FileDetails, e
 		return nil, errors.New(p + " does not exist")
 	}
 	out := &FileDetails{Entry: toFileEntry(res.GetEntries()[0])}
-	page, err := s.History(ctx, root, HistoryQuery{Path: p, Limit: 1})
+	page, err := s.History(ctx, root, HistoryQuery{Branch: branch, Path: p, Limit: 1})
 	switch {
 	case err != nil:
 		out.LastCommitError = err.Error()

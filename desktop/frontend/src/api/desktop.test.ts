@@ -226,8 +226,9 @@ describe("desktop api", () => {
     expect(await desktop.files("/r", "a")).toEqual({ dir: "a", entries: [] });
     expect(await desktop.files("/r", "b")).toEqual({ dir: "b", entries: [] });
     service.FileInfo.mockResolvedValueOnce({ entry: { path: "a/x" }, lastCommit: null }).mockResolvedValueOnce(null);
-    expect((await desktop.fileInfo("/r", "a/x")).entry.path).toBe("a/x");
-    await expect(desktop.fileInfo("/r", "a/x")).rejects.toThrow("No file information");
+    expect((await desktop.fileInfo("/r", "art", "a/x")).entry.path).toBe("a/x");
+    expect(service.FileInfo).toHaveBeenCalledWith("/r", "art", "a/x");
+    await expect(desktop.fileInfo("/r", "art", "a/x")).rejects.toThrow("No file information");
     service.FileView.mockResolvedValue(null);
     expect(await desktop.fileView("/r", "a/x")).toBeNull();
     service.FileLink.mockResolvedValue("nipa://h/o/p/file/a/x");

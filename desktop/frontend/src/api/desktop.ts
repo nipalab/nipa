@@ -232,7 +232,7 @@ export const desktop = {
     const l = await Service.Files(root, dir);
     return { dir: l?.dir ?? dir, entries: l?.entries ?? [] };
   },
-  fileInfo: async (root: string, path: string): Promise<FileDetails> => required(await Service.FileInfo(root, path), "file information"),
+  fileInfo: async (root: string, branch: string, path: string): Promise<FileDetails> => required(await Service.FileInfo(root, branch, path), "file information"),
   fileView: (root: string, path: string): Promise<FileDiff | null> => Service.FileView(root, path),
   fileLink: (repoUrl: string, path: string): Promise<string> => Service.FileLink(repoUrl, path),
   restoreRevision: (root: string, path: string, commitId: string): Cancellable<OpOutcome> => Service.RestoreRevision(root, path, commitId),
