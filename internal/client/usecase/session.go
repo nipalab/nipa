@@ -3,8 +3,15 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+)
+
+const (
+	refreshReloadAttempts = 5
+	refreshReloadDelay    = 100 * time.Millisecond
 )
 
 type refreshExecutor interface {
@@ -16,6 +23,7 @@ type Session struct {
 	login          refreshExecutor
 	input          userInput
 	resolveSigners signerResolver
+	wait           func(ctx context.Context, d time.Duration) error
 }
 
 func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInput) *Session {
@@ -27,6 +35,18 @@ func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInpu
 		storage: storage,
 		login:   login,
 		input:   input,
+		wait:    waitContext,
+	}
+}
+
+func waitContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -62,6 +82,9 @@ func (s *Session) Refresh(ctx context.Context, address string) (string, error) {
 		if !isRefreshRejection(err) {
 			return "", err
 		}
+		if token, ok := s.rotatedElsewhere(ctx, host, loginResult, err); ok {
+			return token, nil
+		}
 		return s.reauth(ctx, host, err)
 	}
 
@@ -72,6 +95,50 @@ func (s *Session) Refresh(ctx context.Context, address string) (string, error) {
 	}
 
 	return refreshed.AccessToken, nil
+}
+
+// rotatedElsewhere picks up tokens another process sharing this storage saved
+// after rotating the session first. The store is keyed by host only, so the
+// stored pair is adopted only for the same session or the same account. A
+// "not found" answer means a concurrent rotation may still be saving, so the
+// store is polled briefly.
+func (s *Session) rotatedElsewhere(ctx context.Context, host string, presented *domain.LoginResult, cause error) (string, bool) {
+	attempts := 1
+	var domErr *domain.Error
+	if errors.As(cause, &domErr) && domErr.Code == 404 {
+		attempts = refreshReloadAttempts
+	}
+	for i := range attempts {
+		if i > 0 && s.wait(ctx, refreshReloadDelay) != nil {
+			return "", false
+		}
+		stored, err := s.storage.LoadToken(host)
+		if err != nil {
+			return "", false
+		}
+		if stored.RefreshToken != "" && stored.RefreshToken != presented.RefreshToken && stored.AccessToken != "" && sameSession(presented, stored) {
+			return stored.AccessToken, true
+		}
+	}
+	return "", false
+}
+
+func sameSession(presented, stored *domain.LoginResult) bool {
+	if presented.Email != "" && presented.Email == stored.Email {
+		return true
+	}
+	id := refreshSessionID(presented.RefreshToken)
+	return id != "" && id == refreshSessionID(stored.RefreshToken)
+}
+
+// refreshSessionID returns the session part (`<id>.<tag>`) of a session-shaped
+// refresh token, or "" for legacy tokens.
+func refreshSessionID(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return parts[0] + "." + parts[1]
 }
 
 func isRefreshRejection(err error) bool {

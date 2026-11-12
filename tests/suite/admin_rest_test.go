@@ -14,8 +14,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkurl"
@@ -208,6 +210,51 @@ var _ = Describe("auth REST refresh and logout", func() {
 
 		status, _, _ = authRequest("/logout", "", nil)
 		Expect(status).To(Equal(http.StatusOK), "logout without a cookie is a no-op")
+	})
+
+	It("revokes the session for both parties when an old refresh token is replayed after the grace window", func() {
+		id := newIdentity("auth-reuse")
+		stolen := passwordLogin(id.email, id.password)
+		victim := sessionFrom(authRequest("/refresh", stolen.refresh, nil))
+
+		time.Sleep(31 * time.Second)
+
+		conn, err := grpc.NewClient(cli.host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = conn.Close() }()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, err = pb.NewNipaServiceClient(conn).LoginWithRefreshToken(ctx, &pb.LoginWithRefreshRequest{RefreshToken: stolen.refresh})
+		Expect(grpcstatus.Code(err)).To(Equal(codes.Unauthenticated), "the replay is refused")
+
+		code, data, resp := authRequest("/refresh", victim.refresh, nil)
+		Expect(code).To(Equal(http.StatusNotFound), string(data))
+		Expect(resp.Cookies()).To(BeEmpty())
+		Expect(refreshStatus(stolen.refresh)).To(Equal(http.StatusNotFound))
+
+		code, entries := listAudit(api, url.Values{"action": {"auth.refresh_token.reuse_detected"}, "target": {id.userID}})
+		Expect(code).To(Equal(http.StatusOK))
+		Expect(entries.Entries).To(HaveLen(1))
+		Expect(entries.Entries[0].ActorType).To(Equal("system"))
+		Expect(entries.Entries[0].Metadata).To(HaveKeyWithValue("reason", "previous_secret_after_grace"))
+	})
+
+	It("revokes the session when a browser replays a refresh cookie older than the previous one", func() {
+		id := newIdentity("auth-reuse-rest")
+		first := passwordLogin(id.email, id.password)
+		second := sessionFrom(authRequest("/refresh", first.refresh, nil))
+		third := sessionFrom(authRequest("/refresh", second.refresh, nil))
+
+		code, data, resp := authRequest("/refresh", first.refresh, nil)
+		Expect(code).To(Equal(http.StatusUnauthorized), string(data))
+		cleared := false
+		for _, c := range resp.Cookies() {
+			if c.Name == refreshCookie && c.MaxAge < 0 {
+				cleared = true
+			}
+		}
+		Expect(cleared).To(BeTrue(), "a replayed cookie is cleared")
+		Expect(refreshStatus(third.refresh)).To(Equal(http.StatusNotFound), "the legitimate holder is signed out too")
 	})
 })
 

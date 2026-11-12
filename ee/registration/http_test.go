@@ -19,15 +19,27 @@ import (
 )
 
 // stubSessionStore satisfies the auth repository surface usecase.Auth needs;
-// only SaveRefreshToken is exercised by the login-result path.
+// only CreateRefreshSession is exercised by the login-result path.
 type stubSessionStore struct{}
 
-func (stubSessionStore) SaveRefreshToken(context.Context, snow.ID, string, time.Time) error {
-	return nil
+func (stubSessionStore) CreateRefreshSession(context.Context, snow.ID, string, time.Time, time.Time) (int64, error) {
+	return 1, nil
 }
 
-func (stubSessionStore) GetAndDeleteRefreshToken(context.Context, string) (*domain.RefreshToken, error) {
+func (stubSessionStore) GetRefreshSession(context.Context, int64) (*domain.RefreshToken, error) {
 	return nil, domain.NewErrorRecordNotFound()
+}
+
+func (stubSessionStore) GetLegacyRefreshToken(context.Context, string) (*domain.RefreshToken, error) {
+	return nil, domain.NewErrorRecordNotFound()
+}
+
+func (stubSessionStore) RotateRefreshSession(context.Context, domain.RefreshRotation) (bool, error) {
+	return false, nil
+}
+
+func (stubSessionStore) DeleteRefreshSession(context.Context, int64) error {
+	return nil
 }
 
 func (stubSessionStore) CreateSSHLoginChallenge(context.Context, string, string, time.Time) error {

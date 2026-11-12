@@ -353,17 +353,37 @@ func TestHandler_AuthLogin_InvalidJson(t *testing.T) {
 	require.Equal(t, "internal unknown error", apiErr.Error)
 }
 
-func TestHandler_AuthRefreshToken(t *testing.T) {
-	h, authRepo, userID := newHandlerTestSetup(t)
+func insertLegacyRefreshToken(t *testing.T, db *sql.DB, userID snow.ID, token string, expiresAt time.Time) {
+	t.Helper()
+	_, err := db.ExecContext(context.Background(),
+		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)", userID.Int64(), token, expiresAt)
+	require.NoError(t, err)
+}
 
-	require.NoError(t, authRepo.SaveRefreshToken(
-		context.Background(), userID, "valid-refresh-token", time.Now().Add(time.Hour)))
+func loginRefreshCookie(t *testing.T, h *Handler) string {
+	t.Helper()
+	appCtx := &fakeAppContext{body: []byte(`{"email":"alice@example.com","password":"whatever"}`)}
+	h.AuthLogin(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	return appCtx.cookies[refreshCookieName].Value
+}
 
+func refreshWithCookie(h *Handler, value string) *fakeAppContext {
 	appCtx := &fakeAppContext{
 		body:    []byte(`{}`),
-		cookies: map[string]*http.Cookie{refreshCookieName: {Name: refreshCookieName, Value: "valid-refresh-token"}},
+		cookies: map[string]*http.Cookie{refreshCookieName: {Name: refreshCookieName, Value: value}},
 	}
 	h.AuthRefreshToken(appCtx)
+	return appCtx
+}
+
+func TestHandler_AuthRefreshToken(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	h := env.handler
+
+	insertLegacyRefreshToken(t, env.db, env.userID, "valid-refresh-token", time.Now().Add(time.Hour))
+
+	appCtx := refreshWithCookie(h, "valid-refresh-token")
 
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 
@@ -378,6 +398,50 @@ func TestHandler_AuthRefreshToken(t *testing.T) {
 	require.NotEqual(t, "valid-refresh-token", cookie.Value, "refresh tokens rotate")
 	require.True(t, cookie.HttpOnly)
 	require.True(t, cookie.Secure)
+
+	var stored string
+	require.NoError(t, env.db.QueryRowContext(context.Background(), "SELECT token FROM refresh_tokens").Scan(&stored))
+	require.NotContains(t, cookie.Value, stored, "only a hash is stored")
+
+	next := refreshWithCookie(h, cookie.Value)
+	require.Equal(t, http.StatusOK, next.statusCode)
+}
+
+func TestHandler_AuthRefreshToken_RacingTabKeepsCookie(t *testing.T) {
+	h, _, _ := newHandlerTestSetup(t)
+	first := loginRefreshCookie(t, h)
+
+	winner := refreshWithCookie(h, first)
+	require.Equal(t, http.StatusOK, winner.statusCode)
+
+	loser := refreshWithCookie(h, first)
+	require.Equal(t, http.StatusNotFound, loser.statusCode)
+	cookie := loser.cookies[refreshCookieName]
+	require.Equal(t, first, cookie.Value, "the loser keeps its cookie and retries with the newer one")
+	require.NotEqual(t, -1, cookie.MaxAge)
+
+	again := refreshWithCookie(h, winner.cookies[refreshCookieName].Value)
+	require.Equal(t, http.StatusOK, again.statusCode)
+}
+
+func TestHandler_AuthRefreshToken_ReuseClearsCookie(t *testing.T) {
+	h, _, _ := newHandlerTestSetup(t)
+	first := loginRefreshCookie(t, h)
+
+	second := refreshWithCookie(h, first)
+	require.Equal(t, http.StatusOK, second.statusCode)
+	third := refreshWithCookie(h, second.cookies[refreshCookieName].Value)
+	require.Equal(t, http.StatusOK, third.statusCode)
+
+	replay := refreshWithCookie(h, first)
+	require.Equal(t, http.StatusUnauthorized, replay.statusCode)
+	apiErr, ok := replay.response.(*model.APIError)
+	require.True(t, ok)
+	require.Equal(t, "refresh token revoked", apiErr.Error)
+	require.Equal(t, -1, replay.cookies[refreshCookieName].MaxAge, "a replayed token clears the cookie")
+
+	victim := refreshWithCookie(h, third.cookies[refreshCookieName].Value)
+	require.Equal(t, http.StatusNotFound, victim.statusCode, "the whole session is gone")
 }
 
 func TestHandler_AuthRefreshToken_MissingCookie(t *testing.T) {
@@ -394,12 +458,11 @@ func TestHandler_AuthRefreshToken_MissingCookie(t *testing.T) {
 }
 
 func TestHandler_AuthRefreshToken_Expired(t *testing.T) {
-	h, authRepo, userID := newHandlerTestSetup(t)
+	env := newHandlerTestEnv(t)
+	h := env.handler
 
-	require.NoError(t, authRepo.SaveRefreshToken(
-		context.Background(), userID, "expired-refresh-token", time.Now().Add(-time.Hour)))
-	require.NoError(t, authRepo.SaveRefreshToken(
-		context.Background(), userID, "login-on-other-device", time.Now().Add(time.Hour)))
+	insertLegacyRefreshToken(t, env.db, env.userID, "expired-refresh-token", time.Now().Add(-time.Hour))
+	loginRefreshCookie(t, h)
 
 	appCtx := &fakeAppContext{
 		body:    []byte(`{}`),
@@ -440,14 +503,12 @@ func TestHandler_AuthRefreshToken_UnknownToken(t *testing.T) {
 }
 
 func TestHandler_AuthLogout(t *testing.T) {
-	h, authRepo, userID := newHandlerTestSetup(t)
-	ctx := context.Background()
-
-	require.NoError(t, authRepo.SaveRefreshToken(ctx, userID, "logout-token", time.Now().Add(time.Hour)))
+	h, _, _ := newHandlerTestSetup(t)
+	token := loginRefreshCookie(t, h)
 
 	appCtx := &fakeAppContext{
 		body:    []byte(`{}`),
-		cookies: map[string]*http.Cookie{refreshCookieName: {Name: refreshCookieName, Value: "logout-token"}},
+		cookies: map[string]*http.Cookie{refreshCookieName: {Name: refreshCookieName, Value: token}},
 	}
 	h.AuthLogout(appCtx)
 
@@ -460,8 +521,7 @@ func TestHandler_AuthLogout(t *testing.T) {
 	require.NotNil(t, cookie)
 	require.Equal(t, -1, cookie.MaxAge)
 
-	_, err := authRepo.GetAndDeleteRefreshToken(ctx, "logout-token")
-	require.True(t, domain.IsErrorNotFound(err), "logout revokes the refresh token")
+	require.Equal(t, http.StatusNotFound, refreshWithCookie(h, token).statusCode, "logout revokes the refresh token")
 }
 
 func TestHandler_AuthLogout_NoCookie(t *testing.T) {

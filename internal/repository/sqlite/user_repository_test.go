@@ -194,25 +194,27 @@ func TestUserRepositorySQLite_Create_DuplicateEmail(t *testing.T) {
 
 func TestUserRepositorySQLite_DeleteRefreshTokens(t *testing.T) {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	db, q := newSQLiteTestDB(t)
 	users := NewUserRepository(db)
 	auth := NewAuthRepository(db)
 
 	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "token-2", expiresAt))
+	sessions["token-1"] = createTestSession(t, auth, userID, "token-1", expiresAt)
+	sessions["token-2"] = createTestSession(t, auth, userID, "token-2", expiresAt)
 
 	require.NoError(t, users.DeleteRefreshTokens(ctx, userID))
 
-	_, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err := takeTestSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(t, err)
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-2")
+	_, err = takeTestSession(ctx, auth, sessions["token-2"])
 	requireRecordNotFound(t, err)
 }
 
 func TestUserRepositorySQLite_UpdateAndRevokeTokens(t *testing.T) {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	db, q := newSQLiteTestDB(t)
 	users := NewUserRepository(db)
 	auth := NewAuthRepository(db)
@@ -220,32 +222,33 @@ func TestUserRepositorySQLite_UpdateAndRevokeTokens(t *testing.T) {
 	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
 	expiresAt := time.Now().Add(time.Hour)
 
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "email-token", expiresAt))
+	sessions["email-token"] = createTestSession(t, auth, userID, "email-token", expiresAt)
 	require.NoError(t, users.UpdateEmailAndRevokeTokens(ctx, userID, "Alice2@Example.com"))
 	got, err := users.GetByID(ctx, userID)
 	require.NoError(t, err)
 	require.Equal(t, "alice2@example.com", got.Email)
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "email-token")
+	_, err = takeTestSession(ctx, auth, sessions["email-token"])
 	requireRecordNotFound(t, err)
 
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "password-token", expiresAt))
+	sessions["password-token"] = createTestSession(t, auth, userID, "password-token", expiresAt)
 	require.NoError(t, users.UpdatePasswordAndRevokeTokens(ctx, userID, "new-hash"))
 	got, err = users.GetByID(ctx, userID)
 	require.NoError(t, err)
 	require.Equal(t, "new-hash", got.Password)
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "password-token")
+	_, err = takeTestSession(ctx, auth, sessions["password-token"])
 	requireRecordNotFound(t, err)
 
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "deactivate-token", expiresAt))
+	sessions["deactivate-token"] = createTestSession(t, auth, userID, "deactivate-token", expiresAt)
 	require.NoError(t, users.DeactivateAndRevokeTokens(ctx, userID))
 	_, err = users.GetByID(ctx, userID)
 	requireRecordNotFound(t, err)
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "deactivate-token")
+	_, err = takeTestSession(ctx, auth, sessions["deactivate-token"])
 	requireRecordNotFound(t, err)
 }
 
 func TestUserRepositorySQLite_UpdateEmailAndRevokeTokens_RollsBackOnConflict(t *testing.T) {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	db, q := newSQLiteTestDB(t)
 	users := NewUserRepository(db)
 	auth := NewAuthRepository(db)
@@ -255,14 +258,14 @@ func TestUserRepositorySQLite_UpdateEmailAndRevokeTokens_RollsBackOnConflict(t *
 		ID: newTestNode(t).Generate(), Name: "bob", Email: "bob@example.com", Password: "hash",
 	})
 	require.NoError(t, err)
-	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "token-1", time.Now().Add(time.Hour)))
+	sessions["token-1"] = createTestSession(t, auth, userID, "token-1", time.Now().Add(time.Hour))
 
 	require.Error(t, users.UpdateEmailAndRevokeTokens(ctx, userID, "bob@example.com"))
 
 	got, err := users.GetByID(ctx, userID)
 	require.NoError(t, err)
 	require.Equal(t, "alice@example.com", got.Email)
-	token, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	token, err := takeTestSession(ctx, auth, sessions["token-1"])
 	require.NoError(t, err)
 	require.Equal(t, userID, token.UserID)
 }
@@ -320,4 +323,19 @@ func TestUserRepositorySQLite_RevocationsBumpTokenVersion(t *testing.T) {
 
 	require.NoError(t, users.DeactivateAndRevokeTokens(ctx, userID))
 	require.Equal(t, int64(5), version())
+}
+
+func createTestSession(t *testing.T, auth *Auth, userID snow.ID, hash string, expiresAt time.Time) int64 {
+	t.Helper()
+	id, err := auth.CreateRefreshSession(context.Background(), userID, hash, time.Now(), expiresAt)
+	require.NoError(t, err)
+	return id
+}
+
+func takeTestSession(ctx context.Context, auth *Auth, id int64) (*domain.RefreshToken, error) {
+	got, err := auth.GetRefreshSession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return got, auth.DeleteRefreshSession(ctx, id)
 }

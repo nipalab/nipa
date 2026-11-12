@@ -71,6 +71,7 @@ func (s *RegistrationRepositorySuite) TestEmailVerificationLifecycle() {
 
 func (s *RegistrationRepositorySuite) TestResetUnverifiedCredentials() {
 	ctx := context.Background()
+	sessions := map[string]int64{}
 	repo := NewRegistrationRepository(s.db)
 	auth := NewAuthRepository(s.db)
 	user := s.createUser()
@@ -84,8 +85,8 @@ func (s *RegistrationRepositorySuite) TestResetUnverifiedCredentials() {
 
 	expiresAt := time.Now().Add(time.Hour)
 	s.Require().NoError(repo.UpsertEmailVerification(ctx, user.ID, "verify-1", expiresAt))
-	s.Require().NoError(auth.SaveRefreshToken(ctx, user.ID, "token-1", expiresAt))
-	s.Require().NoError(auth.SaveRefreshToken(ctx, other.ID, "other-token", expiresAt))
+	sessions["token-1"] = s.createSession(auth, user.ID, "token-1", expiresAt)
+	sessions["other-token"] = s.createSession(auth, other.ID, "other-token", expiresAt)
 
 	s.Require().NoError(repo.ResetUnverifiedCredentials(ctx, user.ID))
 
@@ -101,10 +102,10 @@ func (s *RegistrationRepositorySuite) TestResetUnverifiedCredentials() {
 	_, _, err = repo.EmailVerificationByToken(ctx, "verify-1")
 	requireRecordNotFound(s.T(), err)
 
-	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	_, err = takeSession(ctx, auth, sessions["token-1"])
 	requireRecordNotFound(s.T(), err)
 
-	got, err := auth.GetAndDeleteRefreshToken(ctx, "other-token")
+	got, err := takeSession(ctx, auth, sessions["other-token"])
 	s.Require().NoError(err)
 	s.Equal(other.ID, got.UserID)
 }

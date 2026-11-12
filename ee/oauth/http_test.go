@@ -26,12 +26,24 @@ func (stubCredentialHasher) Compare(hash, password string) bool   { return hash 
 
 type stubAuthSessions struct{}
 
-func (stubAuthSessions) SaveRefreshToken(context.Context, snow.ID, string, time.Time) error {
-	return nil
+func (stubAuthSessions) CreateRefreshSession(context.Context, snow.ID, string, time.Time, time.Time) (int64, error) {
+	return 1, nil
 }
 
-func (stubAuthSessions) GetAndDeleteRefreshToken(context.Context, string) (*domain.RefreshToken, error) {
+func (stubAuthSessions) GetRefreshSession(context.Context, int64) (*domain.RefreshToken, error) {
 	return nil, domain.NewErrorRecordNotFound()
+}
+
+func (stubAuthSessions) GetLegacyRefreshToken(context.Context, string) (*domain.RefreshToken, error) {
+	return nil, domain.NewErrorRecordNotFound()
+}
+
+func (stubAuthSessions) RotateRefreshSession(context.Context, domain.RefreshRotation) (bool, error) {
+	return false, nil
+}
+
+func (stubAuthSessions) DeleteRefreshSession(context.Context, int64) error {
+	return nil
 }
 
 func (stubAuthSessions) CreateSSHLoginChallenge(context.Context, string, string, time.Time) error {

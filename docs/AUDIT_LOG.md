@@ -52,6 +52,7 @@ Constants live in `internal/domain/audit_actions.go`.
 | `user.password.reset_by_admin` | `User.ResetPassword` | none |
 | `user.email.changed` | `User.UpdateEmail` | `old_email`, `new_email` |
 | `user.terms.accepted` | `registration.AcceptTerms` (`nipad-ee`, SaaS) | `version`, `source` |
+| `auth.refresh_token.reuse_detected` | `Auth.LoginWithRefreshToken` when a refresh session is presented with a stale secret (actor `system`; the session is deleted) | target = user; `session_id` (base36 row id), `reason` (`previous_secret_after_grace`, `unknown_secret`); never a secret or hash |
 | `project.created` | `Project.Create` | `name`, `slug`, `description` |
 | `project.updated` | `Project.Update` (skipped when unchanged) | `old`, `new` (`name`, `description`) |
 | `project.deleted` | `Project.Delete` | `name`, `slug` |
@@ -115,6 +116,9 @@ context: every repository an audited write touches is built on
 `ProjectRepository.CreateWithDefaultBranch`, `WebhookRepository.Delete`) use
 `WithinTx` instead of their own `BeginTx`. The enterprise seat gate joins the
 same transaction (its refusal entry is the one exception, see Billing).
+`auth.refresh_token.reuse_detected` commits its session deletion and entry
+through `auditedWrite` before the refresh call returns its 401, so the
+revocation survives the failed request.
 
 `usecase.Audit` is the recorder: it fills the actor from the JWT claim (or
 `system` without one), the request id (`obs.RequestIDFromContext`), the client

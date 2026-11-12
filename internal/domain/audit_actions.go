@@ -33,6 +33,8 @@ const (
 	AuditUserEmailChanged         = "user.email.changed"
 	AuditUserTermsAccepted        = "user.terms.accepted"
 
+	AuditAuthRefreshTokenReuseDetected = "auth.refresh_token.reuse_detected"
+
 	AuditProjectCreated = "project.created"
 	AuditProjectUpdated = "project.updated"
 	AuditProjectDeleted = "project.deleted"

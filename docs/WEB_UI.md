@@ -20,7 +20,11 @@ edition.
 
 - Access token lives in memory only; the refresh token is an `HttpOnly` cookie
   (`web/src/api/client.ts`). `AuthProvider` silently refreshes on load, keeps
-  `/me` in context, and reacts to cross-tab login/logout events.
+  `/me` in context, and reacts to cross-tab login/logout events. Refresh
+  rotates the session in place: a cookie rotated by another tab within 30 s
+  answers 404 and is kept, an older one revokes the whole session (401, cookie
+  cleared, `auth.refresh_token.reuse_detected`), and a session ends 90 days
+  after sign-in at the latest.
 - Access tokens die with the account's `token_version` (password, email or
   admin flag change, deactivation): the next request answers 401 and the
   refresh path decides. `POST /me/password` revokes every session and answers
