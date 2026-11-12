@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net"
 	"net/netip"
@@ -57,10 +59,6 @@ func (s *stubAuthRepo) CreateRefreshSession(_ context.Context, _ snow.ID, _ stri
 }
 
 func (s *stubAuthRepo) GetRefreshSession(_ context.Context, _ int64) (*domain.RefreshToken, error) {
-	return s.refreshToken, s.refreshErr
-}
-
-func (s *stubAuthRepo) GetLegacyRefreshToken(_ context.Context, _ string) (*domain.RefreshToken, error) {
 	return s.refreshToken, s.refreshErr
 }
 
@@ -126,6 +124,19 @@ func (m *loginMockContainer) FileLock() *usecase.FileLock                   { re
 func (m *loginMockContainer) Org() *usecase.Org                             { return nil }
 func (m *loginMockContainer) Project() *usecase.Project                     { return nil }
 
+const stubSessionSecret = "stub-session-secret"
+
+func stubSessionToken() string {
+	mac := hmac.New(sha256.New, []byte("test-secret"))
+	mac.Write([]byte("nipa-refresh-session:1"))
+	return "1." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16]) + "." + stubSessionSecret
+}
+
+func stubSessionHash() string {
+	sum := sha256.Sum256([]byte(stubSessionSecret))
+	return hex.EncodeToString(sum[:])
+}
+
 func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo) *nipaServer {
 	t.Helper()
 	auth := usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo)
@@ -189,7 +200,9 @@ func TestLoginWithRefreshToken_Success(t *testing.T) {
 		&stubUserRepo{user: user},
 		&stubAuthRepo{
 			refreshToken: &domain.RefreshToken{
+				ID:        1,
 				UserID:    snow.ID(7),
+				TokenHash: stubSessionHash(),
 				CreatedAt: time.Now(),
 				ExpiresAt: time.Now().Add(time.Hour),
 			},
@@ -197,7 +210,7 @@ func TestLoginWithRefreshToken_Success(t *testing.T) {
 	)
 
 	resp, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{
-		RefreshToken: "valid-refresh-token",
+		RefreshToken: stubSessionToken(),
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.AccessToken)
@@ -210,14 +223,16 @@ func TestLoginWithRefreshToken_Expired(t *testing.T) {
 		&stubUserRepo{},
 		&stubAuthRepo{
 			refreshToken: &domain.RefreshToken{
+				ID:        1,
 				UserID:    snow.ID(7),
+				TokenHash: stubSessionHash(),
 				ExpiresAt: time.Now().Add(-time.Hour),
 			},
 		},
 	)
 
 	_, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{
-		RefreshToken: "expired-token",
+		RefreshToken: stubSessionToken(),
 	})
 	require.Error(t, err)
 }
@@ -229,7 +244,7 @@ func TestLoginWithRefreshToken_NotFound(t *testing.T) {
 	)
 
 	_, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{
-		RefreshToken: "nonexistent-token",
+		RefreshToken: stubSessionToken(),
 	})
 	require.Error(t, err)
 }
@@ -239,14 +254,16 @@ func TestLoginWithRefreshToken_UserNotFound(t *testing.T) {
 		&stubUserRepo{err: domain.NewErrorRecordNotFound()},
 		&stubAuthRepo{
 			refreshToken: &domain.RefreshToken{
+				ID:        1,
 				UserID:    snow.ID(99),
+				TokenHash: stubSessionHash(),
 				ExpiresAt: time.Now().Add(time.Hour),
 			},
 		},
 	)
 
 	_, err := srv.LoginWithRefreshToken(context.Background(), &pb.LoginWithRefreshRequest{
-		RefreshToken: "valid-token",
+		RefreshToken: stubSessionToken(),
 	})
 	require.Error(t, err)
 }

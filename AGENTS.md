@@ -550,9 +550,9 @@ inside the statement that changes the account: `UserUpdatePassword`
 (deactivate) and `UserUpdateAdminFlags` (only when a flag changes).
 `Auth.LoginResult` signs it as the `tv` claim (absent = 0, so older tokens
 stay valid until a bump) next to `iss` `nipad` / `aud` `nipa-api`
-(`domain.TokenIssuer`/`TokenAudience`), which are set but not enforced yet:
-`ValidateToken` checks them one release later, once no token from a binary
-without them can still be live. `Auth.ValidateToken`, the only access-token check
+(`domain.TokenIssuer`/`TokenAudience`), which `ValidateToken` requires
+(`jwt.WithIssuer`/`WithAudience`; a token without them is a 401, so tokens
+from a binary older than #210 are refreshed once). `Auth.ValidateToken`, the only access-token check
 (REST `AuthFilter`, gRPC `JWTUnary`/`JWTStream`), loads the user by id on
 every request (no cache): a missing (deleted) user or a `tv` mismatch is a 401
 `invalid token`, and `IsAdmin`/`IsSuperAdmin` are overwritten from the row, so
@@ -582,14 +582,13 @@ one after the grace, deletes the session and records
 before the 401 `refresh token revoked`); expiry or `refreshSessionMaxAge`
 (90 days from `session_started_at`) deletes it with 400 `refresh token
 expired`. `WithClock` drives grace/cap in tests. `Logout` deletes only when
-the secret matches the current or previous hash. Compatibility for one
-release: `token` stays `NOT NULL UNIQUE` and holds the current hash for
-session rows; a token without the session shape is a legacy plaintext row
-(`GetLegacyRefreshToken` matches `token` only where `token_hash IS NULL`),
-upgraded in place on refresh (`session_started_at` from `created_at`, no reuse
-detection). The old binary keeps reading/writing legacy rows during a flip and
-answers a new-format token "not found". Follow-up: a migration dropping the
-plaintext `token` column (after one release). Client: `Session.Refresh`
+the secret matches the current or previous hash. Only hashes are stored:
+migrations sqlite `000021` / postgres `000006` (`refresh_token_drop_plaintext`)
+deleted the pre-session plaintext rows and dropped the `token` column
+(`token_hash` is `NOT NULL UNIQUE`; the sqlite table rebuild carries
+`sqlite_sequence` over so session ids are never reused), so a token without
+the session shape or with a bad tag is "not found" and a binary older than
+#205 cannot run against this schema. Client: `Session.Refresh`
 reloads the shared token store when the server rejects a refresh and uses the
 stored pair when another `nipa`/`nipa serve`/`nipa mcp` process rotated it
 first, but only for the same session (`<id>.<tag>` prefix) or the same stored

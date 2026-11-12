@@ -12,12 +12,12 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-func insertLegacyRefreshToken(t *testing.T, db *sql.DB, userID snow.ID, token string, expiresAt time.Time) int64 {
+func insertRefreshRow(t *testing.T, db *sql.DB, userID snow.ID, hash string, expiresAt time.Time) int64 {
 	t.Helper()
 	var id int64
 	err := db.QueryRowContext(context.Background(),
-		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?) RETURNING id",
-		userID.Int64(), token, expiresAt).Scan(&id)
+		"INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?) RETURNING id",
+		userID.Int64(), hash, expiresAt).Scan(&id)
 	require.NoError(t, err)
 	return id
 }
@@ -39,15 +39,11 @@ func TestAuthRepositorySQLite_RefreshSessionLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, userID, got.UserID)
 	require.Equal(t, "hash-1", got.TokenHash)
-	require.Empty(t, got.Token)
 	require.Empty(t, got.PreviousHash)
 	require.Nil(t, got.RotatedAt)
 	require.NotNil(t, got.SessionStartedAt)
 	require.WithinDuration(t, started, *got.SessionStartedAt, time.Second)
 	require.WithinDuration(t, expiresAt, got.ExpiresAt, time.Second)
-
-	_, err = repo.GetLegacyRefreshToken(ctx, "hash-1")
-	requireRecordNotFound(t, err)
 
 	rotatedAt := time.Now().UTC()
 	ok, err := repo.RotateRefreshSession(ctx, domain.RefreshRotation{ID: id, MatchHash: "hash-1", NewHash: "hash-2", RotatedAt: rotatedAt, ExpiresAt: expiresAt.Add(time.Hour)})
@@ -73,53 +69,12 @@ func TestAuthRepositorySQLite_RefreshSessionLifecycle(t *testing.T) {
 	require.NoError(t, repo.DeleteRefreshSession(ctx, id))
 }
 
-func TestAuthRepositorySQLite_LegacyRefreshTokenUpgrade(t *testing.T) {
-	ctx := context.Background()
-	db, q := newSQLiteTestDB(t)
-	repo := NewAuthRepository(db)
-
-	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
-	id := insertLegacyRefreshToken(t, db, userID, "legacy-token", time.Now().Add(time.Hour))
-
-	got, err := repo.GetLegacyRefreshToken(ctx, "legacy-token")
-	require.NoError(t, err)
-	require.Equal(t, id, got.ID)
-	require.Equal(t, "legacy-token", got.Token)
-	require.Empty(t, got.TokenHash)
-	require.Nil(t, got.SessionStartedAt)
-
-	upgrade := domain.RefreshRotation{ID: id, MatchLegacyToken: "legacy-token", NewHash: "hash-1", SessionStartedAt: got.CreatedAt, RotatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
-	ok, err := repo.RotateRefreshSession(ctx, upgrade)
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	ok, err = repo.RotateRefreshSession(ctx, upgrade)
-	require.NoError(t, err)
-	require.False(t, ok, "a legacy token upgrades once")
-
-	_, err = repo.GetLegacyRefreshToken(ctx, "legacy-token")
-	requireRecordNotFound(t, err)
-
-	got, err = repo.GetRefreshSession(ctx, id)
-	require.NoError(t, err)
-	require.Equal(t, "hash-1", got.TokenHash)
-	require.Empty(t, got.Token)
-	require.Empty(t, got.PreviousHash)
-	require.NotNil(t, got.SessionStartedAt)
-
-	var token string
-	require.NoError(t, db.QueryRowContext(ctx, "SELECT token FROM refresh_tokens WHERE id = ?", id).Scan(&token))
-	require.Equal(t, "hash-1", token, "the plaintext column only keeps the hash")
-}
-
 func TestAuthRepositorySQLite_RefreshSessionUnknown(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
 	repo := NewAuthRepository(db)
 
 	_, err := repo.GetRefreshSession(ctx, 999)
-	requireRecordNotFound(t, err)
-	_, err = repo.GetLegacyRefreshToken(ctx, "unknown-token")
 	requireRecordNotFound(t, err)
 	ok, err := repo.RotateRefreshSession(ctx, domain.RefreshRotation{ID: 999, MatchHash: "x", NewHash: "y"})
 	require.NoError(t, err)
@@ -180,16 +135,16 @@ func TestAuthRepositorySQLite_CreateRefreshSessionPrunesExpired(t *testing.T) {
 	bob := seedPBACUser(t, db, 43)
 	past := time.Now().Add(-48 * time.Hour)
 	recent := time.Now().Add(-time.Hour)
-	insertLegacyRefreshToken(t, db, alice, "alice-old", past)
-	insertLegacyRefreshToken(t, db, bob, "bob-old", past)
-	insertLegacyRefreshToken(t, db, alice, "alice-recent", recent)
+	insertRefreshRow(t, db, alice, "alice-old", past)
+	insertRefreshRow(t, db, bob, "bob-old", past)
+	insertRefreshRow(t, db, alice, "alice-recent", recent)
 	now := time.Now()
 	_, err := repo.CreateRefreshSession(ctx, alice, "alice-live", now, now.Add(time.Hour))
 	require.NoError(t, err)
 	_, err = repo.CreateRefreshSession(ctx, alice, "alice-new", now, now.Add(2*time.Hour))
 	require.NoError(t, err)
 
-	rows, err := db.QueryContext(ctx, "SELECT token FROM refresh_tokens ORDER BY token")
+	rows, err := db.QueryContext(ctx, "SELECT token_hash FROM refresh_tokens ORDER BY token_hash")
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
 	var tokens []string
@@ -208,7 +163,7 @@ func TestAuthRepositorySQLite_CreateRefreshSessionPrunesExpired(t *testing.T) {
 	require.Error(t, err)
 	_, err = repo.GetRefreshSession(ctx, 1)
 	require.Error(t, err)
-	_, err = repo.RotateRefreshSession(ctx, domain.RefreshRotation{ID: 1, MatchLegacyToken: "x"})
+	_, err = repo.RotateRefreshSession(ctx, domain.RefreshRotation{ID: 1, MatchHash: "x"})
 	require.Error(t, err)
 	require.Error(t, repo.DeleteRefreshSession(ctx, 1))
 }

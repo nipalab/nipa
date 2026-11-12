@@ -35,10 +35,6 @@ func (stubAuthSessions) GetRefreshSession(context.Context, int64) (*domain.Refre
 	return nil, domain.NewErrorRecordNotFound()
 }
 
-func (stubAuthSessions) GetLegacyRefreshToken(context.Context, string) (*domain.RefreshToken, error) {
-	return nil, domain.NewErrorRecordNotFound()
-}
-
 func (stubAuthSessions) RotateRefreshSession(context.Context, domain.RefreshRotation) (bool, error) {
 	return false, nil
 }

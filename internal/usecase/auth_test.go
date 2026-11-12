@@ -119,6 +119,8 @@ func TestAuth_LoginWithEmailPassword_UnverifiedEmail(t *testing.T) {
 func validTokenClaims(version int64) domain.Claims {
 	return domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    domain.TokenIssuer,
+			Audience:  jwt.ClaimStrings{domain.TokenAudience},
 			Subject:   "42",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -244,24 +246,32 @@ func TestAuth_LoginResult_CarriesIssuerAndAudience(t *testing.T) {
 	require.Equal(t, domain.TokenIssuer, validated.Issuer)
 }
 
-func TestAuth_ValidateToken_AcceptsTokensWithoutIssuerAndAudience(t *testing.T) {
-	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
-	payload, err := jwt.NewParser().DecodeSegment(strings.Split(token, ".")[1])
-	require.NoError(t, err)
-	require.NotContains(t, string(payload), `"iss"`)
-	require.NotContains(t, string(payload), `"aud"`)
+func TestAuth_ValidateToken_RequiresIssuerAndAudience(t *testing.T) {
+	cases := map[string]func(*domain.Claims){
+		"no issuer":        func(c *domain.Claims) { c.Issuer = "" },
+		"no audience":      func(c *domain.Claims) { c.Audience = nil },
+		"neither":          func(c *domain.Claims) { c.Issuer, c.Audience = "", nil },
+		"foreign issuer":   func(c *domain.Claims) { c.Issuer = "someone-else" },
+		"foreign audience": func(c *domain.Claims) { c.Audience = jwt.ClaimStrings{"other"} },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			claims := validTokenClaims(0)
+			mutate(&claims)
+			token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), claims)
 
-	got, err := authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), token)
-	require.NoError(t, err)
-	require.Empty(t, got.Issuer)
-	require.Empty(t, got.Audience)
+			_, err := NewAuth("secret", nil, nil, nil).ValidateToken(context.Background(), token)
+			var domErr *domain.Error
+			require.ErrorAs(t, err, &domErr)
+			require.Equal(t, 401, domErr.Code)
+		})
+	}
 
-	foreign := validTokenClaims(0)
-	foreign.Issuer = "someone-else"
-	foreign.Audience = jwt.ClaimStrings{"other"}
-	token = signToken(t, jwt.SigningMethodHS256, []byte("secret"), foreign)
-	_, err = authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), token)
-	require.NoError(t, err, "iss/aud are not enforced yet")
+	extra := validTokenClaims(0)
+	extra.Audience = jwt.ClaimStrings{"other", domain.TokenAudience}
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), extra)
+	_, err := authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), token)
+	require.NoError(t, err)
 }
 
 func assertUnauthorizedToken(t *testing.T, err error) {
@@ -294,6 +304,8 @@ func TestAuth_ValidateToken_WrongSecret(t *testing.T) {
 	ctx := context.Background()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    domain.TokenIssuer,
+			Audience:  jwt.ClaimStrings{domain.TokenAudience},
 			Subject:   "42",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -320,6 +332,8 @@ func TestAuth_ValidateToken_UnexpectedSigningMethod(t *testing.T) {
 	ctx := context.Background()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    domain.TokenIssuer,
+			Audience:  jwt.ClaimStrings{domain.TokenAudience},
 			Subject:   "42",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),

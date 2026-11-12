@@ -36,7 +36,6 @@ type userRepository interface {
 type authRepository interface {
 	CreateRefreshSession(ctx context.Context, userID snow.ID, tokenHash string, startedAt, expiresAt time.Time) (int64, error)
 	GetRefreshSession(ctx context.Context, id int64) (*domain.RefreshToken, error)
-	GetLegacyRefreshToken(ctx context.Context, token string) (*domain.RefreshToken, error)
 	RotateRefreshSession(ctx context.Context, rotation domain.RefreshRotation) (bool, error)
 	DeleteRefreshSession(ctx context.Context, id int64) error
 	CreateSSHLoginChallenge(ctx context.Context, email, nonce string, expiresAt time.Time) error
@@ -368,7 +367,8 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.C
 			return nil, domain.NewErrorUser("unexpected signing method")
 		}
 		return []byte(a.secret), nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(domain.TokenIssuer), jwt.WithAudience(domain.TokenAudience))
 	if err != nil {
 		return nil, errInvalidToken()
 	}

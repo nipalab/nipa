@@ -353,13 +353,6 @@ func TestHandler_AuthLogin_InvalidJson(t *testing.T) {
 	require.Equal(t, "internal unknown error", apiErr.Error)
 }
 
-func insertLegacyRefreshToken(t *testing.T, db *sql.DB, userID snow.ID, token string, expiresAt time.Time) {
-	t.Helper()
-	_, err := db.ExecContext(context.Background(),
-		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)", userID.Int64(), token, expiresAt)
-	require.NoError(t, err)
-}
-
 func loginRefreshCookie(t *testing.T, h *Handler) string {
 	t.Helper()
 	appCtx := &fakeAppContext{body: []byte(`{"email":"alice@example.com","password":"whatever"}`)}
@@ -381,9 +374,9 @@ func TestHandler_AuthRefreshToken(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	h := env.handler
 
-	insertLegacyRefreshToken(t, env.db, env.userID, "valid-refresh-token", time.Now().Add(time.Hour))
+	issued := loginRefreshCookie(t, h)
 
-	appCtx := refreshWithCookie(h, "valid-refresh-token")
+	appCtx := refreshWithCookie(h, issued)
 
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 
@@ -395,12 +388,12 @@ func TestHandler_AuthRefreshToken(t *testing.T) {
 	cookie, ok := appCtx.cookies[refreshCookieName]
 	require.True(t, ok)
 	require.NotEmpty(t, cookie.Value)
-	require.NotEqual(t, "valid-refresh-token", cookie.Value, "refresh tokens rotate")
+	require.NotEqual(t, issued, cookie.Value, "refresh tokens rotate")
 	require.True(t, cookie.HttpOnly)
 	require.True(t, cookie.Secure)
 
 	var stored string
-	require.NoError(t, env.db.QueryRowContext(context.Background(), "SELECT token FROM refresh_tokens").Scan(&stored))
+	require.NoError(t, env.db.QueryRowContext(context.Background(), "SELECT token_hash FROM refresh_tokens").Scan(&stored))
 	require.NotContains(t, cookie.Value, stored, "only a hash is stored")
 
 	next := refreshWithCookie(h, cookie.Value)
@@ -461,14 +454,12 @@ func TestHandler_AuthRefreshToken_Expired(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	h := env.handler
 
-	insertLegacyRefreshToken(t, env.db, env.userID, "expired-refresh-token", time.Now().Add(-time.Hour))
-	loginRefreshCookie(t, h)
+	issued := loginRefreshCookie(t, h)
+	_, err := env.db.ExecContext(context.Background(),
+		"UPDATE refresh_tokens SET expires_at = ? WHERE user_id = ?", time.Now().Add(-time.Hour), env.userID.Int64())
+	require.NoError(t, err)
 
-	appCtx := &fakeAppContext{
-		body:    []byte(`{}`),
-		cookies: map[string]*http.Cookie{refreshCookieName: {Name: refreshCookieName, Value: "expired-refresh-token"}},
-	}
-	h.AuthRefreshToken(appCtx)
+	appCtx := refreshWithCookie(h, issued)
 
 	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
 

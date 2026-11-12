@@ -169,21 +169,6 @@ func (mr *MockauthRepositoryMockRecorder) DeleteRefreshSession(ctx, id any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRefreshSession", reflect.TypeOf((*MockauthRepository)(nil).DeleteRefreshSession), ctx, id)
 }
 
-// GetLegacyRefreshToken mocks base method.
-func (m *MockauthRepository) GetLegacyRefreshToken(ctx context.Context, token string) (*domain.RefreshToken, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLegacyRefreshToken", ctx, token)
-	ret0, _ := ret[0].(*domain.RefreshToken)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLegacyRefreshToken indicates an expected call of GetLegacyRefreshToken.
-func (mr *MockauthRepositoryMockRecorder) GetLegacyRefreshToken(ctx, token any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLegacyRefreshToken", reflect.TypeOf((*MockauthRepository)(nil).GetLegacyRefreshToken), ctx, token)
-}
-
 // GetRefreshSession mocks base method.
 func (m *MockauthRepository) GetRefreshSession(ctx context.Context, id int64) (*domain.RefreshToken, error) {
 	m.ctrl.T.Helper()

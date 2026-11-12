@@ -69,12 +69,11 @@ type GroupMember struct {
 	Email  string  `json:"email"`
 }
 
-// RefreshToken is one refresh session. Legacy rows hold the plaintext Token
-// and no TokenHash; session rows hold only SHA-256 hashes of the secret.
+// RefreshToken is one refresh session; it holds only SHA-256 hashes of the
+// secret.
 type RefreshToken struct {
 	ID               int64      `json:"id"`
 	UserID           snow.ID    `json:"user_id"`
-	Token            string     `json:"-"`
 	TokenHash        string     `json:"-"`
 	PreviousHash     string     `json:"-"`
 	RotatedAt        *time.Time `json:"rotated_at,omitempty"`
@@ -83,16 +82,14 @@ type RefreshToken struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
-// RefreshRotation replaces a session's secret hash. MatchHash selects a
-// session row by its current hash; MatchLegacyToken upgrades a legacy row.
+// RefreshRotation replaces the secret hash of the session whose current hash
+// is MatchHash.
 type RefreshRotation struct {
-	ID               int64
-	MatchHash        string
-	MatchLegacyToken string
-	NewHash          string
-	SessionStartedAt time.Time
-	RotatedAt        time.Time
-	ExpiresAt        time.Time
+	ID        int64
+	MatchHash string
+	NewHash   string
+	RotatedAt time.Time
+	ExpiresAt time.Time
 }
 
 type SSHLoginChallenge struct {

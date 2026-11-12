@@ -308,6 +308,13 @@ release). A rollback across a migration that dropped or renamed something may
 be incompatible; when in doubt, upgrade forward and roll the code back only to
 releases that share the current schema.
 
+Known exception: the first release after `v26.11.1` drops
+`refresh_tokens.token` (sqlite `000021`, postgres `000006`) and requires the
+JWT `iss`/`aud` claims. While both colors run, the `v26.11.1` color fails
+logins and token refreshes, every user signs in again once, and the code
+cannot be rolled back to `v26.11.1` without `migrate-down`. Keep that flip
+short.
+
 ## CI deploys (dev + production)
 
 `.github/workflows/server-deploy.yml` builds `nipad-ee` on GitHub Actions and

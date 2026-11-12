@@ -32,17 +32,11 @@ const (
 func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResult, error) {
 	id, secret, ok := a.parseRefreshToken(refreshToken)
 	if !ok {
-		return a.refreshLegacy(ctx, refreshToken)
-	}
-	if id == 0 {
 		return nil, domain.NewErrorRecordNotFound()
 	}
 	session, err := a.authRepo.GetRefreshSession(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	if session.TokenHash == "" {
-		return nil, domain.NewErrorRecordNotFound()
 	}
 	now := a.now()
 	hash := hashRefreshSecret(secret)
@@ -60,17 +54,6 @@ func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (
 		started = *session.SessionStartedAt
 	}
 	return a.rotateRefreshSession(ctx, session, started, domain.RefreshRotation{ID: id, MatchHash: session.TokenHash}, now)
-}
-
-func (a *Auth) refreshLegacy(ctx context.Context, token string) (*dto.LoginResult, error) {
-	if token == "" {
-		return nil, domain.NewErrorRecordNotFound()
-	}
-	session, err := a.authRepo.GetLegacyRefreshToken(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-	return a.rotateRefreshSession(ctx, session, session.CreatedAt, domain.RefreshRotation{ID: session.ID, MatchLegacyToken: token}, a.now())
 }
 
 func (a *Auth) rotateRefreshSession(ctx context.Context, session *domain.RefreshToken, started time.Time, rotation domain.RefreshRotation, now time.Time) (*dto.LoginResult, error) {
@@ -92,7 +75,6 @@ func (a *Auth) rotateRefreshSession(ctx context.Context, session *domain.Refresh
 		return nil, domain.NewErrorInternalServer(err.Error())
 	}
 	rotation.NewHash = hash
-	rotation.SessionStartedAt = started
 	rotation.RotatedAt = now
 	rotation.ExpiresAt = now.Add(refreshTokenExpiration)
 	rotated, err := a.authRepo.RotateRefreshSession(ctx, rotation)
@@ -134,27 +116,20 @@ func (a *Auth) Logout(ctx context.Context, refreshToken string) error {
 	if refreshToken == "" {
 		return nil
 	}
-	var (
-		session *domain.RefreshToken
-		err     error
-	)
 	id, secret, ok := a.parseRefreshToken(refreshToken)
-	if ok {
-		session, err = a.authRepo.GetRefreshSession(ctx, id)
-	} else {
-		session, err = a.authRepo.GetLegacyRefreshToken(ctx, refreshToken)
+	if !ok {
+		return nil
 	}
+	session, err := a.authRepo.GetRefreshSession(ctx, id)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	if ok {
-		hash := hashRefreshSecret(secret)
-		if session.TokenHash == "" || (!hashEqual(hash, session.TokenHash) && !hashEqual(hash, session.PreviousHash)) {
-			return nil
-		}
+	hash := hashRefreshSecret(secret)
+	if !hashEqual(hash, session.TokenHash) && !hashEqual(hash, session.PreviousHash) {
+		return nil
 	}
 	return a.authRepo.DeleteRefreshSession(ctx, session.ID)
 }
@@ -190,9 +165,8 @@ func (a *Auth) formatRefreshToken(id int64, secret string) string {
 	return id36 + "." + a.sessionTag(id36) + "." + secret
 }
 
-// parseRefreshToken reports ok=false for tokens that are not in the session
-// format (legacy plaintext tokens); a session-shaped token with a bad tag
-// yields id 0 and is answered as unknown.
+// parseRefreshToken reports ok=false for anything that is not a session token
+// carrying a valid tag.
 func (a *Auth) parseRefreshToken(token string) (int64, string, bool) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -200,7 +174,7 @@ func (a *Auth) parseRefreshToken(token string) (int64, string, bool) {
 	}
 	id, err := strconv.ParseInt(parts[0], 36, 64)
 	if err != nil || id <= 0 || parts[2] == "" || !hmac.Equal([]byte(parts[1]), []byte(a.sessionTag(parts[0]))) {
-		return 0, "", true
+		return 0, "", false
 	}
 	return id, parts[2], true
 }
