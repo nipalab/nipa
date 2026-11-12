@@ -28,7 +28,7 @@ func newTestAuth(secret string, match bool, userRepo userRepository, authRepo au
 
 func TestAuth_LoginWithEmailPassword(t *testing.T) {
 	ctx := context.Background()
-	user := &domain.User{ID: snow.ID(42), Email: "user@example.com", IsAdmin: true, EmailVerified: true}
+	user := &domain.User{ID: snow.ID(42), Email: "user@example.com", IsAdmin: true, EmailVerified: true, Password: "hash"}
 
 	ctrl := gomock.NewController(t)
 	userRepo := NewMockuserRepository(ctrl)
@@ -89,7 +89,7 @@ func TestAuth_LoginWithEmailPassword_SaveRefreshTokenError(t *testing.T) {
 
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "user@example.com").
-		Return(&domain.User{ID: 1, EmailVerified: true}, nil)
+		Return(&domain.User{ID: 1, EmailVerified: true, Password: "hash"}, nil)
 	authRepo.EXPECT().
 		CreateRefreshSession(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(int64(0), wantErr)
@@ -107,7 +107,7 @@ func TestAuth_LoginWithEmailPassword_UnverifiedEmail(t *testing.T) {
 
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "user@example.com").
-		Return(&domain.User{ID: 42, EmailVerified: false}, nil)
+		Return(&domain.User{ID: 42, EmailVerified: false, Password: "hash"}, nil)
 
 	_, err := newTestAuth("secret", true, userRepo, authRepo).LoginWithEmailPassword(ctx, "user@example.com", "password")
 	var domErr *domain.Error

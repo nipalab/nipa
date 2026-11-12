@@ -204,6 +204,16 @@ describe('VerifyPage', () => {
     expect(calls).toHaveLength(0)
 
     await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, '😀'.repeat(19))
+      setInputValue(inputs[1] as HTMLInputElement, '😀'.repeat(19))
+    })
+    await act(async () => {
+      findButtonIn(container, 'Confirm and continue').click()
+    })
+    await waitForText(container, 'at most 72 bytes')
+    expect(calls).toHaveLength(0)
+
+    await act(async () => {
       setInputValue(inputs[0] as HTMLInputElement, 'password123')
       setInputValue(inputs[1] as HTMLInputElement, 'different123')
     })

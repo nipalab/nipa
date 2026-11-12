@@ -5,6 +5,7 @@ import { changeMyPassword, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { IdentitiesCard } from '../components/IdentitiesCard'
+import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, passwordLengthProblem } from '../components/PasswordFields'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
 import { SSHKeysCard } from '../components/SSHKeysCard'
 import { isUserTab, UserSettingsLayout, type UserTab } from '../components/UserSettingsLayout'
@@ -110,9 +111,10 @@ function PasswordTab() {
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const tooShort = newPassword !== '' && newPassword.length < 8
+  const lengthProblem = newPassword === '' ? null : passwordLengthProblem(newPassword)
   const mismatch = confirmPassword !== '' && newPassword !== confirmPassword
-  const canSave = oldPassword !== '' && newPassword.length >= 8 && newPassword === confirmPassword && !saving
+  const canSave =
+    oldPassword !== '' && newPassword !== '' && !lengthProblem && newPassword === confirmPassword && !saving
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -153,13 +155,11 @@ function PasswordTab() {
             <TextInput block type="password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} />
           </FormControl>
         </SettingsRow>
-        <SettingsRow label="New password" subtext="At least 8 characters.">
+        <SettingsRow label="New password" subtext={`At least ${MIN_PASSWORD_LENGTH} characters, at most ${MAX_PASSWORD_BYTES} bytes.`}>
           <FormControl required>
             <FormControl.Label visuallyHidden>New password</FormControl.Label>
             <TextInput block type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-            {tooShort && (
-              <FormControl.Validation variant="error">Password must be at least 8 characters.</FormControl.Validation>
-            )}
+            {lengthProblem && <FormControl.Validation variant="error">{lengthProblem}</FormControl.Validation>}
           </FormControl>
         </SettingsRow>
         <SettingsRow label="Confirm new password">

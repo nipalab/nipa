@@ -46,6 +46,16 @@ func auditActions(entries []auditEntryJSON) []string {
 	return actions
 }
 
+func withoutLogins(entries []auditEntryJSON) []auditEntryJSON {
+	out := make([]auditEntryJSON, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Action != "auth.login.succeeded" {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
 var _ = Describe("audit log REST API", func() {
 	It("filters entries by actor, org, project, action and time and pages with next_cursor", func() {
 		actor := newIdentity("audit-actor")
@@ -67,16 +77,22 @@ var _ = Describe("audit log REST API", func() {
 
 		status, all := listAudit(api, url.Values{"actor": {actor.userID}})
 		Expect(status).To(Equal(http.StatusOK))
-		Expect(auditActions(all.Entries)).To(Equal([]string{"branch.protection.changed", "project.created", "org.created"}))
+		changes := withoutLogins(all.Entries)
+		Expect(auditActions(changes)).To(Equal([]string{"branch.protection.changed", "project.created", "org.created"}))
+		Expect(len(all.Entries)).To(BeNumerically(">", len(changes)), "the actor's sign-ins are recorded")
 		Expect(all.NextCursor).To(BeEmpty())
 		for _, entry := range all.Entries {
 			Expect(entry.ActorType).To(Equal("user"))
 			Expect(entry.ActorUserID).To(Equal(actor.userID))
+			if entry.Action == "auth.login.succeeded" {
+				Expect(entry.TargetID).To(Equal(actor.userID))
+				Expect(entry.Metadata).To(HaveKeyWithValue("method", "password"))
+			}
 		}
-		Expect(all.Entries[0].ProjectID).To(Equal(projectOut.ID))
-		Expect(all.Entries[0].Metadata).To(HaveKeyWithValue("branch", "main"))
-		Expect(all.Entries[1].TargetID).To(Equal(projectOut.ID))
-		Expect(all.Entries[2].OrgID).To(Equal(orgOut.ID))
+		Expect(changes[0].ProjectID).To(Equal(projectOut.ID))
+		Expect(changes[0].Metadata).To(HaveKeyWithValue("branch", "main"))
+		Expect(changes[1].TargetID).To(Equal(projectOut.ID))
+		Expect(changes[2].OrgID).To(Equal(orgOut.ID))
 
 		status, byOrg := listAudit(api, url.Values{"org": {orgOut.ID}})
 		Expect(status).To(Equal(http.StatusOK))
@@ -103,7 +119,7 @@ var _ = Describe("audit log REST API", func() {
 			"until": {end.Format(time.RFC3339)},
 		})
 		Expect(status).To(Equal(http.StatusOK))
-		Expect(inWindow.Entries).To(HaveLen(3))
+		Expect(withoutLogins(inWindow.Entries)).To(HaveLen(3))
 
 		status, before := listAudit(api, url.Values{
 			"actor": {actor.userID},
@@ -111,15 +127,15 @@ var _ = Describe("audit log REST API", func() {
 			"until": {start.Format(time.RFC3339)},
 		})
 		Expect(status).To(Equal(http.StatusOK))
-		Expect(before.Entries).To(BeEmpty())
+		Expect(withoutLogins(before.Entries)).To(BeEmpty())
 
 		status, after := listAudit(api, url.Values{"actor": {actor.userID}, "since": {end.Format(time.RFC3339)}})
 		Expect(status).To(Equal(http.StatusOK))
-		Expect(after.Entries).To(BeEmpty())
+		Expect(withoutLogins(after.Entries)).To(BeEmpty())
 
 		var paged []auditEntryJSON
 		cursor := ""
-		for range 5 {
+		for range len(all.Entries) + 1 {
 			query := url.Values{"actor": {actor.userID}, "limit": {"1"}}
 			if cursor != "" {
 				query.Set("after", cursor)
@@ -136,6 +152,24 @@ var _ = Describe("audit log REST API", func() {
 		}
 		Expect(cursor).To(BeEmpty())
 		Expect(paged).To(Equal(all.Entries))
+	})
+
+	It("records failed password logins without the password", func() {
+		target := newIdentity("audit-login")
+		status, _ := api.doAnonRaw(http.MethodPost, "/auth/login", map[string]string{
+			"email": target.email, "password": "wrong-audit-password",
+		})
+		Expect(status).To(Equal(http.StatusBadRequest))
+
+		status, failed := listAudit(api, url.Values{"action": {"auth.login.failed"}, "target": {target.userID}})
+		Expect(status).To(Equal(http.StatusOK))
+		Expect(failed.Entries).To(HaveLen(1))
+		entry := failed.Entries[0]
+		Expect(entry.ActorType).To(Equal("system"))
+		Expect(entry.ActorUserID).To(BeEmpty())
+		Expect(entry.Metadata).To(Equal(map[string]any{
+			"method": "password", "email": target.email, "reason": "invalid_credentials",
+		}))
 	})
 
 	It("rejects non-super-admins and invalid filters", func() {

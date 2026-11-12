@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/domain"
@@ -134,6 +139,7 @@ func TestLoginWithUsernamePassword_Success(t *testing.T) {
 		Email:         "alice@example.com",
 		IsAdmin:       true,
 		EmailVerified: true,
+		Password:      "hash",
 	}
 	srv := newLoginServer(t,
 		&stubUserRepo{user: user},
@@ -246,7 +252,7 @@ func TestLoginWithRefreshToken_UserNotFound(t *testing.T) {
 }
 
 func TestLoginWithRefreshToken_ReuseRevokesSession(t *testing.T) {
-	user := &domain.User{ID: snow.ID(7), EmailVerified: true}
+	user := &domain.User{ID: snow.ID(7), EmailVerified: true, Password: "hash"}
 	authRepo := &stubAuthRepo{}
 	srv := newLoginServer(t, &stubUserRepo{user: user}, authRepo)
 
@@ -261,7 +267,7 @@ func TestLoginWithRefreshToken_ReuseRevokesSession(t *testing.T) {
 }
 
 func TestLoginWithRefreshToken_RacingTabIsNotFound(t *testing.T) {
-	user := &domain.User{ID: snow.ID(7), EmailVerified: true}
+	user := &domain.User{ID: snow.ID(7), EmailVerified: true, Password: "hash"}
 	authRepo := &stubAuthRepo{}
 	srv := newLoginServer(t, &stubUserRepo{user: user}, authRepo)
 
@@ -282,4 +288,35 @@ func TestLoginWithRefreshToken_RacingTabIsNotFound(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(got.RefreshToken, parts[0]+"."+parts[1]+"."))
 	require.NotEqual(t, resp.RefreshToken, got.RefreshToken)
+}
+
+type metaRecorder struct {
+	metas   []domain.RequestMeta
+	actions []string
+}
+
+func (m *metaRecorder) Record(ctx context.Context, entry domain.AuditEntry) error {
+	meta, _ := domain.RequestMetaFromContext(ctx)
+	m.metas = append(m.metas, meta)
+	m.actions = append(m.actions, entry.Action)
+	return nil
+}
+
+func TestLoginWithUsernamePassword_InterceptorRequestMetaReachesUsecase(t *testing.T) {
+	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com", Password: "hash", EmailVerified: true}
+	rec := &metaRecorder{}
+	auth := usecase.NewAuth("test-secret", stubPasswordHasher{}, &stubUserRepo{user: user}, &stubAuthRepo{}).WithAudit(rec)
+	srv := New(&loginMockContainer{auth: auth})
+	interceptor := NewInterceptor(nil).WithTrustedProxies([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 4000}})
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("x-forwarded-for", "203.0.113.9"))
+	_, err := interceptor.JWTUnary()(ctx, &pb.LoginUsernamePasswordRequest{Username: "alice@example.com", Password: "pass"},
+		&grpc.UnaryServerInfo{FullMethod: "/greet.NipaService/LoginWithUsernamePassword"},
+		func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.LoginWithUsernamePassword(ctx, req.(*pb.LoginUsernamePasswordRequest))
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{domain.AuditAuthLoginSucceeded}, rec.actions)
+	require.Equal(t, "203.0.113.9", rec.metas[0].ClientIP)
 }

@@ -10,10 +10,13 @@ import (
 )
 
 func TestRateLimitRules(t *testing.T) {
-	c := &Config{RateLimitAuthIPPerMinute: 60, RateLimitAuthIPBurst: 7}
+	c := &Config{RateLimitAuthIPPerMinute: 60, RateLimitAuthIPBurst: 7, RateLimitAuthEmailPerMinute: 120, RateLimitAuthEmailBurst: 20,
+		RateLimitRegisterEmailPerMinute: 6, RateLimitRegisterEmailBurst: 3}
 	rules := c.RateLimitRules()
 	assert.Equal(t, ratelimit.Rule{Rate: 1, Burst: 7}, rules[ratelimit.ScopeAuthIP])
-	assert.Len(t, rules, 8)
+	assert.Equal(t, ratelimit.Rule{Rate: 2, Burst: 20}, rules[ratelimit.ScopeAuthEmail])
+	assert.Equal(t, ratelimit.Rule{Rate: 0.1, Burst: 3}, rules[ratelimit.ScopeRegisterEmail])
+	assert.Len(t, rules, 10)
 }
 
 func TestRateLimitTrustedProxies(t *testing.T) {

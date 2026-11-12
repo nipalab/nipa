@@ -144,6 +144,15 @@ func (f *AuthFilter) getToken(req *restful.Request) (string, error) {
 	return token, nil
 }
 
+// RequestMetaFilter attaches the caller's client IP and user agent to
+// unauthenticated routes.
+func RequestMetaFilter(proxies []netip.Prefix) restful.FilterFunction {
+	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
+		req.Request = req.Request.WithContext(domain.ContextWithRequestMeta(req.Request.Context(), RequestMeta(req.Request, proxies)))
+		chain.ProcessFilter(req, resp)
+	}
+}
+
 // RequestMeta resolves the caller's client IP and user agent.
 func RequestMeta(r *http.Request, proxies []netip.Prefix) domain.RequestMeta {
 	return domain.RequestMeta{

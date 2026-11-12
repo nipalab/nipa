@@ -245,7 +245,7 @@ func main() {
 		if termsSource.URL() != "" {
 			dispatchers = append(dispatchers, registration.NewTermsRefreshJob(termsSource, registration.TermsRefreshInterval))
 		}
-		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil(), termsSource)...)
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, rateLimiter, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil(), termsSource)...)
 	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
@@ -256,7 +256,7 @@ func main() {
 // SaaS deployment. Both use the same onboarding repository, which runs inside
 // the caller's transaction.
 func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
-	authUsecase *usecase.Auth, audit usecase.AuditRecorder, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
+	authUsecase *usecase.Auth, audit usecase.AuditRecorder, limiter *ratelimit.Limiter, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
 	billingCapabilities *registration.BillingCapabilities, termsSource *registration.TermsVersionSource,
 ) []serverapp.Option {
 	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
@@ -268,7 +268,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
-	}).WithAudit(audit).WithTermsVersion(termsSource.Version)
+	}).WithAudit(audit).WithTermsVersion(termsSource.Version).WithLimiter(limiter)
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)

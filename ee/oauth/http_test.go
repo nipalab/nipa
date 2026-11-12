@@ -59,6 +59,7 @@ func (stubAuthSessions) ConsumeSSHLoginChallenge(context.Context, string) (*doma
 }
 
 type oauthServer struct {
+	auth   *usecase.Auth
 	env    *oauthEnv
 	server *httptest.Server
 	client *http.Client
@@ -71,7 +72,8 @@ func newOAuthHandlerServer(t *testing.T, userID snow.ID) *oauthServer {
 	t.Helper()
 
 	env := newOAuthEnv(t)
-	handler := NewHandler(env.oauth, usecase.NewAuth("test-secret", stubCredentialHasher{}, env.users, stubAuthSessions{}))
+	auth := usecase.NewAuth("test-secret", stubCredentialHasher{}, env.users, stubAuthSessions{})
+	handler := NewHandler(env.oauth, auth)
 
 	publicWs := new(restful.WebService)
 	publicWs.Path("/api/v1/auth").Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
@@ -93,6 +95,7 @@ func newOAuthHandlerServer(t *testing.T, userID snow.ID) *oauthServer {
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
 	return &oauthServer{
+		auth:   auth,
 		env:    env,
 		server: server,
 		client: &http.Client{
@@ -251,6 +254,21 @@ func TestCompleteExchangesTheCodeForASession(t *testing.T) {
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":`)
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestCompleteRecordsOneOAuthLogin(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+	rec := &recordedAudit{}
+	server.auth.WithAudit(rec)
+	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute)}
+
+	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`)
+	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	require.Len(t, rec.entries, 1)
+	require.Equal(t, domain.AuditAuthLoginSucceeded, rec.entries[0].Action)
+	require.Equal(t, usecase.LoginMethodOAuth, rec.entries[0].Metadata["method"])
+	require.Equal(t, snow.ID(42).Base36(), rec.entries[0].TargetID)
 }
 
 func TestIdentityEndpoints(t *testing.T) {

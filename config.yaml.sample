@@ -159,7 +159,8 @@ OAUTH_GITHUB_CLIENT_SECRET: ''
 # are tokens per minute. RATE_LIMIT_STORE is `memory` (per process, default) or
 # `redis` (nipad-ee only; shared between instances). On nipad-ee an unset store
 # picks redis when RATE_LIMIT_REDIS_ADDR is set. A store failure never blocks
-# requests (fail open).
+# requests (fail open), except the auth scopes, which fall back to a
+# per-process store.
 RATE_LIMIT_ENABLED: true
 RATE_LIMIT_STORE: ''
 RATE_LIMIT_REDIS_ADDR: ''
@@ -173,9 +174,17 @@ RATE_LIMIT_TRUSTED_PROXIES: '127.0.0.1,::1'
 # Login, refresh, SSH challenge and registration routes, per client IP.
 RATE_LIMIT_AUTH_IP_PER_MINUTE: 10
 RATE_LIMIT_AUTH_IP_BURST: 10
-# Password and SSH logins per account email.
+# Password and SSH logins and password changes per account email and client
+# IP (email only when the client IP is unknown).
 RATE_LIMIT_AUTH_ID_PER_MINUTE: 0.33
 RATE_LIMIT_AUTH_ID_BURST: 5
+# Password and SSH logins per account email from every IP: a ceiling for
+# distributed guessing against one account.
+RATE_LIMIT_AUTH_EMAIL_PER_MINUTE: 1
+RATE_LIMIT_AUTH_EMAIL_BURST: 20
+# SaaS registration and confirmation resends per email address.
+RATE_LIMIT_REGISTER_EMAIL_PER_MINUTE: 0.1
+RATE_LIMIT_REGISTER_EMAIL_BURST: 3
 # Authenticated REST and gRPC calls, per user.
 RATE_LIMIT_API_USER_PER_MINUTE: 3000
 RATE_LIMIT_API_USER_BURST: 200

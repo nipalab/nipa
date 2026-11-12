@@ -30,10 +30,13 @@ const (
 	AuditUserAdminFlagsChanged    = "user.admin_flags.changed"
 	AuditUserDeactivated          = "user.deactivated"
 	AuditUserPasswordResetByAdmin = "user.password.reset_by_admin"
+	AuditUserPasswordChanged      = "user.password.changed"
 	AuditUserEmailChanged         = "user.email.changed"
 	AuditUserTermsAccepted        = "user.terms.accepted"
 
 	AuditAuthRefreshTokenReuseDetected = "auth.refresh_token.reuse_detected"
+	AuditAuthLoginSucceeded            = "auth.login.succeeded"
+	AuditAuthLoginFailed               = "auth.login.failed"
 
 	AuditProjectCreated = "project.created"
 	AuditProjectUpdated = "project.updated"

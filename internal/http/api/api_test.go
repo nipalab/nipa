@@ -172,7 +172,7 @@ func TestAPIRoutes(t *testing.T) {
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
-		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)).WithAudit(auditUc),
 		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}).WithAudit(auditUc),
 		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
@@ -2080,6 +2080,24 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		ranged := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?since=2000-01-01T00:00:00Z&until=2999-01-01T00:00:00Z&actor="+superID.Base36(), superLogin.AccessToken))
 		require.NotEmpty(t, ranged.Entries)
+
+		logins := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?action=auth.login&actor="+superID.Base36(), superLogin.AccessToken))
+		require.NotEmpty(t, logins.Entries)
+		require.Equal(t, domain.AuditAuthLoginSucceeded, logins.Entries[0].Action)
+		require.Equal(t, "127.0.0.1", logins.Entries[0].ClientIP, "the auth routes carry the request meta to the login usecase")
+		require.Equal(t, "password", logins.Entries[0].Metadata["method"])
+
+		failed := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?action=auth.login.failed", superLogin.AccessToken))
+		var ghost *model.AuditEntryResponse
+		for i, entry := range failed.Entries {
+			if entry.Metadata["email"] == "ghost@example.com" {
+				ghost = &failed.Entries[i]
+			}
+		}
+		require.NotNil(t, ghost)
+		require.Equal(t, "system", ghost.ActorType)
+		require.Equal(t, "127.0.0.1", ghost.ClientIP)
+		require.Empty(t, ghost.TargetID)
 	})
 
 	t.Run("service tokens and commit ancestry", func(t *testing.T) {

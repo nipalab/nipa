@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/sshkey"
@@ -93,13 +94,31 @@ func (a *Auth) WithLimiter(limiter *ratelimit.Limiter) *Auth {
 	return a
 }
 
+// throttleIdentity counts a login attempt per email and client IP, then
+// against the email-wide ceiling. Without a client IP the per-attempt bucket
+// is keyed on the email alone.
 func (a *Auth) throttleIdentity(ctx context.Context, email string) error {
-	email = strings.ToLower(strings.TrimSpace(email))
+	email = normalizeEmail(email)
 	if a.limiter == nil || email == "" {
 		return nil
 	}
-	sum := sha256.Sum256([]byte(email))
-	res := a.limiter.Allow(ctx, ratelimit.ScopeAuthID, hex.EncodeToString(sum[:]))
+	key := email
+	if meta, ok := domain.RequestMetaFromContext(ctx); ok && meta.ClientIP != "" {
+		key = email + "\x00" + meta.ClientIP
+	}
+	if err := allowLimit(ctx, a.limiter, ratelimit.ScopeAuthID, hashSubject(key)); err != nil {
+		return err
+	}
+	return allowLimit(ctx, a.limiter, ratelimit.ScopeAuthEmail, hashSubject(email))
+}
+
+func hashSubject(subject string) string {
+	sum := sha256.Sum256([]byte(subject))
+	return hex.EncodeToString(sum[:])
+}
+
+func allowLimit(ctx context.Context, limiter *ratelimit.Limiter, scope, subject string) error {
+	res := limiter.Allow(ctx, scope, subject)
 	if !res.Allowed {
 		return domain.NewErrorTooManyRequests(res.RetryAfter)
 	}
@@ -133,21 +152,34 @@ func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, passwor
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
 			a.spendPasswordCheck(password)
-			return nil, domain.NewErrorUser("invalid email or password")
+			a.recordLoginFailure(ctx, LoginMethodPassword, email, 0, "invalid_credentials")
+			return nil, errInvalidPassword()
 		}
 		return nil, err
 	}
+	if user.Password == "" {
+		a.spendPasswordCheck(password)
+		a.recordLoginFailure(ctx, LoginMethodPassword, email, user.ID, "no_password")
+		return nil, errInvalidPassword()
+	}
 	if !a.passwordHasher.Compare(user.Password, password) {
-		return nil, domain.NewErrorUser("invalid email or password")
+		a.recordLoginFailure(ctx, LoginMethodPassword, email, user.ID, "invalid_credentials")
+		return nil, errInvalidPassword()
 	}
 	if !user.EmailVerified {
+		a.recordLoginFailure(ctx, LoginMethodPassword, email, user.ID, "email_not_verified")
 		return nil, errEmailNotVerified()
 	}
-	return a.LoginResult(ctx, user)
+	return a.LoginResultVia(ctx, user, LoginMethodPassword)
 }
 
-// spendPasswordCheck burns a hash comparison for an unknown account so the
-// response time does not reveal whether the email is registered.
+func errInvalidPassword() error {
+	return domain.NewErrorUser("invalid email or password")
+}
+
+// spendPasswordCheck burns a hash comparison for an account without a usable
+// password so the response time does not reveal whether the email is
+// registered or how it signs in.
 func (a *Auth) spendPasswordCheck(password string) {
 	if a.passwordHasher == nil {
 		return
@@ -210,43 +242,80 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 	if a.sshKeyRepo == nil {
 		return nil, sshLoginFailed()
 	}
+	attempt := &sshAttempt{}
+	user, err := a.completeSSHKeyLogin(ctx, attempt, email, nonce, publicKey, signature)
+	if err != nil {
+		if attempt.reason != "" && a.audit != nil {
+			target := attempt.userID
+			if target == 0 && email != "" {
+				if found, err := a.userRepo.GetByEmail(ctx, email); err == nil {
+					target = found.ID
+				}
+			}
+			a.recordLoginFailure(ctx, LoginMethodSSHKey, email, target, attempt.reason)
+		}
+		return nil, err
+	}
+	return a.LoginResultVia(ctx, user, LoginMethodSSHKey)
+}
 
+// sshAttempt carries why a well-formed SSH login was refused and which
+// account it was aimed at, for the failed-login audit entry.
+type sshAttempt struct {
+	reason string
+	userID snow.ID
+}
+
+func (s *sshAttempt) fail(reason string, userID snow.ID) error {
+	s.reason = reason
+	s.userID = userID
+	return sshLoginFailed()
+}
+
+func (a *Auth) completeSSHKeyLogin(ctx context.Context, attempt *sshAttempt, email, nonce string, publicKey, signature []byte) (*domain.User, error) {
 	challenge, err := a.authRepo.ConsumeSSHLoginChallenge(ctx, nonce)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
-			return nil, sshLoginFailed()
+			return nil, attempt.fail("invalid_challenge", 0)
 		}
 		return nil, err
 	}
 	if challenge.Email != email || challenge.ExpiresAt.Before(time.Now()) {
-		return nil, sshLoginFailed()
+		return nil, attempt.fail("invalid_challenge", 0)
 	}
 
 	pub, err := ssh.ParsePublicKey(publicKey)
 	if err != nil {
-		return nil, sshLoginFailed()
+		return nil, attempt.fail("invalid_key", 0)
 	}
 	if err := sshkey.ValidateSupported(pub); err != nil {
-		return nil, sshLoginFailed()
+		return nil, attempt.fail("invalid_key", 0)
 	}
 
 	key, err := a.sshKeyRepo.GetByFingerprint(ctx, ssh.FingerprintSHA256(pub))
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
-			return nil, sshLoginFailed()
+			return nil, attempt.fail("unknown_key", 0)
 		}
 		return nil, err
 	}
 
 	user, err := a.sshUser(ctx, email, key.UserID)
 	if err != nil {
-		return nil, err
+		if domain.IsServerError(err) {
+			return nil, err
+		}
+		target := snow.ID(0)
+		if email == "" {
+			target = key.UserID
+		}
+		return nil, attempt.fail("key_mismatch", target)
 	}
 
 	if err := sshkey.Verify(pub, sshkey.LoginPayload(a.sshAudience, nonce), signature); err != nil {
-		return nil, sshLoginFailed()
+		return nil, attempt.fail("invalid_signature", user.ID)
 	}
-	return a.LoginResult(ctx, user)
+	return user, nil
 }
 
 // sshUser resolves the account an SSH login belongs to: the email is an
@@ -326,9 +395,64 @@ func errInvalidToken() error {
 	return domain.NewErrorUnauthorized("invalid token")
 }
 
-// LoginResult issues the access token and refresh token for an already authenticated
-// user. SaaS flows (registration verification, OAuth completion) reuse it after
-// establishing the account.
+// Login methods recorded on login audit entries.
+const (
+	LoginMethodPassword          = "password"
+	LoginMethodSSHKey            = "ssh_key"
+	LoginMethodOAuth             = "oauth"
+	LoginMethodEmailVerification = "email_verification"
+)
+
+// LoginResultVia issues a session for a user who just signed in with method
+// and records the login. SaaS flows (registration verification, OAuth
+// completion) call it after establishing the account.
+func (a *Auth) LoginResultVia(ctx context.Context, user *domain.User, method string) (*dto.LoginResult, error) {
+	result, err := a.LoginResult(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	a.recordLogin(ctx, domain.AuditEntry{
+		ActorType:   domain.AuditActorUser,
+		ActorUserID: domain.IDPtr(user.ID),
+		Action:      domain.AuditAuthLoginSucceeded,
+		TargetType:  domain.AuditTargetUser,
+		TargetID:    user.ID.Base36(),
+		Metadata:    map[string]any{"method": method},
+	})
+	return result, nil
+}
+
+func (a *Auth) recordLoginFailure(ctx context.Context, method, email string, userID snow.ID, reason string) {
+	entry := domain.AuditEntry{
+		ActorType: domain.AuditActorSystem,
+		Action:    domain.AuditAuthLoginFailed,
+		Metadata: map[string]any{
+			"method": method,
+			"email":  normalizeEmail(email),
+			"reason": reason,
+		},
+	}
+	if userID != 0 {
+		entry.TargetType = domain.AuditTargetUser
+		entry.TargetID = userID.Base36()
+	}
+	a.recordLogin(ctx, entry)
+}
+
+// recordLogin writes a login audit entry best-effort: a failed record is
+// logged and never changes the outcome of the login.
+func (a *Auth) recordLogin(ctx context.Context, entry domain.AuditEntry) {
+	if a.audit == nil {
+		return
+	}
+	if err := a.audit.Record(context.WithoutCancel(ctx), entry); err != nil {
+		obs.Log(ctx).Warn("audit login failed", "action", entry.Action, "target", entry.TargetID, "error", err)
+	}
+}
+
+// LoginResult issues the access token and refresh token for an already
+// authenticated user without recording a login; sign-in flows use
+// LoginResultVia.
 func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginResult, error) {
 	now := a.now()
 	secret, hash, err := newRefreshSecret()

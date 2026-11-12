@@ -159,7 +159,7 @@ func (h *Handler) Complete(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	result, err := h.auth.LoginResult(appCtx.Context(), user)
+	result, err := h.auth.LoginResultVia(appCtx.Context(), user, usecase.LoginMethodOAuth)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

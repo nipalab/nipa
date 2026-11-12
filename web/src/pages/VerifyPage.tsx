@@ -4,11 +4,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, establishSession } from '../api/client'
 import { useAuth } from '../auth'
 import { AuthCard, AuthLayout } from '../components/AuthLayout'
+import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, passwordLengthProblem } from '../components/PasswordFields'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage } from '../hooks'
 import { useResendVerification } from '../useResendVerification'
-
-const MIN_PASSWORD_LENGTH = 8
 
 export default function VerifyPage() {
   const { signIn } = useAuth()
@@ -26,8 +25,9 @@ export default function VerifyPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`)
+    const lengthProblem = passwordLengthProblem(password)
+    if (lengthProblem) {
+      setError(lengthProblem)
       return
     }
     if (password !== confirm) {
@@ -68,7 +68,9 @@ export default function VerifyPage() {
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
             />
-            <FormControl.Caption>At least {MIN_PASSWORD_LENGTH} characters.</FormControl.Caption>
+            <FormControl.Caption>
+              At least {MIN_PASSWORD_LENGTH} characters, at most {MAX_PASSWORD_BYTES} bytes.
+            </FormControl.Caption>
           </FormControl>
 
           <FormControl required>
