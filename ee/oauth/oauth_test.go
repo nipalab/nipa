@@ -63,6 +63,7 @@ func (s *stubUsers) Create(_ context.Context, user domain.User) (*domain.User, e
 type codeRow struct {
 	userID    snow.ID
 	expiresAt time.Time
+	binding   string
 }
 
 type stubIdentityRepo struct {
@@ -73,6 +74,7 @@ type stubIdentityRepo struct {
 	reset         []snow.ID
 	resetErr      error
 	codes         map[string]codeRow
+	consumeErr    error
 	deleted       []snow.ID
 	expiredSweeps int
 	terms         []domain.TermsAcceptance
@@ -168,18 +170,21 @@ func (s *stubIdentityRepo) SeedOwnerQuota(_ context.Context, userID snow.ID, quo
 	return nil
 }
 
-func (s *stubIdentityRepo) CreateOAuthLoginCode(_ context.Context, code string, userID snow.ID, expiresAt time.Time) error {
-	s.codes[code] = codeRow{userID: userID, expiresAt: expiresAt}
+func (s *stubIdentityRepo) CreateOAuthLoginCode(_ context.Context, code string, userID snow.ID, binding string, expiresAt time.Time) error {
+	s.codes[code] = codeRow{userID: userID, expiresAt: expiresAt, binding: binding}
 	return nil
 }
 
-func (s *stubIdentityRepo) ConsumeOAuthLoginCode(_ context.Context, code string) (snow.ID, time.Time, error) {
+func (s *stubIdentityRepo) ConsumeOAuthLoginCode(_ context.Context, code string) (snow.ID, time.Time, string, error) {
+	if s.consumeErr != nil {
+		return 0, time.Time{}, "", s.consumeErr
+	}
 	row, ok := s.codes[code]
 	if !ok {
-		return 0, time.Time{}, domain.NewErrorRecordNotFound()
+		return 0, time.Time{}, "", domain.NewErrorRecordNotFound()
 	}
 	delete(s.codes, code)
-	return row.userID, row.expiresAt, nil
+	return row.userID, row.expiresAt, row.binding, nil
 }
 
 func (s *stubIdentityRepo) DeleteExpiredOAuthLoginCodes(_ context.Context, _ time.Time) error {
@@ -256,7 +261,7 @@ func TestCallbackFallsBackToTheEmailLocalPartForTheName(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
 	require.Len(t, env.users.users, 1)
@@ -305,7 +310,7 @@ func TestCallbackCreatesAccountForNewSocialUser(t *testing.T) {
 	state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Equal(t, "/oauth/callback", strings.Split(target, "?")[0])
@@ -322,7 +327,7 @@ func TestCallbackCreatesAccountForNewSocialUser(t *testing.T) {
 	require.Equal(t, int64(15*1024*1024*1024), env.repo.quotas[created.ID])
 	require.Len(t, env.repo.identities, 1)
 
-	user, err := env.oauth.Complete(context.Background(), code)
+	user, err := env.oauth.Complete(context.Background(), code, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, user.ID)
 }
@@ -338,7 +343,7 @@ func TestCallbackLogsInExistingIdentity(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Empty(t, query.Get("new"))
@@ -354,7 +359,7 @@ func TestCallbackLinksVerifiedEmailToUnconfirmedAccount(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
 	require.Equal(t, []snow.ID{42}, env.repo.verified)
@@ -370,7 +375,7 @@ func TestCallbackRejectsUnverifiedProviderEmail(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.repo.identities)
@@ -383,7 +388,7 @@ func TestCallbackRejectsUnverifiedProviderEmailForNewAccount(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.users.users, "an unverified provider email must not pre-register (squat) an address")
@@ -397,7 +402,7 @@ func TestCallbackRequiresAnEmailForNewAccounts(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.users.users)
@@ -410,7 +415,7 @@ func TestCallbackLinkModeAttachesIdentity(t *testing.T) {
 	state, err := env.oauth.states.Sign("/settings/profile", 42, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Equal(t, "/settings/profile", strings.Split(target, "?")[0])
@@ -430,7 +435,7 @@ func TestCallbackLinkModeRejectsForeignIdentity(t *testing.T) {
 	state, err := env.oauth.states.Sign("/settings/profile", 42, testBinding, "")
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "identity_taken", redirectQuery(t, target).Get("oauth_error"))
 }
@@ -439,7 +444,7 @@ func TestCallbackRejectsTamperedState(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
 
-	_, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", "dGFtcGVyZWQ.c2ln", testBinding)
+	_, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", "dGFtcGVyZWQ.c2ln", testBinding)
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
@@ -449,15 +454,15 @@ func TestCallbackRejectsTamperedState(t *testing.T) {
 func TestCompleteRejectsUnknownAndExpiredCodes(t *testing.T) {
 	env := newOAuthEnv(t)
 
-	_, err := env.oauth.Complete(context.Background(), "missing")
+	_, err := env.oauth.Complete(context.Background(), "missing", testBinding)
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 404, domErr.Code)
 
 	env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com"}}
-	env.repo.codes["stale"] = codeRow{userID: 42, expiresAt: env.now.Add(-time.Second)}
-	_, err = env.oauth.Complete(context.Background(), "stale")
+	env.repo.codes["stale"] = codeRow{userID: 42, expiresAt: env.now.Add(-time.Second), binding: bindingHash(testBinding)}
+	_, err = env.oauth.Complete(context.Background(), "stale", testBinding)
 	require.Error(t, err)
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 404, domErr.Code)
@@ -509,6 +514,17 @@ func TestSafeRedirectRejectsBypasses(t *testing.T) {
 		"evil.example":                     "/",
 		"":                                 "/",
 		" /onboarding ":                    "/onboarding",
+		"///evil.example":                  "/",
+		"////evil.example":                 "/",
+		" //evil.example":                  "/",
+		"/a/..//evil.example":              "/",
+		"/a/../evil.example":               "/",
+		"/a//b":                            "/",
+		"/./onboarding":                    "/",
+		"/a/%2e%2e/b":                      "/",
+		"/settings/":                       "/settings/",
+		"/settings?next=//x":               "/settings?next=//x",
+		"/oauth/callback#..":               "/oauth/callback#..",
 	}
 	for target, want := range cases {
 		require.Equal(t, want, safeRedirect(target), "safeRedirect(%q)", target)
@@ -532,6 +548,101 @@ func TestStateRoundTripAndExpiry(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStateKeyIsDerivedFromTheJWTKey(t *testing.T) {
+	signer := newStateSigner("secret")
+	require.Len(t, signer.secret, 32)
+	require.NotEqual(t, []byte("secret"), signer.secret)
+	require.Equal(t, deriveStateKey("secret"), signer.secret)
+	require.NotEqual(t, deriveStateKey("other"), signer.secret)
+
+	legacy := &stateSigner{secret: []byte("secret"), now: time.Now}
+	state, err := legacy.Sign("/onboarding", 0, testBinding, "")
+	require.NoError(t, err)
+	_, err = signer.Verify(state)
+	require.Error(t, err, "a state signed with the raw JWT key is rejected")
+
+	state, err = signer.Sign("/onboarding", 0, testBinding, "")
+	require.NoError(t, err)
+	_, err = legacy.Verify(state)
+	require.Error(t, err)
+	data, err := signer.Verify(state)
+	require.NoError(t, err)
+	require.True(t, data.bound(testBinding))
+}
+
+func TestCallbackBindsTheLoginCodeToTheBrowser(t *testing.T) {
+	env := newOAuthEnv(t)
+	env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+	issue := func() string {
+		state, err := env.oauth.states.Sign("/", 0, testBinding, "")
+		require.NoError(t, err)
+		target, loginCode, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		require.NoError(t, err)
+		require.True(t, loginCode)
+		code := redirectQuery(t, target).Get("code")
+		require.Equal(t, bindingHash(testBinding), env.repo.codes[code].binding)
+		require.NotEqual(t, testBinding, env.repo.codes[code].binding)
+		return code
+	}
+
+	code := issue()
+	_, err := env.oauth.Complete(context.Background(), code, "")
+	require.Error(t, err, "no cookie")
+	_, err = env.oauth.Complete(context.Background(), code, testBinding)
+	require.Error(t, err, "the failed attempt consumed the code")
+
+	code = issue()
+	_, err = env.oauth.Complete(context.Background(), code, "another-browser")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+
+	code = issue()
+	user, err := env.oauth.Complete(context.Background(), code, testBinding)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(42), user.ID)
+	_, err = env.oauth.Complete(context.Background(), code, testBinding)
+	require.Error(t, err, "single use")
+
+	env.repo.codes["legacy"] = codeRow{userID: 42, expiresAt: env.now.Add(time.Minute)}
+	_, err = env.oauth.Complete(context.Background(), "legacy", testBinding)
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code, "a code stored without a binding is rejected")
+}
+
+func TestCallbackReportsNoLoginCodeForLinksAndErrors(t *testing.T) {
+	env := newOAuthEnv(t)
+	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+	state, err := env.oauth.states.Sign("/settings/profile", 42, testBinding, "")
+	require.NoError(t, err)
+	target, loginCode, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	require.NoError(t, err)
+	require.False(t, loginCode)
+	require.Equal(t, "/settings/profile?oauth=linked", target)
+
+	state, err = env.oauth.states.Sign("/?code=forged", 0, testBinding, "")
+	require.NoError(t, err)
+	env.provider.profile = &Profile{AccountID: "2002"}
+	target, loginCode, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	require.NoError(t, err)
+	require.False(t, loginCode, "a redirect that already carries code= is not a login handoff")
+	require.Contains(t, target, "oauth_error=email_required")
+
+	_, loginCode, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, "other")
+	require.Error(t, err)
+	require.False(t, loginCode)
+}
+
+func TestCompletePropagatesRepositoryErrors(t *testing.T) {
+	env := newOAuthEnv(t)
+	wantErr := errors.New("db down")
+	env.repo.consumeErr = wantErr
+
+	_, err := env.oauth.Complete(context.Background(), "code", testBinding)
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestCallbackFailsWhenCredentialResetFails(t *testing.T) {
 	env := newOAuthEnv(t)
 	user := &domain.User{ID: 42, Email: "alice@example.com", EmailVerified: false}
@@ -542,7 +653,7 @@ func TestCallbackFailsWhenCredentialResetFails(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.ErrorIs(t, err, wantErr)
 	require.Empty(t, env.repo.verified, "the account must not be activated")
 	require.Empty(t, env.repo.identities, "the identity must not be linked")
@@ -556,7 +667,7 @@ func TestCallbackKeepsCredentialsOfVerifiedAccount(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Empty(t, env.repo.reset)
 }
@@ -583,7 +694,7 @@ func TestCallbackRecordsASystemAuditForNewAccounts(t *testing.T) {
 		state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding, "")
 		require.NoError(t, err)
 
-		_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 		if recErr != nil {
 			require.Error(t, err)
 			continue

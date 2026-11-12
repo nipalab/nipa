@@ -108,9 +108,15 @@ not ask existing users again; the terms announce material changes by email.
    `GET /api/v1/auth/oauth/{provider}/start?redirect=/oauth/callback?from=…`
    (anonymous flow): the redirect target must be the SPA callback route that
    exchanges the one-time code, and the post-login destination rides along in
-   its own `from` parameter. The endpoint sets a signed state (HMAC with
-   `JWT_KEY`, 10 min TTL, relative-path-only redirect) and 302s to the
-   provider.
+   its own `from` parameter. The endpoint sets a signed state (HMAC-SHA256
+   with a key derived from `JWT_KEY` by HKDF-SHA256, label
+   `nipa oauth state v1`, 10 min TTL) plus the HttpOnly `nipa_oauth_binding`
+   cookie (Lax, path `/api/v1/auth/oauth`) whose hash is in the state, and
+   302s to the provider. The redirect must be a relative path: absolute URLs,
+   anything starting with `//` (`///host` too), backslashes, control
+   characters and empty, `.` or `..` path segments (`/a/..//host`) fall back
+   to `/` instead of being cleaned. States signed by an older binary (raw
+   `JWT_KEY`) fail once after a deploy; the user starts the sign-in again.
 2. `GET /api/v1/auth/oauth/{provider}/callback?code&state` exchanges the code,
    fetches the profile (Google userinfo; GitHub `/user` + verified primary
    email) and resolves the account:
@@ -128,12 +134,21 @@ not ask existing users again; the terms announce material changes by email.
    `email_required` for untrusted provider emails and `identity_taken` when a
    link attempt targets a provider account linked elsewhere.
 3. The callback never puts a token in a URL: it stores a one-time
-   `oauth_login_codes` row (2 min TTL, single use) and redirects to
-   `<redirect>?code=…` (new accounts only), i.e. to
+   `oauth_login_codes` row (2 min TTL, single use, `binding_hash` = hash of
+   the browser's binding cookie) and redirects to
+   `<redirect>?code=…` (`&new=1` for new accounts only), i.e. to
    `/oauth/callback?from=…&code=…`. The SPA's `/oauth/callback` page posts
-   `POST /api/v1/auth/oauth/complete {code}`, receives the standard login
-   result and returns to the `from` destination (`/onboarding` for new
-   accounts).
+   `POST /api/v1/auth/oauth/complete {code}` (same-origin, so the binding
+   cookie goes along), receives the standard login result and returns to the
+   `from` destination (`/onboarding` for new accounts).
+4. Login CSRF guard: the callback keeps the binding cookie only when it issued
+   a login code (the link flow and every error clear it). `complete` consumes
+   the code, requires the cookie to match the stored hash (constant time) and
+   always clears the cookie, so a code handed to another browser is refused
+   with the same 404 as an unknown or expired code (and is burned). A code
+   row without a `binding_hash` (written by the previous binary during a
+   blue/green flip) is rejected too: in-flight logins fail once at deploy and
+   the user retries.
 
 ## Unified onboarding
 
@@ -208,7 +223,9 @@ new migration files):
 - `email_verifications (user_id PK, token_hash UNIQUE, expires_at)`
 - `user_identities (id, user_id, provider, provider_account_id, email,
   UNIQUE(provider, provider_account_id))`
-- `oauth_login_codes (code PK, user_id, expires_at)`
+- `oauth_login_codes (code PK, user_id, expires_at, binding_hash)`;
+  `binding_hash` (nullable) came with postgres migration
+  `000005_oauth_login_code_binding`.
 
 All of these are postgres-only apart from the `users` columns, which exist in
 both dialects because the login gate lives in shared `internal/usecase/auth.go`.

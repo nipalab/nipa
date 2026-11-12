@@ -18,6 +18,13 @@ func ClaimFromContext(ctx context.Context) (Claims, bool) {
 	return claim, ok
 }
 
+// Access tokens carry these registered claims; validation does not enforce
+// them yet, so tokens issued before they were added stay valid.
+const (
+	TokenIssuer   = "nipad"
+	TokenAudience = "nipa-api"
+)
+
 type Claims struct {
 	jwt.RegisteredClaims
 	UserID       snow.ID   `json:"user_id"`

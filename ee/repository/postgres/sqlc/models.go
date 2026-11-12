@@ -273,10 +273,11 @@ type MergeRequestThread struct {
 }
 
 type OauthLoginCode struct {
-	Code      string    `json:"code"`
-	UserID    int64     `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	Code        string         `json:"code"`
+	UserID      int64          `json:"user_id"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+	BindingHash sql.NullString `json:"binding_hash"`
 }
 
 type OrgBillingOwner struct {

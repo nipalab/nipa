@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link as PrimerLink, Spinner, Stack } from '@primer/react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { establishSession } from '../api/client'
+import { ApiError, establishSession } from '../api/client'
 import { useAuth } from '../auth'
 import { AuthLayout } from '../components/AuthLayout'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage } from '../hooks'
 import { OAUTH_SIGNIN_ERRORS } from '../oauth'
 import { APP_HOME } from '../routes'
+
+const EXPIRED_CODE =
+  'This sign-in link has expired, was already used or was opened in a different browser. Start the sign-in again from this browser.'
 
 export default function OAuthCallbackPage() {
   const { signIn } = useAuth()
@@ -40,7 +43,7 @@ export default function OAuthCallbackPage() {
         navigate(isNew ? '/onboarding' : from, { replace: true })
       })
       .catch((err: unknown) => {
-        setError(errorMessage(err))
+        setError(err instanceof ApiError && err.status === 404 ? EXPIRED_CODE : errorMessage(err))
       })
   }, [code, isNew, oauthError, from, signIn, navigate])
 

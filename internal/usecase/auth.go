@@ -470,6 +470,8 @@ func (a *Auth) loginResult(user *domain.User, refreshToken string) (*dto.LoginRe
 	timeStart := time.Now()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    domain.TokenIssuer,
+			Audience:  jwt.ClaimStrings{domain.TokenAudience},
 			Subject:   user.ID.Base36(),
 			IssuedAt:  jwt.NewNumericDate(timeStart),
 			ExpiresAt: jwt.NewNumericDate(timeStart.Add(tokenExpirationMinutes * time.Minute)),

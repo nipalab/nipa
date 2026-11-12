@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -210,15 +211,34 @@ func (s *RegistrationRepositorySuite) TestOAuthLoginCodeSingleUse() {
 	user := s.createUser()
 
 	expiresAt := time.Now().Add(2 * time.Minute)
-	s.Require().NoError(repo.CreateOAuthLoginCode(ctx, "code-1", user.ID, expiresAt))
+	s.Require().NoError(repo.CreateOAuthLoginCode(ctx, "code-1", user.ID, "binding-hash", expiresAt))
 
-	userID, gotExpiry, err := repo.ConsumeOAuthLoginCode(ctx, "code-1")
+	userID, gotExpiry, binding, err := repo.ConsumeOAuthLoginCode(ctx, "code-1")
 	s.Require().NoError(err)
 	s.Equal(user.ID, userID)
 	s.WithinDuration(expiresAt, gotExpiry, time.Second)
+	s.Equal("binding-hash", binding)
 
-	_, _, err = repo.ConsumeOAuthLoginCode(ctx, "code-1")
+	_, _, _, err = repo.ConsumeOAuthLoginCode(ctx, "code-1")
 	requireRecordNotFound(s.T(), err)
+}
+
+func (s *RegistrationRepositorySuite) TestOAuthLoginCodeWithoutBinding() {
+	ctx := context.Background()
+	repo := NewRegistrationRepository(s.db)
+	user := s.createUser()
+
+	s.Require().NoError(repo.CreateOAuthLoginCode(ctx, "code-legacy", user.ID, "", time.Now().Add(time.Minute)))
+
+	var stored sql.NullString
+	s.Require().NoError(s.db.QueryRowContext(ctx,
+		"SELECT binding_hash FROM oauth_login_codes WHERE code = $1", "code-legacy").Scan(&stored))
+	s.False(stored.Valid)
+
+	userID, _, binding, err := repo.ConsumeOAuthLoginCode(ctx, "code-legacy")
+	s.Require().NoError(err)
+	s.Equal(user.ID, userID)
+	s.Empty(binding)
 }
 
 func (s *RegistrationRepositorySuite) TestRegistrationWritesJoinTheTransaction() {

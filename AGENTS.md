@@ -538,7 +538,10 @@ inside the statement that changes the account: `UserUpdatePassword`
 `ResetUnverifiedCredentials`), `UserUpdateEmail`, `UserDeleteByID`
 (deactivate) and `UserUpdateAdminFlags` (only when a flag changes).
 `Auth.LoginResult` signs it as the `tv` claim (absent = 0, so older tokens
-stay valid until a bump). `Auth.ValidateToken`, the only access-token check
+stay valid until a bump) next to `iss` `nipad` / `aud` `nipa-api`
+(`domain.TokenIssuer`/`TokenAudience`), which are set but not enforced yet:
+`ValidateToken` checks them one release later, once no token from a binary
+without them can still be live. `Auth.ValidateToken`, the only access-token check
 (REST `AuthFilter`, gRPC `JWTUnary`/`JWTStream`), loads the user by id on
 every request (no cache): a missing (deleted) user or a `tv` mismatch is a 401
 `invalid token`, and `IsAdmin`/`IsSuperAdmin` are overwritten from the row, so
@@ -685,7 +688,9 @@ off) in
 the signed state, and `GET/POST /api/v1/me/terms` (`ee/registration/terms.go`)
 back the SPA `TermsGate` in `AppShell` that asks accounts without an
 acceptance once (`user.terms.accepted` audit). `ee/oauth`
-serves the social flow: signed-HMAC state (JWT key, relative redirects only)
+serves the social flow: signed-HMAC state (key = HKDF-SHA256 of the JWT key,
+label `nipa oauth state v1`; relative redirects only, anything starting with
+`//` or holding empty/`.`/`..` segments falls back to `/`)
 through `GET /api/v1/auth/oauth/{provider}/start`, Google userinfo / GitHub
 `/user` + verified-email exchange in the callback, account resolution (linked
 identity → verified-email match — an unconfirmed account is activated — →
@@ -697,6 +702,12 @@ quota), a one-time `oauth_login_codes` handoff (token never in a URL) and
 passwordless account (409). Both OAuth flows bind the callback to the starting browser: `Start` sets an
 HttpOnly `nipa_oauth_binding` cookie (Lax, path `/api/v1/auth/oauth`) whose hash is
 in the signed state, and `Callback` refuses a state without the matching cookie.
+A login code stores that hash too (`oauth_login_codes.binding_hash`, postgres
+migration `000005`): the callback keeps the cookie only when it issued a code
+(link flow and errors clear it), and `Complete` consumes the code, requires
+the cookie to match (constant time, no stored hash = invalid, so codes from the
+previous color fail once at deploy) and always clears the cookie, so a code
+handed to another browser cannot sign it in (login CSRF).
 Linking an existing unconfirmed account clears its password, pending tokens and
 sessions first. Registering an address that already has an account always looks
 like a success (an unconfirmed one is just re-issued a token, a confirmed one
