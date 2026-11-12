@@ -65,6 +65,7 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 			To(api.Wrap(h.Complete)).
 			Reads(completeRequest{}).
 			Doc("Exchange an OAuth login code for a session").
+			Notes("Requires the binding cookie of the browser that started the flow; the cookie is cleared").
 			Returns(nethttp.StatusOK, "access token", model.LoginResponse{}).
 			Operation("completeOAuth").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
@@ -128,19 +129,24 @@ func (h *Handler) Start(appCtx httpApp.AppContext) {
 	nethttp.Redirect(appCtx.ResponseWriter(), appCtx.Request(), target, nethttp.StatusFound)
 }
 
-func (h *Handler) Callback(appCtx httpApp.AppContext) {
-	binding := ""
+func bindingFromRequest(appCtx httpApp.AppContext) string {
 	if cookie, err := appCtx.Cookie(bindingCookieName); err == nil {
-		binding = cookie.Value
+		return cookie.Value
 	}
-	target, err := h.oauth.Callback(
+	return ""
+}
+
+func (h *Handler) Callback(appCtx httpApp.AppContext) {
+	target, loginCode, err := h.oauth.Callback(
 		appCtx.Context(),
 		appCtx.PathParameter("provider"),
 		appCtx.QueryParameter("code"),
 		appCtx.QueryParameter("state"),
-		binding,
+		bindingFromRequest(appCtx),
 	)
-	appCtx.SetCookie(bindingCookie("", -1))
+	if err != nil || !loginCode {
+		appCtx.SetCookie(bindingCookie("", -1))
+	}
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -149,12 +155,14 @@ func (h *Handler) Callback(appCtx httpApp.AppContext) {
 }
 
 func (h *Handler) Complete(appCtx httpApp.AppContext) {
+	binding := bindingFromRequest(appCtx)
+	appCtx.SetCookie(bindingCookie("", -1))
 	body := &completeRequest{}
 	if err := appCtx.ReadJson(body); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	user, err := h.oauth.Complete(appCtx.Context(), body.Code)
+	user, err := h.oauth.Complete(appCtx.Context(), body.Code, binding)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

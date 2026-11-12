@@ -67,18 +67,24 @@ func (q *Queries) EmailVerificationUpsert(ctx context.Context, arg EmailVerifica
 }
 
 const oAuthLoginCodeCreate = `-- name: OAuthLoginCodeCreate :exec
-INSERT INTO oauth_login_codes (code, user_id, expires_at)
-VALUES ($1, $2, $3)
+INSERT INTO oauth_login_codes (code, user_id, expires_at, binding_hash)
+VALUES ($1, $2, $3, $4)
 `
 
 type OAuthLoginCodeCreateParams struct {
-	Code      string    `json:"code"`
-	UserID    int64     `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Code        string         `json:"code"`
+	UserID      int64          `json:"user_id"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	BindingHash sql.NullString `json:"binding_hash"`
 }
 
 func (q *Queries) OAuthLoginCodeCreate(ctx context.Context, arg OAuthLoginCodeCreateParams) error {
-	_, err := q.db.ExecContext(ctx, oAuthLoginCodeCreate, arg.Code, arg.UserID, arg.ExpiresAt)
+	_, err := q.db.ExecContext(ctx, oAuthLoginCodeCreate,
+		arg.Code,
+		arg.UserID,
+		arg.ExpiresAt,
+		arg.BindingHash,
+	)
 	return err
 }
 
@@ -95,7 +101,7 @@ func (q *Queries) OAuthLoginCodeDeleteExpired(ctx context.Context, before time.T
 }
 
 const oAuthLoginCodeGetAndDelete = `-- name: OAuthLoginCodeGetAndDelete :one
-DELETE FROM oauth_login_codes WHERE code = $1 RETURNING code, user_id, expires_at, created_at
+DELETE FROM oauth_login_codes WHERE code = $1 RETURNING code, user_id, expires_at, created_at, binding_hash
 `
 
 func (q *Queries) OAuthLoginCodeGetAndDelete(ctx context.Context, code string) (OauthLoginCode, error) {
@@ -106,6 +112,7 @@ func (q *Queries) OAuthLoginCodeGetAndDelete(ctx context.Context, code string) (
 		&i.UserID,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.BindingHash,
 	)
 	return i, err
 }

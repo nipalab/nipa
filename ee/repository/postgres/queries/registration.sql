@@ -40,8 +40,8 @@ RETURNING id;
 DELETE FROM user_identities WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id);
 
 -- name: OAuthLoginCodeCreate :exec
-INSERT INTO oauth_login_codes (code, user_id, expires_at)
-VALUES (sqlc.arg(code), sqlc.arg(user_id), sqlc.arg(expires_at));
+INSERT INTO oauth_login_codes (code, user_id, expires_at, binding_hash)
+VALUES (sqlc.arg(code), sqlc.arg(user_id), sqlc.arg(expires_at), sqlc.narg(binding_hash));
 
 -- name: OAuthLoginCodeGetAndDelete :one
 DELETE FROM oauth_login_codes WHERE code = sqlc.arg(code) RETURNING *;

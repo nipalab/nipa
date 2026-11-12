@@ -163,21 +163,22 @@ func (r *RegistrationRepository) DeleteIdentity(ctx context.Context, id, userID 
 	return nil
 }
 
-func (r *RegistrationRepository) CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, expiresAt time.Time) error {
+func (r *RegistrationRepository) CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, bindingHash string, expiresAt time.Time) error {
 	err := r.queries.OAuthLoginCodeCreate(ctx, sqlcPostgres.OAuthLoginCodeCreateParams{
-		Code:      code,
-		UserID:    userID.Int64(),
-		ExpiresAt: expiresAt,
+		Code:        code,
+		UserID:      userID.Int64(),
+		ExpiresAt:   expiresAt,
+		BindingHash: sql.NullString{String: bindingHash, Valid: bindingHash != ""},
 	})
 	return handleError(err)
 }
 
-func (r *RegistrationRepository) ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, error) {
+func (r *RegistrationRepository) ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, string, error) {
 	row, err := r.queries.OAuthLoginCodeGetAndDelete(ctx, code)
 	if err != nil {
-		return 0, time.Time{}, handleError(err)
+		return 0, time.Time{}, "", handleError(err)
 	}
-	return snow.ID(row.UserID), row.ExpiresAt, nil
+	return snow.ID(row.UserID), row.ExpiresAt, row.BindingHash.String, nil
 }
 
 func (r *RegistrationRepository) DeleteExpiredOAuthLoginCodes(ctx context.Context, before time.Time) error {

@@ -227,6 +227,43 @@ func TestAuth_LoginResult_CarriesTokenVersion(t *testing.T) {
 	require.Equal(t, int64(7), parseAccessToken(t, got.AccessToken, "secret").TokenVersion)
 }
 
+func TestAuth_LoginResult_CarriesIssuerAndAudience(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	authRepo := NewMockauthRepository(ctrl)
+	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+
+	got, err := NewAuth("secret", nil, nil, authRepo).LoginResult(context.Background(), &domain.User{ID: 42})
+	require.NoError(t, err)
+	claims := parseAccessToken(t, got.AccessToken, "secret")
+	require.Equal(t, domain.TokenIssuer, claims.Issuer)
+	require.Equal(t, jwt.ClaimStrings{domain.TokenAudience}, claims.Audience)
+	require.Equal(t, snow.ID(42).Base36(), claims.Subject)
+
+	validated, err := authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), got.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, domain.TokenIssuer, validated.Issuer)
+}
+
+func TestAuth_ValidateToken_AcceptsTokensWithoutIssuerAndAudience(t *testing.T) {
+	token := signToken(t, jwt.SigningMethodHS256, []byte("secret"), validTokenClaims(0))
+	payload, err := jwt.NewParser().DecodeSegment(strings.Split(token, ".")[1])
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"iss"`)
+	require.NotContains(t, string(payload), `"aud"`)
+
+	got, err := authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), token)
+	require.NoError(t, err)
+	require.Empty(t, got.Issuer)
+	require.Empty(t, got.Audience)
+
+	foreign := validTokenClaims(0)
+	foreign.Issuer = "someone-else"
+	foreign.Audience = jwt.ClaimStrings{"other"}
+	token = signToken(t, jwt.SigningMethodHS256, []byte("secret"), foreign)
+	_, err = authWithUser(t, &domain.User{ID: 42}, nil).ValidateToken(context.Background(), token)
+	require.NoError(t, err, "iss/aud are not enforced yet")
+}
+
 func assertUnauthorizedToken(t *testing.T, err error) {
 	t.Helper()
 	var domErr *domain.Error

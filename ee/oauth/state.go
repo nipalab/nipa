@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -15,6 +16,8 @@ import (
 
 // stateTTL bounds how long an authorization round-trip may take.
 const stateTTL = 10 * time.Minute
+
+const stateKeyLabel = "nipa oauth state v1"
 
 // stateData travels through the OAuth provider as the signed state parameter:
 // it carries the SPA path to return to and, for account linking, the nipad user
@@ -34,7 +37,15 @@ type stateSigner struct {
 }
 
 func newStateSigner(secret string) *stateSigner {
-	return &stateSigner{secret: []byte(secret), now: time.Now}
+	return &stateSigner{secret: deriveStateKey(secret), now: time.Now}
+}
+
+func deriveStateKey(secret string) []byte {
+	key, err := hkdf.Key(sha256.New, []byte(secret), nil, stateKeyLabel, sha256.Size)
+	if err != nil {
+		panic(err)
+	}
+	return key
 }
 
 // Sign builds a signed state for the given SPA redirect and optional link user
@@ -95,6 +106,13 @@ func (d *stateData) bound(binding string) bool {
 	return hmac.Equal([]byte(d.Binding), []byte(bindingHash(binding)))
 }
 
+func bindingMatches(storedHash, binding string) bool {
+	if storedHash == "" || binding == "" {
+		return false
+	}
+	return hmac.Equal([]byte(storedHash), []byte(bindingHash(binding)))
+}
+
 func bindingHash(binding string) string {
 	if binding == "" {
 		return ""
@@ -119,17 +137,35 @@ func (s *stateSigner) signature(encoded string) string {
 
 // safeRedirect only accepts relative SPA paths, so a forged state can never
 // turn the callback into an open redirect. Besides absolute URLs and
-// protocol-relative targets ("//host"), backslashes and ASCII control
-// characters are rejected: browsers normalize "\" to "/" and strip tabs, so
-// "/\evil.com" or "/\t/evil.com" would otherwise resolve off-site.
+// protocol-relative targets ("//host", "///host"), backslashes and ASCII
+// control characters are rejected: browsers normalize "\" to "/" and strip
+// tabs, so "/\evil.com" or "/\t/evil.com" would otherwise resolve off-site.
+// Paths with empty, "." or ".." segments are rejected rather than cleaned, so
+// the result never depends on later normalization ("/a/..//host").
 func safeRedirect(target string) string {
 	target = strings.TrimSpace(target)
+	if strings.HasPrefix(target, "//") || strings.Contains(target, `\`) {
+		return "/"
+	}
 	parsed, err := url.Parse(target)
 	if err != nil || parsed.Scheme != "" || parsed.Host != "" || parsed.Opaque != "" ||
-		!strings.HasPrefix(parsed.Path, "/") || strings.Contains(target, `\`) {
+		!strings.HasPrefix(parsed.Path, "/") || !cleanPath(parsed.Path) {
 		return "/"
 	}
 	return target
+}
+
+func cleanPath(p string) bool {
+	segments := strings.Split(strings.TrimSuffix(p[1:], "/"), "/")
+	if len(segments) == 1 && segments[0] == "" {
+		return true
+	}
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func errInvalidState() error {

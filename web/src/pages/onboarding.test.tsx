@@ -354,11 +354,11 @@ describe('OnboardingPage', () => {
 
 describe('OAuthCallbackPage', () => {
   it('exchanges the code and lands on onboarding for new accounts', async () => {
-    const calls: { url: string; method: string; body: unknown }[] = []
+    const calls: { url: string; method: string; body: unknown; credentials?: RequestCredentials }[] = []
     stubRoutes((url, init) => {
       const method = init?.method ?? 'GET'
       if (url.endsWith('/api/v1/auth/oauth/complete') && method === 'POST') {
-        calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined, credentials: init?.credentials })
         return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
       }
       return null
@@ -367,6 +367,20 @@ describe('OAuthCallbackPage', () => {
     const { container } = await renderApp('/oauth/callback?code=xyz&new=1')
     await waitForText(container, 'Name your workspace')
     expect(calls[0]?.body).toEqual({ code: 'xyz' })
+    expect(calls[0]?.credentials).toBe('same-origin')
+  })
+
+  it('explains a code that does not belong to this browser', async () => {
+    stubRoutes((url, init) => {
+      if (url.endsWith('/api/v1/auth/oauth/complete') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ code: 404, message: 'invalid or expired login code' }, 404)
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/oauth/callback?code=xyz')
+    await waitForText(container, 'Sign-in failed')
+    expect(container.textContent).toContain('opened in a different browser')
   })
 
   it('surfaces provider linking errors', async () => {

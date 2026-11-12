@@ -48,7 +48,7 @@ edition.
 | `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them |
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
-| `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
+| `/oauth/callback` | social login handoff | exchanges `?code=` for a session (same-origin, carrying the binding cookie), returns to the `?from=` destination, shows `email_conflict`/`email_required` guidance and a "start again from this browser" message when `complete` answers 404 |
 | `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/dashboard` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read; org owners also get a Repositories / Settings tab bar |

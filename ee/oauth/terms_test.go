@@ -58,7 +58,7 @@ func TestCallbackRecordsTermsForANewAccount(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Len(t, env.users.users, 1)
 	require.Equal(t, []domain.TermsAcceptance{{
@@ -76,7 +76,7 @@ func TestCallbackWithoutAcceptanceRecordsNothing(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "")
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Len(t, env.users.users, 1)
 	require.Empty(t, env.repo.terms)
@@ -89,7 +89,7 @@ func TestCallbackIgnoresAStaleTermsVersion(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, "2020-01-01")
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Empty(t, env.repo.terms)
 }
@@ -105,7 +105,7 @@ func TestCallbackRecordsTermsForExistingAccounts(t *testing.T) {
 	state, err := env.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Len(t, env.repo.terms, 1)
 	require.Equal(t, user.ID, env.repo.terms[0].UserID)
@@ -116,7 +116,7 @@ func TestCallbackRecordsTermsForExistingAccounts(t *testing.T) {
 	state, err = matched.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
 
-	_, err = matched.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = matched.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Len(t, matched.repo.terms, 1)
 	require.Equal(t, "oauth:github", matched.repo.terms[0].Source)
@@ -128,7 +128,7 @@ func TestCallbackTermsWriteFailures(t *testing.T) {
 	newAccount.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
 	state, err := newAccount.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
-	_, err = newAccount.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = newAccount.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.EqualError(t, err, "terms down")
 
 	existing := newTermsOAuthEnv(t)
@@ -139,7 +139,7 @@ func TestCallbackTermsWriteFailures(t *testing.T) {
 	existing.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
 	state, err = existing.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
-	_, err = existing.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = existing.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.EqualError(t, err, "terms down")
 
 	matched := newTermsOAuthEnv(t)
@@ -148,7 +148,7 @@ func TestCallbackTermsWriteFailures(t *testing.T) {
 	matched.provider.profile = &Profile{AccountID: "2002", Email: "bob@example.com", EmailVerified: true}
 	state, err = matched.oauth.states.Sign("/", 0, testBinding, testTermsVersion)
 	require.NoError(t, err)
-	_, err = matched.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+	_, _, err = matched.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.EqualError(t, err, "terms down")
 }
 

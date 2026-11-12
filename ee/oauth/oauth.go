@@ -34,8 +34,8 @@ type identityRepository interface {
 	ResetUnverifiedCredentials(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
 	RecordTermsAcceptance(ctx context.Context, acceptance domain.TermsAcceptance) error
-	CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, expiresAt time.Time) error
-	ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, error)
+	CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, bindingHash string, expiresAt time.Time) error
+	ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, string, error)
 	DeleteExpiredOAuthLoginCodes(ctx context.Context, before time.Time) error
 }
 
@@ -132,25 +132,27 @@ func (o *OAuth) Start(provider, redirect string, linkUser snow.ID, acceptTerms b
 // Callback completes the provider round-trip and returns the SPA URL the
 // browser must be sent to next. Expected outcomes are encoded as query
 // parameters (?code=… for a login handoff, ?oauth=linked, ?oauth_error=…);
-// only transport-level failures return an error.
-func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding string) (string, error) {
+// only transport-level failures return an error. loginCode reports a login
+// handoff: the code is bound to the browser's binding, which must then be kept
+// until Complete.
+func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding string) (target string, loginCode bool, err error) {
 	p, ok := o.providers[provider]
 	if !ok {
-		return "", domain.NewErrorNotFound("oauth provider is not enabled")
+		return "", false, domain.NewErrorNotFound("oauth provider is not enabled")
 	}
 	state, err := o.states.Verify(rawState)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if !state.bound(binding) {
-		return "", errInvalidState()
+		return "", false, errInvalidState()
 	}
 	if strings.TrimSpace(code) == "" {
-		return "", domain.NewErrorUser("authorization code is required")
+		return "", false, domain.NewErrorUser("authorization code is required")
 	}
 	profile, err := p.Exchange(ctx, code)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	base := state.Redirect
@@ -160,70 +162,72 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding 
 	switch {
 	case err == nil:
 		if linkUser != 0 && identity.UserID != linkUser {
-			return withQueryParam(base, "oauth_error", "identity_taken"), nil
+			return withQueryParam(base, "oauth_error", "identity_taken"), false, nil
 		}
 		if linkUser != 0 {
-			return withQueryParam(base, "oauth", "linked"), nil
+			return withQueryParam(base, "oauth", "linked"), false, nil
 		}
 		if err := o.recordTerms(ctx, identity.UserID, provider, state); err != nil {
-			return "", err
+			return "", false, err
 		}
-		return o.issueLoginCode(ctx, identity.UserID, base, false)
+		return o.issueLoginCode(ctx, identity.UserID, base, binding, false)
 	case !domain.IsErrorNotFound(err):
-		return "", err
+		return "", false, err
 	}
 
 	if linkUser != 0 {
 		if err := o.attachIdentity(ctx, linkUser, provider, profile, false); err != nil {
-			return "", err
+			return "", false, err
 		}
-		return withQueryParam(base, "oauth", "linked"), nil
+		return withQueryParam(base, "oauth", "linked"), false, nil
 	}
 
 	if profile.Email == "" {
-		return withQueryParam(base, "oauth_error", "email_required"), nil
+		return withQueryParam(base, "oauth_error", "email_required"), false, nil
 	}
 	if !profile.EmailVerified {
 		// An untrusted provider email must never create (and thereby squat) an
 		// account: only provider-verified addresses pass the confirmation gate.
-		return withQueryParam(base, "oauth_error", "email_required"), nil
+		return withQueryParam(base, "oauth_error", "email_required"), false, nil
 	}
 	existing, err := o.users.GetByEmail(ctx, profile.Email)
 	if err == nil {
 		if err := o.attachIdentity(ctx, existing.ID, provider, profile, !existing.EmailVerified); err != nil {
-			return "", err
+			return "", false, err
 		}
 		if err := o.recordTerms(ctx, existing.ID, provider, state); err != nil {
-			return "", err
+			return "", false, err
 		}
-		return o.issueLoginCode(ctx, existing.ID, base, false)
+		return o.issueLoginCode(ctx, existing.ID, base, binding, false)
 	}
 	if !domain.IsErrorNotFound(err) {
-		return "", err
+		return "", false, err
 	}
 
 	userID, err := o.createAccount(ctx, provider, profile, state)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return o.issueLoginCode(ctx, userID, base, true)
+	return o.issueLoginCode(ctx, userID, base, binding, true)
 }
 
 // Complete consumes a one-time login code and returns the account for the
-// caller to start a session.
-func (o *OAuth) Complete(ctx context.Context, code string) (*domain.User, error) {
+// caller to start a session. The code only completes in the browser that
+// started the flow: binding must match the hash stored with the code. A code
+// without a stored binding is rejected.
+func (o *OAuth) Complete(ctx context.Context, code, binding string) (*domain.User, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, domain.NewErrorUser("login code is required")
 	}
-	userID, expiresAt, err := o.repo.ConsumeOAuthLoginCode(ctx, code)
+	userID, expiresAt, stored, err := o.repo.ConsumeOAuthLoginCode(ctx, code)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
 			return nil, errInvalidLoginCode()
 		}
 		return nil, err
 	}
-	if expiresAt.Before(o.now()) {
+	if expiresAt.Before(o.now()) || !bindingMatches(stored, binding) {
 		return nil, errInvalidLoginCode()
 	}
 	return o.users.GetByID(ctx, userID)
@@ -347,26 +351,26 @@ func (o *OAuth) recordTerms(ctx context.Context, userID snow.ID, provider string
 	})
 }
 
-func (o *OAuth) issueLoginCode(ctx context.Context, userID snow.ID, base string, created bool) (string, error) {
+func (o *OAuth) issueLoginCode(ctx context.Context, userID snow.ID, base, binding string, created bool) (string, bool, error) {
 	code, err := newLoginCode()
 	if err != nil {
-		return "", domain.NewErrorInternalServer(err.Error())
+		return "", false, domain.NewErrorInternalServer(err.Error())
 	}
 	now := o.now()
 	err = o.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := o.repo.DeleteExpiredOAuthLoginCodes(ctx, now); err != nil {
 			return err
 		}
-		return o.repo.CreateOAuthLoginCode(ctx, code, userID, now.Add(loginCodeTTL()))
+		return o.repo.CreateOAuthLoginCode(ctx, code, userID, bindingHash(binding), now.Add(loginCodeTTL()))
 	})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	target := withQueryParam(base, "code", code)
 	if created {
 		target = withQueryParam(target, "new", "1")
 	}
-	return target, nil
+	return target, true, nil
 }
 
 func newLoginCode() (string, error) {

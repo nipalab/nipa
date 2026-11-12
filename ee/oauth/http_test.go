@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -106,6 +107,16 @@ func newOAuthHandlerServer(t *testing.T, userID snow.ID) *oauthServer {
 
 func (s *oauthServer) do(t *testing.T, method, path, body string) (*http.Response, string) {
 	t.Helper()
+	return s.send(t, method, path, body, "")
+}
+
+func (s *oauthServer) doWithBinding(t *testing.T, method, path, binding string) (*http.Response, string) {
+	t.Helper()
+	return s.send(t, method, path, "", binding)
+}
+
+func (s *oauthServer) send(t *testing.T, method, path, body, binding string) (*http.Response, string) {
+	t.Helper()
 
 	var reader io.Reader
 	if body != "" {
@@ -116,6 +127,9 @@ func (s *oauthServer) do(t *testing.T, method, path, body string) (*http.Respons
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if binding != "" {
+		req.AddCookie(&http.Cookie{Name: bindingCookieName, Value: binding})
+	}
 	resp, err := s.client.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
@@ -124,18 +138,13 @@ func (s *oauthServer) do(t *testing.T, method, path, body string) (*http.Respons
 	return resp, string(data)
 }
 
-func (s *oauthServer) doWithBinding(t *testing.T, method, path, binding string) (*http.Response, string) {
-	t.Helper()
-
-	req, err := http.NewRequest(method, s.server.URL+path, nil)
-	require.NoError(t, err)
-	req.AddCookie(&http.Cookie{Name: bindingCookieName, Value: binding})
-	resp, err := s.client.Do(req)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	data, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	return resp, string(data)
+func bindingCleared(resp *http.Response) bool {
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == bindingCookieName && cookie.MaxAge < 0 && cookie.Path == bindingCookiePath {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *oauthServer) signedState(t *testing.T, redirect string, linkUser int64) string {
@@ -171,24 +180,86 @@ func TestCallbackRedirectsWithTheLoginCode(t *testing.T) {
 	resp, _ := server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
 	require.Equal(t, http.StatusFound, resp.StatusCode)
 	require.Contains(t, resp.Header.Get("Location"), "/oauth/callback?code=")
-	cleared := false
+	require.False(t, bindingCleared(resp), "the binding cookie is kept until complete")
 	for _, cookie := range resp.Cookies() {
-		cleared = cleared || (cookie.Name == bindingCookieName && cookie.MaxAge < 0)
+		require.NotEqual(t, bindingCookieName, cookie.Name)
 	}
-	require.True(t, cleared, "the binding cookie is single use")
 
 	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?state="+state, testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a missing code is rejected")
+	require.True(t, bindingCleared(resp))
 
 	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state=tampered", testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a tampered state is rejected")
+	require.True(t, bindingCleared(resp))
 
 	server.env.provider.err = domain.NewErrorUser("github sign-in failed")
 	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "provider errors surface as client errors")
+	require.True(t, bindingCleared(resp))
 
 	resp, _ = server.do(t, http.MethodGet, "/api/v1/auth/oauth/google/callback", "")
 	require.Equal(t, http.StatusNotFound, resp.StatusCode, "disabled providers reject callbacks")
+	require.True(t, bindingCleared(resp))
+}
+
+func TestCallbackClearsTheBindingWithoutALoginCode(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	server.env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+
+	state := server.signedState(t, "/settings/profile", 42)
+	resp, _ := server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	require.Equal(t, "/settings/profile?oauth=linked", resp.Header.Get("Location"))
+	require.True(t, bindingCleared(resp), "the link flow has no complete step")
+
+	server.env.provider.profile = &Profile{AccountID: "2002"}
+	state = server.signedState(t, "/login", 0)
+	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	require.Equal(t, "/login?oauth_error=email_required", resp.Header.Get("Location"))
+	require.True(t, bindingCleared(resp))
+}
+
+func TestOAuthLoginRoundTripNeedsTheStartingBrowser(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	server.env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+
+	login := func() string {
+		resp, _ := server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/start", "")
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		var binding string
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == bindingCookieName {
+				binding = cookie.Value
+			}
+		}
+		require.NotEmpty(t, binding)
+		state := strings.TrimPrefix(resp.Header.Get("Location"), "https://github.example/authorize?state=")
+		resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, binding)
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		location, err := url.Parse(resp.Header.Get("Location"))
+		require.NoError(t, err)
+		code := location.Query().Get("code")
+		require.NotEmpty(t, code)
+		return code + "|" + binding
+	}
+
+	attacker := strings.Split(login(), "|")
+	victim := strings.Split(login(), "|")
+
+	resp, body := server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"`+attacker[0]+`"}`, victim[1])
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "a code handed to another browser is refused: %s", body)
+	require.True(t, bindingCleared(resp))
+
+	resp, body = server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"`+attacker[0]+`"}`, attacker[1])
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "the failed attempt consumed the code: %s", body)
+
+	resp, body = server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"`+victim[0]+`"}`, victim[1])
+	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	require.True(t, bindingCleared(resp))
 }
 
 func TestCallbackRejectsAnotherBrowser(t *testing.T) {
@@ -231,10 +302,11 @@ func TestStartSetsTheBindingCookie(t *testing.T) {
 func TestCompleteExchangesTheCodeForASession(t *testing.T) {
 	server := newOAuthHandlerServer(t, 42)
 	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
-	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute)}
+	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute), binding: bindingHash(testBinding)}
 
-	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`)
+	resp, body := server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`, testBinding)
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	require.True(t, bindingCleared(resp))
 	var login struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
@@ -242,12 +314,31 @@ func TestCompleteExchangesTheCodeForASession(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(body), &login))
 	require.NotEmpty(t, login.AccessToken)
 	require.Equal(t, "Bearer", login.TokenType)
-	cookies := resp.Cookies()
-	require.NotEmpty(t, cookies)
-	require.Equal(t, "nipa_refresh", cookies[0].Name)
+	refresh := false
+	for _, cookie := range resp.Cookies() {
+		refresh = refresh || cookie.Name == "nipa_refresh"
+	}
+	require.True(t, refresh)
+
+	resp, body = server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`, testBinding)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "the code is single use: %s", body)
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"missing"}`)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode, body)
+	require.True(t, bindingCleared(resp))
+
+	server.env.repo.codes["code-2"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute), binding: bindingHash(testBinding)}
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-2"}`)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "a browser without the binding cookie is refused: %s", body)
+	require.True(t, bindingCleared(resp))
+
+	server.env.repo.codes["code-3"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute), binding: bindingHash(testBinding)}
+	resp, body = server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-3"}`, "someone-elses-binding")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "another browser's binding is refused: %s", body)
+
+	server.env.repo.codes["legacy"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute)}
+	resp, body = server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"legacy"}`, testBinding)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "a code issued without a binding is refused: %s", body)
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":""}`)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
@@ -261,9 +352,9 @@ func TestCompleteRecordsOneOAuthLogin(t *testing.T) {
 	rec := &recordedAudit{}
 	server.auth.WithAudit(rec)
 	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
-	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute)}
+	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute), binding: bindingHash(testBinding)}
 
-	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`)
+	resp, body := server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`, testBinding)
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	require.Len(t, rec.entries, 1)
 	require.Equal(t, domain.AuditAuthLoginSucceeded, rec.entries[0].Action)
