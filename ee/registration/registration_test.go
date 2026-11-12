@@ -291,8 +291,9 @@ func TestRegisterAndResendThrottledPerEmail(t *testing.T) {
 	require.NoError(t, env.registration.ResendVerification(ctx, "alice@example.com"))
 	require.Len(t, env.outbox.deliveries, 2)
 
-	require.NoError(t, env.registration.ResendVerification(ctx, " ALICE@example.com "), "a throttled resend looks like a success")
-	require.NoError(t, env.registration.Register(ctx, "Alice", "Alice@Example.com", false), "a throttled register looks like a success")
+	requireTooManyRequests(t, env.registration.ResendVerification(ctx, " ALICE@example.com "))
+	requireTooManyRequests(t, env.registration.Register(ctx, "Alice", "Alice@Example.com", false))
+	requireTooManyRequests(t, env.registration.Register(ctx, "Nobody", "alice@example.com", false))
 	require.Len(t, env.outbox.deliveries, 2, "nothing is sent while throttled")
 	require.Len(t, env.repo.created, 1)
 
@@ -302,7 +303,7 @@ func TestRegisterAndResendThrottledPerEmail(t *testing.T) {
 
 	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
 	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
-	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
+	requireTooManyRequests(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
 }
 
 func TestRegisterAgainReissuesTheTokenWithoutTouchingThePassword(t *testing.T) {
@@ -529,4 +530,11 @@ func TestRegisterRecordsASystemAudit(t *testing.T) {
 	failing.registration.WithAudit(&recordedAudit{err: errors.New("audit down")})
 	require.EqualError(t, failing.registration.Register(context.Background(), "Bob", "bob@example.com", false), "audit down")
 	require.Empty(t, failing.outbox.deliveries)
+}
+
+func requireTooManyRequests(t *testing.T, err error) {
+	t.Helper()
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 429, domErr.Code)
 }

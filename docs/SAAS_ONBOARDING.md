@@ -96,11 +96,11 @@ not ask existing users again; the terms announce material changes by email.
 3. Until confirmation the account cannot log in: password, refresh-token and
    SSH logins all refuse with `403 email not confirmed`. The login page offers
    a resend.
-4. `POST /api/v1/auth/register/resend {email}` reissues the token; it always
-   answers `200` so it cannot be used to probe for accounts. `register` and
+4. `POST /api/v1/auth/register/resend {email}` reissues the token; apart from the
+   throttle it always answers `200` so it cannot be used to probe for accounts. `register` and
    `resend` share a per-email budget (`register_email`, see
-   `docs/RATE_LIMIT.md`); a throttled call gets the same answer and sends
-   nothing.
+   `docs/RATE_LIMIT.md`); a throttled call gets a `429` and sends nothing,
+   whether or not the address has an account.
 
 ## Social login and signup
 

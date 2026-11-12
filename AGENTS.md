@@ -724,8 +724,8 @@ sessions first. Registering an address that already has an account always looks
 like a success (an unconfirmed one is just re-issued a token, a confirmed one
 gets a "you already have an account" notice through the outbox, so every path
 runs a transaction and an outbox write), `register` and `register/resend` are
-throttled per email (`register_email`; a throttled call answers the same 200
-and sends nothing), and password login spends a hash comparison on unknown
+throttled per email (`register_email`; a throttled call answers 429 and sends
+nothing, counted whether or not an account exists), and password login spends a hash comparison on unknown
 emails and on accounts without a password so timing does not reveal
 registrations or OAuth-only accounts. Both flows end on the SPA `/onboarding` step
 (workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
