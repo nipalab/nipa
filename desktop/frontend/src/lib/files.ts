@@ -31,15 +31,21 @@ export function ancestors(path: string): string[] {
   return out;
 }
 
+const trimSlashes = (p: string) => {
+  let end = p.length;
+  while (end > 0 && p[end - 1] === "/") end--;
+  return p.slice(0, end);
+};
+
 const covers = (prefix: string, path: string) => path === prefix || path.startsWith(`${prefix}/`);
 
 // lockFor returns the in-scope lock covering path, the most specific first.
 export function lockFor(path: string, locks: FileLock[]): FileLock | undefined {
   let best: FileLock | undefined;
   for (const l of locks) {
-    const at = l.path.replace(/\/+$/, "");
+    const at = trimSlashes(l.path);
     if (!l.inScope || !covers(at, path)) continue;
-    if (!best || at.length > best.path.replace(/\/+$/, "").length) best = l;
+    if (!best || at.length > trimSlashes(best.path).length) best = l;
   }
   return best;
 }

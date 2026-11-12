@@ -173,7 +173,7 @@ func TestRevealCommands(t *testing.T) {
 	file := filepath.Join(dir, "hero.png")
 	mac := revealCommands("darwin", file)
 	require.Len(t, mac, 1)
-	assert.Equal(t, []string{"open", "-R", file}, mac[0].Args)
+	assert.Equal(t, []string{"/usr/bin/open", "-R", file}, mac[0].Args)
 	win := revealCommands("windows", file)
 	assert.Equal(t, []string{"explorer", "/select," + file}, win[0].Args)
 	linux := revealCommands("linux", file)

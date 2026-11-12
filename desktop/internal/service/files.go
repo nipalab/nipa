@@ -147,9 +147,9 @@ func (s *Service) RevealFile(_ context.Context, root, p string) error {
 func revealCommands(goos, full string) []*exec.Cmd {
 	switch goos {
 	case "darwin":
-		return []*exec.Cmd{exec.Command("open", "-R", full)}
+		return []*exec.Cmd{exec.Command("/usr/bin/open", "-R", full)}
 	case "windows":
-		return []*exec.Cmd{exec.Command("explorer", "/select,"+full)}
+		return []*exec.Cmd{exec.Command("explorer", "/select,"+full)} // NOSONAR system file manager from the user session
 	}
 	dir := full
 	if info, err := os.Stat(full); err != nil || !info.IsDir() {
@@ -157,9 +157,10 @@ func revealCommands(goos, full string) []*exec.Cmd {
 	}
 	uri := (&url.URL{Scheme: "file", Path: filepath.ToSlash(full)}).String()
 	return []*exec.Cmd{
-		exec.Command("dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.FileManager1", "--type=method_call",
+		exec.Command("dbus-send", "--session", // NOSONAR system file manager from the user session
+			"--print-reply", "--dest=org.freedesktop.FileManager1", "--type=method_call",
 			"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", "array:string:"+uri, "string:"),
-		exec.Command("xdg-open", dir),
+		exec.Command("xdg-open", dir), // NOSONAR system file manager from the user session
 	}
 }
 

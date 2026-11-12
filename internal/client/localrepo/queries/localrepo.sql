@@ -112,7 +112,7 @@ FROM files;
 -- name: TreeNodeChildren :many
 SELECT path
 FROM tree_nodes
-WHERE parent_path = sqlc.arg(parent_path) AND path != ''
+WHERE parent_path = sqlc.arg(parent_path) AND path <> parent_path
 ORDER BY path;
 
 -- name: FileListByTree :many

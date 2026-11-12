@@ -474,7 +474,7 @@ func (q *Queries) StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams
 const treeNodeChildren = `-- name: TreeNodeChildren :many
 SELECT path
 FROM tree_nodes
-WHERE parent_path = ?1 AND path != ''
+WHERE parent_path = ?1 AND path <> parent_path
 ORDER BY path
 `
 
