@@ -284,6 +284,61 @@ var _ = Describe("nipa serve", func() {
 		Expect(failure.GetMessage()).To(ContainSubstring("does not exist"))
 	})
 
+	It("reports asset references and records provenance", func() {
+		project := newProject("daemon-refs")
+		scene := "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Texture2D\" path=\"res://art/hero.png\" id=\"1_a\"]\n\n[node name=\"Main\" type=\"Node2D\"]\n"
+		budget := "version: 1\nrules:\n  - name: generated\n    paths: [\"art/**\"]\n    require_provenance: true\n"
+		seedRepo(orgSlug, project, map[string][]byte{
+			"project.godot":    []byte("[application]\n"),
+			"scenes/main.tscn": []byte(scene),
+			"art/hero.png":     []byte("\x89PNG\r\n\x1a\n\x00hero"),
+			"art/unused.png":   []byte("\x89PNG\r\n\x1a\n\x00unused"),
+			".nipaassets.yml":  []byte(budget),
+		}, "first")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+
+		refs, err := d.client.AssetRefs(d.ctx, &daemonpb.AssetRefsRequest{Root: dir, Path: "art/hero.png"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(refs.GetAsset()).To(BeTrue())
+		Expect(refs.GetUsedBy()).To(ConsistOf("scenes/main.tscn"))
+		unused, err := d.client.AssetRefs(d.ctx, &daemonpb.AssetRefsRequest{Root: dir, Path: "art/unused.png"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unused.GetUsedBy()).To(BeEmpty())
+		text, err := d.client.AssetRefs(d.ctx, &daemonpb.AssetRefsRequest{Root: dir, Path: "readme.txt"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(text.GetAsset()).To(BeFalse())
+
+		writeText(dir, "scenes/other.tscn", strings.Replace(scene, "hero.png", "unused.png", 1))
+		Eventually(func() []string {
+			res, err := d.client.AssetRefs(d.ctx, &daemonpb.AssetRefsRequest{Root: dir, Path: "art/unused.png"})
+			Expect(err).NotTo(HaveOccurred())
+			return res.GetUsedBy()
+		}, "10s", "200ms").Should(ConsistOf("scenes/other.tscn"))
+
+		prov, err := d.client.Provenance(d.ctx, &daemonpb.ProvenanceRequest{Root: dir, Paths: []string{"art/hero.png", "scenes/main.tscn"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(prov.GetEnabled()).To(BeFalse())
+		Expect(prov.GetEntries()).To(HaveLen(1))
+		Expect(prov.GetEntries()[0].GetStatus()).To(Equal("missing"))
+		Expect(prov.GetEntries()[0].GetRequired()).To(BeTrue())
+
+		tool := "Krita"
+		set, err := d.client.SetProvenance(d.ctx, &daemonpb.SetProvenanceRequest{Root: dir, Path: "art/hero.png", Tool: &tool})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(set.GetCreated()).To(BeTrue())
+		Expect(set.GetEntry().GetSource()).To(Equal("manual"))
+		Expect(d.status(dir).GetAdded()).To(ContainElement(".nipaprovenance.yml"))
+
+		prov, err = d.client.Provenance(d.ctx, &daemonpb.ProvenanceRequest{Root: dir, Paths: []string{"art/hero.png"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(prov.GetEnabled()).To(BeTrue())
+		Expect(prov.GetEntries()[0].GetStatus()).To(Equal("recorded"))
+		Expect(prov.GetEntries()[0].GetTool()).To(Equal("Krita"))
+	})
+
 	It("streams update results", func() {
 		project := newProject("daemon-update")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")

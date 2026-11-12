@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 type ConfirmProps = {
@@ -7,9 +7,10 @@ type ConfirmProps = {
   confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: ReactNode;
 };
 
-export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }: ConfirmProps) {
+export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, children }: ConfirmProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   return (
@@ -19,6 +20,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
           {title}
         </h2>
         <p className="select-text break-words text-xs text-muted-foreground">{message}</p>
+        {children}
         <div className="flex justify-end gap-2 pt-1">
           <Button ref={cancelRef} size="sm" onClick={onCancel}>
             Cancel

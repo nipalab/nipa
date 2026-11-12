@@ -93,7 +93,20 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   working-file thumbnails cached by hash, sparse clones list folders outside
   the checkout greyed from `RemoteTree` with "Download this folder" via
   `SetSparse`, `RevealFile`/`FileLink`, deep link `nipa://.../file/<path>`
-  (`Navigation.path`, `Intent.path`), History jumps filtered by path)
+  (`Navigation.path`, `Intent.path`), History jumps filtered by path),
+  where-used and origin panels via `AssetRefs`/`Provenance`/`SetProvenance`
+  (daemon RPCs of the same names; `files/AssetInsight.tsx` in the Files
+  detail pane and as the collapsible "References & origin" footer
+  `InsightPanel` under the Changes diff viewer: Used by / Uses / Unresolved
+  rows that open the file in the Files tab (`RepoView` `showFile` → the
+  `open` intent), truncated/sparse notes, origin fields and status, an "Add
+  record…" form for a missing record (prompt hashed in the service, never
+  sent); `hooks/useAssetInsight.ts` keys `["refs"|"provenance", root, path]`,
+  refreshed on `repo:changed`; delete safety in
+  `changes/DeleteSafety.tsx`: staging a missing asset other files use asks
+  first (`useStageGuard`, lookup raced against 400 ms before the dialog
+  opens and fills in), the Discard dialog of a modified asset names its
+  referrers)
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -431,6 +444,13 @@ else recorded + `require_provenance`-covered tracked paths; orphaned records;
 totals by tool/model) behind `nipa provenance init|show|set|report`
 (`cli/provenance.go`, `nipa add --no-provenance`) and the MCP read tool
 `nipa_provenance` (`tools_provenance.go`, `max_files` 200/2000).
+`WorkingCopy.SetProvenance(ctx, path, ProvenanceInput)`
+(`usecase/provenance_set.go`, nil fields keep the record's value) is the
+`provenance set` core shared by the CLI and the daemon: manual source, fresh
+content hash and time, creates the file when missing (the opt-in) and stages
+it. The daemon `Provenance` RPC answers per path the record, its `Status` and
+`required` (a `require_provenance` rule), leaving out paths with neither;
+`SetProvenance` runs the usecase under the shared slot like `Stage`.
 
 Flow for asset references (reference in `docs/AI.md`, client-side only, warn
 only): the pure `internal/assetrefs` (fs.FS based, no client imports)
@@ -456,7 +476,13 @@ changed). Surfaces: MCP read tools `nipa_asset_refs` / `nipa_asset_impact`
 and `nipa push --dry-run` (`assetscan.PushReport`: `asset_impact` in JSON,
 warning block in text, a failure only warns on stderr; `planReport` in
 `cli/dryrun.go`) plus the daemon `PushPlan`. The new side is the working copy, so unstaged edits are
-included.
+included. The daemon `AssetRefs(root, path)` answers `Uses`/`UsedBy`/
+`Unknown` from a graph cached per root (`repo.cachedGraph`, built once by
+`RepoOps.Refs` = `NewGraphBuilder` over its own `Diff`, concurrent callers
+wait for that build); the change hub's `refsGeneration` only moves on empty
+notices and paths that are `assetrefs.Relevant` or `.nipaignore`, and a
+2-minute TTL covers missed watcher events. Paths that are not `Relevant`
+answer `asset: false` without a scan.
 
 Flow for generation (reference in `docs/AI.md`; the server never calls an
 LLM): `internal/client/aiprompt` (pure, deterministic) builds
@@ -1098,7 +1124,10 @@ server call. `RestoreRevision` (exclusive slot, `OpEvent` stream, result
 `restore`) runs `RepoOps.Restore` (`usecase.RevisionRestore`: commit-scoped
 download of one file of a commit, `materializeFile` over the working file,
 nothing staged; refuses pending merge/revert, paths outside the sparse set,
-folders, unknown commits or paths). `LoginSSH` takes an optional `key_path` +
+folders, unknown commits or paths). `AssetRefs`, `Provenance` and
+`SetProvenance` (`daemon/assetrefs.go`, `daemon/provenance.go`, shared slot)
+serve the desktop where-used and origin panels; see the asset references and
+provenance flows. `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):

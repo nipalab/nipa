@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nipalab/nipa/internal/assetrefs"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -37,11 +38,17 @@ type repo struct {
 	pushCheck PushCheckRunner
 	generate  GenerateRunner
 	restore   RevisionRestorer
+	refGraph  GraphBuilder
 
 	statusMu  sync.Mutex
 	status    *clientDomain.Status
 	statusGen uint64
 	statusAt  time.Time
+
+	graphMu  sync.Mutex
+	graph    *assetrefs.Graph
+	graphGen uint64
+	graphAt  time.Time
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -189,6 +196,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.pushCheck = ops.PushCheck
 		rp.generate = ops.Generate
 		rp.restore = ops.Restore
+		rp.refGraph = ops.Refs
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

@@ -8,7 +8,9 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
+	"github.com/nipalab/nipa/internal/client/ignore"
 )
 
 // maxChangePaths bounds what one subscriber buffers; past it the pending
@@ -18,10 +20,11 @@ const maxChangePaths = 512
 // changeHub fans working-copy change notices out to WatchChanges streams.
 // Publishing never blocks: each subscriber coalesces notices until it reads.
 type changeHub struct {
-	gen    atomic.Uint64
-	mu     sync.Mutex
-	subs   map[*changeSub]struct{}
-	closed bool
+	gen     atomic.Uint64
+	refsGen atomic.Uint64
+	mu      sync.Mutex
+	subs    map[*changeSub]struct{}
+	closed  bool
 }
 
 type changeSub struct {
@@ -60,6 +63,9 @@ func (h *changeHub) subscribe() (*changeSub, func()) {
 // publish records a change; nil or empty paths mean "refresh everything".
 func (h *changeHub) publish(paths []string) {
 	h.gen.Add(1)
+	if touchesRefs(paths) {
+		h.refsGen.Add(1)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for sub := range h.subs {
@@ -70,6 +76,24 @@ func (h *changeHub) publish(paths []string) {
 // generation counts published notices, so cached answers know they are stale.
 func (h *changeHub) generation() uint64 {
 	return h.gen.Load()
+}
+
+// refsGeneration counts the notices that may change the asset reference
+// graph: refresh-everything notices and engine sources or sidecars.
+func (h *changeHub) refsGeneration() uint64 {
+	return h.refsGen.Load()
+}
+
+func touchesRefs(paths []string) bool {
+	if len(paths) == 0 {
+		return true
+	}
+	for _, p := range paths {
+		if p == ignore.FileName || assetrefs.Relevant(p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *changeHub) close() {

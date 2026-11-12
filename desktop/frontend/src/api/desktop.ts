@@ -58,6 +58,11 @@ import type {
   BrokenReference,
   BudgetViolation,
   PushChecks as RawPushChecks,
+  AssetRef,
+  AssetReferences as RawAssetReferences,
+  Origin,
+  OriginInput,
+  OriginSaved,
   CleanUpResult,
   DiskUsage as RawDiskUsage,
   ModelCompare,
@@ -152,6 +157,9 @@ export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
 export type DiskUsage = Omit<RawDiskUsage, "pins" | "sparse"> & { pins: string[]; sparse: string[] };
 export type { CleanUpResult };
+export type { AssetRef, Origin, OriginInput, OriginSaved };
+export type AssetReferences = Omit<RawAssetReferences, "uses" | "usedBy" | "unknown"> & { uses: AssetRef[]; usedBy: string[]; unknown: AssetRef[] };
+export type Provenance = { enabled: boolean; origins: Origin[] };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
@@ -236,6 +244,15 @@ export const desktop = {
   fileView: (root: string, path: string): Promise<FileDiff | null> => Service.FileView(root, path),
   fileLink: (repoUrl: string, path: string): Promise<string> => Service.FileLink(repoUrl, path),
   restoreRevision: (root: string, path: string, commitId: string): Cancellable<OpOutcome> => Service.RestoreRevision(root, path, commitId),
+  assetRefs: async (root: string, path: string): Promise<AssetReferences> => {
+    const r = await Service.AssetRefs(root, path);
+    return { path: r?.path ?? path, asset: r?.asset ?? false, scanned: r?.scanned ?? 0, truncated: r?.truncated ?? false, partial: r?.partial ?? false, uses: r?.uses ?? [], usedBy: r?.usedBy ?? [], unknown: r?.unknown ?? [] };
+  },
+  provenance: async (root: string, paths: string[]): Promise<Provenance> => {
+    const p = await Service.Provenance(root, paths);
+    return { enabled: p?.enabled ?? false, origins: p?.origins ?? [] };
+  },
+  setProvenance: async (root: string, input: OriginInput): Promise<OriginSaved> => required(await Service.SetProvenance(root, input), "provenance record"),
   accountStatus: async (server: string): Promise<Account> => {
     const a = await Service.AccountStatus(server);
     if (!a) throw new Error("No account information");

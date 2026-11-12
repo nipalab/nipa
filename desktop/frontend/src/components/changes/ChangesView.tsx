@@ -6,6 +6,8 @@ import { CommitBox, type LockIssue } from "@/components/changes/CommitBox";
 import { DiffViewer } from "@/components/changes/DiffViewer";
 import { FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
+import { ReferrerNote, useStageGuard } from "@/components/changes/DeleteSafety";
+import { InsightPanel } from "@/components/files/AssetInsight";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { usePushChecks } from "@/hooks/usePushChecks";
@@ -27,6 +29,7 @@ type ChangesViewProps = {
   onCancelOp: () => void;
   onError: (message: string) => void;
   notify: Notify;
+  onOpenFile?: (path: string) => void;
 };
 
 function firstFile(c: ChangeSet): Selection | null {
@@ -43,7 +46,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
   return other.some((f) => f.path === sel.path) ? { path: sel.path, staged: !sel.staged } : null;
 }
 
-export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify }: ChangesViewProps) {
+export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify, onOpenFile }: ChangesViewProps) {
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Selection | null>(null);
@@ -78,6 +81,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const discard = useMutation({ mutationFn: (paths: string[]) => desktop.discard(root, paths), ...applyChanges });
 
   const data = changes.data;
+  const stageGuard = useStageGuard(root, data, (paths) => stage.mutate(paths));
   const meta = useQuery({
     queryKey: ["meta", root, changes.dataUpdatedAt],
     queryFn: () => desktop.metaWarnings(root),
@@ -160,7 +164,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             selected={selected}
             busy={busy}
             onSelect={setPicked}
-            onStage={(paths) => stage.mutate(paths)}
+            onStage={stageGuard.request}
             onUnstage={(paths) => unstage.mutate(paths)}
             onDiscard={setDiscarding}
             warnings={warnings}
@@ -185,18 +189,21 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
         <PaneResizer size={listSize} label="Resize file list" />
       </div>
 
-      <div className="min-w-0 flex-1">
-        {!selected ? (
-          <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="Select a changed file to see what changed." />
-        ) : diff.isPending ? (
-          <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading diff…" />
-        ) : diff.isError ? (
-          <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not load the diff" detail={errorMessage(diff.error)} />
-        ) : diff.data ? (
-          <DiffViewer root={root} diff={diff.data} layout={layout} onLayout={setLayout} />
-        ) : (
-          <Centered icon={<CheckCircle2 className="size-6 text-success" />} title="No changes" detail="This file matches the last synced version." />
-        )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1">
+          {!selected ? (
+            <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="Select a changed file to see what changed." />
+          ) : diff.isPending ? (
+            <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading diff…" />
+          ) : diff.isError ? (
+            <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not load the diff" detail={errorMessage(diff.error)} />
+          ) : diff.data ? (
+            <DiffViewer root={root} diff={diff.data} layout={layout} onLayout={setLayout} />
+          ) : (
+            <Centered icon={<CheckCircle2 className="size-6 text-success" />} title="No changes" detail="This file matches the last synced version." />
+          )}
+        </div>
+        {selected && <InsightPanel key={selected.path} root={root} path={selected.path} onOpenFile={onOpenFile} />}
       </div>
 
       {discarding && (
@@ -209,8 +216,11 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             discard.mutate([discarding.path]);
             setDiscarding(null);
           }}
-        />
+        >
+          <ReferrerNote root={root} path={discarding.path} enabled={discarding.status === "modified"} />
+        </ConfirmDialog>
       )}
+      {stageGuard.dialog}
     </div>
   );
 }

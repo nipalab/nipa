@@ -1,5 +1,6 @@
 import type { FileDetails, FileDiff, FileEntry, FileListing, ImageInfo } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import { commits, HERO, ICON, ITEMS, MODEL, MOVE, MUSIC, ROCK, SCENE, type DemoChanges } from "./data";
+import { demoMaterials } from "./insight";
 import { textureSvg } from "./media";
 
 const kinds: [RegExp, string][] = [
@@ -43,6 +44,7 @@ const tracked: [string, number][] = [
   [MOVE, 1_204],
   ["Source/Player/PlayerInput.cs", 2_960],
   ["Source/Combat/Damage.cs", 2_204],
+  ...demoMaterials,
 ];
 
 const palettes: Record<string, [[string, string, string], string]> = {

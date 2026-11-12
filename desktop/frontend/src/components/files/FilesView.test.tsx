@@ -17,6 +17,8 @@ const api = vi.hoisted(() => ({
   openFile: vi.fn(),
   revealFile: vi.fn(),
   fileLink: vi.fn(),
+  assetRefs: vi.fn(),
+  provenance: vi.fn(),
   onRepoChanged: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
@@ -100,6 +102,8 @@ beforeEach(() => {
   api.imageDiff.mockResolvedValue({ old: null, new: { src: "data:image/png;base64,AAAA", hdr: false } });
   api.openFile.mockResolvedValue(undefined);
   api.revealFile.mockResolvedValue(undefined);
+  api.assetRefs.mockImplementation((_root: string, path: string) => Promise.resolve({ path, asset: false, uses: [], usedBy: [], unknown: [], scanned: 0, truncated: false, partial: false }));
+  api.provenance.mockResolvedValue({ enabled: false, origins: [] });
   api.fileLink.mockResolvedValue("nipa://nipa.test/studio/game/file/Assets/hero.png");
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
     changed = fn;
@@ -317,6 +321,21 @@ describe("FilesView", () => {
     await userEvent.click(within(tree).getByText("Assets"));
     await waitFor(() => expect(screen.getByText("This folder is empty.")).toBeInTheDocument());
     expect(api.remoteTree).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows references of an asset and jumps to a referrer", async () => {
+    api.assetRefs.mockImplementation((_root: string, path: string) =>
+      Promise.resolve({ path, asset: path === "Assets/rock.png", uses: [], usedBy: path === "Assets/rock.png" ? ["Assets/Audio/theme.wav"] : [], unknown: [], scanned: 2, truncated: false, partial: false }),
+    );
+    await openAssets();
+    await selectRow("notes.txt");
+    await waitFor(() => expect(api.assetRefs).toHaveBeenCalledWith("/work/game", "Assets/notes.txt"));
+    expect(screen.queryByRole("region", { name: "References" })).not.toBeInTheDocument();
+    await selectRow("rock.png");
+    const refs = await screen.findByRole("region", { name: "References" });
+    await userEvent.click(within(refs).getByRole("button", { name: "Assets/Audio/theme.wav" }));
+    await waitFor(() => expect(rowNames()).toEqual(["theme.wav"]));
+    expect(await screen.findByRole("heading", { name: "theme.wav" })).toBeInTheDocument();
   });
 
   it("opens the file a link points at", async () => {

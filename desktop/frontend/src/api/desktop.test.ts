@@ -37,6 +37,9 @@ const service = vi.hoisted(() => ({
   FileView: vi.fn(),
   FileLink: vi.fn(),
   RestoreRevision: vi.fn(),
+  AssetRefs: vi.fn(),
+  Provenance: vi.fn(),
+  SetProvenance: vi.fn(),
   AccountStatus: vi.fn(),
   SignIn: vi.fn(),
   SignInSSH: vi.fn(),
@@ -239,6 +242,21 @@ describe("desktop api", () => {
     service.RestoreRevision.mockResolvedValue({ commitId: "c1" });
     expect(await desktop.restoreRevision("/r", "a/x", "c1")).toEqual({ commitId: "c1" });
     expect(service.RestoreRevision).toHaveBeenCalledWith("/r", "a/x", "c1");
+  });
+
+  it("reads references and provenance", async () => {
+    service.AssetRefs.mockResolvedValueOnce({ path: "a.png", asset: true, scanned: 3, truncated: false, partial: true, uses: null, usedBy: ["s.tscn"], unknown: null }).mockResolvedValueOnce(null);
+    expect(await desktop.assetRefs("/r", "a.png")).toEqual({ path: "a.png", asset: true, scanned: 3, truncated: false, partial: true, uses: [], usedBy: ["s.tscn"], unknown: [] });
+    expect(service.AssetRefs).toHaveBeenCalledWith("/r", "a.png");
+    expect(await desktop.assetRefs("/r", "b.png")).toEqual({ path: "b.png", asset: false, scanned: 0, truncated: false, partial: false, uses: [], usedBy: [], unknown: [] });
+    service.Provenance.mockResolvedValueOnce({ enabled: true, origins: null }).mockResolvedValueOnce(null);
+    expect(await desktop.provenance("/r", ["a.png"])).toEqual({ enabled: true, origins: [] });
+    expect(await desktop.provenance("/r", ["a.png"])).toEqual({ enabled: false, origins: [] });
+    const input = { path: "a.png", tool: "ComfyUI", model: "", seed: "", license: "", prompt: "", note: "", humanEdited: false };
+    service.SetProvenance.mockResolvedValueOnce({ created: true, origin: { path: "a.png" } }).mockResolvedValueOnce(null);
+    expect((await desktop.setProvenance("/r", input)).created).toBe(true);
+    expect(service.SetProvenance).toHaveBeenCalledWith("/r", input);
+    await expect(desktop.setProvenance("/r", input)).rejects.toThrow("No provenance record");
   });
 
   it("signs in, browses servers and clones", async () => {

@@ -30,6 +30,7 @@ type RepoOps struct {
 	PushCheck  PushCheckRunner
 	Generate   GenerateRunner
 	Restore    RevisionRestorer
+	Refs       GraphBuilder
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
 }
