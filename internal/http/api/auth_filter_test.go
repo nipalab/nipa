@@ -10,6 +10,7 @@ import (
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/stretchr/testify/require"
 )
@@ -162,4 +163,28 @@ func TestAuthFilter_SchemeIsCaseInsensitive(t *testing.T) {
 		resp := runFilter(t, filter, restful.NewRequest(req))
 		require.Equal(t, http.StatusOK, resp.StatusCode(), header)
 	}
+}
+
+func TestRequestMetaFilter(t *testing.T) {
+	proxies, err := ratelimit.ParseTrustedProxies("127.0.0.1")
+	require.NoError(t, err)
+	var got domain.RequestMeta
+	c := restful.NewContainer()
+	ws := new(restful.WebService).Path("/t").Filter(RequestMetaFilter(proxies))
+	ws.Route(ws.GET("/ping").To(func(req *restful.Request, resp *restful.Response) {
+		var ok bool
+		got, ok = domain.RequestMetaFromContext(req.Request.Context())
+		require.True(t, ok)
+		resp.WriteHeader(http.StatusOK)
+	}))
+	c.Add(ws)
+
+	req := httptest.NewRequest(http.MethodGet, "/t/ping", nil)
+	req.RemoteAddr = "127.0.0.1:9999"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	req.Header.Set("User-Agent", "nipa-web")
+	rec := httptest.NewRecorder()
+	c.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, domain.RequestMeta{ClientIP: "198.51.100.7", UserAgent: "nipa-web"}, got)
 }

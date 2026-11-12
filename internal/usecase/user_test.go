@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -386,4 +388,72 @@ func TestUser_Deactivate_Self(t *testing.T) {
 
 	err := user.Deactivate(permissionCtx(42, withAdmin()), snow.ID(42))
 	requireUserError(t, err)
+}
+
+func TestValidatePassword(t *testing.T) {
+	cases := []struct {
+		name     string
+		password string
+		ok       bool
+	}{
+		{"too short", "1234567", false},
+		{"minimum", "12345678", true},
+		{"72 ascii bytes", strings.Repeat("a", 72), true},
+		{"73 ascii bytes", strings.Repeat("a", 73), false},
+		{"72 bytes of 3-byte runes", strings.Repeat("€", 24), true},
+		{"73 bytes with a multi-byte rune", strings.Repeat("a", 71) + "é", false},
+		{"few runes over 72 bytes", strings.Repeat("😀", 19), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidatePassword(tc.password)
+			if tc.ok {
+				require.NoError(t, err)
+				return
+			}
+			requireUserError(t, err)
+		})
+	}
+	require.EqualError(t, ValidatePassword(strings.Repeat("a", 73)), "password must be at most 72 bytes")
+}
+
+func TestUser_ChangePasswordThrottledPerUser(t *testing.T) {
+	user, repo := newTestUser(t, false)
+	user.WithLimiter(ratelimit.NewLimiter(ratelimit.NewMemory(), map[string]ratelimit.Rule{
+		ratelimit.ScopeAuthID: {Rate: 0.0001, Burst: 2},
+	}))
+	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Password: "hash"}, nil).Times(2)
+
+	for range 2 {
+		requireUserError(t, user.ChangePassword(permissionCtx(42), 42, "wrong", "new-password"))
+	}
+	var derr *domain.Error
+	require.ErrorAs(t, user.ChangePassword(permissionCtx(42), 42, "wrong", "new-password"), &derr)
+	require.Equal(t, 429, derr.Code)
+
+	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, Password: "hash"}, nil)
+	requireUserError(t, user.ChangePassword(permissionCtx(7), 7, "wrong", "new-password"))
+}
+
+func TestUser_ChangePasswordAudited(t *testing.T) {
+	user, repo := newTestUser(t, true)
+	rec := &captureRecorder{}
+	user.WithAudit(rec)
+	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Password: "hash"}, nil).Times(2)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(42), "hash").Return(nil)
+
+	require.NoError(t, user.ChangePassword(permissionCtx(42), 42, "old-password", "new-password"))
+	entry := rec.only(t)
+	requireActor(t, entry, domain.AuditUserPasswordChanged)
+	require.Equal(t, snow.ID(42).Base36(), entry.TargetID)
+	require.Empty(t, entry.Metadata)
+	require.Equal(t, 1, rec.txs)
+
+	requireUserError(t, user.ChangePassword(permissionCtx(42), 42, "old-password", "short"))
+	require.Len(t, rec.entries, 1)
+
+	rec.err = errAudit
+	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Password: "hash"}, nil)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(42), "hash").Return(nil)
+	require.ErrorIs(t, user.ChangePassword(permissionCtx(42), 42, "old-password", "new-password"), errAudit)
 }

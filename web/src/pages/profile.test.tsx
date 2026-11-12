@@ -199,6 +199,31 @@ describe('ProfilePage', () => {
     act(() => root.unmount())
   })
 
+  it('refuses a new password over 72 bytes', async () => {
+    const calls: string[] = []
+    stubRoutes((url, init) => {
+      if (url.includes('/api/v1/me/password') && (init?.method ?? 'GET') === 'POST') {
+        calls.push(url)
+        return jsonResponse({ access_token: 'rotated', token_type: 'Bearer', expires_in: 1800 })
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/settings/profile?tab=password')
+    await waitFor(() => container.querySelectorAll('input').length === 3)
+    const inputs = container.querySelectorAll('input')
+    const long = 'é'.repeat(37)
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'oldpass')
+      setInputValue(inputs[1] as HTMLInputElement, long)
+      setInputValue(inputs[2] as HTMLInputElement, long)
+    })
+    await waitForText(container, 'at most 72 bytes')
+    expect(findButton('Update password').disabled).toBe(true)
+    expect(calls).toHaveLength(0)
+    act(() => root.unmount())
+  })
+
   it('lists, adds and removes SSH keys', async () => {
     const existing = {
       id: '7',

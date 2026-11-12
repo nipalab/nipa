@@ -137,6 +137,7 @@ func (a *API) SetupRoute() http.Handler {
 	authWs.Path("/api/v1/auth").
 		Filter(cors.Filter).
 		Filter(sameOriginFilter).
+		Filter(RequestMetaFilter(a.proxies)).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	if a.rateLimit.active() {

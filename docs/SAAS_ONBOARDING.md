@@ -80,11 +80,12 @@ not ask existing users again; the terms announce material changes by email.
    the free-tier `owner_quota` seed, then queues the confirmation email in the
    existing mail outbox and kicks the dispatcher. Responds `202
    {status: "pending_verification", email}`; no session is issued. An address
-   that already has an account answers the same `202` (a confirmed account is
-   left alone, an unconfirmed one gets a fresh token), so sign-up cannot be
-   used to probe for accounts.
+   that already has an account answers the same `202` (a confirmed account's
+   owner gets a "you already have an account" notice through the same outbox,
+   an unconfirmed one gets a fresh token), so sign-up cannot be used to probe
+   for accounts by response or by timing.
 2. The email contains `<EMAIL_BASE_URL>/verify?token=…`; the SPA `/verify`
-   page asks the link holder to choose a password (≥ 8 chars) and posts
+   page asks the link holder to choose a password (≥ 8 chars, ≤ 72 bytes) and posts
    `POST /api/v1/auth/verify {token, password}` — the password is stored, the
    account is activated, the token is consumed and the response is the
    standard login result (access token + HttpOnly refresh cookie), so the SPA
@@ -96,7 +97,10 @@ not ask existing users again; the terms announce material changes by email.
    SSH logins all refuse with `403 email not confirmed`. The login page offers
    a resend.
 4. `POST /api/v1/auth/register/resend {email}` reissues the token; it always
-   answers `200` so it cannot be used to probe for accounts.
+   answers `200` so it cannot be used to probe for accounts. `register` and
+   `resend` share a per-email budget (`register_email`, see
+   `docs/RATE_LIMIT.md`); a throttled call gets the same answer and sends
+   nothing.
 
 ## Social login and signup
 

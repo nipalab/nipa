@@ -673,7 +673,7 @@ Flow for SaaS onboarding (see docs/SAAS_ONBOARDING.md; `nipad-ee` only, gated by
 using `EMAIL_BASE_URL`), `POST /api/v1/auth/register/resend` (always 200) and
 `POST /api/v1/auth/verify` `{token,password}` (the mailbox owner chooses the
 password here, so a squatter's registration can never set one; activates the
-account, consumes the token and returns the standard login result via the exported `usecase.Auth.LoginResult`).
+account, consumes the token and returns the standard login result via the exported `usecase.Auth.LoginResultVia`, which records `auth.login.succeeded`; OAuth `complete` does the same with method `oauth`).
 Login gates live in `internal/usecase/auth.go`: password, refresh-token and SSH
 logins refuse unverified accounts with a 403 `email not confirmed`. Terms
 acceptance is recorded against the version the website publishes
@@ -699,9 +699,13 @@ HttpOnly `nipa_oauth_binding` cookie (Lax, path `/api/v1/auth/oauth`) whose hash
 in the signed state, and `Callback` refuses a state without the matching cookie.
 Linking an existing unconfirmed account clears its password, pending tokens and
 sessions first. Registering an address that already has an account always looks
-like a success (an unconfirmed one is just re-issued a token), and password
-login spends a hash comparison on unknown emails so timing does not reveal
-registrations. Both flows end on the SPA `/onboarding` step
+like a success (an unconfirmed one is just re-issued a token, a confirmed one
+gets a "you already have an account" notice through the outbox, so every path
+runs a transaction and an outbox write), `register` and `register/resend` are
+throttled per email (`register_email`; a throttled call answers the same 200
+and sends nothing), and password login spends a hash comparison on unknown
+emails and on accounts without a password so timing does not reveal
+registrations or OAuth-only accounts. Both flows end on the SPA `/onboarding` step
 (workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
 `/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
 the client side, and `GET /api/v1/auth/capabilities` (registered by
@@ -1193,7 +1197,8 @@ Web UI below).
 
 Flow for rate limiting (design in `docs/RATE_LIMIT.md`): `internal/ratelimit`
 holds the `Store` seam (atomic token-bucket `Take`), the `Limiter` (named scope
-rules, fail-open on store errors, nil limiter allows everything), the `Memory`
+rules, fail-open on store errors except the auth scopes, which fall back to a
+lazily created in-process `Memory` store, nil limiter allows everything), the `Memory`
 store (free `nipad`, also selectable on `nipad-ee`) and `ClientIP`
 (`X-Forwarded-For` honoured only from `RATE_LIMIT_TRUSTED_PROXIES`, right-most
 untrusted hop). `ee/ratelimit.Redis` is the shared store (one Lua script);
@@ -1201,10 +1206,14 @@ untrusted hop). `ee/ratelimit.Redis` is the shared store (one Lua script);
 (`config.RateLimitStoreName`: the free main passes no redis factory, so `redis`
 is a startup error there; on `nipad-ee` an unset store picks redis when
 `RATE_LIMIT_REDIS_ADDR` is set). One limiter feeds `UsecaseDeps.RateLimiter`
-(`usecase.Auth.WithLimiter`, the per-email `auth_id` scope for password and SSH
-logins, 429 via `domain.NewErrorTooManyRequests`) and `serverapp.WithRateLimit`
+(`usecase.Auth.WithLimiter`: `auth_id` per email + client IP from
+`domain.RequestMeta` (email alone without one), then the higher email-only
+`auth_email` ceiling, for password and SSH logins; `usecase.User.WithLimiter`
+counts `ChangePassword` under `auth_id` `user:<id>` before the old-password
+check; `ee/registration` uses `register_email`; 429 via
+`domain.NewErrorTooManyRequests`) and `serverapp.WithRateLimit`
 (`api.RateLimit`: global/chunk middleware inside the access log, `auth_ip`
-filter on the `/api/v1/auth` WebService, `api_user` filter after the bearer
+filter plus `RequestMetaFilter` on the `/api/v1/auth` WebService, `api_user` filter after the bearer
 filter; `grpcserver.RateLimiter` chained after JWT: public login RPCs per IP,
 the rest per user). REST answers 429 with `Retry-After`; gRPC answers
 `ResourceExhausted` with the `rate limit exceeded` prefix, which
@@ -1234,7 +1243,15 @@ quota override set/cleared and owner transfers (through the exported
 upsert wrote (claim actor when present, otherwise `provider`/`paddle` with the
 event id; old values read from the live subscription and
 `Ledger.ComputedQuota`). `billing.seat.denied` is the exception: written after
-`Admit` rolls back on a `dbtx.Detach`ed context, failures only logged.
+`Admit` rolls back on a `dbtx.Detach`ed context, failures only logged. Login
+entries are best-effort too (`Auth.recordLogin`, never fail a login):
+`auth.login.succeeded` from `LoginResultVia` (method `password`/`ssh_key`/
+`oauth`/`email_verification`; plain `LoginResult`, used for the reissue after
+a password change, records nothing) and `auth.login.failed` (actor `system`,
+normalized email, method, reason, target user when the account exists) only
+for attempts that passed the throttle. `user.password.changed` is a regular
+`auditedWrite`. The JWT interceptors also attach `RequestMeta` for the public
+login RPCs.
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

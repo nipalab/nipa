@@ -19,11 +19,13 @@ func (c *Config) RateLimitRules() map[string]ratelimit.Rule {
 		return ratelimit.Rule{Rate: perMinute / 60, Burst: burst}
 	}
 	return map[string]ratelimit.Rule{
-		ratelimit.ScopeAuthIP:   rule(c.RateLimitAuthIPPerMinute, c.RateLimitAuthIPBurst),
-		ratelimit.ScopeAuthID:   rule(c.RateLimitAuthIDPerMinute, c.RateLimitAuthIDBurst),
-		ratelimit.ScopeAPIUser:  rule(c.RateLimitAPIUserPerMinute, c.RateLimitAPIUserBurst),
-		ratelimit.ScopeChunkIP:  rule(c.RateLimitChunkIPPerMinute, c.RateLimitChunkIPBurst),
-		ratelimit.ScopeGlobalIP: rule(c.RateLimitGlobalIPPerMinute, c.RateLimitGlobalIPBurst),
+		ratelimit.ScopeAuthIP:        rule(c.RateLimitAuthIPPerMinute, c.RateLimitAuthIPBurst),
+		ratelimit.ScopeAuthID:        rule(c.RateLimitAuthIDPerMinute, c.RateLimitAuthIDBurst),
+		ratelimit.ScopeAuthEmail:     rule(c.RateLimitAuthEmailPerMinute, c.RateLimitAuthEmailBurst),
+		ratelimit.ScopeRegisterEmail: rule(c.RateLimitRegisterEmailPerMinute, c.RateLimitRegisterEmailBurst),
+		ratelimit.ScopeAPIUser:       rule(c.RateLimitAPIUserPerMinute, c.RateLimitAPIUserBurst),
+		ratelimit.ScopeChunkIP:       rule(c.RateLimitChunkIPPerMinute, c.RateLimitChunkIPBurst),
+		ratelimit.ScopeGlobalIP:      rule(c.RateLimitGlobalIPPerMinute, c.RateLimitGlobalIPBurst),
 
 		ratelimit.ScopeInviteUser:  rule(c.RateLimitInviteUserPerMinute, c.RateLimitInviteUserBurst),
 		ratelimit.ScopeInviteEmail: rule(c.RateLimitInviteEmailPerMinute, c.RateLimitInviteEmailBurst),

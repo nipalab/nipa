@@ -19,6 +19,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/mail"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -27,6 +28,7 @@ const (
 	verificationTTLSeconds = 72 * 60 * 60
 	verificationTokenBytes = 32
 	verificationEvent      = "user.verification"
+	existingAccountEvent   = "user.registration_existing"
 )
 
 type userRepository interface {
@@ -84,6 +86,7 @@ type Registration struct {
 	outbox outbox
 	kick   dispatcherKicker
 	audit  usecase.AuditRecorder
+	limit  *ratelimit.Limiter
 	cfg    Config
 	terms  func() string
 	now    func() time.Time
@@ -117,6 +120,20 @@ func (r *Registration) WithAudit(rec usecase.AuditRecorder) *Registration {
 	return r
 }
 
+// WithLimiter throttles registrations and resends per email address.
+func (r *Registration) WithLimiter(limiter *ratelimit.Limiter) *Registration {
+	r.limit = limiter
+	return r
+}
+
+// throttled reports whether the address used up its registration budget.
+// Callers answer a throttled request like a successful one and send nothing,
+// so the limit reveals nothing about the account.
+func (r *Registration) throttled(ctx context.Context, email string) bool {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return !r.limit.Allow(ctx, ratelimit.ScopeRegisterEmail, hex.EncodeToString(sum[:])).Allowed
+}
+
 // WithMailer enables verification emails through the durable outbox; the
 // kicker asks the dispatcher to poll immediately after an enqueue. Without a
 // mailer registration still works, but no verification email is sent.
@@ -131,7 +148,8 @@ func (r *Registration) WithMailer(outbox outbox, kicker dispatcherKicker) *Regis
 // emailed link, so registering someone else's address (or re-registering it)
 // gains nothing: the account stays unusable until its mailbox owner confirms
 // and sets a password. An address that already has an account looks the same as
-// a new signup.
+// a new signup: an unconfirmed one is re-sent its link and a confirmed one gets
+// a notice instead, so both paths write and mail like a signup.
 func (r *Registration) Register(ctx context.Context, name, email string, acceptTerms bool) error {
 	name, email, err := usecase.ValidateUserIdentity(name, email)
 	if err != nil {
@@ -141,10 +159,16 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 	if termsVersion != "" && !acceptTerms {
 		return errTermsRequired()
 	}
+	if r.throttled(ctx, email) {
+		return nil
+	}
 	existing, err := r.users.GetByEmail(ctx, email)
 	switch {
 	case err == nil:
-		return r.ResendVerification(ctx, existing.Email)
+		if existing.EmailVerified {
+			return r.notifyExisting(ctx, existing)
+		}
+		return r.reissue(ctx, existing)
 	case !domain.IsErrorNotFound(err):
 		return err
 	}
@@ -251,6 +275,9 @@ func (r *Registration) ResendVerification(ctx context.Context, email string) err
 	if email == "" {
 		return domain.NewErrorUser("email is required")
 	}
+	if r.throttled(ctx, email) {
+		return nil
+	}
 	user, err := r.users.GetByEmail(ctx, email)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
@@ -261,6 +288,10 @@ func (r *Registration) ResendVerification(ctx context.Context, email string) err
 	if user.EmailVerified {
 		return nil
 	}
+	return r.reissue(ctx, user)
+}
+
+func (r *Registration) reissue(ctx context.Context, user *domain.User) error {
 	token, tokenHash, err := newVerificationToken()
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
@@ -274,6 +305,30 @@ func (r *Registration) ResendVerification(ctx context.Context, email string) err
 			return err
 		}
 		return r.enqueueVerification(ctx, user, token, now)
+	})
+	if err != nil {
+		return err
+	}
+	r.kickDispatcher()
+	return nil
+}
+
+// notifyExisting answers a registration for a confirmed account with a notice
+// to its owner, spending the transaction and outbox write a signup does.
+func (r *Registration) notifyExisting(ctx context.Context, user *domain.User) error {
+	now := r.now()
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := r.repo.DeleteExpiredEmailVerifications(ctx, now); err != nil {
+			return err
+		}
+		if r.outbox == nil {
+			return nil
+		}
+		delivery, err := r.existingAccountDelivery(user, now)
+		if err != nil {
+			return err
+		}
+		return r.outbox.Enqueue(ctx, []*domain.EmailDelivery{delivery})
 	})
 	if err != nil {
 		return err
@@ -305,13 +360,26 @@ func (r *Registration) verificationDelivery(user *domain.User, token string, now
 	text := fmt.Sprintf("Hi %s,\n\nConfirm your email address and choose a password to activate your Nipa account:\n\n%s\n\nThis link expires in 72 hours. If you did not create an account, you can ignore this email.\n", user.Name, link)
 	htmlBody := fmt.Sprintf(`<p>Hi %s,</p><p>Confirm your email address and choose a password to activate your Nipa account:</p><p><a href="%s">Confirm email address</a></p><p>This link expires in 72 hours. If you did not create an account, you can ignore this email.</p>`,
 		html.EscapeString(user.Name), html.EscapeString(link))
+	return r.delivery(user, verificationEvent, "verify", subject, text, htmlBody, now)
+}
+
+func (r *Registration) existingAccountDelivery(user *domain.User, now time.Time) (*domain.EmailDelivery, error) {
+	link := strings.TrimRight(strings.TrimSpace(r.cfg.BaseURL), "/") + "/login"
+	subject := "You already have a Nipa account"
+	text := fmt.Sprintf("Hi %s,\n\nSomeone tried to create a Nipa account with this email address, which already has one. Sign in here:\n\n%s\n\nIf this was not you, you can ignore this email.\n", user.Name, link)
+	htmlBody := fmt.Sprintf(`<p>Hi %s,</p><p>Someone tried to create a Nipa account with this email address, which already has one.</p><p><a href="%s">Sign in</a></p><p>If this was not you, you can ignore this email.</p>`,
+		html.EscapeString(user.Name), html.EscapeString(link))
+	return r.delivery(user, existingAccountEvent, "existing", subject, text, htmlBody, now)
+}
+
+func (r *Registration) delivery(user *domain.User, event, kind, subject, text, htmlBody string, now time.Time) (*domain.EmailDelivery, error) {
 	deliveryID := r.node.Generate()
 	message := mail.Message{
 		To:        []string{user.Email},
 		Subject:   subject,
 		Text:      text,
 		HTML:      htmlBody,
-		MessageID: fmt.Sprintf("<nipa-verify-%s-%s@%s>", user.ID.Base36(), deliveryID.Base36(), r.messageHost()),
+		MessageID: fmt.Sprintf("<nipa-%s-%s-%s@%s>", kind, user.ID.Base36(), deliveryID.Base36(), r.messageHost()),
 	}
 	body, err := mail.EncodeMessage(message)
 	if err != nil {
@@ -320,7 +388,7 @@ func (r *Registration) verificationDelivery(user *domain.User, token string, now
 	due := now
 	return &domain.EmailDelivery{
 		ID:            deliveryID,
-		Event:         verificationEvent,
+		Event:         event,
 		UserID:        user.ID,
 		Email:         user.Email,
 		Subject:       subject,

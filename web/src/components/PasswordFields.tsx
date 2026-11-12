@@ -3,6 +3,19 @@ import { Button, FormControl, IconButton, TextInput } from '@primer/react'
 import { CheckIcon, CopyIcon, EyeClosedIcon, EyeIcon, SyncIcon } from '@primer/octicons-react'
 
 export const MIN_PASSWORD_LENGTH = 8
+export const MAX_PASSWORD_BYTES = 72
+
+export function passwordBytes(password: string): number {
+  return new TextEncoder().encode(password).length
+}
+
+export function passwordLengthProblem(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+  if (passwordBytes(password) > MAX_PASSWORD_BYTES) {
+    return `Use at most ${MAX_PASSWORD_BYTES} bytes; accented letters and emoji count as several.`
+  }
+  return null
+}
 
 const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_!@#%'
 
@@ -13,7 +26,8 @@ export function generatePassword(length = 16): string {
 }
 
 export function passwordProblem(password: string, confirm: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+  const length = passwordLengthProblem(password)
+  if (length) return length
   if (password !== confirm) return 'The passwords do not match.'
   return null
 }
@@ -34,7 +48,7 @@ export function PasswordFields({
 }) {
   const [visible, setVisible] = useState(false)
   const [copied, setCopied] = useState(false)
-  const tooShort = password !== '' && password.length < MIN_PASSWORD_LENGTH
+  const lengthProblem = password === '' ? null : passwordLengthProblem(password)
   const mismatch = confirm !== '' && password !== confirm
 
   async function copy() {
@@ -57,7 +71,7 @@ export function PasswordFields({
             type={visible ? 'text' : 'password'}
             autoComplete="new-password"
             value={password}
-            validationStatus={tooShort ? 'error' : undefined}
+            validationStatus={lengthProblem ? 'error' : undefined}
             onChange={(event) => {
               setCopied(false)
               onChange(event.target.value, confirm)
@@ -86,11 +100,11 @@ export function PasswordFields({
             Generate
           </Button>
         </div>
-        {tooShort ? (
-          <FormControl.Validation variant="error">Use at least {MIN_PASSWORD_LENGTH} characters.</FormControl.Validation>
+        {lengthProblem ? (
+          <FormControl.Validation variant="error">{lengthProblem}</FormControl.Validation>
         ) : (
           <FormControl.Caption>
-            At least {MIN_PASSWORD_LENGTH} characters. Share it with the user over a safe channel; they can change it from their profile.
+            At least {MIN_PASSWORD_LENGTH} characters, at most {MAX_PASSWORD_BYTES} bytes. Share it with the user over a safe channel; they can change it from their profile.
           </FormControl.Caption>
         )}
       </FormControl>

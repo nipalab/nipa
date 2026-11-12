@@ -111,7 +111,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 
 	return Usecases{
 		Auth:               authUsecase,
-		User:               usecase.NewUser(node, repos.User, deps.Hasher).WithAudit(auditUsecase),
+		User:               usecase.NewUser(node, repos.User, deps.Hasher).WithAudit(auditUsecase).WithLimiter(deps.RateLimiter),
 		SSHKey:             usecase.NewSSHKey(node, repos.SSHKey),
 		Common:             commonUsecase,
 		Branch:             branchUsecase,

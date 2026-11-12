@@ -22,14 +22,20 @@ an unreachable Redis at startup and unknown values are startup errors.
 
 The limiter **fails open**: if the store errors (Redis down) the request is
 allowed, a warning is logged and `nipa_ratelimit_total{result="error"}` is
-incremented.
+incremented. The auth scopes (`auth_ip`, `auth_id`, `auth_email`,
+`register_email`) are the exception: on a store error they are counted in a
+per-process `Memory` store (created on first failure, closed with the
+limiter) instead, so a Redis outage degrades them to per-instance limits but
+never to no limit. The warning and the `error` metric are still emitted.
 
 ## Scopes
 
 | Scope | Applies to | Key | Default (per minute / burst) |
 |---|---|---|---|
 | `auth_ip` | `/api/v1/auth/*` (login, refresh, register, resend, verify, OAuth) and the public login RPCs | client IP | 10 / 10 |
-| `auth_id` | password login, SSH begin/complete login with an email | SHA-256 of the lower-cased email | 0.33 / 5 |
+| `auth_id` | password login, SSH begin/complete login with an email; password change | SHA-256 of the lower-cased email + client IP (email alone when no IP is known); `user:<id>` for password changes | 0.33 / 5 |
+| `auth_email` | password login, SSH begin/complete login with an email, after `auth_id` allowed it | SHA-256 of the lower-cased email | 1 / 20 |
+| `register_email` | `nipad-ee` SaaS `register` and `register/resend` | SHA-256 of the lower-cased email | 0.1 / 3 |
 | `api_user` | authenticated REST (`/api/v1`) and gRPC | user id | 3000 / 200 |
 | `chunk_ip` | signed `/api/chunks/*` transfers | client IP | 60000 / 5000 |
 | `global_ip` | every other HTTP request | client IP | 6000 / 300 |
@@ -56,7 +62,10 @@ Add the proxy's address (or CIDR) when it is not on loopback.
   `Retry-After` and `X-RateLimit-Limit` / `X-RateLimit-Remaining`.
 - gRPC: `ResourceExhausted` with the same message. The client maps it to a 429
   domain error (quota failures keep mapping to 402).
-- `auth_id` rejections surface as the same 429 from the usecase.
+- `auth_id` / `auth_email` rejections surface as the same 429 from the usecase.
+- A throttled `register` or `register/resend` answers exactly like an allowed
+  one (200, the usual message) and sends nothing, so the limit reveals nothing
+  about the address.
 
 ## Client behaviour
 
@@ -87,9 +96,16 @@ Labels never carry IPs or users.
   their own buckets, so a client can briefly get up to twice the budget. Use
   Redis to share them.
 - Counting is per attempt (failed or not); there is no refund on success.
-- The `auth_id` scope slows down credential stuffing against one account even
-  from many IPs; the same cost applies to the legitimate owner, which is why the
-  burst is small but refills continuously.
+- `auth_id` is keyed per email and client IP, so one remote IP cannot lock a
+  victim out cheaply; `auth_email` is the higher, IP-independent ceiling that
+  still bounds a distributed attack on one account (it is only spent once
+  `auth_id` allowed the attempt). The usecase reads the client IP from
+  `domain.RequestMeta`, attached for the public login RPCs by the JWT
+  interceptor and for `/api/v1/auth` by `RequestMetaFilter`.
+- Behind a proxy that is not listed in `RATE_LIMIT_TRUSTED_PROXIES` every
+  request carries the proxy's address, so email + IP collapses to email-only.
+- During a blue/green flip the old color keys `auth_id` on the email alone and
+  the new one on email + IP, so the two colors briefly count separately.
 
 ## Testing
 

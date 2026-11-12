@@ -307,3 +307,45 @@ func TestBearerToken_CaseInsensitiveScheme(t *testing.T) {
 		require.Equal(t, "abc", token)
 	}
 }
+
+func TestInterceptor_PublicLoginCarriesRequestMeta(t *testing.T) {
+	proxies := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	interceptor := NewInterceptor(nil).WithTrustedProxies(proxies)
+	base := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 4000}})
+	withMD := metadata.NewIncomingContext(base, metadata.Pairs("x-forwarded-for", "203.0.113.9", "user-agent", "nipa-cli/1.0"))
+
+	for _, method := range []string{
+		"/greet.NipaService/LoginWithUsernamePassword",
+		"/greet.NipaService/BeginLoginSSHKey",
+		"/greet.NipaService/CompleteLoginSSHKey",
+	} {
+		t.Run(method, func(t *testing.T) {
+			_, err := interceptor.JWTUnary()(withMD, nil, &grpc.UnaryServerInfo{FullMethod: method}, func(ctx context.Context, _ interface{}) (interface{}, error) {
+				meta, ok := domain.RequestMetaFromContext(ctx)
+				require.True(t, ok)
+				require.Equal(t, domain.RequestMeta{ClientIP: "203.0.113.9", UserAgent: "nipa-cli/1.0"}, meta)
+				_, hasClaim := domain.ClaimFromContext(ctx)
+				require.False(t, hasClaim)
+				return nil, nil
+			})
+			require.NoError(t, err)
+		})
+	}
+
+	_, err := interceptor.JWTUnary()(base, nil, &grpc.UnaryServerInfo{FullMethod: "/greet.NipaService/LoginWithUsernamePassword"}, func(ctx context.Context, _ interface{}) (interface{}, error) {
+		meta, ok := domain.RequestMetaFromContext(ctx)
+		require.True(t, ok)
+		require.Equal(t, "10.1.2.3", meta.ClientIP)
+		return nil, nil
+	})
+	require.NoError(t, err)
+
+	err = interceptor.JWTStream()(nil, &fakeServerStream{ctx: withMD}, &grpc.StreamServerInfo{FullMethod: "/grpc.health.v1.Health/Watch"},
+		func(_ interface{}, ss grpc.ServerStream) error {
+			meta, ok := domain.RequestMetaFromContext(ss.Context())
+			require.True(t, ok)
+			require.Equal(t, "203.0.113.9", meta.ClientIP)
+			return nil
+		})
+	require.NoError(t, err)
+}

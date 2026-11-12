@@ -55,6 +55,7 @@ func (stubSessionStore) ConsumeSSHLoginChallenge(context.Context, string) (*doma
 }
 
 type registrationServer struct {
+	auth   *usecase.Auth
 	env    *registrationEnv
 	server *httptest.Server
 }
@@ -68,12 +69,10 @@ func newRegistrationServerWith(t *testing.T, providers func() []string, billing 
 	t.Helper()
 
 	env := newRegistrationEnv(t)
-	var handler *Handler
+	auth := usecase.NewAuth("test-secret", stubHasher{}, env.users, stubSessionStore{})
+	handler := NewHandler(env.registration, auth)
 	if providers != nil {
-		handler = NewHandler(env.registration, usecase.NewAuth("test-secret", stubHasher{}, env.users, stubSessionStore{})).
-			WithProviders(providers)
-	} else {
-		handler = NewHandler(env.registration, usecase.NewAuth("test-secret", stubHasher{}, env.users, stubSessionStore{}))
+		handler = handler.WithProviders(providers)
 	}
 	if billing != nil {
 		handler = handler.WithBilling(billing)
@@ -87,7 +86,7 @@ func newRegistrationServerWith(t *testing.T, providers func() []string, billing 
 	container.Add(ws)
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
-	return &registrationServer{env: env, server: server}
+	return &registrationServer{auth: auth, env: env, server: server}
 }
 
 func (s *registrationServer) do(t *testing.T, method, path, body string) (*http.Response, string) {
@@ -224,4 +223,29 @@ func TestVerifyEndpoint(t *testing.T) {
 	require.Equal(t, "nipa_refresh", cookies[0].Name)
 	require.True(t, cookies[0].HttpOnly)
 	require.NotEmpty(t, cookies[0].Value)
+}
+
+func TestVerifyEndpointRecordsOneLogin(t *testing.T) {
+	server := newRegistrationServer(t, nil)
+	rec := &recordedAudit{}
+	server.auth.WithAudit(rec)
+	server.env.users.users = []*domain.User{{ID: 42, Name: "Alice", Email: "alice@example.com"}}
+	server.env.repo.verifications[42] = &verificationRow{userID: 42, tokenHash: hashToken("token-42"), expiresAt: server.env.now.Add(time.Hour)}
+
+	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"token-42","password":"password123"}`)
+	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	require.Len(t, rec.entries, 1)
+	require.Equal(t, domain.AuditAuthLoginSucceeded, rec.entries[0].Action)
+	require.Equal(t, usecase.LoginMethodEmailVerification, rec.entries[0].Metadata["method"])
+	require.Equal(t, domain.AuditActorUser, rec.entries[0].ActorType)
+}
+
+func TestVerifyEndpointRejectsOverlongPassword(t *testing.T) {
+	server := newRegistrationServer(t, nil)
+	server.env.repo.verifications[42] = &verificationRow{userID: 42, tokenHash: hashToken("token-42"), expiresAt: server.env.now.Add(time.Hour)}
+
+	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"token-42","password":"`+strings.Repeat("é", 37)+`"}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	require.Contains(t, body, "at most 72 bytes")
+	require.Contains(t, server.env.repo.verifications, snow.ID(42), "the link stays usable")
 }

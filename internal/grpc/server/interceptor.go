@@ -70,7 +70,8 @@ func requestMeta(ctx context.Context, md metadata.MD, proxies []netip.Prefix) do
 func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if isPublicMethod(info.FullMethod) {
-			return handler(ctx, req)
+			md, _ := metadata.FromIncomingContext(ctx)
+			return handler(domain.ContextWithRequestMeta(ctx, requestMeta(ctx, md, i.proxies)), req)
 		}
 
 		md, ok := metadata.FromIncomingContext(ctx)
@@ -112,7 +113,9 @@ func (w *wrappedStream) Context() context.Context {
 func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if isPublicMethod(info.FullMethod) {
-			return handler(srv, ss)
+			md, _ := metadata.FromIncomingContext(ss.Context())
+			ctx := domain.ContextWithRequestMeta(ss.Context(), requestMeta(ss.Context(), md, i.proxies))
+			return handler(srv, &wrappedStream{ServerStream: ss, ctx: ctx})
 		}
 
 		md, ok := metadata.FromIncomingContext(ss.Context())

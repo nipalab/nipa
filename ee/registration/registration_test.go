@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -69,6 +70,7 @@ type stubRepo struct {
 	terms              []domain.TermsAcceptance
 	termsErr           error
 	latestTermsErr     error
+	sweepErr           error
 }
 
 func (s *stubRepo) RecordTermsAcceptance(_ context.Context, acceptance domain.TermsAcceptance) error {
@@ -130,6 +132,9 @@ func (s *stubRepo) DeleteEmailVerification(_ context.Context, userID snow.ID) er
 }
 
 func (s *stubRepo) DeleteExpiredEmailVerifications(_ context.Context, _ time.Time) error {
+	if s.sweepErr != nil {
+		return s.sweepErr
+	}
 	s.expiredSweeps++
 	return nil
 }
@@ -240,7 +245,64 @@ func TestRegisterConfirmedEmailLooksLikeASuccess(t *testing.T) {
 	require.NoError(t, err, "the response must not reveal that the address is registered")
 	require.Empty(t, env.repo.created)
 	require.Empty(t, env.repo.passwords)
+	require.Empty(t, env.repo.verifications)
+
+	require.Equal(t, 1, env.repo.expiredSweeps, "the confirmed path runs the transaction a signup runs")
+	require.Len(t, env.outbox.deliveries, 1, "the owner gets a notice instead of a confirmation link")
+	delivery := env.outbox.deliveries[0]
+	require.Equal(t, existingAccountEvent, delivery.Event)
+	require.Equal(t, snow.ID(7), delivery.UserID)
+	require.Equal(t, "You already have a Nipa account", delivery.Subject)
+	require.Contains(t, string(delivery.Body), "https://nipa.example.com/login")
+	require.NotContains(t, string(delivery.Body), "/verify?token=")
+	require.Equal(t, 1, env.kicker.kicks)
+}
+
+func TestRegisterConfirmedEmailWithoutMailer(t *testing.T) {
+	env := newRegistrationEnv(t)
+	env.registration.outbox = nil
+	env.users.users = []*domain.User{{ID: 7, Email: "alice@example.com", EmailVerified: true}}
+
+	require.NoError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com", false))
+	require.Equal(t, 1, env.repo.expiredSweeps)
 	require.Empty(t, env.outbox.deliveries)
+}
+
+func TestRegisterConfirmedEmailSweepError(t *testing.T) {
+	env := newRegistrationEnv(t)
+	env.repo.sweepErr = errors.New("db")
+	env.users.users = []*domain.User{{ID: 7, Email: "alice@example.com", EmailVerified: true}}
+
+	require.EqualError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com", false), "db")
+	require.Empty(t, env.outbox.deliveries)
+	require.Zero(t, env.kicker.kicks)
+}
+
+func TestRegisterAndResendThrottledPerEmail(t *testing.T) {
+	env := newRegistrationEnv(t)
+	env.registration.WithLimiter(ratelimit.NewLimiter(ratelimit.NewMemory(), map[string]ratelimit.Rule{
+		ratelimit.ScopeRegisterEmail: {Rate: 0.0001, Burst: 2},
+	}))
+	ctx := context.Background()
+
+	require.NoError(t, env.registration.Register(ctx, "Alice", "alice@example.com", false))
+	require.Len(t, env.repo.created, 1)
+	env.users.users = []*domain.User{{ID: env.repo.created[0].ID, Name: "Alice", Email: "alice@example.com"}}
+	require.NoError(t, env.registration.ResendVerification(ctx, "alice@example.com"))
+	require.Len(t, env.outbox.deliveries, 2)
+
+	require.NoError(t, env.registration.ResendVerification(ctx, " ALICE@example.com "), "a throttled resend looks like a success")
+	require.NoError(t, env.registration.Register(ctx, "Alice", "Alice@Example.com", false), "a throttled register looks like a success")
+	require.Len(t, env.outbox.deliveries, 2, "nothing is sent while throttled")
+	require.Len(t, env.repo.created, 1)
+
+	require.NoError(t, env.registration.Register(ctx, "Bob", "bob@example.com", false))
+	require.Len(t, env.repo.created, 2, "other addresses keep their own budget")
+	require.Len(t, env.outbox.deliveries, 3)
+
+	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
+	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
+	require.NoError(t, env.registration.ResendVerification(ctx, "nobody@example.com"))
 }
 
 func TestRegisterAgainReissuesTheTokenWithoutTouchingThePassword(t *testing.T) {

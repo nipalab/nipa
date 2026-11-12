@@ -5,10 +5,14 @@ import (
 	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-const minPasswordLength = 8
+const (
+	minPasswordLength = 8
+	maxPasswordBytes  = 72
+)
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=user_mock_test.go -package=usecase
 type userAdminRepository interface {
@@ -27,6 +31,13 @@ type User struct {
 	repo     userAdminRepository
 	hasher   passwordHasher
 	audit    AuditRecorder
+	limiter  *ratelimit.Limiter
+}
+
+// WithLimiter throttles password changes per user.
+func (u *User) WithLimiter(limiter *ratelimit.Limiter) *User {
+	u.limiter = limiter
+	return u
 }
 
 // WithAudit records account administration.
@@ -179,6 +190,9 @@ func (u *User) ChangePassword(ctx context.Context, userID snow.ID, oldPassword, 
 	if !ok || claim.UserID != userID {
 		return domain.NewErrorNoPermission()
 	}
+	if err := allowLimit(ctx, u.limiter, ratelimit.ScopeAuthID, "user:"+userID.Base36()); err != nil {
+		return err
+	}
 	user, err := u.repo.GetByID(ctx, userID)
 	if err != nil {
 		return err
@@ -193,7 +207,11 @@ func (u *User) ChangePassword(ctx context.Context, userID snow.ID, oldPassword, 
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
+	return auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
+	}, func() *domain.AuditEntry {
+		return userAudit(domain.AuditUserPasswordChanged, userID, nil)
+	})
 }
 
 func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword string) error {
@@ -324,10 +342,14 @@ func isEmail(email string) bool {
 	return at > 0 && at < len(email)-1 && !strings.ContainsAny(email, " \t")
 }
 
-// ValidatePassword enforces the minimum password policy.
+// ValidatePassword enforces the password policy. The maximum is in bytes
+// because bcrypt refuses longer input.
 func ValidatePassword(password string) error {
 	if len(password) < minPasswordLength {
 		return domain.NewErrorUser("password must be at least 8 characters")
+	}
+	if len(password) > maxPasswordBytes {
+		return domain.NewErrorUser("password must be at most 72 bytes")
 	}
 	return nil
 }

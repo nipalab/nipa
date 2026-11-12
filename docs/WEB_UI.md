@@ -30,6 +30,10 @@ edition.
   refresh path decides. `POST /me/password` revokes every session and answers
   with a fresh `LoginResponse` + refresh cookie, which `changeMyPassword`
   installs through `establishSession`, so the current tab stays signed in.
+- Password forms (verify, profile change, admin create/reset) share
+  `passwordLengthProblem` in `components/PasswordFields.tsx`: at least 8
+  characters and at most 72 UTF-8 bytes (`TextEncoder`, the bcrypt limit the
+  server enforces), so accented letters and emoji count as several.
 - `RequireAuth` guards every route except `/`, `/login`, `/register`, `/verify`
   and `/oauth/callback` and redirects back after sign-in.
 - `/` is an entry redirect: anonymous visitors go to `/login`, signed-in users

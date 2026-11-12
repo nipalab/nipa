@@ -230,7 +230,7 @@ func (h *Handler) Verify(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	result, err := h.auth.LoginResult(appCtx.Context(), user)
+	result, err := h.auth.LoginResultVia(appCtx.Context(), user, usecase.LoginMethodEmailVerification)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

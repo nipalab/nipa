@@ -63,10 +63,12 @@ var _ = Describe("rate limiting", func() {
 
 	Context("against the low-limit server", func() {
 		const (
-			authIPBurst   = 4
-			apiUserBurst  = 6
-			chunkIPBurst  = 3
-			globalIPBurst = 10
+			authIPBurst    = 4
+			authIDBurst    = 3
+			authEmailBurst = 6
+			apiUserBurst   = 6
+			chunkIPBurst   = 3
+			globalIPBurst  = 10
 		)
 
 		var rl *rlServer
@@ -108,6 +110,37 @@ var _ = Describe("rate limiting", func() {
 			_, err = transport.LoginWithUsernamePassword(other, rl.host, rlEmail("auth-ip-grpc"), "wrong-password")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).NotTo(ContainSubstring("rate limit exceeded"))
+		})
+
+		It("keys login throttling on email and client IP under an email-wide ceiling", func() {
+			admin := rl.login(cli.user, cli.password)
+			email, password := rlEmail("auth-id"), "ratelimit-password-123"
+			rl.createUser(admin, email, password)
+			login := func(ip, pw string) rlResponse {
+				return rl.send(http.MethodPost, "/api/v1/auth/login", ip, "", map[string]string{"email": email, "password": pw})
+			}
+			expectThrottled := func(res rlResponse) {
+				GinkgoHelper()
+				Expect(res.err).NotTo(HaveOccurred())
+				Expect(res.status).To(Equal(http.StatusTooManyRequests), res.body)
+				Expect(res.body).To(ContainSubstring("rate limit exceeded"))
+			}
+
+			attacker := rlFreshIP()
+			for i := 0; i < authIDBurst; i++ {
+				res := login(attacker, "wrong-password")
+				Expect(res.status).To(Equal(http.StatusBadRequest), "attempt %d: %s", i, res.body)
+			}
+			expectThrottled(login(attacker, "wrong-password"))
+
+			Expect(rl.login(email, password)).NotTo(BeEmpty(), "another client IP still signs in")
+
+			used := authIDBurst + 1
+			for ; used < authEmailBurst; used++ {
+				res := login(rlFreshIP(), "wrong-password")
+				Expect(res.status).To(Equal(http.StatusBadRequest), "attempt %d: %s", used, res.body)
+			}
+			expectThrottled(login(rlFreshIP(), password))
 		})
 
 		It("throttles authenticated REST calls per user", func() {
