@@ -83,6 +83,16 @@ func (p *cachePruner) fire() {
 	}
 }
 
+// settle drops a pending request after a manual prune covered it.
+func (p *cachePruner) settle() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pending = false
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+}
+
 // close cancels a scheduled prune and waits for a running one.
 func (p *cachePruner) close() {
 	p.mu.Lock()

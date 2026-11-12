@@ -122,6 +122,13 @@ export interface Check {
     "updatedAt": string;
 }
 
+export interface CleanUpResult {
+    "objects": number;
+    "bytes": number;
+    "skipped": boolean;
+    "reason": string;
+}
+
 /**
  * CloneRequest describes a checkout: Target is the new folder, Sparse the
  * folders to download (empty for everything).
@@ -241,6 +248,15 @@ export interface DiffLine {
     "new": number;
     "text": string;
     "noNewline"?: boolean;
+}
+
+export interface DiskUsage {
+    "workingFiles": number;
+    "workingBytes": number;
+    "cacheObjects": number;
+    "cacheBytes": number;
+    "pins": string[] | null;
+    "sparse": string[] | null;
 }
 
 export interface Draft {

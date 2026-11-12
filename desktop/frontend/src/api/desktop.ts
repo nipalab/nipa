@@ -55,6 +55,8 @@ import type {
   BrokenReference,
   BudgetViolation,
   PushChecks as RawPushChecks,
+  CleanUpResult,
+  DiskUsage as RawDiskUsage,
   ModelCompare,
   ModelSide,
   ModelStats,
@@ -143,6 +145,8 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
+export type DiskUsage = Omit<RawDiskUsage, "pins" | "sparse"> & { pins: string[]; sparse: string[] };
+export type { CleanUpResult };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
@@ -201,6 +205,11 @@ export const desktop = {
       warnings: c?.warnings ?? [],
     };
   },
+  diskUsage: async (root: string): Promise<DiskUsage> => {
+    const u = required(await Service.DiskUsage(root), "disk usage");
+    return { ...u, pins: u.pins ?? [], sparse: u.sparse ?? [] };
+  },
+  cleanUp: async (root: string): Promise<CleanUpResult> => required(await Service.CleanUp(root), "clean-up result"),
   lockStatus: async (root: string): Promise<LockStatus> => {
     const s = await Service.LockStatus(root);
     if (!s) throw new Error("No lock information");

@@ -19,6 +19,7 @@ type Querier interface {
 	PinnedPathList(ctx context.Context) ([]string, error)
 	PinnedPathUpsert(ctx context.Context, arg PinnedPathUpsertParams) error
 	SnapshotFileList(ctx context.Context) ([]SnapshotFileListRow, error)
+	SnapshotUsage(ctx context.Context) (SnapshotUsageRow, error)
 	StagedFileDelete(ctx context.Context, path string) error
 	StagedFileDeleteAll(ctx context.Context) error
 	StagedFileInsert(ctx context.Context, path string) error

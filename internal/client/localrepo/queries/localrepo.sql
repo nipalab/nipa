@@ -104,3 +104,7 @@ WHERE path = :path;
 SELECT path
 FROM pinned_paths
 ORDER BY path;
+
+-- name: SnapshotUsage :one
+SELECT CAST(COUNT(*) AS INTEGER) AS files, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS size_bytes
+FROM files;

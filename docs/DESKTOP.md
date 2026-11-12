@@ -57,7 +57,7 @@ Sonar never compile it.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
@@ -205,6 +205,18 @@ Sonar never compile it.
   (one small request from the app process, typed key first, then
   `NIPA_LLM_API_KEY`/`apiKeyEnv`, then the saved key; errors redacted). The
   daemon resolves the settings on every call, so no restart is needed.
+- Storage: the Details tab's "Storage" card (`StorageCard`) shows what the
+  clone occupies, from `DiskUsage` over the daemon's `DiskUsage`: project
+  files (the snapshot's tracked sizes and file count, never a walk of the
+  working tree), the local cache (`.nipa/objects` bytes) and the cached
+  object count, plus the lock pins kept in the cache. "Clean up" calls
+  `CleanUp` (daemon `GC`, the `nipa gc` prune) and reports the freed amount
+  as a toast, "Repository is busy, try again" when another process holds
+  `.nipa/lock`, or that a merge or revert is in progress; the numbers are
+  refetched afterwards and after every operation. The button is disabled
+  while an operation runs on the clone. A full checkout larger than
+  `SPARSE_HINT_BYTES` (20 GiB) shows a one-line hint that opens the sparse
+  folder editor.
 - Clone and sign in: "Clone a repository…" (welcome screen and the sidebar)
   opens a dialog: server address (remembered) → `AccountStatus` tells
   whether the daemon holds a session for it; without one the dialog tries
@@ -542,3 +554,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 16. Packaging and auto-update. **(done)**
 17. Pre-push checks (budgets, broken references) above the Push button. **(done)**
 18. Generate the push message and MR description, AI settings with a keyring key. **(done)**
+19. Storage card (disk usage, clean up, sparse hint) in the Details tab. **(done)**

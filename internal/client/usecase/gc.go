@@ -30,7 +30,7 @@ type exclusiveLocker interface {
 
 const (
 	PruneSkipBusy    = "repository busy"
-	pruneSkipPending = "a merge or revert is in progress"
+	PruneSkipPending = "a merge or revert is in progress"
 )
 
 type PruneResult struct {
@@ -82,7 +82,7 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 		return PruneResult{}, err
 	}
 	if merge != nil || revert != nil {
-		return PruneResult{Skipped: true, SkipReason: pruneSkipPending}, nil
+		return PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
 	}
 	snapshot, err := lr.Snapshot()
 	if err != nil {

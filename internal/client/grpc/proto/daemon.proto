@@ -907,6 +907,30 @@ message SetSparseRequest {
     repeated string paths = 2; // empty: full checkout
 }
 
+message DiskUsageRequest {
+    string root = 1;
+}
+
+message DiskUsageResponse {
+    int64 working_files = 1; // tracked files in the local snapshot
+    int64 working_bytes = 2; // sum of the snapshot file sizes; the working tree is not walked
+    int64 cache_objects = 3; // loose objects in .nipa/objects
+    int64 cache_bytes = 4; // every file in .nipa/objects, interrupted temp writes included
+    repeated string pinned_paths = 5; // lock pins whose old version stays cached
+    repeated string sparse = 6; // the clone's sparse prefixes; empty: full checkout
+}
+
+message GCRequest {
+    string root = 1;
+}
+
+message GCResponse {
+    int64 objects = 1;
+    int64 bytes = 2;
+    bool skipped = 3;
+    string skip_reason = 4; // "repository busy" or "a merge or revert is in progress"
+}
+
 service NipaDaemon {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
@@ -971,6 +995,8 @@ service NipaDaemon {
     rpc MetaWarnings(MetaWarningsRequest) returns (MetaWarningsResponse);
     rpc PushPlan(PushPlanRequest) returns (PushPlanResponse);
     rpc Generate(GenerateRequest) returns (GenerateResponse);
+    rpc DiskUsage(DiskUsageRequest) returns (DiskUsageResponse);
+    rpc GC(GCRequest) returns (GCResponse);
 
     rpc AccountStatus(AccountStatusRequest) returns (AccountStatusResponse);
     rpc LoginSSH(LoginSSHRequest) returns (LoginResponse);

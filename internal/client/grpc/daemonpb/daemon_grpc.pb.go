@@ -78,6 +78,8 @@ const (
 	NipaDaemon_MetaWarnings_FullMethodName                  = "/nipadaemon.NipaDaemon/MetaWarnings"
 	NipaDaemon_PushPlan_FullMethodName                      = "/nipadaemon.NipaDaemon/PushPlan"
 	NipaDaemon_Generate_FullMethodName                      = "/nipadaemon.NipaDaemon/Generate"
+	NipaDaemon_DiskUsage_FullMethodName                     = "/nipadaemon.NipaDaemon/DiskUsage"
+	NipaDaemon_GC_FullMethodName                            = "/nipadaemon.NipaDaemon/GC"
 	NipaDaemon_AccountStatus_FullMethodName                 = "/nipadaemon.NipaDaemon/AccountStatus"
 	NipaDaemon_LoginSSH_FullMethodName                      = "/nipadaemon.NipaDaemon/LoginSSH"
 	NipaDaemon_ListProjects_FullMethodName                  = "/nipadaemon.NipaDaemon/ListProjects"
@@ -150,6 +152,8 @@ type NipaDaemonClient interface {
 	MetaWarnings(ctx context.Context, in *MetaWarningsRequest, opts ...grpc.CallOption) (*MetaWarningsResponse, error)
 	PushPlan(ctx context.Context, in *PushPlanRequest, opts ...grpc.CallOption) (*PushPlanResponse, error)
 	Generate(ctx context.Context, in *GenerateRequest, opts ...grpc.CallOption) (*GenerateResponse, error)
+	DiskUsage(ctx context.Context, in *DiskUsageRequest, opts ...grpc.CallOption) (*DiskUsageResponse, error)
+	GC(ctx context.Context, in *GCRequest, opts ...grpc.CallOption) (*GCResponse, error)
 	AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error)
 	LoginSSH(ctx context.Context, in *LoginSSHRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
@@ -856,6 +860,26 @@ func (c *nipaDaemonClient) Generate(ctx context.Context, in *GenerateRequest, op
 	return out, nil
 }
 
+func (c *nipaDaemonClient) DiskUsage(ctx context.Context, in *DiskUsageRequest, opts ...grpc.CallOption) (*DiskUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiskUsageResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_DiskUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) GC(ctx context.Context, in *GCRequest, opts ...grpc.CallOption) (*GCResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GCResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_GC_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AccountStatusResponse)
@@ -1007,6 +1031,8 @@ type NipaDaemonServer interface {
 	MetaWarnings(context.Context, *MetaWarningsRequest) (*MetaWarningsResponse, error)
 	PushPlan(context.Context, *PushPlanRequest) (*PushPlanResponse, error)
 	Generate(context.Context, *GenerateRequest) (*GenerateResponse, error)
+	DiskUsage(context.Context, *DiskUsageRequest) (*DiskUsageResponse, error)
+	GC(context.Context, *GCRequest) (*GCResponse, error)
 	AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error)
 	LoginSSH(context.Context, *LoginSSHRequest) (*LoginResponse, error)
 	ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error)
@@ -1200,6 +1226,12 @@ func (UnimplementedNipaDaemonServer) PushPlan(context.Context, *PushPlanRequest)
 }
 func (UnimplementedNipaDaemonServer) Generate(context.Context, *GenerateRequest) (*GenerateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Generate not implemented")
+}
+func (UnimplementedNipaDaemonServer) DiskUsage(context.Context, *DiskUsageRequest) (*DiskUsageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiskUsage not implemented")
+}
+func (UnimplementedNipaDaemonServer) GC(context.Context, *GCRequest) (*GCResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GC not implemented")
 }
 func (UnimplementedNipaDaemonServer) AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AccountStatus not implemented")
@@ -2228,6 +2260,42 @@ func _NipaDaemon_Generate_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_DiskUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiskUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).DiskUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_DiskUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).DiskUsage(ctx, req.(*DiskUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_GC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GCRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).GC(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_GC_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).GC(ctx, req.(*GCRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaDaemon_AccountStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountStatusRequest)
 	if err := dec(in); err != nil {
@@ -2538,6 +2606,14 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Generate",
 			Handler:    _NipaDaemon_Generate_Handler,
+		},
+		{
+			MethodName: "DiskUsage",
+			Handler:    _NipaDaemon_DiskUsage_Handler,
+		},
+		{
+			MethodName: "GC",
+			Handler:    _NipaDaemon_GC_Handler,
 		},
 		{
 			MethodName: "AccountStatus",

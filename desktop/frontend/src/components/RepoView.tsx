@@ -5,6 +5,7 @@ import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, t
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
 import { SparseDialog } from "@/components/clone/SparseDialog";
+import { StorageCard } from "@/components/details/StorageCard";
 import { ConflictsView } from "@/components/conflicts/ConflictsView";
 import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
@@ -61,7 +62,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
   const finishing = useRef(false);
   const tagCheckout = useRef("");
@@ -392,6 +393,9 @@ function Details({ repo, busy, notify, onEditSparse }: { repo: Repo; busy: boole
           </Button>
         </div>
       </dl>
+      <section aria-label="Storage" className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
+        <StorageCard root={repo.root} busy={busy} notify={notify} onEditSparse={onEditSparse} />
+      </section>
       <section aria-label="Ignore rules" className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
         <IgnoreRulesEditor root={repo.root} notify={notify} />
       </section>
