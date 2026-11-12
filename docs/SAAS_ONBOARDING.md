@@ -96,11 +96,11 @@ not ask existing users again; the terms announce material changes by email.
 3. Until confirmation the account cannot log in: password, refresh-token and
    SSH logins all refuse with `403 email not confirmed`. The login page offers
    a resend.
-4. `POST /api/v1/auth/register/resend {email}` reissues the token; it always
-   answers `200` so it cannot be used to probe for accounts. `register` and
+4. `POST /api/v1/auth/register/resend {email}` reissues the token; apart from the
+   throttle it always answers `200` so it cannot be used to probe for accounts. `register` and
    `resend` share a per-email budget (`register_email`, see
-   `docs/RATE_LIMIT.md`); a throttled call gets the same answer and sends
-   nothing.
+   `docs/RATE_LIMIT.md`); a throttled call gets a `429` and sends nothing,
+   whether or not the address has an account.
 
 ## Social login and signup
 
@@ -214,18 +214,23 @@ Mini-RPCs since both flows reuse the shared login machinery:
 
 ## Schema
 
-Edited into the existing consolidated migrations (project is not live yet, no
-new migration files):
+The onboarding tables came with the initial migrations
+(`ee/db/migrations/postgres/000001_init_schema`, and
+`db/migrations/sqlite/000002_user` for the `users` columns); later changes are
+new migration files:
 
 - `users.email_verified BOOLEAN NOT NULL DEFAULT true` +
-  `email_verified_at` — pre-existing and admin/service accounts stay verified;
-  only the registration repo writes `false` (`UserCreateUnverified`).
-- `email_verifications (user_id PK, token_hash UNIQUE, expires_at)`
+  `email_verified_at` (init) — pre-existing and admin/service accounts stay
+  verified; only the registration repo writes `false`
+  (`UserCreateUnverified`).
+- `email_verifications (user_id PK, token_hash UNIQUE, expires_at)` (init)
 - `user_identities (id, user_id, provider, provider_account_id, email,
-  UNIQUE(provider, provider_account_id))`
-- `oauth_login_codes (code PK, user_id, expires_at, binding_hash)`;
-  `binding_hash` (nullable) came with postgres migration
+  UNIQUE(provider, provider_account_id))` (init)
+- `oauth_login_codes (code PK, user_id, expires_at, binding_hash)` (init);
+  the nullable `binding_hash` was added by
   `000005_oauth_login_code_binding`.
+- `user_terms_acceptances (user_id, version, source, accepted_at,
+  PK(user_id, version))` was added by `000002_user_terms_acceptances`.
 
 All of these are postgres-only apart from the `users` columns, which exist in
 both dialects because the login gate lives in shared `internal/usecase/auth.go`.

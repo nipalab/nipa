@@ -18,7 +18,7 @@ hint to use `nipad-ee`.
 ```
 ee/
   db/                        postgres opener + migration runner
-    migrations/postgres/     single consolidated schema + embed.FS
+    migrations/postgres/     init schema + later migrations, embed.FS
   nodelease/                 per-instance snowflake node id leases
   repository/postgres/       13 repositories (the server repository surface)
     queries/                 sqlc inputs
@@ -43,8 +43,10 @@ ee/
   `file_locks`, `webhook_deliveries`) mirror the sqlite predicates.
 - The migration seeds the super admin, the default org/project/branch and the
   owner membership, matching `db/migrations/sqlite`.
-- There is one consolidated `000001_init_schema` (no postgres deployments
-  exist); future changes add `make migrate-create` pairs.
+- `000001_init_schema` is the consolidated initial schema. It is released and
+  never edited: every later change is a new sequentially numbered up/down pair
+  (`000002_user_terms_acceptances` onwards), mirrored in
+  `db/migrations/sqlite` when the table exists in both dialects.
 
 ## Snowflake node ids (multi-pod)
 

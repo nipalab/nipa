@@ -130,6 +130,7 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 			Doc("Create an account").
 			Notes("Creates an inactive account and sends a confirmation email; the account can log in after confirming").
 			Returns(nethttp.StatusAccepted, "verification pending", registerResponse{}).
+			Returns(nethttp.StatusTooManyRequests, "too many requests for this address", model.APIError{}).
 			Operation("register").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
@@ -138,8 +139,9 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 			To(api.Wrap(h.ResendVerification)).
 			Reads(resendRequest{}).
 			Doc("Resend the confirmation email").
-			Notes("Always succeeds so the endpoint cannot be used to probe for accounts").
+			Notes("Succeeds for any address so the endpoint cannot be used to probe for accounts; the per-address limit answers 429 whether or not an account exists").
 			Returns(nethttp.StatusOK, "accepted", model.MessageResponse{}).
+			Returns(nethttp.StatusTooManyRequests, "too many requests for this address", model.APIError{}).
 			Operation("resendVerification").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 

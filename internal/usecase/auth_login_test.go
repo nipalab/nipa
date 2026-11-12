@@ -78,7 +78,7 @@ func TestAuth_LoginUnknownUserSpendsDummyComparison(t *testing.T) {
 	rec := &captureRecorder{}
 	auth := NewAuth("secret", hasher, userRepo, NewMockauthRepository(ctrl)).WithAudit(rec)
 
-	userRepo.EXPECT().GetByEmail(gomock.Any(), " Who@Example.com").Return(nil, domain.NewErrorNotFound("x"))
+	userRepo.EXPECT().GetByEmail(gomock.Any(), "who@example.com").Return(nil, domain.NewErrorNotFound("x"))
 	_, err := auth.LoginWithEmailPassword(context.Background(), " Who@Example.com", "guess")
 	require.EqualError(t, err, "invalid email or password")
 	require.Equal(t, []string{"dummy:nipa-timing-equalizer"}, hasher.compared)
@@ -417,4 +417,104 @@ func TestAuth_LoginResultRecordsOnlyViaMethod(t *testing.T) {
 	_, err = auth.LoginResultVia(context.Background(), user, LoginMethodOAuth)
 	require.EqualError(t, err, "db")
 	require.Len(t, rec.entries, 2)
+}
+
+func TestAuth_PasswordLoginNormalizesEmail(t *testing.T) {
+	user := &domain.User{ID: 42, Email: "user@example.com", Password: "hash", EmailVerified: true}
+
+	for _, input := range []string{"User@Example.COM", "  user@example.com\t", " USER@example.com "} {
+		t.Run(input, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			userRepo := NewMockuserRepository(ctrl)
+			authRepo := NewMockauthRepository(ctrl)
+			auth := newTestAuth("secret", true, userRepo, authRepo)
+			userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
+			authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+
+			result, err := auth.LoginWithEmailPassword(context.Background(), input, "pw")
+			require.NoError(t, err)
+			require.NotEmpty(t, result.AccessToken)
+		})
+	}
+
+	t.Run("failure audits the normalized email", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		userRepo := NewMockuserRepository(ctrl)
+		rec := &captureRecorder{}
+		auth := newTestAuth("secret", false, userRepo, NewMockauthRepository(ctrl)).WithAudit(rec)
+		userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
+
+		_, err := auth.LoginWithEmailPassword(context.Background(), " User@Example.com ", "pw")
+		require.EqualError(t, err, "invalid email or password")
+		require.Equal(t, map[string]any{"method": LoginMethodPassword, "email": "user@example.com", "reason": "invalid_credentials"}, rec.only(t).Metadata)
+	})
+}
+
+func TestAuth_LoginThrottleSharesBucketAcrossEmailSpellings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	userRepo.EXPECT().GetByEmail(gomock.Any(), "victim@example.com").Return(nil, errors.New("boom")).Times(2)
+	auth := NewAuth("secret", nil, userRepo, NewMockauthRepository(ctrl)).WithLimiter(loginLimiter(2, 5))
+
+	_, err := auth.LoginWithEmailPassword(ipCtx("10.0.0.1"), "victim@example.com", "x")
+	require.EqualError(t, err, "boom")
+	_, err = auth.LoginWithEmailPassword(ipCtx("10.0.0.1"), " Victim@Example.com ", "x")
+	require.EqualError(t, err, "boom")
+	_, err = auth.LoginWithEmailPassword(ipCtx("10.0.0.1"), "VICTIM@EXAMPLE.COM", "x")
+	requireTooMany(t, err)
+}
+
+func TestAuth_SSHLoginNormalizesEmail(t *testing.T) {
+	t.Run("begin stores the normalized email", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		authRepo := NewMockauthRepository(ctrl)
+		auth := newTestAuth("secret", true, NewMockuserRepository(ctrl), authRepo)
+		authRepo.EXPECT().DeleteExpiredSSHLoginChallenges(gomock.Any(), gomock.Any()).Return(nil)
+		authRepo.EXPECT().CreateSSHLoginChallenge(gomock.Any(), "alice@example.com", gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := auth.BeginSSHKeyLogin(context.Background(), "  Alice@Example.com ")
+		require.NoError(t, err)
+	})
+
+	for _, tc := range []struct{ name, stored, input string }{
+		{"mixed case input", "alice@example.com", "Alice@Example.COM"},
+		{"padded input", "alice@example.com", "  alice@example.com "},
+		{"challenge stored before normalization", "Alice@Example.com", "Alice@Example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newSSHAuditCase(t, tc.stored)
+			c.keyRepo.EXPECT().GetByFingerprint(gomock.Any(), gomock.Any()).Return(&domain.SSHPublicKey{UserID: 42}, nil)
+			c.userRepo.EXPECT().GetByEmail(gomock.Any(), "alice@example.com").Return(&domain.User{ID: 42, EmailVerified: true}, nil)
+			c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+
+			require.NoError(t, c.complete(t, tc.input, "nonce"))
+			require.Equal(t, domain.AuditAuthLoginSucceeded, c.rec.only(t).Action)
+		})
+	}
+
+	t.Run("failure audits the normalized email", func(t *testing.T) {
+		c := newSSHAuditCase(t, "alice@example.com")
+		c.keyRepo.EXPECT().GetByFingerprint(gomock.Any(), gomock.Any()).Return(&domain.SSHPublicKey{UserID: 42}, nil)
+		c.userRepo.EXPECT().GetByEmail(gomock.Any(), "alice@example.com").Return(&domain.User{ID: 42, EmailVerified: true}, nil)
+
+		assertSSHLoginFailed(t, c.complete(t, " Alice@Example.com ", "tampered"))
+		require.Equal(t, map[string]any{"method": LoginMethodSSHKey, "email": "alice@example.com", "reason": "invalid_signature"}, c.rec.only(t).Metadata)
+	})
+
+	t.Run("a different account still mismatches", func(t *testing.T) {
+		c := newSSHAuditCase(t, "bob@example.com")
+		c.userRepo.EXPECT().GetByEmail(gomock.Any(), "alice@example.com").Return(nil, domain.NewErrorNotFound("x"))
+		assertSSHLoginFailed(t, c.complete(t, "Alice@Example.com", "nonce"))
+		require.Equal(t, "invalid_challenge", c.rec.only(t).Metadata["reason"])
+	})
+
+	t.Run("begin and complete share the throttle bucket", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl)).
+			WithSSHAudience(testSSHAudience).WithLimiter(loginLimiter(1, 10))
+		_, err := auth.CompleteSSHKeyLogin(ipCtx("10.0.0.1"), "a@example.com", "", nil, nil)
+		requireNotTooMany(t, err)
+		_, err = auth.BeginSSHKeyLogin(ipCtx("10.0.0.1"), " A@Example.com ")
+		requireTooMany(t, err)
+	})
 }

@@ -126,12 +126,16 @@ func (r *Registration) WithLimiter(limiter *ratelimit.Limiter) *Registration {
 	return r
 }
 
-// throttled reports whether the address used up its registration budget.
-// Callers answer a throttled request like a successful one and send nothing,
-// so the limit reveals nothing about the account.
-func (r *Registration) throttled(ctx context.Context, email string) bool {
+// throttle spends the address's registration budget. The budget is counted
+// per address whether or not an account exists, so a 429 reveals nothing about
+// registrations.
+func (r *Registration) throttle(ctx context.Context, email string) error {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
-	return !r.limit.Allow(ctx, ratelimit.ScopeRegisterEmail, hex.EncodeToString(sum[:])).Allowed
+	res := r.limit.Allow(ctx, ratelimit.ScopeRegisterEmail, hex.EncodeToString(sum[:]))
+	if !res.Allowed {
+		return domain.NewErrorTooManyRequests(res.RetryAfter)
+	}
+	return nil
 }
 
 // WithMailer enables verification emails through the durable outbox; the
@@ -159,8 +163,8 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 	if termsVersion != "" && !acceptTerms {
 		return errTermsRequired()
 	}
-	if r.throttled(ctx, email) {
-		return nil
+	if err := r.throttle(ctx, email); err != nil {
+		return err
 	}
 	existing, err := r.users.GetByEmail(ctx, email)
 	switch {
@@ -275,8 +279,8 @@ func (r *Registration) ResendVerification(ctx context.Context, email string) err
 	if email == "" {
 		return domain.NewErrorUser("email is required")
 	}
-	if r.throttled(ctx, email) {
-		return nil
+	if err := r.throttle(ctx, email); err != nil {
+		return err
 	}
 	user, err := r.users.GetByEmail(ctx, email)
 	if err != nil {

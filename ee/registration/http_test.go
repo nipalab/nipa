@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -178,6 +179,24 @@ func TestResendVerificationEndpoint(t *testing.T) {
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/register/resend", `{"email":`)
 	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
+func TestRegisterAndResendEndpointsAnswer429WhenThrottled(t *testing.T) {
+	server := newRegistrationServer(t, nil)
+	server.env.registration.WithLimiter(ratelimit.NewLimiter(ratelimit.NewMemory(), map[string]ratelimit.Rule{
+		ratelimit.ScopeRegisterEmail: {Rate: 0.0001, Burst: 1},
+	}))
+
+	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/register/resend", `{"email":"nobody@example.com"}`)
+	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register/resend", `{"email":"nobody@example.com"}`)
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode, body)
+	require.Contains(t, body, "rate limit exceeded")
+
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register", `{"name":"Nobody","email":"nobody@example.com"}`)
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode, body)
+	require.Empty(t, server.env.outbox.deliveries)
 }
 
 func TestVerifyEndpoint(t *testing.T) {

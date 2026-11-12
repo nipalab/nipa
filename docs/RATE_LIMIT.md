@@ -64,9 +64,9 @@ Add the proxy's address (or CIDR) when it is not on loopback.
 - gRPC: `ResourceExhausted` with the same message. The client maps it to a 429
   domain error (quota failures keep mapping to 402).
 - `auth_id` / `auth_email` rejections surface as the same 429 from the usecase.
-- A throttled `register` or `register/resend` answers exactly like an allowed
-  one (200, the usual message) and sends nothing, so the limit reveals nothing
-  about the address.
+- A throttled `register` or `register/resend` answers the same 429 and sends
+  nothing. The budget is counted per address whether or not an account exists,
+  so the answer reveals nothing about registrations.
 
 ## Client behaviour
 

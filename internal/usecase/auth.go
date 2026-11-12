@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"strings"
 	"sync"
 	"time"
 
@@ -145,6 +144,7 @@ func (a *Auth) sshAudienceConfigured() error {
 }
 
 func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, password string) (*dto.LoginResult, error) {
+	email = normalizeEmail(email)
 	if err := a.throttleIdentity(ctx, email); err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func errEmailNotVerified() error {
 // optional: when set, the completed login must present a key registered to
 // that account; when empty, the key itself identifies the account.
 func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyChallenge, error) {
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if err := a.sshAudienceConfigured(); err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyC
 }
 
 func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, publicKey, signature []byte) (*dto.LoginResult, error) {
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if err := a.sshAudienceConfigured(); err != nil {
 		return nil, err
 	}
@@ -280,7 +280,7 @@ func (a *Auth) completeSSHKeyLogin(ctx context.Context, attempt *sshAttempt, ema
 		}
 		return nil, err
 	}
-	if challenge.Email != email || challenge.ExpiresAt.Before(time.Now()) {
+	if normalizeEmail(challenge.Email) != email || challenge.ExpiresAt.Before(time.Now()) {
 		return nil, attempt.fail("invalid_challenge", 0)
 	}
 
