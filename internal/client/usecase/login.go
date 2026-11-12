@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/sshkey"
@@ -34,11 +36,19 @@ type secureStorage interface {
 // signerResolver returns the SSH signers to try for a login, in priority order.
 type signerResolver func() ([]sshkey.Signer, error)
 
+// dialedAddress is implemented by executors that know the address (with
+// scheme) their transport is bound to.
+type dialedAddress interface {
+	Address() string
+}
+
 type Auth struct {
 	loginExecutor  loginExecutor
 	secureStorage  secureStorage
 	userInput      userInput
 	resolveSigners signerResolver
+	cleartextOut   io.Writer
+	cleartextOnce  sync.Once
 }
 
 func NewAuth(executor loginExecutor, storage secureStorage, input userInput) *Auth {
@@ -53,6 +63,23 @@ func NewAuth(executor loginExecutor, storage secureStorage, input userInput) *Au
 func (l *Auth) WithSSHLogin(resolve signerResolver) *Auth {
 	l.resolveSigners = resolve
 	return l
+}
+
+// WithCleartextWarning makes logins warn on w, once per Auth, when credentials
+// go to a non-loopback host without TLS.
+func (l *Auth) WithCleartextWarning(w io.Writer) *Auth {
+	l.cleartextOut = w
+	return l
+}
+
+// WarnIfCleartext prints the cleartext warning for address when enabled.
+func (l *Auth) WarnIfCleartext(address string) {
+	if l.cleartextOut == nil || !domain.IsCleartextRemote(address) {
+		return
+	}
+	l.cleartextOnce.Do(func() {
+		_, _ = fmt.Fprintf(l.cleartextOut, "warning: %s is reached without TLS; credentials and session tokens cross the network in cleartext (use an https:// server URL)\n", domain.HostForAddress(address))
+	})
 }
 
 func (l *Auth) LoginWithUsernamePassword(ctx context.Context, address, username, password string) error {
@@ -174,6 +201,11 @@ func (l *Auth) MakeSureLoggedIn(ctx context.Context, address string) error {
 // loginInteractively tries a registered SSH key first, which identifies its
 // account on its own, and falls back to the interactive password prompt.
 func (l *Auth) loginInteractively(ctx context.Context, host string) error {
+	address := host
+	if d, ok := l.loginExecutor.(dialedAddress); ok && d.Address() != "" {
+		address = d.Address()
+	}
+	l.WarnIfCleartext(address)
 	if l.resolveSigners != nil {
 		if signers, err := l.resolveSigners(); err == nil && len(signers) > 0 {
 			if err := l.LoginWithSSHKey(ctx, host, "", signers); err == nil {

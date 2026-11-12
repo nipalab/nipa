@@ -1291,3 +1291,11 @@ func TestClient_SSHLoginMethods_NotConnected(t *testing.T) {
 	_, err = c.CompleteLoginSSHKey(context.Background(), "example.com", "alice@example.com", "nonce", []byte("pub"), []byte("sig"))
 	require.ErrorContains(t, err, "not connected to a nipa server")
 }
+
+func TestClientAddressReportsDialedOrigin(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.Empty(t, c.Address())
+	require.NoError(t, c.Connect(context.Background(), "https://nipa.example.com"))
+	t.Cleanup(func() { _ = c.Close() })
+	require.Equal(t, "https://nipa.example.com", c.Address())
+}

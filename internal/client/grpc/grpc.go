@@ -272,6 +272,11 @@ func (c *Client) Close() error {
 	return c.transport.Close()
 }
 
+// Address reports the address (with scheme) the client is connected to.
+func (c *Client) Address() string {
+	return c.transport.URL()
+}
+
 // ServiceClient returns the typed gRPC client over the transport's
 // authenticated connection. Connect must have been called first.
 func (c *Client) ServiceClient() (pb.NipaServiceClient, error) {

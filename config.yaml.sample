@@ -3,8 +3,17 @@ SERVER_PORT: 6745
 # Public address clients use to reach this server (scheme, host and port as
 # users type them). SSH key login signatures are bound to its host[:port]; when
 # empty the host of EMAIL_BASE_URL is used, and SSH key login is refused if
-# neither is set. See docs/SSH.md.
+# neither is set. See docs/SSH.md. Its origin is also the only one the REST API
+# grants CORS to (a bare host means https; empty grants none). Neither server
+# terminates TLS: put a TLS proxy in front (docs/DEPLOY.md).
 PUBLIC_BASE_URL: ''
+# Slowloris guard: seconds a client may take to send the request headers
+# (default 30). Idle keep-alive connections are closed after
+# HTTP_IDLE_TIMEOUT_SECONDS (default 300); on h2c only connections without an
+# active stream (gRPC clients reconnect transparently). There is deliberately no
+# read/write timeout: it would cut long chunk transfers and gRPC streams.
+HTTP_READ_HEADER_TIMEOUT_SECONDS: 30
+HTTP_IDLE_TIMEOUT_SECONDS: 300
 # Graceful shutdown drain window in seconds (default 15): on SIGTERM /readyz
 # answers 503 and in-flight requests get this long to finish. For zero-downtime
 # blue/green upgrades keep the unit's TimeoutStopSec above it (docs/DEPLOY.md).
@@ -25,6 +34,10 @@ LOG_FORMAT: console
 PPROF_ENABLED: false
 # Serve Prometheus metrics on /metrics of the main port.
 METRICS_ENABLED: true
+# Separate listener for /metrics and /debug/pprof (both unauthenticated); the
+# main port then answers 404 for them. A bare port (`9101` or `:9101`) binds
+# 127.0.0.1, `host:port` binds as given. Empty keeps them on the main port.
+METRICS_ADDRESS: ''
 # Export OpenTelemetry spans over OTLP (docs/TRACING.md). Disabled keeps the
 # process on the no-op tracer. TRACING_STDOUT pretty-prints spans to stderr
 # instead of exporting; the endpoint accepts host:port or a URL (https:// for

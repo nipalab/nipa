@@ -14,6 +14,9 @@ type Config struct {
 	ServerAddress                   string  `mapstructure:"SERVER_ADDRESS"`
 	ServerPort                      int     `mapstructure:"SERVER_PORT"`
 	ShutdownTimeoutSeconds          int     `mapstructure:"SHUTDOWN_TIMEOUT_SECONDS"`
+	HTTPReadHeaderTimeoutSeconds    int     `mapstructure:"HTTP_READ_HEADER_TIMEOUT_SECONDS"`
+	HTTPIdleTimeoutSeconds          int     `mapstructure:"HTTP_IDLE_TIMEOUT_SECONDS"`
+	MetricsAddress                  string  `mapstructure:"METRICS_ADDRESS"`
 	JWTKey                          string  `mapstructure:"JWT_KEY"`
 	LogLevel                        string  `mapstructure:"LOG_LEVEL"`
 	LogFormat                       string  `mapstructure:"LOG_FORMAT"`
@@ -139,6 +142,9 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
 	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)
+	v.SetDefault("HTTP_READ_HEADER_TIMEOUT_SECONDS", DefaultHTTPReadHeaderTimeoutSeconds)
+	v.SetDefault("HTTP_IDLE_TIMEOUT_SECONDS", DefaultHTTPIdleTimeoutSeconds)
+	v.SetDefault("METRICS_ADDRESS", "")
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
@@ -192,7 +198,7 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
 	// config file, so the per-color systemd env files must bind explicitly.
-	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL",
+	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL", "METRICS_ADDRESS",
 		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS",
 		"BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT",
 		"PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY",

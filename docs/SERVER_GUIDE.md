@@ -18,7 +18,14 @@ The server is a single binary with SQLite metadata and local chunk storage.
 | `/healthz` | Liveness probe, always `200` until the process exits |
 | `/readyz` | Readiness probe; `503` while the server is shutting down |
 | `/version` | Build version as JSON |
-| `/metrics` | Prometheus metrics (enabled by default) |
+| `/metrics` | Prometheus metrics (enabled by default; `METRICS_ADDRESS` moves it and pprof to a separate listener) |
+
+The port speaks cleartext HTTP/1.1 and h2c; `nipad` does not terminate TLS.
+Anything beyond a trusted local network needs a TLS reverse proxy in front
+(Caddy, nginx, a load balancer; see [DEPLOY.md](DEPLOY.md)), otherwise
+passwords and session tokens cross the network in cleartext. Clients then use
+`https://` URLs, and `nipa login` warns when it is pointed at a remote host
+without one.
 
 Metadata lives in SQLite; file content is stored as BLAKE3-addressed chunks in
 a local directory. There is no external dependency to install.
@@ -84,7 +91,7 @@ CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 | `JWT_KEY` | Signs access tokens (HS256, `iss` `nipad`, `aud` `nipa-api`; both are set but not checked yet, enforcement follows one release later). The OAuth state key on `nipad-ee` is derived from it with HKDF. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
 | `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
 | `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak keys only log a warning and empty keys are replaced by random per-process ones (sessions and chunk URLs reset on restart). Local development only: anyone can forge admin tokens. |
-| `PUBLIC_BASE_URL` | Public address clients use to reach the server (for example `https://nipa.example.com`). SSH key login signatures are bound to its host and port; falls back to the host of `EMAIL_BASE_URL`. When neither is set, SSH key login is refused. |
+| `PUBLIC_BASE_URL` | Public address clients use to reach the server (for example `https://nipa.example.com`). SSH key login signatures are bound to its host and port; falls back to the host of `EMAIL_BASE_URL`. When neither is set, SSH key login is refused. Its origin is the only one the REST API grants CORS to; unset grants none (the web UI is same-origin and needs none). |
 | `CHUNK_STORAGE` | Must be `local`; this server stores chunks on disk. |
 | `CHUNK_STORAGE_DIR` | Directory for content-addressed chunks. |
 | `CHUNK_PRESIGN_TTL_SECONDS` | Lifetime of a signed chunk URL (default `3600`). |
@@ -100,6 +107,9 @@ Generate secrets, for example, with `openssl rand -base64 48`.
 | `LOG_FORMAT` | `console` | `console` or `json`. |
 | `PPROF_ENABLED` | `false` | Serve `/debug/pprof/` on the main port; keep off outside trusted networks. |
 | `METRICS_ENABLED` | `true` | Serve Prometheus metrics on `/metrics`. |
+| `METRICS_ADDRESS` | empty | Serve `/metrics` and pprof on this address instead of the main port (which then answers `404`); a bare port binds `127.0.0.1`. |
+| `HTTP_READ_HEADER_TIMEOUT_SECONDS` | `30` | Time a client gets to send request headers. |
+| `HTTP_IDLE_TIMEOUT_SECONDS` | `300` | Idle keep-alive (and stream-less h2c) connections are closed after this; clients reconnect. No read/write timeout is set, so long transfers are never cut. |
 | `HASHER_WORKERS` | `4` in the sample (`0` → `1`) | Password hashing concurrency. |
 | `SNOWFLAKE_NODE_ID` | `0` | Record id node. The server is single-instance; leave `0`. |
 
