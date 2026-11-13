@@ -45,10 +45,10 @@ edition.
 | Route | Page | Notes |
 |---|---|---|
 | `/` | entry redirect | anonymous → `/login`, signed in → `/dashboard`; SaaS mirrors the marketing landing from `nipalab.com` instead |
-| `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them |
+| `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them; an `mfa_required` answer switches to the "Authentication code" step (TOTP or recovery code → `POST /auth/mfa/verify`), back to the password with a notice after an expired challenge or five wrong codes |
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
-| `/oauth/callback` | social login handoff | exchanges `?code=` for a session (same-origin, carrying the binding cookie), returns to the `?from=` destination, shows `email_conflict`/`email_required` guidance and a "start again from this browser" message when `complete` answers 404 |
+| `/oauth/callback` | social login handoff | exchanges `?code=` for a session (same-origin, carrying the binding cookie), returns to the `?from=` destination, shows `email_conflict`/`email_required` guidance and a "start again from this browser" message when `complete` answers 404; an `mfa_required` answer shows the same code step as `/login` |
 | `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/dashboard` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read; org owners also get a Repositories / Settings tab bar |
@@ -67,9 +67,9 @@ edition.
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries |
 | `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups and Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger); org owner or global admin |
-| `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), deactivate (confirmed) |
+| `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
-| `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
+| `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Security (`?tab=security`, linked from the MFA notice emails: the "Two-factor authentication" card), Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
 | `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set an owner quota override, set it to unlimited or remove it; when capabilities carries `billing`, also the plan card (plan, status, interval, renewal/cancel date, seats used/limit, storage packs, past-due warning) and the plan editor (seat and storage-pack steppers, monthly/yearly toggle, Paddle.js price preview, Upgrade → checkout overlay on the free plan, Update plan + Manage billing on a paid plan); linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Reserved slugs
@@ -139,6 +139,26 @@ and `DELETE /api/v1/keys/{id}` (`internal/http/api/ssh_key.go`), with
 OpenSSH key comment when omitted) so users can identify it. Keys are the
 credential for the SSH-key login flow; the profile page's "SSH keys" card
 (`web/src/components/SSHKeysCard.tsx`) lists, adds and removes them.
+
+## Two-factor authentication API
+
+Routes and rules are in `docs/MFA.md`. `login` and `startSession` (password
+and OAuth `complete`) in `web/src/api/client.ts` install the session or
+return the `{mfa_required, mfa_challenge, expires_in}` challenge;
+`verifyMFA` posts `/auth/mfa/verify` and installs the session.
+`components/MFACodeStep.tsx` is the shared code step: it counts wrong codes
+and the challenge lifetime locally, since the server answers every failure
+with `invalid code`. `getMyMFA`, `startMyTOTP`, `confirmMyTOTP`,
+`disableMyTOTP`, `regenerateMyRecoveryCodes` and `resetUserMFA` live in
+`endpoints.ts`. The Security tab (`components/TwoFactorCard.tsx`) shows a note
+instead of the card when `GET /me/mfa` answers `available: false`; enrollment
+asks the current password (empty for passwordless accounts within 10 minutes
+of signing in), renders the QR code locally with the `qrcode` package from the
+`otpauth://` URI plus the secret for manual entry, confirms the first code and
+shows the ten recovery codes once (`components/RecoveryCodes.tsx`: Copy,
+Download `.txt` as `nipa-recovery-codes.txt`, and a required "I saved these
+codes" checkbox before the dialog closes). Disable and regenerate ask a TOTP
+or recovery code; regenerate shows the new codes the same way.
 
 ## Organizations API
 

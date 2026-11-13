@@ -3,9 +3,11 @@ import { Banner, Button, FormControl, Link as PrimerLink, Stack, TextInput } fro
 import { SignInIcon } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/client'
+import type { MFAChallengeResponse } from '../api/models'
 import { getOnboardingCapabilities } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { AuthAside, AuthCard, AuthLayout } from '../components/AuthLayout'
+import { MFACodeStep } from '../components/MFACodeStep'
 import { SocialButtons } from '../components/SocialButtons'
 import { errorMessage, useAsync } from '../hooks'
 import { useResendVerification } from '../useResendVerification'
@@ -22,12 +24,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [challenge, setChallenge] = useState<MFAChallengeResponse | null>(null)
+  const [restartNotice, setRestartNotice] = useState<string | null>(null)
   const { resend, busy: resendBusy, notice, error: resendError, reset: resetResend } = useResendVerification()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setUnconfirmed(false)
+    setRestartNotice(null)
     resetResend()
     if (!email.trim() || !password) {
       setError('Enter your username/email and password.')
@@ -35,9 +40,12 @@ export default function LoginPage() {
     }
     setBusy(true)
     try {
-      await login({ email: email.trim(), password })
-      signIn()
-      navigate(from, { replace: true })
+      const pending = await login({ email: email.trim(), password })
+      if (pending) {
+        setChallenge(pending)
+        return
+      }
+      finish()
     } catch (err) {
       const message = errorMessage(err)
       if (message === 'email not confirmed') {
@@ -51,6 +59,17 @@ export default function LoginPage() {
     }
   }
 
+  function finish() {
+    signIn()
+    navigate(from, { replace: true })
+  }
+
+  function restart(message: string | null) {
+    setChallenge(null)
+    setPassword('')
+    setRestartNotice(message)
+  }
+
   async function handleResend() {
     if (!email.trim()) {
       setError('Enter your email address first, then resend the confirmation email.')
@@ -60,6 +79,14 @@ export default function LoginPage() {
   }
 
   const shownError = resendError ?? error
+
+  if (challenge) {
+    return (
+      <AuthLayout title="Sign in to Nipa" footer={Boolean(capabilities)}>
+        <MFACodeStep challenge={challenge} onVerified={finish} onRestart={restart} />
+      </AuthLayout>
+    )
+  }
 
   return (
     <AuthLayout title="Sign in to Nipa" footer={Boolean(capabilities)}>
@@ -99,6 +126,7 @@ export default function LoginPage() {
           </Banner>
         )}
         {notice && <Banner variant="success" title={notice} />}
+        {restartNotice && <Banner variant="warning" title="Sign in again">{restartNotice}</Banner>}
 
         <Button type="submit" variant="primary" block loading={busy} trailingVisual={<SignInIcon />}>
           {busy ? 'Signing in…' : 'Sign in'}

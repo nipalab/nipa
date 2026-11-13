@@ -15,6 +15,9 @@ import type {
   FileLockResponse,
   GroupResponse,
   IdentityResponse,
+  MFAStatusResponse,
+  RecoveryCodesResponse,
+  TOTPEnrollmentResponse,
   MergeRequestCheckResponse,
   MergeRequestDiffResponse,
   MergeRequestListResponse,
@@ -137,6 +140,26 @@ export function updateMyProfile(name: string, photoUrl: string, notifyEmail: boo
 // with a fresh one for this browser, which replaces the current session.
 export function changeMyPassword(oldPassword: string, newPassword: string): Promise<TokenResponse> {
   return establishSession('/api/v1/me/password', { old_password: oldPassword, new_password: newPassword })
+}
+
+export function getMyMFA(): Promise<MFAStatusResponse> {
+  return apiJson('/api/v1/me/mfa')
+}
+
+export function startMyTOTP(password: string): Promise<TOTPEnrollmentResponse> {
+  return apiJson('/api/v1/me/mfa/totp', { method: 'POST', body: JSON.stringify({ password }) })
+}
+
+export function confirmMyTOTP(code: string): Promise<RecoveryCodesResponse> {
+  return apiJson('/api/v1/me/mfa/totp/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+}
+
+export function disableMyTOTP(code: string): Promise<MessageResponse> {
+  return apiJson('/api/v1/me/mfa/totp', { method: 'DELETE', body: JSON.stringify({ code }) })
+}
+
+export function regenerateMyRecoveryCodes(code: string): Promise<RecoveryCodesResponse> {
+  return apiJson('/api/v1/me/mfa/recovery-codes', { method: 'POST', body: JSON.stringify({ code }) })
 }
 
 export function listMySSHKeys(): Promise<SSHKeyResponse[]> {
@@ -791,6 +814,10 @@ export function updateUserEmail(userID: string, email: string): Promise<UserResp
 
 export function deactivateUser(userID: string): Promise<MessageResponse> {
   return apiJson(`/api/v1/users/${encodeURIComponent(userID)}`, { method: 'DELETE' })
+}
+
+export function resetUserMFA(userID: string): Promise<MessageResponse> {
+  return apiJson(`/api/v1/users/${encodeURIComponent(userID)}/mfa`, { method: 'DELETE' })
 }
 
 export function resetUserPassword(userID: string, password: string): Promise<MessageResponse> {

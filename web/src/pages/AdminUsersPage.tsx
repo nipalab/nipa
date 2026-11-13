@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ActionList, ActionMenu, Button, FormControl, IconButton, Label, Text, TextInput } from '@primer/react'
+import { ActionList, ActionMenu, Banner, Button, FormControl, IconButton, Label, Text, TextInput } from '@primer/react'
 import {
   KebabHorizontalIcon,
   KeyIcon,
@@ -13,7 +13,7 @@ import {
   StopIcon,
 } from '@primer/octicons-react'
 import { useNavigate } from 'react-router-dom'
-import { deactivateUser, listUsers, resetUserPassword, updateUserEmail, updateUserFlags } from '../api/endpoints'
+import { deactivateUser, listUsers, resetUserMFA, resetUserPassword, updateUserEmail, updateUserFlags } from '../api/endpoints'
 import type { UserResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
@@ -106,6 +106,7 @@ export default function AdminUsersPage() {
   const [role, setRole] = useState<RoleFilter>('all')
   const [resetting, setResetting] = useState<UserResponse | null>(null)
   const [editing, setEditing] = useState<UserResponse | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   if (me && !me.is_admin && !me.is_super_admin) {
     return (
@@ -141,6 +142,18 @@ export default function AdminUsersPage() {
     if (ok) await run(() => deactivateUser(user.id))
   }
 
+  async function resetMFA(user: UserResponse) {
+    const ok = await confirm({
+      title: `Reset two-factor authentication for ${user.name}?`,
+      content: `${user.email} will sign in with the password alone until they enable two-factor authentication again. Their recovery codes are deleted and they get an email about it.`,
+      confirmLabel: 'Reset two-factor',
+    })
+    if (!ok) return
+    setNotice(null)
+    const done = await run(() => resetUserMFA(user.id))
+    if (done) setNotice(`Two-factor authentication was reset for ${user.name}.`)
+  }
+
   async function toggleAdmin(user: UserResponse) {
     const promote = !user.is_admin
     const ok = await confirm({
@@ -170,6 +183,7 @@ export default function AdminUsersPage() {
       }
     >
       <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
+      {notice && <Banner variant="success" title={notice} onDismiss={() => setNotice(null)} />}
       <TextInput
         block
         leadingVisual={SearchIcon}
@@ -203,6 +217,7 @@ export default function AdminUsersPage() {
         {visible.map((user) => {
           const self = me?.id === user.id
           const canToggleAdmin = Boolean(me?.is_super_admin) && !self && !user.is_super_admin
+          const canManage = Boolean(me?.is_super_admin) || self || !isAdmin(user)
           return (
             <div key={user.id} className="nipa-list-row" style={{ alignItems: 'center' }}>
               <ActorAvatar actor={{ user_id: user.id, name: user.name, photo_url: user.photo_url }} size={32} />
@@ -232,6 +247,14 @@ export default function AdminUsersPage() {
                       </ActionList.LeadingVisual>
                       Reset password
                     </ActionList.Item>
+                    {canManage && (
+                      <ActionList.Item onSelect={() => void resetMFA(user)}>
+                        <ActionList.LeadingVisual>
+                          <ShieldLockIcon />
+                        </ActionList.LeadingVisual>
+                        Reset two-factor
+                      </ActionList.Item>
+                    )}
                     {canToggleAdmin && (
                       <ActionList.Item onSelect={() => void toggleAdmin(user)}>
                         <ActionList.LeadingVisual>

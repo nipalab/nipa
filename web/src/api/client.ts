@@ -1,4 +1,4 @@
-import type { LoginRequest, TokenResponse } from './models'
+import type { LoginRequest, MFAChallengeResponse, TokenResponse } from './models'
 
 export type SessionEvent = 'login' | 'logout'
 
@@ -64,14 +64,28 @@ export function isAuthenticated(): boolean {
   return accessToken !== null
 }
 
-export async function login(req: LoginRequest): Promise<TokenResponse> {
-  const tokens = await requestJson<TokenResponse>('/api/v1/auth/login', {
+export function login(req: LoginRequest): Promise<MFAChallengeResponse | null> {
+  return startSession('/api/v1/auth/login', req)
+}
+
+// startSession posts first-factor credentials (password, OAuth code). It
+// installs the session and answers null, or answers the challenge when the
+// account must still present a second factor.
+export async function startSession(path: string, body: unknown): Promise<MFAChallengeResponse | null> {
+  const result = await requestJson<TokenResponse | MFAChallengeResponse>(path, {
     method: 'POST',
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   })
-  setSession(tokens)
+  if ('mfa_required' in result && result.mfa_required) {
+    return result
+  }
+  setSession(result as TokenResponse)
   broadcast('login')
-  return tokens
+  return null
+}
+
+export function verifyMFA(challenge: string, code: string): Promise<TokenResponse> {
+  return establishSession('/api/v1/auth/mfa/verify', { challenge, code })
 }
 
 // establishSession posts credentials to a login-compatible endpoint (email

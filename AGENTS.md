@@ -665,8 +665,7 @@ has one, key-only otherwise. Covered by unit tests plus the
 `tests/suite/ssh_test.go` e2e specs (key-only login, lazy clone login through
 `NIPA_SSH_KEY`, unregistered-key rejection, username binding).
 
-Flow for two-factor authentication (design in `docs/MFA.md`; server side
-only so far): the pure `internal/totp` implements RFC 6238 (`Code`/`Match`
+Flow for two-factor authentication (design in `docs/MFA.md`): the pure `internal/totp` implements RFC 6238 (`Code`/`Match`
 with one step of skew either side, skipping steps at or below `last_step`),
 recovery codes (`NewRecoveryCodes` `XXXXX-XXXXX` from an unambiguous
 alphabet, `NormalizeRecoveryCode`, SHA-256 `HashRecoveryCode`), the
@@ -723,7 +722,15 @@ prompts: `daemon.PasswordLogin` over `Auth.StartPasswordLogin`/
 `CompleteLoginMFA` answers `LoginResponse.mfa_required` + `mfa_challenge`,
 and a second `Login` with `mfa_challenge` + `otp` finishes it; the desktop
 `SignIn` returns `SignInResult` and `SignInMFA` drives the clone dialog's
-code step.
+code step. SPA: `startSession` (login, OAuth `complete`) returns the
+challenge and `components/MFACodeStep.tsx` posts `/auth/mfa/verify`, counting
+wrong codes and the TTL locally (every failure is `invalid code`) before
+sending the user back to the password; the Security tab
+(`/settings/profile?tab=security`, `TwoFactorCard.tsx`, hidden when
+`available` is false) enrolls with a locally rendered `qrcode` QR, shows
+recovery codes once behind a required "I saved these codes" checkbox
+(`RecoveryCodes.tsx`), disables and regenerates; `/admin/users` has
+"Reset two-factor".
 
 Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
 the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|scaleway|http|log|off`), one message
