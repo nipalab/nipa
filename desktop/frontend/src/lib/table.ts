@@ -8,11 +8,20 @@ export function columnChanges(columns: TableColumn[], rows: TableRow[]): number[
   return counts;
 }
 
-const columnChanged = (c: TableColumn, count: number) => count > 0 || c.old < 0 || c.new < 0 || (c.oldName !== "" && c.oldName !== c.name);
+// changedColumns flags columns with a changed cell, a value in an added or
+// removed row, or a header change.
+export function changedColumns(columns: TableColumn[], rows: TableRow[]): boolean[] {
+  const out = columns.map((c) => c.old < 0 || c.new < 0 || (c.oldName !== "" && c.oldName !== c.name));
+  for (const r of rows) {
+    for (const i of r.changed ?? []) if (i < out.length) out[i] = true;
+    if (r.status === "added" || r.status === "removed") (r.cells ?? []).forEach((v, i) => v !== "" && i < out.length && (out[i] = true));
+  }
+  return out;
+}
 
 // visibleColumns orders the shown column indexes with the key column first.
-export function visibleColumns(columns: TableColumn[], counts: number[], keyColumn: number, changedOnly: boolean): number[] {
-  const shown = columns.map((_, i) => i).filter((i) => !changedOnly || i === keyColumn || columnChanged(columns[i], counts[i]));
+export function visibleColumns(columns: TableColumn[], changed: boolean[], keyColumn: number, changedOnly: boolean): number[] {
+  const shown = columns.map((_, i) => i).filter((i) => !changedOnly || i === keyColumn || changed[i]);
   return keyColumn >= 0 && shown.includes(keyColumn) ? [keyColumn, ...shown.filter((i) => i !== keyColumn)] : shown;
 }
 
@@ -34,6 +43,7 @@ export function filterRows(rows: TableRow[], { onlyChanges, text, column }: RowF
 // changed row after from, wrapping around; -1 when nothing changed.
 export function nextChange(rows: TableRow[], from: number, dir: 1 | -1): number {
   const n = rows.length;
+  if (from < 0) from = dir > 0 ? -1 : n;
   for (let step = 1; step <= n; step++) {
     const i = (((from + dir * step) % n) + n) % n;
     if (isChange(rows[i])) return i;

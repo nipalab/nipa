@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TableColumn, TableRow } from "@/api/desktop";
-import { columnChanges, filterRows, isChange, nextChange, visibleColumns } from "./table";
+import { changedColumns, columnChanges, filterRows, isChange, nextChange, visibleColumns } from "./table";
 
 const row = (over: Partial<TableRow>): TableRow => ({ status: "same", oldLine: 2, newLine: 2, cells: [], old: null, changed: null, ...over });
 const col = (name: string, over: Partial<TableColumn> = {}): TableColumn => ({ name, oldName: name, old: 0, new: 0, ...over });
@@ -21,10 +21,19 @@ describe("table helpers", () => {
 
   it("puts the key column first and hides unchanged columns on request", () => {
     const columns = [col("name"), col("id"), col("damage"), col("added", { old: -1 }), col("gone", { new: -1 }), col("label", { oldName: "title" }), col("fresh", { oldName: "" })];
-    const counts = [0, 0, 2, 0, 0, 0, 0];
+    const counts = changedColumns(columns, [row({ status: "changed", cells: ["a", "1", "9", "", "", "", ""], changed: [2] })]);
+    expect(counts).toEqual([false, false, true, true, true, true, false]);
     expect(visibleColumns(columns, counts, 1, false)).toEqual([1, 0, 2, 3, 4, 5, 6]);
     expect(visibleColumns(columns, counts, 1, true)).toEqual([1, 2, 3, 4, 5]);
     expect(visibleColumns(columns, counts, -1, true)).toEqual([2, 3, 4, 5]);
+  });
+
+  it("treats values of added and removed rows as changed columns", () => {
+    const columns = [col("id"), col("name"), col("note"), col("hp")];
+    const appended = [row({ cells: ["1", "a", "", "3"] }), row({ status: "added", cells: ["2", "b", "", "4", "extra"] }), row({ status: "removed", cells: ["3", "", "", "5"] })];
+    expect(changedColumns(columns, appended)).toEqual([true, true, false, true]);
+    expect(visibleColumns(columns, changedColumns(columns, appended), -1, true)).toEqual([0, 1, 3]);
+    expect(changedColumns(columns, [row({ status: "added", cells: null as unknown as string[] })])).toEqual([false, false, false, false]);
   });
 
   it("filters by change, text and column", () => {
@@ -42,6 +51,7 @@ describe("table helpers", () => {
     expect(nextChange(rows, 1, 1)).toBe(2);
     expect(nextChange(rows, 5, 1)).toBe(1);
     expect(nextChange(rows, 1, -1)).toBe(5);
+    expect(nextChange(rows, -1, -1)).toBe(5);
     expect(nextChange(rows, 3, -1)).toBe(2);
     expect(nextChange([row({})], 0, 1)).toBe(-1);
     expect(nextChange([], -1, 1)).toBe(-1);

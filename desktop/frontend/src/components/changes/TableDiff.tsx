@@ -9,7 +9,7 @@ import { TextDiff, type DiffLayout, type LineComments } from "@/components/chang
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { ColumnResizer } from "@/components/ui/resize-handle";
 import { useColumnWidths } from "@/hooks/useColumnWidths";
-import { columnChanges, filterRows, isChange, nextChange, visibleColumns } from "@/lib/table";
+import { changedColumns, columnChanges, filterRows, isChange, nextChange, visibleColumns } from "@/lib/table";
 import { cn } from "@/lib/utils";
 
 type Mode = "table" | "text";
@@ -78,10 +78,11 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
   const [onlyChanges, setOnlyChanges] = useState(() => hasChanges(compare) && all.length > 50);
   const [text, setText] = useState("");
   const [column, setColumn] = useState(-1);
-  const [changedColumns, setChangedColumns] = useState(false);
+  const [onlyChangedColumns, setOnlyChangedColumns] = useState(false);
   const [cursor, setCursor] = useState(-1);
   const counts = useMemo(() => columnChanges(columns, all), [columns, all]);
-  const order = useMemo(() => visibleColumns(columns, counts, compare.keyColumn, changedColumns), [columns, counts, compare.keyColumn, changedColumns]);
+  const touched = useMemo(() => changedColumns(columns, all), [columns, all]);
+  const order = useMemo(() => visibleColumns(columns, touched, compare.keyColumn, onlyChangedColumns), [columns, touched, compare.keyColumn, onlyChangedColumns]);
   const filterColumn = column < columns.length ? column : -1;
   const rows = useMemo(() => filterRows(all, { onlyChanges, text, column: filterColumn }), [all, onlyChanges, text, filterColumn]);
   const changeRows = useMemo(() => rows.flatMap((r, i) => (isChange(r) ? [i] : [])), [rows]);
@@ -157,7 +158,7 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
               ))}
             </select>
             <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={changedColumns} onChange={(e) => setChangedColumns(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
+              <input type="checkbox" checked={onlyChangedColumns} onChange={(e) => setOnlyChangedColumns(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
               Changed columns only
             </label>
             {filtered && <span className="text-muted-foreground">{`${rows.length.toLocaleString()} of ${count(all.length, "row")}`}</span>}

@@ -193,7 +193,7 @@ describe("table filters", () => {
       { name: "id", oldName: "id", old: 1, new: 1 },
       { name: "hp", oldName: "hp", old: 2, new: 2 },
     ];
-    const rows = [row({ cells: ["a", "1", "10"], old: ["a", "1", "8"], changed: [2], status: "changed" }), row({ cells: ["b", "2", "5"], status: "added", oldLine: 0 })];
+    const rows = [row({ cells: ["a", "1", "10"], old: ["a", "1", "8"], changed: [2], status: "changed" }), row({ cells: ["", "2", "5"], status: "added", oldLine: 0 })];
     renderWithProviders(<TableCompareView compare={compare({ columns, rows, keyColumn: 1 })} />);
     const table = screen.getByRole("table", { name: "Table changes" });
     const names = () => within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent);
@@ -210,6 +210,8 @@ describe("table filters", () => {
   it("jumps between changes", async () => {
     renderWithProviders(<TableCompareView compare={compare()} />);
     expect(screen.getByText("4 changes")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Previous change" }));
+    expect(screen.getByText("4 of 4 changes")).toBeInTheDocument();
     const next = screen.getByRole("button", { name: "Next change" });
     const current = () => screen.getByRole("table", { name: "Table changes" }).querySelector("[aria-current]")?.getAttribute("data-status");
     await userEvent.click(next);
