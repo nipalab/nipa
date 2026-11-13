@@ -271,3 +271,28 @@ describe("workbook sheets", () => {
   });
 });
 
+describe("switching files", () => {
+  it("starts each file with fresh filters and sheet", async () => {
+    api.tableDiff.mockImplementation((_root, _old, next: { path: string }, sheet: string) =>
+      Promise.resolve(next.path.endsWith(".xlsx") ? compare({ sheet: sheet || "A", sheets: [{ name: "A", status: "changed", rowsAdded: 1, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 }, { name: "B", status: "changed", rowsAdded: 1, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 }] }) : compare()),
+    );
+    const side = { path: "data/b.xlsx", mode: 420, size: 900, binary: true, hash: "b" };
+    const book = diff({ path: "data/b.xlsx", hunks: null, old: side, new: side });
+    const { rerender } = renderWithProviders(<TableDiff root="/r" diff={book} layout="unified" />);
+    await userEvent.click(await screen.findByRole("tab", { name: /^B/ }));
+    await vi.waitFor(() => expect(screen.getByRole("tab", { name: /^B/ })).toHaveAttribute("aria-selected", "true"));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "zzz");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter column" }), "de");
+    expect(screen.getByText("No rows match the filter.")).toBeInTheDocument();
+
+    rerender(<TableDiff root="/r" diff={diff()} layout="unified" />);
+    expect(await screen.findByRole("searchbox", { name: "Filter rows" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Filter column" })).toHaveValue("-1");
+    expect(screen.queryByRole("tablist", { name: "Sheets" })).not.toBeInTheDocument();
+
+    rerender(<TableDiff root="/r" diff={book} layout="unified" />);
+    expect(await screen.findByRole("tab", { name: /^A/ })).toHaveAttribute("aria-selected", "true");
+    expect(api.tableDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), "");
+  });
+});
+

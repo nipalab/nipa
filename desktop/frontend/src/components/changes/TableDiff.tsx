@@ -14,7 +14,13 @@ import { cn } from "@/lib/utils";
 
 type Mode = "table" | "text";
 
-export function TableDiff({ root, diff, layout, comments }: { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments }) {
+type TableDiffProps = { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments };
+
+export function TableDiff(props: TableDiffProps) {
+  return <FileTableDiff key={viewerKey(props.root, props.diff, "table").join("\u0000")} {...props} />;
+}
+
+function FileTableDiff({ root, diff, layout, comments }: TableDiffProps) {
   const hasText = (diff.hunks ?? []).length > 0;
   const [mode, setMode] = useState<Mode>(comments && hasText ? "text" : "table");
   const [sheet, setSheet] = useState("");
