@@ -24,6 +24,9 @@ import (
 	"github.com/nipalab/nipa/internal/webhook"
 )
 
+// mfaEnabledByDefault applies while MFA_ENABLED is unset: the free edition offers it only with MFA_ENABLED=true.
+const mfaEnabledByDefault = false
+
 func main() {
 	if version.Flag(os.Args[1:]) {
 		fmt.Println("nipad " + version.Resolve().String())
@@ -38,6 +41,10 @@ func main() {
 	if err := guardSecrets(cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
 		fmt.Fprintln(os.Stderr, "set strong values in config.yaml (openssl rand -base64 48) or ALLOW_INSECURE_DEV_SECRETS=true for local development only")
+		os.Exit(1)
+	}
+	if err := cfg.ValidateMFAKey(mfaEnabledByDefault); err != nil {
+		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
 		os.Exit(1)
 	}
 
@@ -175,15 +182,16 @@ func main() {
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 	}, serverapp.UsecaseDeps{
-		Config:            cfg,
-		DB:                dbConn,
-		Snow:              snowUser,
-		Hasher:            passwordHasher,
-		ChunkStore:        chunkStore,
-		Metrics:           metrics,
-		WebhookDispatcher: webhookDispatcher,
-		EmailDispatcher:   emailDispatcher,
-		RateLimiter:       rateLimiter,
+		Config:              cfg,
+		DB:                  dbConn,
+		Snow:                snowUser,
+		Hasher:              passwordHasher,
+		ChunkStore:          chunkStore,
+		Metrics:             metrics,
+		WebhookDispatcher:   webhookDispatcher,
+		EmailDispatcher:     emailDispatcher,
+		RateLimiter:         rateLimiter,
+		MFAEnabledByDefault: mfaEnabledByDefault,
 	}))
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}

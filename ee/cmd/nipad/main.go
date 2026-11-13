@@ -34,6 +34,9 @@ import (
 	"github.com/nipalab/nipa/internal/webhook"
 )
 
+// mfaEnabledByDefault applies while MFA_ENABLED is unset: the enterprise edition offers it unless MFA_ENABLED=false.
+const mfaEnabledByDefault = true
+
 func main() {
 	if version.Flag(os.Args[1:]) {
 		fmt.Println("nipad-ee " + version.Resolve().String())
@@ -45,6 +48,9 @@ func main() {
 		panic(err)
 	}
 	if err := cfg.ValidateSecrets(); err != nil {
+		panic(err)
+	}
+	if err := cfg.ValidateMFAKey(mfaEnabledByDefault); err != nil {
 		panic(err)
 	}
 
@@ -170,7 +176,7 @@ func main() {
 
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
 	deps := serverapp.UsecaseDeps{
-		MFAEnabledByDefault: true,
+		MFAEnabledByDefault: mfaEnabledByDefault,
 		Config:              cfg,
 		DB:                  dbConn,
 		Snow:                snowUser,

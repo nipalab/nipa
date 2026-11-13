@@ -391,10 +391,33 @@ func TestMFAKey(t *testing.T) {
 
 	strong := "0123456789abcdef0123456789abcdef"
 	other := "fedcba9876543210fedcba9876543210"
-	err = (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: "short"}).ValidateSecrets()
-	require.ErrorContains(t, err, "MFA_ENCRYPTION_KEY")
-	err = (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: base64.StdEncoding.EncodeToString(raw)}).ValidateSecrets()
-	require.NoError(t, err)
+	require.NoError(t, (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: "short"}).ValidateSecrets(),
+		"the MFA key is checked by ValidateMFAKey, only while MFA is on")
+}
+
+func TestValidateMFAKey(t *testing.T) {
+	good := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	for name, tc := range map[string]struct {
+		cfg       Config
+		defaultOn bool
+		wantErr   bool
+	}{
+		"free default ignores a bad key":       {cfg: Config{MFAEncryptionKey: "short"}},
+		"enterprise default checks the key":    {cfg: Config{MFAEncryptionKey: "short"}, defaultOn: true, wantErr: true},
+		"explicitly off ignores a bad key":     {cfg: Config{MFAEncryptionKey: "short", MFAEnabledSet: true}, defaultOn: true},
+		"explicitly on checks the key":         {cfg: Config{MFAEncryptionKey: "short", MFAEnabled: true, MFAEnabledSet: true}, wantErr: true},
+		"on with a good key":                   {cfg: Config{MFAEncryptionKey: good}, defaultOn: true},
+		"on without a key leaves MFA disabled": {cfg: Config{}, defaultOn: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.ValidateMFAKey(tc.defaultOn)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "MFA_ENCRYPTION_KEY")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestLoadConfig_MFAEnabled(t *testing.T) {

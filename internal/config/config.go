@@ -279,10 +279,17 @@ func (c *Config) ValidateSecrets() error {
 	if c.JWTKey == c.ChunkURLSigningKey {
 		return fmt.Errorf("JWT_KEY and CHUNK_URL_SIGNING_KEY must differ")
 	}
-	if _, err := c.MFAKey(); err != nil {
-		return err
-	}
 	return nil
+}
+
+// ValidateMFAKey rejects a malformed MFA_ENCRYPTION_KEY while two-factor
+// authentication is on for this edition; with it off the key is not read.
+func (c *Config) ValidateMFAKey(defaultOn bool) error {
+	if !c.MFAEnabledOr(defaultOn) {
+		return nil
+	}
+	_, err := c.MFAKey()
+	return err
 }
 
 const minMFAKeyBytes = 32

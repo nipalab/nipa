@@ -62,7 +62,8 @@ secret copied to another row does not decrypt. There is no fallback to `JWT_KEY`
 JWT key never touches enrolled users.
 
 `MFA_ENCRYPTION_KEY` is base64 (standard or URL-safe) and must decode to at
-least 32 bytes (`openssl rand -base64 32`); anything else is a startup error.
+least 32 bytes (`openssl rand -base64 32`); anything else is a startup error
+while MFA is on for that edition (with it off the key is not checked).
 Unset means MFA is unavailable on that server:
 
 - Enrollment (`POST /me/mfa/totp`) answers `503 two-factor authentication is

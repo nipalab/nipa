@@ -669,8 +669,9 @@ alphabet, `NormalizeRecoveryCode`, SHA-256 `HashRecoveryCode`), the
 edition default `UsecaseDeps.MFAEnabledByDefault`: false on `nipad`, true on
 `nipad-ee`); off means `MFA.WithEnabled(false)` (`available: false`,
 enrollment 503 "disabled"), `Auth` gets no `WithMFA` so logins never ask, and
-the key is not read. `Config.MFAKey` decodes the key (base64, >= 32 bytes,
-checked by `ValidateSecrets`); `serverapp.mfaCipher` leaves the cipher nil when it is
+the key is not read. `Config.MFAKey` decodes the key (base64, >= 32 bytes;
+both mains call `ValidateMFAKey(mfaEnabledByDefault)`, which fails startup on
+a bad key only while MFA is on); `serverapp.mfaCipher` leaves the cipher nil when it is
 unset or invalid, which makes MFA unavailable (enrollment 503, enrolled
 password/OAuth logins 503, recovery codes still disable). Startup logs
 enrolled accounts the server cannot ask (`LogUnusableEnrollments`: a warning
