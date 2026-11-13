@@ -12,7 +12,7 @@ import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
-import { tabs, type Intent, type TabId } from "@/components/tabs";
+import { hasOpenConflicts, tabs, visibleTabs, type Intent, type TabId } from "@/components/tabs";
 import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const [message, setMessage] = useState("");
   const [focusMessage, setFocusMessage] = useState(0);
   const [createMR, setCreateMR] = useState(0);
+  useEffect(() => {
+    if (tab !== "mrs") setCreateMR(0);
+  }, [tab]);
   const [editingSparse, setEditingSparse] = useState(false);
 
   const changes = useQuery({ queryKey: ["changes", repo.root], queryFn: () => desktop.changes(repo.root), enabled: !repo.error, refetchInterval: REPO_POLL_MS });
@@ -138,9 +141,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
     const source = conflicts.data?.theirs.label;
     operation.run("push", () => desktop.push(repo.root, source ? `Merge branch '${source}' into '${repo.branch}'` : `Merge into '${repo.branch}'`));
   };
-  const hasConflicts = !!pending && (changes.data?.conflicts.length ?? 0) > 0;
+  const hasConflicts = hasOpenConflicts(changes.data);
   const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
-  const shownTabs = tabs.filter((t) => t.id !== "conflicts" || hasConflicts);
+  const shownTabs = visibleTabs(hasConflicts);
   const current = tab === "conflicts" && !hasConflicts ? "changes" : tab;
   const incoming = updated || detached ? 0 : (activity?.incoming ?? 0);
   const incomingLabel = incoming >= 100 ? "100+" : String(incoming);

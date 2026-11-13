@@ -8,6 +8,7 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
   useEffect(() => close.current?.focus(), []);
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       onKeyDown={(e) => {

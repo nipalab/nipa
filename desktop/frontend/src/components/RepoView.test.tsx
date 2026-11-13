@@ -913,6 +913,12 @@ describe("palette actions and shortcuts", () => {
     renderWithProviders(withIntent({ tab: "mrs", action: "new-mr", seq: 1 }));
     expect(await screen.findByRole("dialog", { name: "New merge request" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Merge requests/ })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "New merge request" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Merge requests/ }));
+    await screen.findByRole("button", { name: "New" });
+    expect(screen.queryByRole("dialog", { name: "New merge request" })).not.toBeInTheDocument();
   });
 
   it("locks a file in the lock scope", async () => {
@@ -934,6 +940,18 @@ describe("palette actions and shortcuts", () => {
     renderWithProviders(withIntent({ tab: "", action: "update", seq: 1 }, { ...repo, error: "gone" }));
     expect(await screen.findByText("This clone is unavailable")).toBeInTheDocument();
     expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it("numbers tabs with Conflicts while a merge waits", async () => {
+    api.changes.mockResolvedValue(changeSet({ pending: "merge", conflicts: ["a.txt"] }));
+    api.conflicts.mockResolvedValue(conflictSet("merge"));
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    api.tags.mockResolvedValue([]);
+    view();
+    const conflicts = await screen.findByRole("tab", { name: /Conflicts/ });
+    expect(conflicts).toHaveAttribute("title", "Ctrl+3");
+    fireEvent.keyDown(document.body, { key: "4", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("switches tabs, updates, refreshes and focuses the message from the keyboard", async () => {

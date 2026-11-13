@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { desktop, type Repo } from "@/api/desktop";
 import { FileIcon } from "@/components/changes/FileIcon";
-import { tabs, type Intent } from "@/components/tabs";
+import { hasOpenConflicts, visibleTabs, type Intent } from "@/components/tabs";
 import { fuzzyMatch, rank, segments } from "@/lib/fuzzy";
 import { commitTitle, shortId } from "@/lib/history";
 import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "@/lib/palette";
@@ -100,6 +100,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     staleTime: 10_000,
   });
   const branch = current?.branch ?? "";
+  const changes = useQuery({ queryKey: ["changes", root], queryFn: () => desktop.changes(root), enabled: !!root && mode === "all" });
   const log = useQuery({
     queryKey: ["history", root, "palette", branch],
     queryFn: () => desktop.history(root, { branch, limit: 50 }),
@@ -174,8 +175,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
         { key: "lock", icon: icon(Lock), title: "Lock file…", run: () => enter("lock") },
         { key: "refresh", icon: icon(RefreshCw), title: "Refresh", hint: shortcutHint("refresh"), run: () => go(root, { tab: "", action: "refresh" }) },
       );
-      tabs
-        .filter((t) => t.id !== "conflicts")
+      visibleTabs(hasOpenConflicts(changes.data))
         .forEach((t, i) =>
           actions.push({ key: `tab:${t.id}`, icon: icon(t.Icon), title: `Go to ${t.label}`, hint: i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined, run: () => go(root, { tab: t.id }) }),
         );
@@ -312,7 +312,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
 
   let lastSection: Section | null = null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         role="dialog"
         aria-modal="true"
@@ -359,6 +359,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
                 <div
                   id={optionId(i)}
                   role="option"
+                  tabIndex={-1}
                   aria-selected={i === selected}
                   onMouseMove={() => i !== selected && setActive(i)}
                   onClick={item.run}

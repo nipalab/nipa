@@ -13,6 +13,13 @@ export const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "details", label: "Details", Icon: Info },
 ];
 
+// hasOpenConflicts tells whether the Conflicts tab is shown: a merge or
+// revert is waiting with conflicted files.
+export const hasOpenConflicts = (changes?: { pending?: string; conflicts: string[] }): boolean => !!changes?.pending && changes.conflicts.length > 0;
+
+// visibleTabs is the tab strip in order; Mod+1–9 index into it.
+export const visibleTabs = (conflicts: boolean) => tabs.filter((t) => t.id !== "conflicts" || conflicts);
+
 // RepoAction is something a palette or shortcut asks the repository view to
 // do; target names the branch or tag for switch and checkout-tag.
 export type RepoAction = "update" | "focus-message" | "switch" | "checkout-tag" | "new-mr" | "lock" | "refresh";

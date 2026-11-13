@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Commit, FileHit, MergeRequest, Repo } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ searchFiles: vi.fn(), branches: vi.fn(), tags: vi.fn(), mergeRequests: vi.fn(), history: vi.fn() }));
+const api = vi.hoisted(() => ({ changes: vi.fn(), searchFiles: vi.fn(), branches: vi.fn(), tags: vi.fn(), mergeRequests: vi.fn(), history: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { CommandPalette, type PaletteMode } from "./CommandPalette";
@@ -49,6 +49,7 @@ const selectedText = () => screen.getAllByRole("option").find((o) => o.getAttrib
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.changes.mockResolvedValue({ branch: "main", staged: [], unstaged: [], conflicts: [], resolved: [] });
   api.searchFiles.mockImplementation(async (root: string) => ({
     hits: root === "/game" ? [hit("Assets/Hero/armor.png", "image"), hit("docs/hero.md")] : [hit("Art/hero.png", "image")],
     truncated: false,
@@ -75,6 +76,16 @@ describe("CommandPalette", () => {
     expect(onClose).toHaveBeenCalled();
     expect(onGo).toHaveBeenCalledWith("/game", { tab: "", action: "update" });
     expect(api.searchFiles).not.toHaveBeenCalled();
+  });
+
+  it("numbers the tabs like the tab strip, Conflicts included while it shows", async () => {
+    api.changes.mockResolvedValue({ branch: "main", pending: "merge", staged: [], unstaged: [], conflicts: ["a.txt"], resolved: [] });
+    open();
+    const conflicts = await screen.findByRole("option", { name: /Go to Conflicts/ });
+    expect(conflicts).toHaveTextContent("Ctrl+3");
+    expect(screen.getByRole("option", { name: /Go to History/ })).toHaveTextContent("Ctrl+4");
+    await userEvent.click(conflicts);
+    expect(onGo).toHaveBeenCalledWith("/game", { tab: "conflicts" });
   });
 
   it("moves through results with the arrows and wraps", async () => {
