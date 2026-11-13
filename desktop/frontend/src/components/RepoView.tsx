@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, FileDiff, Folders, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, FolderTree, GitBranch, GitMerge, Search, Tag, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
@@ -12,38 +12,35 @@ import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
+import { tabs, type Intent, type TabId } from "@/components/tabs";
 import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { locksKey, useLockActions } from "@/hooks/useLocks";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
+import { useShortcuts } from "@/hooks/useShortcuts";
 import { shortId } from "@/lib/history";
+import { shortcutHint } from "@/lib/shortcuts";
 import { normalizeSelection } from "@/lib/sparse";
 import { cn, errorMessage } from "@/lib/utils";
 
 const REPO_POLL_MS = 30_000;
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
+export type { Intent, TabId };
 
-export type TabId = "files" | "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
+type RepoViewProps = {
+  repo: Repo;
+  removing: boolean;
+  onRemove: (root: string) => void;
+  notify: Notify;
+  activity?: RepoActivity;
+  intent?: Intent;
+  leading?: ReactNode;
+  onSearch?: () => void;
+};
 
-// Intent asks the view to show a tab (and a merge request, commit or file);
-// seq changes for every request so the same target can be opened twice.
-export type Intent = { tab: string; number?: number; commit?: string; path?: string; seq: number };
-
-const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
-  { id: "files", label: "Files", Icon: Folders },
-  { id: "changes", label: "Changes", Icon: FileDiff },
-  { id: "conflicts", label: "Conflicts", Icon: GitMerge },
-  { id: "history", label: "History", Icon: History },
-  { id: "branches", label: "Branches & tags", Icon: Tags },
-  { id: "mrs", label: "Merge requests", Icon: GitPullRequest },
-  { id: "locks", label: "Locks", Icon: Lock },
-  { id: "details", label: "Details", Icon: Info },
-];
-
-type RepoViewProps = { repo: Repo; removing: boolean; onRemove: (root: string) => void; notify: Notify; activity?: RepoActivity; intent?: Intent; leading?: ReactNode };
-
-export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading }: RepoViewProps) {
+export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading, onSearch }: RepoViewProps) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabId>("changes");
   const [updated, setUpdated] = useState(false);
@@ -68,6 +65,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
     setTab("history");
   };
   const [message, setMessage] = useState("");
+  const [focusMessage, setFocusMessage] = useState(0);
+  const [createMR, setCreateMR] = useState(0);
   const [editingSparse, setEditingSparse] = useState(false);
 
   const changes = useQuery({ queryKey: ["changes", repo.root], queryFn: () => desktop.changes(repo.root), enabled: !repo.error, refetchInterval: REPO_POLL_MS });
@@ -146,6 +145,65 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const incoming = updated || detached ? 0 : (activity?.incoming ?? 0);
   const incomingLabel = incoming >= 100 ? "100+" : String(incoming);
 
+  const { lock } = useLockActions(repo.root, notify);
+  const busyNote = () => notify(`Wait until ${opLabel[op!.op].toLowerCase()} finishes`);
+  const startUpdate = () => {
+    if (op) return busyNote();
+    if (detached) return notify(`Checked out at tag ${detached}: switch back to a branch to update`);
+    operation.run("update", () => desktop.update(repo.root));
+  };
+  const writeMessage = () => {
+    setTab("changes");
+    setFocusMessage((n) => n + 1);
+  };
+  const lockPath = async (path: string) => {
+    try {
+      const status = await queryClient.fetchQuery({ queryKey: locksKey(repo.root), queryFn: () => desktop.lockStatus(repo.root) });
+      lock.mutate({ branch: status.branch, paths: [path] });
+    } catch (err) {
+      notify(`Locking failed: ${errorMessage(err)}`);
+    }
+  };
+  const handled = useRef(0);
+  useEffect(() => {
+    if (!intent?.action || intent.seq === handled.current || repo.error) return;
+    handled.current = intent.seq;
+    const target = intent.target ?? "";
+    switch (intent.action) {
+      case "update":
+        return startUpdate();
+      case "focus-message":
+        return writeMessage();
+      case "refresh":
+        return refresh();
+      case "new-mr":
+        setTab("mrs");
+        return setCreateMR((n) => n + 1);
+      case "lock":
+        if (intent.path) void lockPath(intent.path);
+        return;
+      case "switch":
+        if (op) return busyNote();
+        return switchTo(target);
+      case "checkout-tag":
+        if (op) return busyNote();
+        tagCheckout.current = target;
+        return operation.run("switch", () => desktop.checkoutTag(repo.root, target));
+    }
+  });
+  useShortcuts(
+    {
+      tab: ({ index }) => {
+        const t = shownTabs[index];
+        if (t) setTab(t.id);
+      },
+      update: startUpdate,
+      refresh,
+      focusMessage: writeMessage,
+    },
+    !repo.error,
+  );
+
   return (
     <div className="flex h-full flex-col">
       <header className={cn("drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-5", leading && "pl-2")}>
@@ -166,6 +224,12 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={repo.root}>
           {repo.root}
         </span>
+        {onSearch && (
+            <Button variant="ghost" size="sm" className="no-drag text-muted-foreground" onClick={onSearch} aria-label="Search" title={`Search and run commands (${shortcutHint("palette")})`}>
+              <Search />
+              <kbd className="font-sans text-[10px]">{shortcutHint("palette")}</kbd>
+            </Button>
+          )}
         {!repo.error &&
           (op && op.op !== "push" ? (
             <div className="no-drag w-64">
@@ -174,9 +238,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
           ) : (
             <Button
               size="sm"
-              onClick={() => operation.run("update", () => desktop.update(repo.root))}
+              onClick={startUpdate}
               disabled={!!op || !!detached}
-              title={incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"}
+              title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
             >
               <ArrowDownToLine />
               Update
@@ -214,13 +278,14 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
             />
           )}
           <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
-            {shownTabs.map(({ id, label, Icon }) => (
+            {shownTabs.map(({ id, label, Icon }, i) => (
               <button
                 key={id}
                 type="button"
                 role="tab"
                 aria-selected={current === id}
                 onClick={() => setTab(id)}
+                title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}
                 className={cn(
                   "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",
                   current === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
@@ -259,6 +324,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 onError={(msg) => notify(msg)}
                 notify={notify}
                 onOpenFile={showFile}
+                focusMessage={focusMessage}
               />
             ) : current === "history" ? (
               <HistoryView
@@ -288,7 +354,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 }}
               />
             ) : current === "mrs" ? (
-              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} />
+              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
             ) : current === "locks" ? (
               <LocksView root={repo.root} notify={notify} />
             ) : (

@@ -611,6 +611,13 @@ export function SceneDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * SearchFiles finds tracked files of a clone by a fuzzy path query.
+ */
+export function SearchFiles(root: string, query: string, limit: number): $CancellablePromise<$models.FileSearch | null> {
+    return $Call.ByID(1134649595, root, query, limit);
+}
+
+/**
  * SetDraft marks a request as a draft or ready for review.
  */
 export function SetDraft(root: string, $number: number, draft: boolean): $CancellablePromise<$models.MergeRequest | null> {

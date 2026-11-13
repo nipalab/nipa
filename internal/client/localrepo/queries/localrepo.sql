@@ -126,3 +126,9 @@ SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
 WHERE path = sqlc.arg(path)
 LIMIT 1;
+
+-- name: FileSearchPaths :many
+SELECT path, size_bytes, is_binary
+FROM files
+WHERE path LIKE sqlc.arg(pattern) ESCAPE '\'
+LIMIT sqlc.arg(max_rows);

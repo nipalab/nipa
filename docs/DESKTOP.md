@@ -257,6 +257,30 @@ Sonar never compile it.
   are hidden for files that are neither an engine asset nor covered by a
   record or rule. Queries are keyed `["refs"|"provenance", root, path]` and
   refetched 300 ms after a `repo:changed` notice.
+- Command palette (`components/palette/CommandPalette.tsx`, Ctrl/Cmd+K or
+  the header Search button): one input over Actions (Update, Push…, Switch
+  branch…, New merge request, Lock file…, Refresh, each tab, Settings,
+  Keyboard shortcuts), Files of every opened clone (daemon `SearchFiles`
+  per clone, debounced, re-ranked together with `lib/fuzzy.ts` so the best
+  file wins whichever clone it lives in), Branches and tags (switch or check
+  out), Merge requests (the server `search` filter; `12`, `#12` or `!12`
+  opens that number) and Commits (message words or id/hash prefix within the
+  first loaded history page, plus an exact base36 id lookup). "Switch
+  branch…" and "Lock file…" narrow the palette to branches or the current
+  clone's files; Esc or Backspace on an empty query goes back. Results reach
+  the repository view as an `Intent` (`components/tabs.ts`) carrying a tab
+  and, for actions, `action`/`target`/`path`; `RepoView` runs each intent
+  once (by `seq`), and choosing a clone in the sidebar drops the pending
+  intent so coming back never repeats an action.
+- Keyboard shortcuts: every binding is declared once in `lib/shortcuts.ts`
+  (palette Mod+K, sheet `?`, sidebar Mod+B, settings Mod+,, tabs Mod+1–9,
+  Update Mod+Shift+U, refresh Mod+R/F5, push message Mod+Shift+M, push
+  Mod+Enter in the message, stage/unstage Space, next/previous file J/K or
+  arrows) and handled through `hooks/useShortcuts.ts`. Plain keys never fire
+  in text fields, Space and arrows never steal from a focused control,
+  nothing fires during IME composition or while a modal is open; a test
+  fails when two shortcuts share a chord. `?` opens the "Keyboard shortcuts"
+  sheet built from the same map.
 - Delete safety: staging a missing file (a deletion) first looks up its
   referrers; when another file uses it, a "Stage deletion?" confirmation
   names how many and the first three. The lookup is raced against 400 ms:
@@ -650,3 +674,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 20. Files tab: project browser with thumbnails, file versions and "Get this version" (daemon `ListFiles`, `RestoreRevision`). **(done)**
 21. Where used and provenance: references and origin panels in the Files detail and the Changes screen, "Add record…", referrer warnings on deletion (daemon `AssetRefs`, `Provenance`, `SetProvenance`). **(done)**
 22. Table filters (text, column, changed columns, jump to change, sticky key column, per-column counts) and `.xlsx` diff with sheet tabs. **(done)**
+23. Search, command palette and keyboard shortcuts (daemon `SearchFiles`, `lib/shortcuts.ts`, "Keyboard shortcuts" sheet). **(done)**

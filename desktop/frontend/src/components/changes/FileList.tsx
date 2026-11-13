@@ -1,4 +1,4 @@
-import { useMemo, useRef, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Lock, LockOpen, TriangleAlert, Undo2 } from "lucide-react";
 import type { ChangeSet, FileChange, FileLockState } from "@/api/desktop";
@@ -20,6 +20,7 @@ type FileListProps = {
   selected: Selection | null;
   busy: boolean;
   onSelect: (sel: Selection) => void;
+  onToggle?: (sel: Selection) => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
   onDiscard: (file: FileChange) => void;
@@ -41,7 +42,7 @@ export function buildRows(changes: ChangeSet): Row[] {
   return rows;
 }
 
-export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage, onDiscard, warnings, locks, onLock }: FileListProps) {
+export function FileList({ changes, selected, busy, onSelect, onToggle, onStage, onUnstage, onDiscard, warnings, locks, onLock }: FileListProps) {
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -55,7 +56,16 @@ export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage
   const fileIndexes = useMemo(() => rows.flatMap((r, i) => (r.type === "file" ? [i] : [])), [rows]);
   const selectedIndex = rows.findIndex((r) => r.type === "file" && r.file.path === selected?.path && r.staged === selected?.staged);
 
+  useEffect(() => {
+    if (selectedIndex >= 0) virtualizer.scrollToIndex(selectedIndex);
+  }, [selectedIndex, virtualizer]);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === " " && e.target === e.currentTarget) {
+      e.preventDefault();
+      if (selected && !busy) onToggle?.(selected);
+      return;
+    }
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
     const pos = fileIndexes.indexOf(selectedIndex);
@@ -63,7 +73,6 @@ export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage
     const row = rows[next];
     if (row?.type !== "file") return;
     onSelect({ path: row.file.path, staged: row.staged });
-    virtualizer.scrollToIndex(next);
   };
 
   return (

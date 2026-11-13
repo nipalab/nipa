@@ -21,9 +21,9 @@ const filters = [
 
 type Filter = (typeof filters)[number][0];
 
-type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number } };
+type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number }; create?: number };
 
-export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsViewProps) {
+export function MergeRequestsView({ root, branch, notify, open, create }: MergeRequestsViewProps) {
   const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
   const [status, setStatus] = useState<Filter>("open");
   const [searchInput, setSearchInput] = useState("");
@@ -33,6 +33,9 @@ export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsV
     if (open) setSelected(open.number);
   }, [open?.number, open?.seq]);
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    if (create) setCreating(true);
+  }, [create]);
 
   const list = useInfiniteQuery({
     queryKey: ["mrs", root, status, search],

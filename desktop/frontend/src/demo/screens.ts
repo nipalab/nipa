@@ -1,6 +1,6 @@
 export type Theme = "dark" | "light";
 
-export type Step = { tab: string } | { button: string } | { text: string } | { wait: number };
+export type Step = { tab: string } | { button: string } | { text: string } | { type: string } | { wait: number };
 
 export type Screen = {
   name: string;
@@ -37,6 +37,7 @@ export const screens: Screen[] = [
   { name: "merge-request-files", scenario: "default", steps: [{ tab: "Merge requests" }, { text: "Rework hero armor textures" }, { tab: "File changes" }, { text: "Movement.cs" }], settle: 1500 },
   { name: "conflicts", scenario: "conflicts", steps: [{ tab: "Conflicts" }, { text: "Damage.cs" }], settle: 1500 },
   { name: "locks", scenario: "default", steps: [{ tab: "Locks" }], settle: 800 },
+  { name: "palette", scenario: "default", steps: [{ button: "Search" }, { type: "hero" }], settle: 1000 },
   { name: "clone", scenario: "default", steps: [{ button: "Clone a repository" }], settle: 1200 },
   { name: "settings", scenario: "default", steps: [{ button: "Settings" }], settle: 800 },
 ];

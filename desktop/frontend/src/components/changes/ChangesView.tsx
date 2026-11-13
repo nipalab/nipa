@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileDiff as Fil
 import { desktop, type ChangeSet, type FileChange, type FileLockState, type MetaWarning } from "@/api/desktop";
 import { CommitBox, type LockIssue } from "@/components/changes/CommitBox";
 import { DiffViewer } from "@/components/changes/DiffViewer";
-import { FileList, type Selection } from "@/components/changes/FileList";
+import { buildRows, FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ReferrerNote, useStageGuard } from "@/components/changes/DeleteSafety";
 import { InsightPanel } from "@/components/files/AssetInsight";
@@ -16,6 +16,7 @@ import type { OpState } from "@/hooks/useRepoOperation";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { useShortcuts } from "@/hooks/useShortcuts";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 const POLL_MS = 30_000;
@@ -30,6 +31,7 @@ type ChangesViewProps = {
   onError: (message: string) => void;
   notify: Notify;
   onOpenFile?: (path: string) => void;
+  focusMessage?: number;
 };
 
 function firstFile(c: ChangeSet): Selection | null {
@@ -46,7 +48,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
   return other.some((f) => f.path === sel.path) ? { path: sel.path, staged: !sel.staged } : null;
 }
 
-export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify, onOpenFile }: ChangesViewProps) {
+export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Selection | null>(null);
@@ -111,6 +113,23 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
     enabled: !!selected,
   });
 
+  const working = stage.isPending || unstage.isPending || discard.isPending || !!op;
+  const step = (by: number) => {
+    if (!data) return;
+    const files = buildRows(data).flatMap((r) => (r.type === "file" ? [{ path: r.file.path, staged: r.staged }] : []));
+    if (files.length === 0) return;
+    const at = files.findIndex((f) => f.path === selected?.path && f.staged === selected?.staged);
+    setPicked(files[Math.max(0, Math.min(files.length - 1, at < 0 ? 0 : at + by))]);
+  };
+  const toggle = (sel: Selection) => (sel.staged ? unstage.mutate([sel.path]) : stageGuard.request([sel.path]));
+  useShortcuts({
+    next: () => step(1),
+    previous: () => step(-1),
+    stage: () => {
+      if (selected && !working) toggle(selected);
+    },
+  });
+
   const setLayout = (next: DiffLayout) => {
     writeSetting(LAYOUT_KEY, next);
     setLayoutState(next);
@@ -122,7 +141,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   }
 
   const c = changes.data;
-  const busy = stage.isPending || unstage.isPending || discard.isPending || !!op;
+  const busy = working;
   const empty = c.staged.length === 0 && c.unstaged.length === 0;
   const blocked = c.detached ? `HEAD is at tag ${c.detached}. Switch to a branch to push.` : undefined;
   const openConflicts = c.conflicts.filter((p) => !c.resolved.includes(p)).length;
@@ -164,6 +183,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             selected={selected}
             busy={busy}
             onSelect={setPicked}
+            onToggle={toggle}
             onStage={stageGuard.request}
             onUnstage={(paths) => unstage.mutate(paths)}
             onDiscard={setDiscarding}
@@ -185,6 +205,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
           onPush={onPush}
           onCancel={onCancelOp}
           onGenerate={llm.data?.configured ? () => desktop.generateCommitMessage(root) : undefined}
+          focus={focusMessage}
         />
         <PaneResizer size={listSize} label="Resize file list" />
       </div>

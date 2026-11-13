@@ -23,6 +23,20 @@ describe("demo service", () => {
     expect((await s.Provenance(ROOT, null)).origins).toEqual([]);
   });
 
+  it("searches the demo project's files", async () => {
+    const s = createService("default");
+    const res = (await s.SearchFiles(ROOT, "hero alb", 5))!;
+    expect(res.hits![0]).toMatchObject({ path: "Assets/Characters/Hero/hero_albedo.png", name: "hero_albedo.png", kind: "image", binary: true });
+    expect((await s.SearchFiles(ROOT, "e", 3))!.hits).toHaveLength(3);
+    expect((await s.SearchFiles(ROOT, "e", 0))!.hits!.length).toBeGreaterThan(3);
+    expect((await s.SearchFiles(ROOT, "movement", 5))!.hits![0]).toMatchObject({ kind: "text", binary: false });
+    expect((await s.SearchFiles("/elsewhere", "hero", 5))!.hits).toEqual([]);
+    const all = (await s.MergeRequests(ROOT, { status: "", search: "", author: "", after: 0 }))!.items!.length;
+    const some = (await s.MergeRequests(ROOT, { status: "", search: "HERO", author: "", after: 0 }))!.items!;
+    expect(some.length).toBeGreaterThan(0);
+    expect(some.length).toBeLessThan(all);
+  });
+
   it("reads the scenario from the query string", () => {
     expect(scenarioFrom("?scenario=conflicts")).toBe("conflicts");
     expect(scenarioFrom("")).toBe("default");

@@ -136,6 +136,47 @@ func (q *Queries) FileListByTree(ctx context.Context, treePath string) ([]FileLi
 	return items, nil
 }
 
+const fileSearchPaths = `-- name: FileSearchPaths :many
+SELECT path, size_bytes, is_binary
+FROM files
+WHERE path LIKE ?1 ESCAPE '\'
+LIMIT ?2
+`
+
+type FileSearchPathsParams struct {
+	Pattern string `json:"pattern"`
+	MaxRows int64  `json:"max_rows"`
+}
+
+type FileSearchPathsRow struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	IsBinary  bool   `json:"is_binary"`
+}
+
+func (q *Queries) FileSearchPaths(ctx context.Context, arg FileSearchPathsParams) ([]FileSearchPathsRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileSearchPaths, arg.Pattern, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileSearchPathsRow
+	for rows.Next() {
+		var i FileSearchPathsRow
+		if err := rows.Scan(&i.Path, &i.SizeBytes, &i.IsBinary); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileUpsert = `-- name: FileUpsert :exec
 INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)

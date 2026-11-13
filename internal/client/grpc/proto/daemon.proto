@@ -963,6 +963,25 @@ message ListFilesResponse {
     repeated FileEntry entries = 2; // directories first, then files, by name
 }
 
+message SearchFilesRequest {
+    string root = 1;
+    string query = 2; // characters matched in order, case-insensitive; spaces are ignored
+    int32 limit = 3; // default 50, at most 200
+}
+
+message SearchFileHit {
+    string path = 1;
+    string name = 2;
+    int64 size_bytes = 3;
+    bool is_binary = 4;
+    string kind = 5; // viewer kind (internal/preview)
+}
+
+message SearchFilesResponse {
+    repeated SearchFileHit hits = 1; // best first: basename matches before path matches
+    bool truncated = 2; // the prefilter hit its cap, so a better match may be missing
+}
+
 message RestoreRevisionRequest {
     string root = 1;
     string path = 2;
@@ -1112,6 +1131,7 @@ service NipaDaemon {
     rpc SetSparse(SetSparseRequest) returns (stream OpEvent);
     rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
     rpc RestoreRevision(RestoreRevisionRequest) returns (stream OpEvent);
+    rpc SearchFiles(SearchFilesRequest) returns (SearchFilesResponse);
     rpc AssetRefs(AssetRefsRequest) returns (AssetRefsResponse);
     rpc Provenance(ProvenanceRequest) returns (ProvenanceResponse);
     rpc SetProvenance(SetProvenanceRequest) returns (SetProvenanceResponse);
