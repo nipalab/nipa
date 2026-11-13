@@ -176,8 +176,6 @@ type Querier interface {
 	RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
-	RefreshTokenGetLegacy(ctx context.Context, token string) (RefreshToken, error)
-	RefreshTokenUpgradeLegacy(ctx context.Context, arg RefreshTokenUpgradeLegacyParams) (int64, error)
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

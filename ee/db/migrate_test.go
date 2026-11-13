@@ -132,3 +132,46 @@ func (s *MigrateSuite) TestQueryPerformanceIndexes() {
 	s.Contains(indexes["idx_pbac_rules_org_users"], "WHERE (user_id IS NOT NULL)")
 	s.Contains(indexes["idx_branches_project_updated_id"], "WHERE (deleted = false)")
 }
+
+const refreshDropPlaintextVersion uint = 6
+
+func (s *MigrateSuite) TestRefreshTokenDropPlaintext() {
+	ctx := context.Background()
+	s.Require().NoError(MigrateDown(s.conn))
+	m, err := newMigrator(s.conn)
+	s.Require().NoError(err)
+	s.Require().NoError(m.Migrate(refreshDropPlaintextVersion - 1))
+
+	var userID int64
+	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID))
+	_, err = s.conn.ExecContext(ctx,
+		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, 'plaintext-legacy', now())", userID)
+	s.Require().NoError(err)
+	var sessionID int64
+	s.Require().NoError(s.conn.QueryRowContext(ctx,
+		"INSERT INTO refresh_tokens (user_id, token, token_hash, expires_at) VALUES ($1, 'hash-1', 'hash-1', now()) RETURNING id",
+		userID).Scan(&sessionID))
+
+	s.Require().NoError(m.Migrate(refreshDropPlaintextVersion))
+
+	var count int
+	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM refresh_tokens").Scan(&count))
+	s.Equal(1, count, "legacy plaintext rows are dropped")
+	var hash string
+	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT token_hash FROM refresh_tokens WHERE id = $1", sessionID).Scan(&hash))
+	s.Equal("hash-1", hash)
+	_, err = s.conn.ExecContext(ctx, "SELECT token FROM refresh_tokens")
+	s.Error(err)
+	_, err = s.conn.ExecContext(ctx,
+		"INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, 'hash-1', now())", userID)
+	s.Error(err, "token_hash is unique")
+	_, err = s.conn.ExecContext(ctx, "INSERT INTO refresh_tokens (user_id, expires_at) VALUES ($1, now())", userID)
+	s.Error(err, "token_hash is required")
+
+	s.Require().NoError(m.Migrate(refreshDropPlaintextVersion - 1))
+	var token string
+	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT token FROM refresh_tokens WHERE id = $1", sessionID).Scan(&token))
+	s.Equal("hash-1", token)
+
+	s.Require().NoError(MigrateUp(s.conn))
+}

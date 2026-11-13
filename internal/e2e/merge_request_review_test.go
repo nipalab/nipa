@@ -39,6 +39,8 @@ func mintToken(t *testing.T, userID snow.ID) string {
 
 	claims := serverDomain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    serverDomain.TokenIssuer,
+			Audience:  jwt.ClaimStrings{serverDomain.TokenAudience},
 			Subject:   userID.Base36(),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),

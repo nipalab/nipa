@@ -88,7 +88,7 @@ CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 | --- | --- |
 | `SERVER_ADDRESS`, `SERVER_PORT` | Listen address. `0.0.0.0` exposes the port on every interface. |
 | `DATABASE_DSN` | SQLite database file. It is created on first start. |
-| `JWT_KEY` | Signs access tokens (HS256, `iss` `nipad`, `aud` `nipa-api`; both are set but not checked yet, enforcement follows one release later). The OAuth state key on `nipad-ee` is derived from it with HKDF. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
+| `JWT_KEY` | Signs access tokens (HS256, `iss` `nipad`, `aud` `nipa-api`; both are required on every request). The OAuth state key on `nipad-ee` is derived from it with HKDF. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
 | `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
 | `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak keys only log a warning and empty keys are replaced by random per-process ones (sessions and chunk URLs reset on restart). Local development only: anyone can forge admin tokens. |
 | `PUBLIC_BASE_URL` | Public address clients use to reach the server (for example `https://nipa.example.com`). SSH key login signatures are bound to its host and port; falls back to the host of `EMAIL_BASE_URL`. When neither is set, SSH key login is refused. Its origin is the only one the REST API grants CORS to; unset grants none (the web UI is same-origin and needs none). |

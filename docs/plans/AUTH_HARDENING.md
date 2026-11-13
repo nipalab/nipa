@@ -33,14 +33,17 @@ implementation deliberately differs:
   of `PUBLIC_BASE_URL`. A disallowed origin is not rejected, it gets no CORS
   headers and the browser blocks the response.
 
+Follow-ups done in the same release as phases 2 to 5 (a deliberate choice:
+every user signs in again once at that deploy, and the previous binary cannot
+serve logins or refreshes during the flip):
+
+- Migrations sqlite `000021` / postgres `000006`
+  (`refresh_token_drop_plaintext`) delete the plaintext rows older than phase
+  2 and drop `refresh_tokens.token`; the legacy-token fallback is gone.
+- `ValidateToken` requires the JWT `iss`/`aud` claims.
+
 Open follow-ups:
 
-- One release after phase 2: a migration that drops the plaintext
-  `refresh_tokens.token` column (plaintext only for rows older than phase 2,
-  new rows store the hash there too), together with removing the legacy-token
-  fallback (`GetLegacyRefreshToken`).
-- One release after phase 4: enforce the JWT `iss`/`aud` claims in
-  `ValidateToken`; they are set at issue and not checked yet.
 - Phase 6.
 
 ## Findings

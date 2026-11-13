@@ -116,3 +116,56 @@ func TestMigrateUnsupportedDialect(t *testing.T) {
 	require.Error(t, MigrateUp(conn, "postgres"))
 	require.Error(t, MigrateDown(conn, "postgres"))
 }
+
+const refreshDropPlaintextVersion uint = 21
+
+func TestMigrateRefreshTokenDropPlaintext(t *testing.T) {
+	conn := openMigrateTestDB(t)
+	m, err := newMigrator(conn, "sqlite3")
+	require.NoError(t, err)
+	require.NoError(t, m.Migrate(refreshDropPlaintextVersion-1))
+
+	var userID int64
+	require.NoError(t, conn.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID))
+	insertOld := func(token string, hash any) int64 {
+		var id int64
+		require.NoError(t, conn.QueryRow(
+			"INSERT INTO refresh_tokens (user_id, token, token_hash, expires_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id",
+			userID, token, hash).Scan(&id))
+		return id
+	}
+	insertOld("plaintext-legacy", nil)
+	sessionID := insertOld("hash-1", "hash-1")
+	goneID := insertOld("hash-2", "hash-2")
+	_, err = conn.Exec("DELETE FROM refresh_tokens WHERE id = ?", goneID)
+	require.NoError(t, err)
+
+	require.NoError(t, m.Migrate(refreshDropPlaintextVersion))
+
+	var count int
+	require.NoError(t, conn.QueryRow("SELECT COUNT(*) FROM refresh_tokens").Scan(&count))
+	require.Equal(t, 1, count, "legacy plaintext rows are dropped")
+	var hash string
+	require.NoError(t, conn.QueryRow("SELECT token_hash FROM refresh_tokens WHERE id = ?", sessionID).Scan(&hash))
+	require.Equal(t, "hash-1", hash)
+	_, err = conn.Exec("SELECT token FROM refresh_tokens")
+	require.Error(t, err)
+	require.Contains(t, sqliteIndexes(t, conn), "idx_refresh_tokens_user")
+
+	var nextID int64
+	require.NoError(t, conn.QueryRow(
+		"INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, 'hash-3', CURRENT_TIMESTAMP) RETURNING id",
+		userID).Scan(&nextID))
+	require.Greater(t, nextID, goneID, "session ids are never reused")
+	_, err = conn.Exec("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, 'hash-3', CURRENT_TIMESTAMP)", userID)
+	require.Error(t, err, "token_hash is unique")
+
+	require.NoError(t, m.Migrate(refreshDropPlaintextVersion-1))
+	var token string
+	require.NoError(t, conn.QueryRow("SELECT token FROM refresh_tokens WHERE id = ?", sessionID).Scan(&token))
+	require.Equal(t, "hash-1", token)
+	require.Greater(t, insertOld("hash-4", "hash-4"), nextID)
+	require.Contains(t, sqliteIndexes(t, conn), "idx_refresh_tokens_user")
+
+	require.NoError(t, m.Migrate(refreshDropPlaintextVersion))
+}

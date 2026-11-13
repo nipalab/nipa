@@ -41,14 +41,6 @@ func (f *fakeRefreshRepo) CreateRefreshSession(_ context.Context, userID snow.ID
 	return f.nextID, nil
 }
 
-func (f *fakeRefreshRepo) addLegacy(userID snow.ID, token string, createdAt, expiresAt time.Time) int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.nextID++
-	f.rows[f.nextID] = &domain.RefreshToken{ID: f.nextID, UserID: userID, Token: token, ExpiresAt: expiresAt, CreatedAt: createdAt}
-	return f.nextID
-}
-
 func (f *fakeRefreshRepo) GetRefreshSession(_ context.Context, id int64) (*domain.RefreshToken, error) {
 	if f.getErr != nil {
 		return nil, f.getErr
@@ -61,21 +53,6 @@ func (f *fakeRefreshRepo) GetRefreshSession(_ context.Context, id int64) (*domai
 	}
 	cp := *row
 	return &cp, nil
-}
-
-func (f *fakeRefreshRepo) GetLegacyRefreshToken(_ context.Context, token string) (*domain.RefreshToken, error) {
-	if f.getErr != nil {
-		return nil, f.getErr
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, row := range f.rows {
-		if row.TokenHash == "" && row.Token == token {
-			cp := *row
-			return &cp, nil
-		}
-	}
-	return nil, domain.NewErrorRecordNotFound()
 }
 
 func (f *fakeRefreshRepo) RotateRefreshSession(_ context.Context, r domain.RefreshRotation) (bool, error) {
@@ -91,19 +68,11 @@ func (f *fakeRefreshRepo) RotateRefreshSession(_ context.Context, r domain.Refre
 	if !ok {
 		return false, nil
 	}
-	rotatedAt, started := r.RotatedAt, r.SessionStartedAt
-	if r.MatchLegacyToken != "" {
-		if row.TokenHash != "" || row.Token != r.MatchLegacyToken {
-			return false, nil
-		}
-		row.Token = ""
-		row.SessionStartedAt = &started
-	} else {
-		if row.TokenHash != r.MatchHash {
-			return false, nil
-		}
-		row.PreviousHash = row.TokenHash
+	rotatedAt := r.RotatedAt
+	if row.TokenHash != r.MatchHash {
+		return false, nil
 	}
+	row.PreviousHash = row.TokenHash
 	row.TokenHash = r.NewHash
 	row.RotatedAt = &rotatedAt
 	row.ExpiresAt = r.ExpiresAt
@@ -505,54 +474,8 @@ func TestAuth_LoginWithRefreshToken_UnknownSession(t *testing.T) {
 
 	_, err = h.auth.LoginWithRefreshToken(ctx, "")
 	require.True(t, domain.IsErrorNotFound(err))
-	_, err = h.auth.LoginWithRefreshToken(ctx, "no-such-legacy-token")
+	_, err = h.auth.LoginWithRefreshToken(ctx, "8a5c0f2e-1d2b-4c1e-9b7a-1234567890ab")
 	require.True(t, domain.IsErrorNotFound(err))
-}
-
-func TestAuth_LoginWithRefreshToken_SessionTokenForLegacyRowIsUnknown(t *testing.T) {
-	h := newRefreshHarness(t)
-	id := h.repo.addLegacy(h.user.ID, "legacy", h.clock.now, h.clock.now.Add(time.Hour))
-
-	token := h.auth.formatRefreshToken(id, "whatever")
-	_, err := h.auth.LoginWithRefreshToken(context.Background(), token)
-	require.True(t, domain.IsErrorNotFound(err))
-	require.NoError(t, h.auth.Logout(context.Background(), token))
-	require.True(t, h.repo.has(id))
-	require.Empty(t, h.audit.entries)
-}
-
-func TestAuth_LoginWithRefreshToken_LegacyUpgrade(t *testing.T) {
-	h := newRefreshHarness(t)
-	ctx := context.Background()
-	created := h.clock.now.Add(-10 * 24 * time.Hour)
-	id := h.repo.addLegacy(h.user.ID, "8a5c0f2e-legacy-uuid", created, h.clock.now.Add(time.Hour))
-
-	got, err := h.auth.LoginWithRefreshToken(ctx, "8a5c0f2e-legacy-uuid")
-	require.NoError(t, err)
-	newID, secret, ok := h.auth.parseRefreshToken(got.RefreshToken)
-	require.True(t, ok)
-	require.Equal(t, id, newID)
-
-	row := h.repo.rows[id]
-	require.Empty(t, row.Token)
-	require.Equal(t, hashRefreshSecret(secret), row.TokenHash)
-	require.Equal(t, created, *row.SessionStartedAt)
-
-	_, err = h.auth.LoginWithRefreshToken(ctx, "8a5c0f2e-legacy-uuid")
-	require.True(t, domain.IsErrorNotFound(err), "a legacy token is single use")
-	require.True(t, h.repo.has(id))
-
-	_, err = h.auth.LoginWithRefreshToken(ctx, got.RefreshToken)
-	require.NoError(t, err)
-}
-
-func TestAuth_LoginWithRefreshToken_LegacyPastCap(t *testing.T) {
-	h := newRefreshHarness(t)
-	id := h.repo.addLegacy(h.user.ID, "old-legacy", h.clock.now.Add(-refreshSessionMaxAge-time.Hour), h.clock.now.Add(time.Hour))
-
-	_, err := h.auth.LoginWithRefreshToken(context.Background(), "old-legacy")
-	require.EqualError(t, err, "refresh token expired")
-	require.False(t, h.repo.has(id))
 }
 
 func TestAuth_Logout(t *testing.T) {
@@ -583,13 +506,6 @@ func TestAuth_Logout(t *testing.T) {
 		require.Empty(t, h.audit.entries)
 	})
 
-	t.Run("legacy token", func(t *testing.T) {
-		h := newRefreshHarness(t)
-		id := h.repo.addLegacy(h.user.ID, "legacy", h.clock.now, h.clock.now.Add(time.Hour))
-		require.NoError(t, h.auth.Logout(ctx, "legacy"))
-		require.False(t, h.repo.has(id))
-	})
-
 	t.Run("unknown and empty tokens", func(t *testing.T) {
 		h := newRefreshHarness(t)
 		require.NoError(t, h.auth.Logout(ctx, ""))
@@ -616,15 +532,11 @@ func TestParseRefreshToken(t *testing.T) {
 	require.Equal(t, int64(35), id)
 	require.Equal(t, "s3cret", secret)
 
-	id, _, ok = other.parseRefreshToken(token)
-	require.True(t, ok)
-	require.Zero(t, id, "the tag is bound to the server key")
+	_, _, ok = other.parseRefreshToken(token)
+	require.False(t, ok, "the tag is bound to the server key")
 
-	for _, legacy := range []string{"", "8a5c0f2e-1d2b-4c1e-9b7a-1234567890ab", "a.b", "a.b.c.d"} {
-		_, _, ok := a.parseRefreshToken(legacy)
-		require.False(t, ok, legacy)
+	for _, bad := range []string{"", "8a5c0f2e-1d2b-4c1e-9b7a-1234567890ab", "a.b", "a.b.c.d", "0." + a.sessionTag("0") + ".x", "z." + a.sessionTag("z") + "."} {
+		_, _, ok := a.parseRefreshToken(bad)
+		require.False(t, ok, bad)
 	}
-	id, _, ok = a.parseRefreshToken("0." + a.sessionTag("0") + ".x")
-	require.True(t, ok)
-	require.Zero(t, id)
 }

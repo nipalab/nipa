@@ -51,37 +51,14 @@ func (a *Auth) GetRefreshSession(ctx context.Context, id int64) (*domain.Refresh
 	return toDomainRefreshToken(row), nil
 }
 
-func (a *Auth) GetLegacyRefreshToken(ctx context.Context, token string) (*domain.RefreshToken, error) {
-	row, err := a.queries.RefreshTokenGetLegacy(ctx, token)
-	if err != nil {
-		return nil, handleError(err)
-	}
-	return toDomainRefreshToken(row), nil
-}
-
 func (a *Auth) RotateRefreshSession(ctx context.Context, r domain.RefreshRotation) (bool, error) {
-	var (
-		n   int64
-		err error
-	)
-	if r.MatchLegacyToken != "" {
-		n, err = a.queries.RefreshTokenUpgradeLegacy(ctx, sqlcPostgres.RefreshTokenUpgradeLegacyParams{
-			NewHash:          r.NewHash,
-			SessionStartedAt: sql.NullTime{Time: r.SessionStartedAt, Valid: true},
-			RotatedAt:        sql.NullTime{Time: r.RotatedAt, Valid: true},
-			ExpiresAt:        r.ExpiresAt,
-			ID:               r.ID,
-			LegacyToken:      r.MatchLegacyToken,
-		})
-	} else {
-		n, err = a.queries.RefreshSessionRotate(ctx, sqlcPostgres.RefreshSessionRotateParams{
-			NewHash:     r.NewHash,
-			CurrentHash: sql.NullString{String: r.MatchHash, Valid: true},
-			RotatedAt:   sql.NullTime{Time: r.RotatedAt, Valid: true},
-			ExpiresAt:   r.ExpiresAt,
-			ID:          r.ID,
-		})
-	}
+	n, err := a.queries.RefreshSessionRotate(ctx, sqlcPostgres.RefreshSessionRotateParams{
+		NewHash:     r.NewHash,
+		CurrentHash: sql.NullString{String: r.MatchHash, Valid: true},
+		RotatedAt:   sql.NullTime{Time: r.RotatedAt, Valid: true},
+		ExpiresAt:   r.ExpiresAt,
+		ID:          r.ID,
+	})
 	if err != nil {
 		return false, handleError(err)
 	}
@@ -119,13 +96,10 @@ func toDomainRefreshToken(row sqlcPostgres.RefreshToken) *domain.RefreshToken {
 	t := &domain.RefreshToken{
 		ID:           row.ID,
 		UserID:       snow.ID(row.UserID),
-		TokenHash:    row.TokenHash.String,
+		TokenHash:    row.TokenHash,
 		PreviousHash: row.PreviousHash.String,
 		ExpiresAt:    row.ExpiresAt,
 		CreatedAt:    row.CreatedAt,
-	}
-	if !row.TokenHash.Valid {
-		t.Token = row.Token
 	}
 	if row.RotatedAt.Valid {
 		t.RotatedAt = &row.RotatedAt.Time
