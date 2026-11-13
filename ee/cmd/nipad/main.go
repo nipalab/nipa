@@ -170,15 +170,16 @@ func main() {
 
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
 	deps := serverapp.UsecaseDeps{
-		Config:            cfg,
-		DB:                dbConn,
-		Snow:              snowUser,
-		Hasher:            passwordHasher,
-		ChunkStore:        chunkStore,
-		Metrics:           metrics,
-		WebhookDispatcher: webhookDispatcher,
-		EmailDispatcher:   emailDispatcher,
-		RateLimiter:       rateLimiter,
+		MFAEnabledByDefault: true,
+		Config:              cfg,
+		DB:                  dbConn,
+		Snow:                snowUser,
+		Hasher:              passwordHasher,
+		ChunkStore:          chunkStore,
+		Metrics:             metrics,
+		WebhookDispatcher:   webhookDispatcher,
+		EmailDispatcher:     emailDispatcher,
+		RateLimiter:         rateLimiter,
 	}
 	if storageLedger != nil {
 		deps.StorageLedger = storageLedger

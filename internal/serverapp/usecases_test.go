@@ -79,21 +79,33 @@ func TestBuildUsecases_MFAKey(t *testing.T) {
 	node, err := snow.NewNode(0)
 	require.NoError(t, err)
 
+	key := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	for name, tc := range map[string]struct {
-		key       string
+		cfg       config.Config
+		eeDefault bool
 		available bool
 	}{
-		"configured": {key: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")), available: true},
-		"unset":      {},
-		"invalid":    {key: "short"},
+		"free default is off":         {cfg: config.Config{MFAEncryptionKey: key}},
+		"free opt-in":                 {cfg: config.Config{MFAEncryptionKey: key, MFAEnabled: true, MFAEnabledSet: true}, available: true},
+		"enterprise default is on":    {cfg: config.Config{MFAEncryptionKey: key}, eeDefault: true, available: true},
+		"enterprise opt-out":          {cfg: config.Config{MFAEncryptionKey: key, MFAEnabledSet: true}, eeDefault: true},
+		"enabled without a key":       {cfg: config.Config{}, eeDefault: true},
+		"enabled with an invalid key": {cfg: config.Config{MFAEncryptionKey: "short"}, eeDefault: true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			cfg := tc.cfg
 			uc := BuildUsecases(usecase.Repositories{
 				User: sqlite.NewUserRepository(database),
 				Auth: sqlite.NewAuthRepository(database),
 				MFA:  sqlite.NewMFARepository(database),
-			}, UsecaseDeps{Config: &config.Config{MFAEncryptionKey: tc.key}, DB: database, Snow: node})
+			}, UsecaseDeps{Config: &cfg, DB: database, Snow: node, MFAEnabledByDefault: tc.eeDefault})
 			require.Equal(t, tc.available, uc.MFA.Available())
+			_, err := uc.Auth.CompleteLoginMFA(context.Background(), "unknown", "123456")
+			require.Error(t, err)
+			if !tc.available {
+				_, err = uc.MFA.StartTOTP(domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1}), "pw")
+				require.Equal(t, 503, errorCode(err))
+			}
 		})
 	}
 }

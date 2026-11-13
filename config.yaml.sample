@@ -26,6 +26,13 @@ DATABASE_DSN: nipa.db
 # throwaway local development only).
 JWT_KEY: ''
 ALLOW_INSECURE_DEV_SECRETS: false
+# Two-factor authentication (TOTP) for password and OAuth logins. Off by
+# default on the free `nipad`, on by default on `nipad-ee`.
+# MFA_ENABLED: false
+# Required while MFA is on: encrypts the stored TOTP secrets. Generate with
+# `openssl rand -base64 32`; losing or changing it disables every enrolled
+# account's second factor until an admin resets it.
+MFA_ENCRYPTION_KEY: ''
 # Logging: level is debug|info|warn|error, format is console|json.
 LOG_LEVEL: debug
 LOG_FORMAT: console

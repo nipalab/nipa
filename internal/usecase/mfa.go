@@ -62,6 +62,7 @@ type MFA struct {
 	users    userRepository
 	hasher   passwordHasher
 	cipher   *totp.Cipher
+	disabled bool
 	tx       transactor
 	audit    AuditRecorder
 	limiter  *ratelimit.Limiter
@@ -71,6 +72,13 @@ type MFA struct {
 
 func NewMFA(repo mfaRepository, users userRepository, hasher passwordHasher, cipher *totp.Cipher, tx transactor) *MFA {
 	return &MFA{repo: repo, users: users, hasher: hasher, cipher: cipher, tx: tx, now: time.Now}
+}
+
+// WithEnabled turns the feature off when MFA_ENABLED is false: nobody can
+// enroll and logins never ask for a code.
+func (m *MFA) WithEnabled(enabled bool) *MFA {
+	m.disabled = !enabled
+	return m
 }
 
 func (m *MFA) WithAudit(rec AuditRecorder) *MFA {
@@ -94,10 +102,13 @@ func (m *MFA) WithClock(now func() time.Time) *MFA {
 }
 
 func (m *MFA) Available() bool {
-	return m.cipher != nil
+	return !m.disabled && m.cipher != nil
 }
 
-func errMFAUnavailable() error {
+func (m *MFA) errUnavailable() error {
+	if m.disabled {
+		return domain.NewErrorServiceUnavailable("two-factor authentication is disabled on this server")
+	}
 	return domain.NewErrorServiceUnavailable("two-factor authentication is not configured on this server")
 }
 
@@ -134,7 +145,7 @@ func (m *MFA) Status(ctx context.Context) (*dto.MFAStatus, error) {
 // current password; a passwordless account must have signed in recently.
 func (m *MFA) StartTOTP(ctx context.Context, password string) (*dto.TOTPEnrollment, error) {
 	if !m.Available() {
-		return nil, errMFAUnavailable()
+		return nil, m.errUnavailable()
 	}
 	user, claim, err := m.currentUser(ctx)
 	if err != nil {
@@ -186,7 +197,7 @@ func (m *MFA) reauthenticate(ctx context.Context, user *domain.User, claim domai
 // codes, which are shown only this once.
 func (m *MFA) ConfirmTOTP(ctx context.Context, code string) (*dto.RecoveryCodes, error) {
 	if !m.Available() {
-		return nil, errMFAUnavailable()
+		return nil, m.errUnavailable()
 	}
 	user, _, err := m.currentUser(ctx)
 	if err != nil {
@@ -320,9 +331,10 @@ func (m *MFA) AdminReset(ctx context.Context, userID snow.ID) error {
 	return nil
 }
 
-// LogEnrolledWithoutKey reports accounts that cannot finish a login because
-// the server has no MFA key.
-func (m *MFA) LogEnrolledWithoutKey(ctx context.Context) {
+// LogUnusableEnrollments reports enrolled accounts the server cannot ask for
+// their second factor: with MFA_ENABLED off they sign in with the password
+// alone, without a key they cannot sign in with a password at all.
+func (m *MFA) LogUnusableEnrollments(ctx context.Context) {
 	if m.Available() {
 		return
 	}
@@ -331,9 +343,14 @@ func (m *MFA) LogEnrolledWithoutKey(ctx context.Context) {
 		obs.Log(ctx).Warn("count two-factor accounts failed", "error", err)
 		return
 	}
-	if n > 0 {
-		obs.Log(ctx).Error("MFA_ENCRYPTION_KEY is not set but accounts use two-factor authentication; they cannot sign in with a password until it is restored or an admin resets them", "accounts", n)
+	if n == 0 {
+		return
 	}
+	if m.disabled {
+		obs.Log(ctx).Warn("MFA_ENABLED is off but accounts use two-factor authentication; they sign in without their second factor", "accounts", n)
+		return
+	}
+	obs.Log(ctx).Error("MFA_ENCRYPTION_KEY is not set but accounts use two-factor authentication; they cannot sign in with a password until it is restored or an admin resets them", "accounts", n)
 }
 
 func (m *MFA) required(ctx context.Context, userID snow.ID) (bool, error) {
@@ -349,7 +366,7 @@ func (m *MFA) required(ctx context.Context, userID snow.ID) (bool, error) {
 
 func (m *MFA) beginChallenge(ctx context.Context, userID snow.ID, method string) (*dto.MFAChallenge, error) {
 	if !m.Available() {
-		return nil, errMFAUnavailable()
+		return nil, m.errUnavailable()
 	}
 	buf := make([]byte, mfaChallengeBytes)
 	if _, err := rand.Read(buf); err != nil {
@@ -445,7 +462,7 @@ func (m *MFA) consumeCode(ctx context.Context, userID snow.ID, code string) (str
 	normalized := totp.NormalizeCode(code)
 	if totp.IsCode(normalized) {
 		if !m.Available() {
-			return "", errMFAUnavailable()
+			return "", m.errUnavailable()
 		}
 		row, err := m.repo.GetTOTP(ctx, userID)
 		if err != nil {

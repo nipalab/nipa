@@ -439,14 +439,14 @@ func TestMFA_WrongKeyIsServerError(t *testing.T) {
 	requireCode(t, err, 500)
 }
 
-func TestMFA_LogEnrolledWithoutKey(t *testing.T) {
+func TestMFA_LogUnusableEnrollments(t *testing.T) {
 	f := newMFAFixture(t, true)
 	f.enroll(t, mfaAlice)
-	f.mfa.LogEnrolledWithoutKey(context.Background())
+	f.mfa.LogUnusableEnrollments(context.Background())
 	f.mfa.cipher = nil
-	f.mfa.LogEnrolledWithoutKey(context.Background())
+	f.mfa.LogUnusableEnrollments(context.Background())
 	f.repo.err = errors.New("db down")
-	f.mfa.LogEnrolledWithoutKey(context.Background())
+	f.mfa.LogUnusableEnrollments(context.Background())
 }
 
 func TestMFA_Disable(t *testing.T) {
@@ -648,4 +648,30 @@ func TestAuth_MFAThrottled(t *testing.T) {
 	requireCode(t, err, 400)
 	_, err = f.auth.CompleteLoginMFA(context.Background(), result.MFAChallenge.Token, f.code(t, secret, 0))
 	requireCode(t, err, 429)
+}
+
+func TestMFA_Disabled(t *testing.T) {
+	f := newMFAFixture(t, true)
+	_, codes := f.enroll(t, mfaAlice)
+	f.mfa.WithEnabled(false)
+	ctx := userCtx(mfaAlice)
+
+	status, err := f.mfa.Status(ctx)
+	require.NoError(t, err)
+	require.False(t, status.Available)
+	require.True(t, status.TOTPEnabled)
+
+	_, err = f.mfa.StartTOTP(userCtx(mfaBob), "password")
+	requireCode(t, err, 503)
+	var derr *domain.Error
+	require.ErrorAs(t, err, &derr)
+	require.Contains(t, derr.Message, "disabled")
+	_, err = f.mfa.ConfirmTOTP(ctx, "123456")
+	requireCode(t, err, 503)
+
+	f.mfa.LogUnusableEnrollments(context.Background())
+	require.NoError(t, f.mfa.DisableTOTP(ctx, codes[0]), "leftover enrollments can still be removed")
+
+	f.mfa.WithEnabled(true)
+	require.True(t, f.mfa.Available())
 }

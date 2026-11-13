@@ -34,6 +34,9 @@ type UsecaseDeps struct {
 	StorageLedger     usecase.StorageLedger
 	SeatGate          usecase.SeatGate
 	RateLimiter       *ratelimit.Limiter
+	// MFAEnabledByDefault applies while MFA_ENABLED is unset: off for the free
+	// edition, on for the enterprise one.
+	MFAEnabledByDefault bool
 }
 
 // BuildUsecases wires the whole usecase graph once for every edition and for
@@ -45,10 +48,14 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 
 	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
 	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter).WithSSHAudience(sshAudience(cfg)).WithAudit(auditUsecase)
-	mfaUsecase := usecase.NewMFA(repos.MFA, repos.User, deps.Hasher, mfaCipher(cfg), transactor).WithAudit(auditUsecase).WithLimiter(deps.RateLimiter)
+	mfaEnabled := cfg.MFAEnabledOr(deps.MFAEnabledByDefault)
+	mfaUsecase := usecase.NewMFA(repos.MFA, repos.User, deps.Hasher, mfaCipher(cfg, mfaEnabled), transactor).
+		WithEnabled(mfaEnabled).WithAudit(auditUsecase).WithLimiter(deps.RateLimiter)
 	if repos.MFA != nil {
-		authUsecase = authUsecase.WithMFA(mfaUsecase)
-		mfaUsecase.LogEnrolledWithoutKey(context.Background())
+		if mfaEnabled {
+			authUsecase = authUsecase.WithMFA(mfaUsecase)
+		}
+		mfaUsecase.LogUnusableEnrollments(context.Background())
 	}
 	orgUsecase := usecase.NewOrg(repos.Org, node).WithAudit(auditUsecase)
 	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase).WithAudit(auditUsecase)
@@ -145,7 +152,11 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 
 // mfaCipher builds the TOTP secret cipher from MFA_ENCRYPTION_KEY; without a
 // usable key two-factor authentication stays unavailable.
-func mfaCipher(cfg *config.Config) *totp.Cipher {
+func mfaCipher(cfg *config.Config, enabled bool) *totp.Cipher {
+	if !enabled {
+		slog.Info("two-factor authentication off: set MFA_ENABLED=true to offer it")
+		return nil
+	}
 	key, err := cfg.MFAKey()
 	if err != nil {
 		slog.Error("two-factor authentication disabled", "error", err)

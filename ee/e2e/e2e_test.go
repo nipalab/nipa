@@ -187,6 +187,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	webhookRepo := postgres.NewWebhookRepository(dbConn)
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
 	deps := serverapp.UsecaseDeps{
+		MFAEnabledByDefault: true,
 		Config: &config.Config{
 			JWTKey:                 e2eJWTSecret,
 			ChunkURLSigningKey:     "ee-e2e-chunk-signing-key",

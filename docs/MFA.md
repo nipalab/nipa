@@ -15,7 +15,9 @@ In the first version:
 - TOTP (RFC 6238: SHA-1, 6 digits, 30 s step), compatible with the common
   authenticator apps.
 - Ten single-use recovery codes.
-- Opt-in for every user, on both editions. Nothing is enforced.
+- Opt-in for every user. Nothing is enforced.
+- Switched by `MFA_ENABLED`: off by default on the free `nipad`, on by
+  default on `nipad-ee`. Either edition can set it explicitly.
 
 Later, each with its own change: WebAuthn/passkeys, required MFA for global
 admins, an organization-level requirement.
@@ -75,6 +77,15 @@ Unset means MFA is unavailable on that server:
   authentication: the verify step answers 500, logs the user id, and the only
   way back is an admin reset. Changing the key is not supported in this
   version.
+
+With `MFA_ENABLED` off the key is not read at all and the feature is off:
+
+- `GET /me/mfa` answers `available: false` and enrollment answers `503
+  two-factor authentication is disabled on this server`.
+- Logins never ask for a code, including accounts that enrolled while it was
+  on. Startup logs a warning with their count. Their rows stay, so turning it
+  back on asks them again; an account can still remove its own enrollment
+  with a recovery code, and an admin reset works as usual.
 
 `refresh_tokens` gains `auth_method` (`password`, `ssh_key`, `oauth`,
 `email_verification`) and `mfa` (`totp`, `recovery_code` or NULL). The session
@@ -238,3 +249,6 @@ code (refused), log in with a recovery code, disable.
 4. **Other sessions survive enrollment.** "Sign out other sessions" waits for
    the session list in `docs/plans/AUTH_HARDENING.md`.
 5. **Notification emails ship in the first version.**
+6. **`MFA_ENABLED` switches the feature.** Off by default on the free
+   edition, on by default on the enterprise one. Turning it off stops asking
+   enrolled accounts for their code; it does not delete their enrollment.

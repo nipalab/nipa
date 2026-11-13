@@ -665,11 +665,16 @@ recovery codes (`NewRecoveryCodes` `XXXXX-XXXXX` from an unambiguous
 alphabet, `NormalizeRecoveryCode`, SHA-256 `HashRecoveryCode`), the
 `otpauth://` `URI` and `Cipher` (AES-256-GCM, key = HKDF-SHA256 of
 `MFA_ENCRYPTION_KEY`, label `nipa mfa totp v1`, the owner id as AAD).
-`Config.MFAKey` decodes the key (base64, >= 32 bytes, checked by
-`ValidateSecrets`); `serverapp.mfaCipher` leaves the cipher nil when it is
+`MFA_ENABLED` switches the feature (`Config.MFAEnabledOr`, unset = the
+edition default `UsecaseDeps.MFAEnabledByDefault`: false on `nipad`, true on
+`nipad-ee`); off means `MFA.WithEnabled(false)` (`available: false`,
+enrollment 503 "disabled"), `Auth` gets no `WithMFA` so logins never ask, and
+the key is not read. `Config.MFAKey` decodes the key (base64, >= 32 bytes,
+checked by `ValidateSecrets`); `serverapp.mfaCipher` leaves the cipher nil when it is
 unset or invalid, which makes MFA unavailable (enrollment 503, enrolled
-password/OAuth logins 503, recovery codes still disable; startup logs the
-enrolled count via `LogEnrolledWithoutKey`). Storage (sqlite `000022`,
+password/OAuth logins 503, recovery codes still disable). Startup logs
+enrolled accounts the server cannot ask (`LogUnusableEnrollments`: a warning
+when disabled, an error without a key). Storage (sqlite `000022`,
 postgres `000007`): `user_totp` (one row per user, `secret_enc`,
 `confirmed_at` NULL until the first code, `last_step`), `mfa_recovery_codes`
 (PK user + hash, `used_at`), `mfa_login_challenges` (PK SHA-256 of the
