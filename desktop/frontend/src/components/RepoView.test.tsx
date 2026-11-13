@@ -49,6 +49,8 @@ const api = vi.hoisted(() => ({
   imageDiff: vi.fn(),
   revealFile: vi.fn(),
   fileLink: vi.fn(),
+  assetRefs: vi.fn(),
+  provenance: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -127,6 +129,8 @@ beforeEach(() => {
   api.llmSettings.mockResolvedValue({ endpoint: "", model: "", keySaved: false, configured: false });
   api.diskUsage.mockResolvedValue({ workingFiles: 2, workingBytes: 2048, cacheObjects: 1, cacheBytes: 512, pins: [], sparse: [] });
   api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+  api.assetRefs.mockImplementation(async (_root: string, path: string) => ({ path, asset: false, uses: [], usedBy: [], unknown: [], scanned: 0, truncated: false, partial: false }));
+  api.provenance.mockResolvedValue({ enabled: false, origins: [] });
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   repoListeners.clear();
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
@@ -320,6 +324,35 @@ describe("Changes view", () => {
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(api.discard).toHaveBeenCalledWith("/work/game", ["art/hero.png"]);
     await waitFor(() => expect(within(list).queryByTitle("art/hero.png")).not.toBeInTheDocument());
+  });
+
+  it("warns about referrers when discarding or deleting a used asset and jumps to them", async () => {
+    const used = (path: string) => ({ path, asset: true, uses: [], usedBy: ["scenes/Main.tscn"], unknown: [], scanned: 3, truncated: false, partial: false });
+    api.assetRefs.mockImplementation(async (_root: string, path: string) => used(path));
+    api.stage.mockResolvedValue(changeSet());
+    api.files.mockImplementation(async (_root: string, dir: string) => ({ dir, entries: [] }));
+    api.fileInfo.mockResolvedValue({ entry: { path: "scenes/Main.tscn" }, lastCommit: null });
+    api.fileView.mockResolvedValue(null);
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    view();
+    const list = await fileList();
+
+    await userEvent.click(within(list).getByRole("button", { name: "Discard changes to art/hero.png" }));
+    expect(await within(screen.getByRole("alertdialog")).findByText("Used by 1 file: scenes/Main.tscn.")).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
+
+    await userEvent.click(within(list).getByRole("checkbox", { name: "Stage old.wav" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Staging deletes old.wav");
+    expect(dialog).toHaveTextContent("Used by 1 file: scenes/Main.tscn.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Stage deletion" }));
+    expect(api.stage).toHaveBeenCalledWith("/work/game", ["old.wav"]);
+
+    const panel = await screen.findByRole("button", { name: /References & origin/ });
+    await userEvent.click(panel);
+    await userEvent.click(await screen.findByRole("button", { name: "scenes/Main.tscn" }));
+    expect(screen.getByRole("tab", { name: /Files/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.files).toHaveBeenCalledWith("/work/game", "scenes"));
   });
 
   it("refreshes when the daemon reports changes", async () => {

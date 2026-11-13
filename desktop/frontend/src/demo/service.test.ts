@@ -5,6 +5,24 @@ import { ROOT } from "./data";
 const ref = (path: string) => ({ source: "working", path });
 
 describe("demo service", () => {
+  it("answers references and provenance", async () => {
+    const s = createService("default");
+    const rock = await s.AssetRefs(ROOT, "Assets/Textures/Environment/rock_albedo.png");
+    expect(rock.asset).toBe(true);
+    expect(rock.usedBy).toEqual(["Assets/Materials/Rock.mat"]);
+    const cave = await s.AssetRefs(ROOT, "Assets/Levels/Cave/Cave.unity");
+    expect(cave.uses!.filter((r) => !r.resolved)).toHaveLength(1);
+    expect((await s.AssetRefs(ROOT, "Assets/Textures/Environment/bark_albedo.png")).usedBy).toEqual([]);
+    expect((await s.AssetRefs(ROOT, "README.md")).asset).toBe(false);
+    const prov = await s.Provenance(ROOT, ["Assets/Characters/Hero/hero_albedo.png", "Assets/UI/icon_sword.png", "README.md"]);
+    expect(prov.origins!.map((o) => o.status)).toEqual(["edited", "missing"]);
+    const saved = await s.SetProvenance(ROOT, { path: "Assets/UI/icon_sword.png", tool: " Krita ", model: "", seed: "4", license: "", prompt: "sword", note: "", humanEdited: true });
+    expect(saved.origin).toMatchObject({ status: "recorded", tool: "Krita", seed: "4", source: "manual", required: true });
+    expect(saved.origin.promptHash).toHaveLength(64);
+    expect((await s.Provenance(ROOT, ["Assets/UI/icon_sword.png"])).origins![0].status).toBe("recorded");
+    expect((await s.Provenance(ROOT, null)).origins).toEqual([]);
+  });
+
   it("reads the scenario from the query string", () => {
     expect(scenarioFrom("?scenario=conflicts")).toBe("conflicts");
     expect(scenarioFrom("")).toBe("default");

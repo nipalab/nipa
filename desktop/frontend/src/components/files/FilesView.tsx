@@ -258,6 +258,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
             busy={busy}
             onRestore={(commit) => onRestore(row.path, commit)}
             onShowCommit={(id) => onHistory(row.path, id)}
+            onOpenFile={reveal}
           />
         ) : (
           <Centered>{row?.remote ? "This folder is not in your checkout." : "Select a file to see it here."}</Centered>

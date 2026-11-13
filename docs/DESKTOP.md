@@ -56,7 +56,8 @@ Sonar never compile it.
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Files: `Files`, `FileInfo`, `FileView`,
-  `RestoreRevision`, `RevealFile`, `FileLink`; Changes screen: `Changes`, `Stage`, `Unstage`,
+  `RestoreRevision`, `RevealFile`, `FileLink`, `AssetRefs`, `Provenance`,
+  `SetProvenance`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
   `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
@@ -224,6 +225,37 @@ Sonar never compile it.
   checkout makes no remote call) with "Download this folder", which adds the
   prefix through `SetSparse`. `repo:changed` refreshes only the listings of
   the folders above the changed paths (everything without paths).
+- Where used and origin (`components/files/AssetInsight.tsx`): the Files
+  detail pane, and a collapsible "References & origin" footer under the
+  Changes diff viewer (`InsightPanel`, closed by default, the choice kept in
+  `localStorage` `nipa.insightPanel`, its header summarizing "Used by N ·
+  Uses N · Origin: status"), show two sections for the selected file only.
+  "References" (`AssetRefs`, the daemon's cached reference graph) lists "Used
+  by" and "Uses", each row opening that file in the Files tab, "Not
+  referenced anywhere" when nothing points at the asset, and "Unresolved"
+  references (not found in the clone, or outside a sparse checkout), with a
+  note when the scan was truncated or the clone is sparse. "Origin"
+  (`Provenance`) appears when the file has a `.nipaprovenance.yml` record or
+  a `require_provenance` rule covers it: tool, model, seed, source, recorded
+  date, license and note, with the status in plain words (`modified` =
+  changed since recorded and not marked as edited by a person, `edited` =
+  edited by a person after generation). A required but missing record shows
+  a warning and "Add record…", a form (tool required, whole-number seed,
+  prompt, "edited by a person") saved through `SetProvenance`; the service
+  hashes the prompt and only the hash reaches the daemon. When the clone has
+  no `.nipaprovenance.yml` yet, the form says saving creates and stages it,
+  which turns on origin tracking (like `nipa provenance set`). Both sections
+  are hidden for files that are neither an engine asset nor covered by a
+  record or rule. Queries are keyed `["refs"|"provenance", root, path]` and
+  refetched 300 ms after a `repo:changed` notice.
+- Delete safety: staging a missing file (a deletion) first looks up its
+  referrers; when another file uses it, a "Stage deletion?" confirmation
+  names how many and the first three. The lookup is raced against 400 ms:
+  a cached graph answers well within it, so an unused asset stages without a
+  dialog, while a slower lookup (the first scan of a large project) opens
+  the dialog at once and fills the note in when it arrives. A failed lookup
+  stages without asking. The existing Discard confirmation of a modified
+  asset names its referrers too.
 - Generated text: with an endpoint and a model set (Settings › AI
   assistance, or `NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`), the push box and the
   New merge request dialog show a Generate button (`useLLMSettings`,
@@ -596,3 +628,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 18. Generate the push message and MR description, AI settings with a keyring key. **(done)**
 19. Storage card (disk usage, clean up, sparse hint) in the Details tab. **(done)**
 20. Files tab: project browser with thumbnails, file versions and "Get this version" (daemon `ListFiles`, `RestoreRevision`). **(done)**
+21. Where used and provenance: references and origin panels in the Files detail and the Changes screen, "Add record…", referrer warnings on deletion (daemon `AssetRefs`, `Provenance`, `SetProvenance`). **(done)**

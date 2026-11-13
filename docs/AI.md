@@ -203,6 +203,14 @@ for `staged` or `push --dry-run`. Only references written in the assets are
 seen: code (`Resources.Load`, `preload`), Addressables and build settings
 outside the scanned files are not.
 
+The desktop app shows the same graph per file: a "References" section in the
+Files detail pane and in the "References & origin" footer of the Changes
+screen lists "Used by", "Uses" and unresolved references (each row opens
+the file in the Files tab), through the daemon's `AssetRefs` RPC, which
+keeps the graph cached per clone until a change can affect it. Staging the
+deletion of an asset other files still use asks for confirmation first and
+names the referrers.
+
 ### Write tools
 
 | Tool | Cap | Inputs | Notes |
@@ -404,6 +412,13 @@ Commands:
 - The MCP read tool `nipa_provenance` returns the same data; agents add
   records by staging generated files (auto-fill) or through
   `nipa provenance set`.
+- The desktop app shows an "Origin" section for the selected file when it has
+  a record or a rule requires one (tool, model, seed, source, recorded date,
+  status), through the daemon's `Provenance` RPC. A required but missing
+  record offers "Add record…", the equivalent of `nipa provenance set`
+  through `SetProvenance`: it writes and stages the file, creating it (and so
+  opting the repository in) when missing, and says so before saving. The app
+  hashes the prompt itself; only the SHA-256 reaches the daemon.
 
 ## Generation (`--generate`)
 

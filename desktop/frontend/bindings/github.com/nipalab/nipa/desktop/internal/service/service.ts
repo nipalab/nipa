@@ -42,6 +42,14 @@ export function AddRepo(path: string): $CancellablePromise<$models.Repo> {
 }
 
 /**
+ * AssetRefs reports the references of one file from the daemon's cached
+ * reference graph.
+ */
+export function AssetRefs(root: string, path: string): $CancellablePromise<$models.AssetReferences> {
+    return $Call.ByID(3407135642, root, path);
+}
+
+/**
  * AudioDiff decodes the old and/or new version of an audio file into
  * waveforms, spectrograms, loudness stats and playable WAV copies.
  */
@@ -450,6 +458,13 @@ export function PickRepo(): $CancellablePromise<$models.Repo | null> {
 }
 
 /**
+ * Provenance reports the origin of the given files.
+ */
+export function Provenance(root: string, paths: string[] | null): $CancellablePromise<$models.Provenance> {
+    return $Call.ByID(1769973587, root, paths);
+}
+
+/**
  * Push uploads the staged files and commits them with message. Cancelling the
  * call stops the push.
  */
@@ -615,6 +630,14 @@ export function SetLLM(endpoint: string, model: string): $CancellablePromise<$mo
  */
 export function SetLLMKey(key: string): $CancellablePromise<void> {
     return $Call.ByID(1115369862, key);
+}
+
+/**
+ * SetProvenance records a file's origin by hand and stages
+ * .nipaprovenance.yml, creating it when the clone has none yet.
+ */
+export function SetProvenance(root: string, $in: $models.OriginInput): $CancellablePromise<$models.OriginSaved> {
+    return $Call.ByID(3677442659, root, $in);
 }
 
 /**

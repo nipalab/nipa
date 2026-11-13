@@ -53,7 +53,15 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   }, [intent]);
   const openNumber = intent?.tab === "mrs" && intent.number ? { number: intent.number, seq: intent.seq } : undefined;
   const openCommit = intent?.tab === "history" && intent.commit ? { id: intent.commit, seq: intent.seq } : undefined;
-  const openFile = intent?.tab === "files" && intent.path ? { path: intent.path, seq: intent.seq } : undefined;
+  const intentFile = intent?.tab === "files" && intent.path ? intent.path : "";
+  const [fileNav, setFileNav] = useState<{ path: string; seq: number }>();
+  useEffect(() => {
+    if (intentFile) setFileNav((prev) => ({ path: intentFile, seq: (prev?.seq ?? 0) + 1 }));
+  }, [intentFile, intent?.seq]);
+  const showFile = (path: string) => {
+    setFileNav((prev) => ({ path, seq: (prev?.seq ?? 0) + 1 }));
+    setTab("files");
+  };
   const [historyNav, setHistoryNav] = useState<{ path: string; commit?: string; seq: number }>();
   const showHistory = (path: string, commit?: string) => {
     setHistoryNav((prev) => ({ path, commit, seq: (prev?.seq ?? 0) + 1 }));
@@ -232,7 +240,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 repo={repo}
                 busy={!!op}
                 notify={notify}
-                open={openFile}
+                open={fileNav}
                 onHistory={showHistory}
                 onRestore={(path, commit) => {
                   restored.current = path;
@@ -250,6 +258,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 onCancelOp={operation.cancel}
                 onError={(msg) => notify(msg)}
                 notify={notify}
+                onOpenFile={showFile}
               />
             ) : current === "history" ? (
               <HistoryView

@@ -3,6 +3,7 @@ import type * as Real from "../../bindings/github.com/nipalab/nipa/desktop/inter
 import type { FileChange, FileDiff, ImageRef, OpOutcome } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import * as d from "./data";
 import { demoFileInfo, demoFiles, demoFileView, fileImages } from "./files";
+import { demoProvenance, demoRefs } from "./insight";
 import { torusGlb } from "./media";
 
 const ok = <T>(v: T): CancellablePromise<T> => Promise.resolve(v) as unknown as CancellablePromise<T>;
@@ -13,6 +14,7 @@ export const scenarioFrom = (search: string): string => new URLSearchParams(sear
 export function createService(scenario: string): typeof Real {
   let state = clone(d.changes(scenario));
   let llm = clone(d.llmSettings);
+  const provenance = demoProvenance();
   const take = (list: FileChange[], paths: string[] | null) => list.filter((f) => (paths ?? []).includes(f.path));
   const without = (list: FileChange[], paths: string[] | null) => list.filter((f) => !(paths ?? []).includes(f.path));
   const done: OpOutcome = { branch: state.branch };
@@ -98,6 +100,9 @@ export function createService(scenario: string): typeof Real {
     FileView: (_root, path) => ok(demoFileView(path)),
     FileLink: (_url, path) => ok(`nipa://${d.SERVER}/acme/starfall/file/${path}`),
     RestoreRevision: (_root, _path, commitId) => ok({ commitId }),
+    AssetRefs: (_root, path) => ok(demoRefs(path)),
+    Provenance: (_root, paths) => ok(provenance.read(Array.isArray(paths) ? paths : [])),
+    SetProvenance: (_root, input) => ok(provenance.set(input)),
 
     AccountStatus: (server) => ok({ host: d.SERVER, address: server, signedIn: true, email: "alex@acme.dev", userId: d.people.me.id }),
     SignIn: () => ok(undefined),

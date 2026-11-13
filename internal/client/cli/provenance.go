@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -167,64 +166,47 @@ func (c *Cli) setupProvenanceSetCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := localrepo.FindRepoRoot()
-			if err != nil {
+			if _, err := localrepo.FindRepoRoot(); err != nil {
 				return err
 			}
 			p, err := repoPath(args[0])
 			if err != nil {
 				return err
 			}
-			hash, err := usecase.HashWorkingFile(root, p)
-			if err != nil {
-				return domain.NewUserError(fmt.Sprintf("cannot read %s: %v", p, err))
-			}
-			wc, cleanup, err := openWorkingCopy()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			f, err := usecase.LoadProvenance(root)
-			if err != nil {
-				return err
-			}
-			if f == nil {
-				f = provenance.New()
-			}
-			rec := f.Get(p)
-			if rec == nil {
-				rec = &provenance.Record{}
-			}
 			flags := cmd.Flags()
-			for name, apply := range map[string]func(){
-				"tool":         func() { rec.Tool = strings.TrimSpace(tool) },
-				"model":        func() { rec.Model = strings.TrimSpace(model) },
-				"seed":         func() { rec.Seed = &seed },
-				"license":      func() { rec.License = strings.TrimSpace(license) },
-				"human-edited": func() { rec.HumanEdited = humanEdited },
-				"note":         func() { rec.Note = note },
-			} {
-				if flags.Changed(name) {
-					apply()
-				}
+			in := usecase.ProvenanceInput{}
+			if flags.Changed("tool") {
+				in.Tool = &tool
+			}
+			if flags.Changed("model") {
+				in.Model = &model
+			}
+			if flags.Changed("seed") {
+				in.Seed = &seed
+			}
+			if flags.Changed("license") {
+				in.License = &license
+			}
+			if flags.Changed("human-edited") {
+				in.HumanEdited = &humanEdited
+			}
+			if flags.Changed("note") {
+				in.Note = &note
 			}
 			if flags.Changed("prompt-file") {
 				data, err := os.ReadFile(promptFile)
 				if err != nil {
 					return domain.NewUserError(fmt.Sprintf("read prompt file: %v", err))
 				}
-				rec.PromptSHA256 = provenance.PromptHash(strings.TrimSpace(string(data)))
+				hash := provenance.PromptHash(strings.TrimSpace(string(data)))
+				in.PromptSHA256 = &hash
 			}
-			rec.Source, rec.C2PAVerified = provenance.SourceManual, nil
-			rec.ContentHash = hash
-			rec.RecordedAt = time.Now().UTC().Truncate(time.Second)
-			if err := f.Set(p, rec); err != nil {
+			wc, cleanup, err := openWorkingCopy()
+			if err != nil {
 				return err
 			}
-			if err := usecase.SaveProvenance(root, f); err != nil {
-				return err
-			}
-			if err := stageProvenance(cmd, wc); err != nil {
+			defer cleanup()
+			if _, err := wc.SetProvenance(cmd.Context(), p, in); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "recorded provenance for %s\n", p)

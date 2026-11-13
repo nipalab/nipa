@@ -19,6 +19,27 @@ export interface Activity {
     "checks": Check[] | null;
 }
 
+export interface AssetRef {
+    "path": string;
+    "raw": string;
+    "resolved": boolean;
+}
+
+/**
+ * AssetReferences lists what an engine asset uses and which files use it.
+ * Asset is false for files that cannot take part in a reference.
+ */
+export interface AssetReferences {
+    "path": string;
+    "asset": boolean;
+    "uses": AssetRef[] | null;
+    "usedBy": string[] | null;
+    "unknown": AssetRef[] | null;
+    "scanned": number;
+    "truncated": boolean;
+    "partial": boolean;
+}
+
 export interface AudioCompare {
     "old": AudioSide | null;
     "new": AudioSide | null;
@@ -745,6 +766,48 @@ export interface OpProgress {
     "bytesTotal": number;
 }
 
+/**
+ * Origin is the provenance of one file. Status is recorded, modified, edited
+ * or missing; Seed is a decimal string so 64-bit seeds survive JavaScript.
+ */
+export interface Origin {
+    "path": string;
+    "status": string;
+    "required": boolean;
+    "hasRecord": boolean;
+    "exists": boolean;
+    "tool": string;
+    "model": string;
+    "seed": string;
+    "source": string;
+    "recordedAt": string;
+    "license": string;
+    "humanEdited": boolean;
+    "promptHash": string;
+    "digitalSourceType": string;
+    "note": string;
+}
+
+/**
+ * OriginInput is the "Add record" form. The prompt is hashed here and never
+ * leaves the app; empty fields are left unchanged.
+ */
+export interface OriginInput {
+    "path": string;
+    "tool": string;
+    "model": string;
+    "seed": string;
+    "license": string;
+    "prompt": string;
+    "note": string;
+    "humanEdited": boolean;
+}
+
+export interface OriginSaved {
+    "origin": Origin;
+    "created": boolean;
+}
+
 export interface Person {
     "id": string;
     "name": string;
@@ -754,6 +817,15 @@ export interface PropChange {
     "key": string;
     "old": string;
     "new": string;
+}
+
+/**
+ * Provenance reports whether the clone tracks provenance and the origin of
+ * each asked path that has a record or that a rule requires one for.
+ */
+export interface Provenance {
+    "enabled": boolean;
+    "origins": Origin[] | null;
 }
 
 export interface PushChecks {

@@ -969,6 +969,73 @@ message RestoreRevisionRequest {
     string commit_id = 3; // base36 commit id
 }
 
+message AssetRefsRequest {
+    string root = 1;
+    string path = 2;
+}
+
+message AssetRef {
+    string path = 1; // repo path the reference maps to; empty when unresolved
+    string raw = 2; // as written: guid:<x>, res://..., uid://...
+    bool resolved = 3;
+}
+
+message AssetRefsResponse {
+    string path = 1;
+    bool asset = 2; // false: not an engine asset, nothing was scanned
+    repeated AssetRef uses = 3;
+    repeated string used_by = 4;
+    repeated AssetRef unknown = 5; // unresolvable in a sparse clone
+    int32 scanned = 6;
+    bool truncated = 7; // the scan hit its cap
+    bool partial = 8; // sparse clone: results may be incomplete
+}
+
+message ProvenanceRequest {
+    string root = 1;
+    repeated string paths = 2;
+}
+
+message ProvenanceEntry {
+    string path = 1;
+    string status = 2; // recorded, modified, edited, missing
+    bool required = 3; // a require_provenance rule covers the path
+    bool has_record = 4;
+    string tool = 5;
+    string model = 6;
+    optional uint64 seed = 7;
+    string source = 8; // png-text, c2pa, manual
+    string recorded_at = 9; // RFC 3339, empty when unknown
+    string license = 10;
+    bool human_edited = 11;
+    string prompt_sha256 = 12;
+    string digital_source_type = 13;
+    string note = 14;
+    bool exists = 15; // the working file exists
+}
+
+message ProvenanceResponse {
+    bool enabled = 1; // the clone has a .nipaprovenance.yml
+    repeated ProvenanceEntry entries = 2; // only paths with a record or a rule
+}
+
+message SetProvenanceRequest {
+    string root = 1;
+    string path = 2;
+    optional string tool = 3;
+    optional string model = 4;
+    optional uint64 seed = 5;
+    optional string license = 6;
+    optional bool human_edited = 7;
+    optional string note = 8;
+    optional string prompt_sha256 = 9; // never the prompt itself
+}
+
+message SetProvenanceResponse {
+    ProvenanceEntry entry = 1;
+    bool created = 2; // .nipaprovenance.yml did not exist before
+}
+
 service NipaDaemon {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
@@ -1045,4 +1112,7 @@ service NipaDaemon {
     rpc SetSparse(SetSparseRequest) returns (stream OpEvent);
     rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
     rpc RestoreRevision(RestoreRevisionRequest) returns (stream OpEvent);
+    rpc AssetRefs(AssetRefsRequest) returns (AssetRefsResponse);
+    rpc Provenance(ProvenanceRequest) returns (ProvenanceResponse);
+    rpc SetProvenance(SetProvenanceRequest) returns (SetProvenanceResponse);
 }

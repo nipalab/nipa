@@ -24,6 +24,12 @@ export const screens: Screen[] = [
     steps: [{ tab: "Files" }, { text: "Assets" }, { text: "Characters" }, { text: "Hero" }, { button: "Thumbnails" }, { text: "hero_albedo.png" }],
     settle: 1500,
   },
+  {
+    name: "files-references",
+    scenario: "default",
+    steps: [{ tab: "Files" }, { text: "Assets" }, { text: "Textures" }, { text: "Environment" }, { text: "rock_albedo.png" }],
+    settle: 1500,
+  },
   { name: "history", scenario: "default", steps: [{ tab: "History" }, { text: "Rebuild hero armor albedo" }], settle: 1500 },
   { name: "branches", scenario: "default", steps: [{ tab: "Branches & tags" }], settle: 800 },
   { name: "merge-request", scenario: "default", steps: [{ tab: "Merge requests" }, { text: "Rework hero armor textures" }], settle: 1500 },

@@ -89,6 +89,9 @@ const (
 	NipaDaemon_SetSparse_FullMethodName                     = "/nipadaemon.NipaDaemon/SetSparse"
 	NipaDaemon_ListFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/ListFiles"
 	NipaDaemon_RestoreRevision_FullMethodName               = "/nipadaemon.NipaDaemon/RestoreRevision"
+	NipaDaemon_AssetRefs_FullMethodName                     = "/nipadaemon.NipaDaemon/AssetRefs"
+	NipaDaemon_Provenance_FullMethodName                    = "/nipadaemon.NipaDaemon/Provenance"
+	NipaDaemon_SetProvenance_FullMethodName                 = "/nipadaemon.NipaDaemon/SetProvenance"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -165,6 +168,9 @@ type NipaDaemonClient interface {
 	SetSparse(ctx context.Context, in *SetSparseRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
 	RestoreRevision(ctx context.Context, in *RestoreRevisionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	AssetRefs(ctx context.Context, in *AssetRefsRequest, opts ...grpc.CallOption) (*AssetRefsResponse, error)
+	Provenance(ctx context.Context, in *ProvenanceRequest, opts ...grpc.CallOption) (*ProvenanceResponse, error)
+	SetProvenance(ctx context.Context, in *SetProvenanceRequest, opts ...grpc.CallOption) (*SetProvenanceResponse, error)
 }
 
 type nipaDaemonClient struct {
@@ -1001,6 +1007,36 @@ func (c *nipaDaemonClient) RestoreRevision(ctx context.Context, in *RestoreRevis
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_RestoreRevisionClient = grpc.ServerStreamingClient[OpEvent]
 
+func (c *nipaDaemonClient) AssetRefs(ctx context.Context, in *AssetRefsRequest, opts ...grpc.CallOption) (*AssetRefsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AssetRefsResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_AssetRefs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) Provenance(ctx context.Context, in *ProvenanceRequest, opts ...grpc.CallOption) (*ProvenanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProvenanceResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_Provenance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) SetProvenance(ctx context.Context, in *SetProvenanceRequest, opts ...grpc.CallOption) (*SetProvenanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetProvenanceResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_SetProvenance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -1075,6 +1111,9 @@ type NipaDaemonServer interface {
 	SetSparse(*SetSparseRequest, grpc.ServerStreamingServer[OpEvent]) error
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
 	RestoreRevision(*RestoreRevisionRequest, grpc.ServerStreamingServer[OpEvent]) error
+	AssetRefs(context.Context, *AssetRefsRequest) (*AssetRefsResponse, error)
+	Provenance(context.Context, *ProvenanceRequest) (*ProvenanceResponse, error)
+	SetProvenance(context.Context, *SetProvenanceRequest) (*SetProvenanceResponse, error)
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -1294,6 +1333,15 @@ func (UnimplementedNipaDaemonServer) ListFiles(context.Context, *ListFilesReques
 }
 func (UnimplementedNipaDaemonServer) RestoreRevision(*RestoreRevisionRequest, grpc.ServerStreamingServer[OpEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method RestoreRevision not implemented")
+}
+func (UnimplementedNipaDaemonServer) AssetRefs(context.Context, *AssetRefsRequest) (*AssetRefsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssetRefs not implemented")
+}
+func (UnimplementedNipaDaemonServer) Provenance(context.Context, *ProvenanceRequest) (*ProvenanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Provenance not implemented")
+}
+func (UnimplementedNipaDaemonServer) SetProvenance(context.Context, *SetProvenanceRequest) (*SetProvenanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetProvenance not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -2478,6 +2526,60 @@ func _NipaDaemon_RestoreRevision_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_RestoreRevisionServer = grpc.ServerStreamingServer[OpEvent]
 
+func _NipaDaemon_AssetRefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssetRefsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).AssetRefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_AssetRefs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).AssetRefs(ctx, req.(*AssetRefsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_Provenance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProvenanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).Provenance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_Provenance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).Provenance(ctx, req.(*ProvenanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_SetProvenance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetProvenanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).SetProvenance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_SetProvenance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).SetProvenance(ctx, req.(*SetProvenanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2708,6 +2810,18 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListFiles",
 			Handler:    _NipaDaemon_ListFiles_Handler,
+		},
+		{
+			MethodName: "AssetRefs",
+			Handler:    _NipaDaemon_AssetRefs_Handler,
+		},
+		{
+			MethodName: "Provenance",
+			Handler:    _NipaDaemon_Provenance_Handler,
+		},
+		{
+			MethodName: "SetProvenance",
+			Handler:    _NipaDaemon_SetProvenance_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

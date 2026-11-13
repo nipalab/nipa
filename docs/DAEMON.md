@@ -165,6 +165,9 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
 | `ListFiles` | unary | one directory level of the clone (snapshot rows of that level + working-copy status, untracked files and folders included); see below |
 | `RestoreRevision` | **server-streaming** | writes a file as it was in a commit over the working file under the exclusive slot; see below |
+| `AssetRefs` | unary | what an engine asset uses and which files use it, from a reference graph cached per root; see below |
+| `Provenance` | unary | origin record, status and `required` flag per path; see below |
+| `SetProvenance` | unary | records a file's origin by hand like `nipa provenance set` and stages `.nipaprovenance.yml`; see below |
 | `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -463,6 +466,45 @@ the path is not tracked any more). It refuses a pending merge or revert, a
 path outside the sparse checkout, a folder, a commit that does not exist
 (`revision "<id>" not found`) and a path the commit does not have (`<path>
 does not exist in <id>`, 404).
+
+`AssetRefs(root, path)` answers `{path, asset, uses[], used_by[],
+unknown[], scanned, truncated, partial}` under the shared slot. `uses` are
+the references the file makes (`path`, `raw` as written, `resolved`; an
+unresolved one names a target the clone does not have), `used_by` the
+sources that point at it, `unknown` the references a sparse clone cannot
+resolve, `truncated` that the scan hit its cap (5000 sources, 8 MiB per file)
+and `partial` that the clone is sparse. A path that cannot take part in a
+reference (`assetrefs.Relevant` is false: not a Unity/Godot source, sidecar,
+Godot-importable file or file inside a Unity project) answers `asset: false`
+without a scan. The graph (`assetscan.Graph` over `RepoOps.Refs`, its own
+`Diff` usecase) is built on the first lookup and kept per root: concurrent
+lookups wait for one build, and it is rebuilt only after a change notice
+with no paths (operations, stage/restore, coalesced batches), a notice
+naming a source, sidecar or other relevant path or `.nipaignore`, or after 2
+minutes. The first lookup on a large project reads every engine source in
+the working copy; later ones are a map lookup.
+
+`Provenance(root, paths[])` (at most 1000 paths) answers `{enabled,
+entries[]}` under the shared slot: `enabled` is whether the clone has a
+`.nipaprovenance.yml`, and each entry carries `status` (`recorded`,
+`modified`, `edited`, `missing`, from `provenance.Status` against the working
+bytes), `required` (a `require_provenance` rule in the working copy's
+`.nipaassets.yml` covers the path), `exists`, `has_record` and the record's
+fields (`tool`, `model`, optional `seed`, `source`, `recorded_at` RFC 3339,
+`license`, `human_edited`, `prompt_sha256`, `digital_source_type`, `note`).
+Paths with neither a record nor a rule are left out, so a clone without both
+files answers an empty list. The working file is hashed only for records
+that carry a content hash.
+
+`SetProvenance(root, path, tool?, model?, seed?, license?, human_edited?,
+note?, prompt_sha256?)` runs `WorkingCopy.SetProvenance`, the core of `nipa
+provenance set`: unset fields keep the record's value, the source becomes
+`manual`, the content hash and time are refreshed from the working file,
+`.nipaprovenance.yml` is created when missing (which opts the repository in)
+and staged. It takes the shared slot like `Stage` and publishes a change
+notice for `.nipaprovenance.yml`. The answer is the new entry plus
+`created`. Only a prompt hash is accepted; the desktop hashes the prompt
+before calling.
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.

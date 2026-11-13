@@ -11,6 +11,7 @@ import { kindName, lockFor, statusName, type Row } from "@/lib/files";
 import { commitTitle, isImagePath, shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { errorMessage } from "@/lib/utils";
+import { AssetInsight } from "./AssetInsight";
 import { ActionBar, type FileAction } from "./FileMenu";
 
 const VERSIONS = 20;
@@ -24,9 +25,10 @@ type DetailProps = {
   busy: boolean;
   onRestore: (commit: Commit) => void;
   onShowCommit: (id: string) => void;
+  onOpenFile?: (path: string) => void;
 };
 
-export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit }: DetailProps) {
+export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit, onOpenFile }: DetailProps) {
   const info = useQuery({ queryKey: ["file", root, row.path, "info", branch], queryFn: () => desktop.fileInfo(root, branch, row.path), retry: false });
   const onDisk = row.status !== "missing" && row.status !== "deleted";
   const view = useQuery({ queryKey: ["file", root, row.path, "view"], queryFn: () => desktop.fileView(root, row.path), enabled: onDisk, retry: false });
@@ -104,6 +106,7 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
             )}
           </Term>
         </dl>
+        <AssetInsight root={root} path={row.path} onOpenFile={onOpenFile} className="border-t border-border px-4 py-3" />
         {row.tracked && <Versions root={root} branch={branch} path={row.path} busy={busy} onRestore={restore} onShowCommit={onShowCommit} />}
       </div>
       {confirm && (
