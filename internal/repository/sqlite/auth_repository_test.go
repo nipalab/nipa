@@ -31,7 +31,7 @@ func TestAuthRepositorySQLite_RefreshSessionLifecycle(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UTC()
 	expiresAt := started.Add(60 * 24 * time.Hour)
 
-	id, err := repo.CreateRefreshSession(ctx, userID, "hash-1", started, expiresAt)
+	id, err := repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: userID, TokenHash: "hash-1", StartedAt: started, ExpiresAt: expiresAt})
 	require.NoError(t, err)
 	require.NotZero(t, id)
 
@@ -139,9 +139,9 @@ func TestAuthRepositorySQLite_CreateRefreshSessionPrunesExpired(t *testing.T) {
 	insertRefreshRow(t, db, bob, "bob-old", past)
 	insertRefreshRow(t, db, alice, "alice-recent", recent)
 	now := time.Now()
-	_, err := repo.CreateRefreshSession(ctx, alice, "alice-live", now, now.Add(time.Hour))
+	_, err := repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-live", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	require.NoError(t, err)
-	_, err = repo.CreateRefreshSession(ctx, alice, "alice-new", now, now.Add(2*time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-new", StartedAt: now, ExpiresAt: now.Add(2 * time.Hour)})
 	require.NoError(t, err)
 
 	rows, err := db.QueryContext(ctx, "SELECT token_hash FROM refresh_tokens ORDER BY token_hash")
@@ -156,10 +156,10 @@ func TestAuthRepositorySQLite_CreateRefreshSessionPrunesExpired(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.Equal(t, []string{"alice-live", "alice-new", "alice-recent", "bob-old"}, tokens)
 
-	_, err = repo.CreateRefreshSession(ctx, alice, "alice-live", now, now.Add(time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-live", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	require.Error(t, err)
 	require.NoError(t, db.Close())
-	_, err = repo.CreateRefreshSession(ctx, alice, "after-close", now, now.Add(time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "after-close", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	require.Error(t, err)
 	_, err = repo.GetRefreshSession(ctx, 1)
 	require.Error(t, err)

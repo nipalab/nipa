@@ -233,6 +233,21 @@ type MergeRequestThread struct {
 	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
+type MfaLoginChallenge struct {
+	TokenHash string    `json:"token_hash"`
+	UserID    int64     `json:"user_id"`
+	Method    string    `json:"method"`
+	Attempts  int64     `json:"attempts"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type MfaRecoveryCode struct {
+	UserID   int64        `json:"user_id"`
+	CodeHash string       `json:"code_hash"`
+	UsedAt   sql.NullTime `json:"used_at"`
+}
+
 type OrgInvitation struct {
 	ID         int64         `json:"id"`
 	OrgID      int64         `json:"org_id"`
@@ -327,6 +342,8 @@ type RefreshToken struct {
 	SessionStartedAt sql.NullTime   `json:"session_started_at"`
 	ExpiresAt        time.Time      `json:"expires_at"`
 	CreatedAt        time.Time      `json:"created_at"`
+	AuthMethod       sql.NullString `json:"auth_method"`
+	Mfa              sql.NullString `json:"mfa"`
 }
 
 type SshLoginChallenge struct {
@@ -384,6 +401,14 @@ type User struct {
 	Deleted         bool           `json:"deleted"`
 	DeletedAt       sql.NullTime   `json:"deleted_at"`
 	TokenVersion    int64          `json:"token_version"`
+}
+
+type UserTotp struct {
+	UserID      int64        `json:"user_id"`
+	SecretEnc   []byte       `json:"secret_enc"`
+	ConfirmedAt sql.NullTime `json:"confirmed_at"`
+	LastStep    int64        `json:"last_step"`
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 type Webhook struct {

@@ -33,6 +33,7 @@ import (
 
 type testRegistry struct {
 	auth          *usecase.Auth
+	mfa           *usecase.MFA
 	user          *usecase.User
 	sshKey        *usecase.SSHKey
 	common        *usecase.Common
@@ -59,6 +60,7 @@ func (r *testRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceTo
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *testRegistry) User() *usecase.User             { return r.user }
 func (r *testRegistry) SSHKey() *usecase.SSHKey         { return r.sshKey }
+func (r *testRegistry) MFA() *usecase.MFA               { return r.mfa }
 func (r *testRegistry) Common() *usecase.Common         { return r.common }
 func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *testRegistry) Org() *usecase.Org               { return r.org }
@@ -171,8 +173,10 @@ func TestAPIRoutes(t *testing.T) {
 	mergeRequestUc = mergeRequestUc.WithChecks(checkUc)
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
+	mfaUc := usecase.NewMFA(sqlite.NewMFARepository(dbConn), userRepo, stubPasswordHasher{}, nil, dbtx.NewTransactor(dbConn))
 	reg := &testRegistry{
-		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)).WithAudit(auditUc),
+		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)).WithAudit(auditUc).WithMFA(mfaUc),
+		mfa:           mfaUc,
 		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}).WithAudit(auditUc),
 		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
@@ -289,6 +293,29 @@ func TestAPIRoutes(t *testing.T) {
 
 		parsed := parseLoginAccessToken(t, loginResponse.AccessToken, "test-secret")
 		require.Equal(t, snow.ID(userID), parsed.UserID)
+	})
+
+	t.Run("mfa routes are wired", func(t *testing.T) {
+		loginResponse, _ := login(t)
+
+		resp := doGet(t, server.URL+"/api/v1/me/mfa", "")
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+		resp = doGet(t, server.URL+"/api/v1/me/mfa", loginResponse.AccessToken)
+		var status model.MFAStatusResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.False(t, status.Available, "no MFA_ENCRYPTION_KEY in this server")
+
+		resp = doMethod(t, http.MethodPost, server.URL+"/api/v1/me/mfa/totp", `{"password":"whatever"}`, loginResponse.AccessToken)
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+		resp = doJSON(t, server.URL+"/api/v1/auth/mfa/verify", `{"challenge":"nope","code":"123456"}`, nil, "")
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
 	t.Run("cors grants only the configured origin", func(t *testing.T) {

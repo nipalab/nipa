@@ -78,8 +78,20 @@ type RefreshToken struct {
 	PreviousHash     string     `json:"-"`
 	RotatedAt        *time.Time `json:"rotated_at,omitempty"`
 	SessionStartedAt *time.Time `json:"session_started_at,omitempty"`
+	AuthMethod       string     `json:"auth_method,omitempty"`
+	MFA              string     `json:"mfa,omitempty"`
 	ExpiresAt        time.Time  `json:"expires_at"`
 	CreatedAt        time.Time  `json:"created_at"`
+}
+
+// NewRefreshSession describes a session a login is about to open.
+type NewRefreshSession struct {
+	UserID     snow.ID
+	TokenHash  string
+	StartedAt  time.Time
+	ExpiresAt  time.Time
+	AuthMethod string
+	MFA        string
 }
 
 // RefreshRotation replaces the secret hash of the session whose current hash

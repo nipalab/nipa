@@ -18,9 +18,19 @@ func setupAuthRouter(ws *restful.WebService, h *handler.Handler) {
 			To(Wrap(h.AuthLogin)).
 			Reads(model.LoginRequest{}).
 			Doc("Login with email and password").
-			Notes("Returns a short-lived access token and sets an HttpOnly refresh cookie").
+			Notes("Returns a short-lived access token and sets an HttpOnly refresh cookie; an account with two-factor authentication gets {mfa_required, mfa_challenge, expires_in} instead").
 			Returns(http.StatusOK, "access token", model.LoginResponse{}).
 			Operation("loginUsernamePassword").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.POST("/mfa/verify").
+			To(Wrap(h.AuthVerifyMFA)).
+			Reads(model.MFAVerifyRequest{}).
+			Doc("Finish a login with a TOTP or recovery code").
+			Notes("Takes the challenge a login answered with mfa_required; five wrong codes end the challenge").
+			Returns(http.StatusOK, "access token", model.LoginResponse{}).
+			Operation("loginVerifyMFA").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(

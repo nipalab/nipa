@@ -17,6 +17,7 @@ type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
 	SSHKey() *usecase.SSHKey
+	MFA() *usecase.MFA
 	Common() *usecase.Common
 	Permission() *usecase.Permission
 	Org() *usecase.Org
@@ -165,6 +166,7 @@ func (a *API) SetupRoute() http.Handler {
 	}
 	setupUserRouter(apiWs, h)
 	setupSSHKeyRouter(apiWs, h)
+	setupMFARouter(apiWs, h)
 	setupProjectRouter(apiWs, h)
 	setupBrowserRouter(apiWs, h)
 	setupTagRouter(apiWs, h)

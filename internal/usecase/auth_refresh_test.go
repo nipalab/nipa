@@ -29,15 +29,15 @@ func newFakeRefreshRepo() *fakeRefreshRepo {
 	return &fakeRefreshRepo{rows: map[int64]*domain.RefreshToken{}}
 }
 
-func (f *fakeRefreshRepo) CreateRefreshSession(_ context.Context, userID snow.ID, hash string, startedAt, expiresAt time.Time) (int64, error) {
+func (f *fakeRefreshRepo) CreateRefreshSession(_ context.Context, session domain.NewRefreshSession) (int64, error) {
 	if f.createErr != nil {
 		return 0, f.createErr
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextID++
-	started := startedAt
-	f.rows[f.nextID] = &domain.RefreshToken{ID: f.nextID, UserID: userID, TokenHash: hash, SessionStartedAt: &started, ExpiresAt: expiresAt, CreatedAt: startedAt}
+	started := session.StartedAt
+	f.rows[f.nextID] = &domain.RefreshToken{ID: f.nextID, UserID: session.UserID, TokenHash: session.TokenHash, SessionStartedAt: &started, ExpiresAt: session.ExpiresAt, CreatedAt: started, AuthMethod: session.AuthMethod, MFA: session.MFA}
 	return f.nextID, nil
 }
 

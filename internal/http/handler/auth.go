@@ -25,12 +25,7 @@ func (h *Handler) AuthLogin(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
-	_ = appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
-		AccessToken: result.AccessToken,
-		TokenType:   result.TokenType,
-		ExpiresIn:   result.ExpiresIn,
-	})
+	WriteLoginResult(appCtx, result)
 }
 
 func (h *Handler) AuthRefreshToken(appCtx http.AppContext) {

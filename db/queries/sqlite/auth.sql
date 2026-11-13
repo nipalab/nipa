@@ -1,6 +1,6 @@
 -- name: RefreshSessionCreate :one
-INSERT INTO refresh_tokens (user_id, token_hash, session_started_at, expires_at)
-VALUES (sqlc.arg(user_id), sqlc.arg(token_hash), sqlc.arg(session_started_at), sqlc.arg(expires_at))
+INSERT INTO refresh_tokens (user_id, token_hash, session_started_at, expires_at, auth_method, mfa)
+VALUES (sqlc.arg(user_id), sqlc.arg(token_hash), sqlc.arg(session_started_at), sqlc.arg(expires_at), sqlc.narg(auth_method), sqlc.narg(mfa))
 RETURNING id;
 
 -- name: RefreshSessionGet :one

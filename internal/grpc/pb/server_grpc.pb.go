@@ -23,6 +23,7 @@ const (
 	NipaService_LoginWithRefreshToken_FullMethodName           = "/greet.NipaService/LoginWithRefreshToken"
 	NipaService_BeginLoginSSHKey_FullMethodName                = "/greet.NipaService/BeginLoginSSHKey"
 	NipaService_CompleteLoginSSHKey_FullMethodName             = "/greet.NipaService/CompleteLoginSSHKey"
+	NipaService_CompleteLoginMFA_FullMethodName                = "/greet.NipaService/CompleteLoginMFA"
 	NipaService_GetServerVersion_FullMethodName                = "/greet.NipaService/GetServerVersion"
 	NipaService_ListMyProjects_FullMethodName                  = "/greet.NipaService/ListMyProjects"
 	NipaService_ListDirectory_FullMethodName                   = "/greet.NipaService/ListDirectory"
@@ -102,6 +103,7 @@ type NipaServiceClient interface {
 	LoginWithRefreshToken(ctx context.Context, in *LoginWithRefreshRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	BeginLoginSSHKey(ctx context.Context, in *BeginLoginSSHKeyRequest, opts ...grpc.CallOption) (*BeginLoginSSHKeyResponse, error)
 	CompleteLoginSSHKey(ctx context.Context, in *CompleteLoginSSHKeyRequest, opts ...grpc.CallOption) (*LoginResponse, error)
+	CompleteLoginMFA(ctx context.Context, in *CompleteLoginMFARequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	GetServerVersion(ctx context.Context, in *GetServerVersionRequest, opts ...grpc.CallOption) (*GetServerVersionResponse, error)
 	ListMyProjects(ctx context.Context, in *ListMyProjectsRequest, opts ...grpc.CallOption) (*ListMyProjectsResponse, error)
 	ListDirectory(ctx context.Context, in *ListDirectoryRequest, opts ...grpc.CallOption) (*ListDirectoryResponse, error)
@@ -215,6 +217,16 @@ func (c *nipaServiceClient) CompleteLoginSSHKey(ctx context.Context, in *Complet
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(LoginResponse)
 	err := c.cc.Invoke(ctx, NipaService_CompleteLoginSSHKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) CompleteLoginMFA(ctx context.Context, in *CompleteLoginMFARequest, opts ...grpc.CallOption) (*LoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LoginResponse)
+	err := c.cc.Invoke(ctx, NipaService_CompleteLoginMFA_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -919,6 +931,7 @@ type NipaServiceServer interface {
 	LoginWithRefreshToken(context.Context, *LoginWithRefreshRequest) (*LoginResponse, error)
 	BeginLoginSSHKey(context.Context, *BeginLoginSSHKeyRequest) (*BeginLoginSSHKeyResponse, error)
 	CompleteLoginSSHKey(context.Context, *CompleteLoginSSHKeyRequest) (*LoginResponse, error)
+	CompleteLoginMFA(context.Context, *CompleteLoginMFARequest) (*LoginResponse, error)
 	GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error)
 	ListMyProjects(context.Context, *ListMyProjectsRequest) (*ListMyProjectsResponse, error)
 	ListDirectory(context.Context, *ListDirectoryRequest) (*ListDirectoryResponse, error)
@@ -1009,6 +1022,9 @@ func (UnimplementedNipaServiceServer) BeginLoginSSHKey(context.Context, *BeginLo
 }
 func (UnimplementedNipaServiceServer) CompleteLoginSSHKey(context.Context, *CompleteLoginSSHKeyRequest) (*LoginResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CompleteLoginSSHKey not implemented")
+}
+func (UnimplementedNipaServiceServer) CompleteLoginMFA(context.Context, *CompleteLoginMFARequest) (*LoginResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompleteLoginMFA not implemented")
 }
 func (UnimplementedNipaServiceServer) GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetServerVersion not implemented")
@@ -1306,6 +1322,24 @@ func _NipaService_CompleteLoginSSHKey_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).CompleteLoginSSHKey(ctx, req.(*CompleteLoginSSHKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_CompleteLoginMFA_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteLoginMFARequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).CompleteLoginMFA(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_CompleteLoginMFA_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).CompleteLoginMFA(ctx, req.(*CompleteLoginMFARequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2574,6 +2608,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CompleteLoginSSHKey",
 			Handler:    _NipaService_CompleteLoginSSHKey_Handler,
+		},
+		{
+			MethodName: "CompleteLoginMFA",
+			Handler:    _NipaService_CompleteLoginMFA_Handler,
 		},
 		{
 			MethodName: "GetServerVersion",

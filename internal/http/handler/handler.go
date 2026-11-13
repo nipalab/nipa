@@ -8,6 +8,7 @@ type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
 	SSHKey() *usecase.SSHKey
+	MFA() *usecase.MFA
 	Common() *usecase.Common
 	Permission() *usecase.Permission
 	Org() *usecase.Org

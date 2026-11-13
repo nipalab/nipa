@@ -180,7 +180,7 @@ func TestAuth_PasswordLoginAudit(t *testing.T) {
 		rec := &captureRecorder{}
 		auth := newTestAuth("secret", true, userRepo, authRepo).WithAudit(rec)
 		userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
-		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 		_, err := auth.LoginWithEmailPassword(context.Background(), "user@example.com", "pw")
 		require.NoError(t, err)
@@ -231,7 +231,7 @@ func TestAuth_PasswordLoginAudit(t *testing.T) {
 		rec := &captureRecorder{err: errAudit}
 		auth := newTestAuth("secret", true, userRepo, authRepo).WithAudit(rec)
 		userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
-		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 		got, err := auth.LoginWithEmailPassword(context.Background(), "user@example.com", "pw")
 		require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestAuth_PasswordLoginAudit(t *testing.T) {
 		rec := &captureRecorder{}
 		auth := newTestAuth("secret", true, userRepo, authRepo).WithAudit(rec)
 		userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
-		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), errors.New("db"))
+		authRepo.EXPECT().CreateRefreshSession(gomock.Any(), gomock.Any()).Return(int64(0), errors.New("db"))
 
 		_, err := auth.LoginWithEmailPassword(context.Background(), "user@example.com", "pw")
 		require.EqualError(t, err, "db")
@@ -299,7 +299,7 @@ func TestAuth_SSHLoginAudit(t *testing.T) {
 		c := newSSHAuditCase(t, "")
 		c.keyRepo.EXPECT().GetByFingerprint(gomock.Any(), gomock.Any()).Return(&domain.SSHPublicKey{UserID: 42}, nil)
 		c.userRepo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, EmailVerified: true}, nil)
-		c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 		require.NoError(t, c.complete(t, "", "nonce"))
 		entry := c.rec.only(t)
@@ -365,7 +365,7 @@ func TestAuth_SSHLoginAudit(t *testing.T) {
 		c.rec.err = errAudit
 		c.keyRepo.EXPECT().GetByFingerprint(gomock.Any(), gomock.Any()).Return(&domain.SSHPublicKey{UserID: 42}, nil)
 		c.userRepo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, EmailVerified: true}, nil)
-		c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 		require.NoError(t, c.complete(t, "", "nonce"))
 	})
@@ -395,7 +395,7 @@ func TestAuth_LoginResultRecordsOnlyViaMethod(t *testing.T) {
 	authRepo := NewMockauthRepository(ctrl)
 	rec := &captureRecorder{}
 	auth := NewAuth("secret", nil, nil, authRepo).WithAudit(rec)
-	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(5), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(3)
+	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(5))).Return(int64(1), nil).Times(3)
 	user := &domain.User{ID: 5}
 
 	_, err := auth.LoginResult(context.Background(), user)
@@ -413,7 +413,7 @@ func TestAuth_LoginResultRecordsOnlyViaMethod(t *testing.T) {
 		require.Equal(t, domain.AuditAuthLoginSucceeded, entry.Action)
 	}
 
-	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), errors.New("db"))
+	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), gomock.Any()).Return(int64(0), errors.New("db"))
 	_, err = auth.LoginResultVia(context.Background(), user, LoginMethodOAuth)
 	require.EqualError(t, err, "db")
 	require.Len(t, rec.entries, 2)
@@ -429,7 +429,7 @@ func TestAuth_PasswordLoginNormalizesEmail(t *testing.T) {
 			authRepo := NewMockauthRepository(ctrl)
 			auth := newTestAuth("secret", true, userRepo, authRepo)
 			userRepo.EXPECT().GetByEmail(gomock.Any(), "user@example.com").Return(user, nil)
-			authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 			result, err := auth.LoginWithEmailPassword(context.Background(), input, "pw")
 			require.NoError(t, err)
@@ -485,7 +485,7 @@ func TestAuth_SSHLoginNormalizesEmail(t *testing.T) {
 			c := newSSHAuditCase(t, tc.stored)
 			c.keyRepo.EXPECT().GetByFingerprint(gomock.Any(), gomock.Any()).Return(&domain.SSHPublicKey{UserID: 42}, nil)
 			c.userRepo.EXPECT().GetByEmail(gomock.Any(), "alice@example.com").Return(&domain.User{ID: 42, EmailVerified: true}, nil)
-			c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			c.authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 			require.NoError(t, c.complete(t, tc.input, "nonce"))
 			require.Equal(t, domain.AuditAuthLoginSucceeded, c.rec.only(t).Action)

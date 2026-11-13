@@ -23,19 +23,21 @@ func NewAuthRepository(db *sql.DB) *Auth {
 // with "expired" (and cleared) rather than "not found" (kept for a retry).
 const refreshTokenPruneGrace = 24 * time.Hour
 
-func (a *Auth) CreateRefreshSession(ctx context.Context, userID snow.ID, tokenHash string, startedAt, expiresAt time.Time) (int64, error) {
+func (a *Auth) CreateRefreshSession(ctx context.Context, session domain.NewRefreshSession) (int64, error) {
 	err := a.queries.RefreshTokenDeleteExpiredByUser(ctx, sqlcSqlite.RefreshTokenDeleteExpiredByUserParams{
-		UserID:    userID.Int64(),
-		ExpiresAt: startedAt.Add(-refreshTokenPruneGrace),
+		UserID:    session.UserID.Int64(),
+		ExpiresAt: session.StartedAt.Add(-refreshTokenPruneGrace),
 	})
 	if err != nil {
 		return 0, handleError(err)
 	}
 	id, err := a.queries.RefreshSessionCreate(ctx, sqlcSqlite.RefreshSessionCreateParams{
-		UserID:           userID.Int64(),
-		TokenHash:        tokenHash,
-		SessionStartedAt: sql.NullTime{Time: startedAt, Valid: true},
-		ExpiresAt:        expiresAt,
+		UserID:           session.UserID.Int64(),
+		TokenHash:        session.TokenHash,
+		SessionStartedAt: sql.NullTime{Time: session.StartedAt, Valid: true},
+		ExpiresAt:        session.ExpiresAt,
+		AuthMethod:       sql.NullString{String: session.AuthMethod, Valid: session.AuthMethod != ""},
+		Mfa:              sql.NullString{String: session.MFA, Valid: session.MFA != ""},
 	})
 	if err != nil {
 		return 0, handleError(err)
@@ -98,6 +100,8 @@ func toDomainRefreshToken(row sqlcSqlite.RefreshToken) *domain.RefreshToken {
 		UserID:       snow.ID(row.UserID),
 		TokenHash:    row.TokenHash,
 		PreviousHash: row.PreviousHash.String,
+		AuthMethod:   row.AuthMethod.String,
+		MFA:          row.Mfa.String,
 		ExpiresAt:    row.ExpiresAt,
 		CreatedAt:    row.CreatedAt,
 	}

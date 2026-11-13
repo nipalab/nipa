@@ -89,6 +89,16 @@ type Querier interface {
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
+	MFAChallengeCreate(ctx context.Context, arg MFAChallengeCreateParams) error
+	MFAChallengeDelete(ctx context.Context, tokenHash string) (int64, error)
+	MFAChallengeDeleteByUser(ctx context.Context, userID int64) error
+	MFAChallengeDeleteExpired(ctx context.Context, before time.Time) (int64, error)
+	MFAChallengeGet(ctx context.Context, tokenHash string) (MfaLoginChallenge, error)
+	MFARecoveryCodeCountUnused(ctx context.Context, userID int64) (int64, error)
+	MFARecoveryCodeDeleteByUser(ctx context.Context, userID int64) error
+	MFARecoveryCodeInsert(ctx context.Context, arg MFARecoveryCodeInsertParams) error
+	MFARecoveryCodeUse(ctx context.Context, arg MFARecoveryCodeUseParams) (int64, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error)
@@ -206,6 +216,12 @@ type Querier interface {
 	UserGetByEmail(ctx context.Context, email string) (User, error)
 	UserGetById(ctx context.Context, id int64) (User, error)
 	UserList(ctx context.Context) ([]User, error)
+	UserTOTPAdvanceStep(ctx context.Context, arg UserTOTPAdvanceStepParams) (int64, error)
+	UserTOTPConfirm(ctx context.Context, arg UserTOTPConfirmParams) (int64, error)
+	UserTOTPCountConfirmed(ctx context.Context) (int64, error)
+	UserTOTPDelete(ctx context.Context, userID int64) (int64, error)
+	UserTOTPGet(ctx context.Context, userID int64) (UserTotp, error)
+	UserTOTPUpsertPending(ctx context.Context, arg UserTOTPUpsertPendingParams) (int64, error)
 	UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error
 	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error

@@ -291,6 +291,12 @@ func userAudit(action string, userID snow.ID, metadata map[string]any) *domain.A
 }
 
 func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {
+	return requireCanManageUser(ctx, u.repo, targetID)
+}
+
+// requireCanManageUser lets global admins manage themselves and non-admin
+// accounts; only super admins manage other admins.
+func requireCanManageUser(ctx context.Context, users userRepository, targetID snow.ID) error {
 	if err := requireGlobalAdmin(ctx); err != nil {
 		return err
 	}
@@ -298,7 +304,7 @@ func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {
 	if claim.IsSuperAdmin || claim.UserID == targetID {
 		return nil
 	}
-	target, err := u.repo.GetByID(ctx, targetID)
+	target, err := users.GetByID(ctx, targetID)
 	if err != nil {
 		return err
 	}

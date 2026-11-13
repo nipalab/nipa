@@ -32,6 +32,10 @@ type Claims struct {
 	IsAdmin      bool      `json:"is_admin"`
 	OrgID        []snow.ID `json:"org_id"`
 	TokenVersion int64     `json:"tv,omitempty"`
+	// AuthMethods names how the session signed in: the first factor, then the
+	// second one when it was asked.
+	AuthMethods []string         `json:"amr,omitempty"`
+	AuthTime    *jwt.NumericDate `json:"auth_time,omitempty"`
 	// ServiceTokenID is set when a project service token authenticated the request.
 	ServiceTokenID snow.ID `json:"-"`
 }

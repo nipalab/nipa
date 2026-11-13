@@ -34,7 +34,7 @@ type userRepository interface {
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=auth_mock_test.go -package=usecase
 type authRepository interface {
-	CreateRefreshSession(ctx context.Context, userID snow.ID, tokenHash string, startedAt, expiresAt time.Time) (int64, error)
+	CreateRefreshSession(ctx context.Context, session domain.NewRefreshSession) (int64, error)
 	GetRefreshSession(ctx context.Context, id int64) (*domain.RefreshToken, error)
 	RotateRefreshSession(ctx context.Context, rotation domain.RefreshRotation) (bool, error)
 	DeleteRefreshSession(ctx context.Context, id int64) error
@@ -61,6 +61,7 @@ type Auth struct {
 	sshKeyRepo     authSSHKeyRepository
 	sshAudience    string
 	audit          AuditRecorder
+	mfa            *MFA
 	now            func() time.Time
 	dummyOnce      sync.Once
 	dummyHash      string
@@ -74,6 +75,13 @@ func NewAuth(secret string, passwordHasher passwordHasher, userRepo userReposito
 		authRepo:       authRepo,
 		now:            time.Now,
 	}
+}
+
+// WithMFA asks enrolled accounts for a second factor after their password or
+// OAuth login.
+func (a *Auth) WithMFA(m *MFA) *Auth {
+	a.mfa = m
+	return a
 }
 
 func (a *Auth) WithAudit(rec AuditRecorder) *Auth {
@@ -169,7 +177,56 @@ func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, passwor
 		a.recordLoginFailure(ctx, LoginMethodPassword, email, user.ID, "email_not_verified")
 		return nil, errEmailNotVerified()
 	}
-	return a.LoginResultVia(ctx, user, LoginMethodPassword)
+	return a.LoginWithFirstFactor(ctx, user, LoginMethodPassword)
+}
+
+// LoginWithFirstFactor finishes a password or OAuth login: an account with a
+// confirmed second factor gets a challenge (MFAChallenge set, no tokens),
+// every other account gets its session.
+func (a *Auth) LoginWithFirstFactor(ctx context.Context, user *domain.User, method string) (*dto.LoginResult, error) {
+	if a.mfa != nil {
+		required, err := a.mfa.required(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if required {
+			challenge, err := a.mfa.beginChallenge(ctx, user.ID, method)
+			if err != nil {
+				return nil, err
+			}
+			return &dto.LoginResult{MFAChallenge: challenge}, nil
+		}
+	}
+	return a.LoginResultVia(ctx, user, method)
+}
+
+// CompleteLoginMFA finishes a login challenge with a TOTP or recovery code.
+func (a *Auth) CompleteLoginMFA(ctx context.Context, token, code string) (*dto.LoginResult, error) {
+	if a.mfa == nil {
+		return nil, errInvalidMFACode()
+	}
+	challenge, kind, err := a.mfa.verifyLogin(ctx, token, code)
+	if err != nil {
+		if challenge != nil && !domain.IsServerError(err) {
+			email := ""
+			if user, lookupErr := a.userRepo.GetByID(ctx, challenge.UserID); lookupErr == nil {
+				email = user.Email
+			}
+			a.recordLoginFailure(ctx, challenge.Method, email, challenge.UserID, "mfa_code")
+		}
+		return nil, err
+	}
+	user, err := a.userRepo.GetByID(ctx, challenge.UserID)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, errInvalidMFACode()
+		}
+		return nil, err
+	}
+	if !user.EmailVerified {
+		return nil, errEmailNotVerified()
+	}
+	return a.loginResultVia(ctx, user, challenge.Method, kind)
 }
 
 func errInvalidPassword() error {
@@ -407,9 +464,17 @@ const (
 // and records the login. SaaS flows (registration verification, OAuth
 // completion) call it after establishing the account.
 func (a *Auth) LoginResultVia(ctx context.Context, user *domain.User, method string) (*dto.LoginResult, error) {
-	result, err := a.LoginResult(ctx, user)
+	return a.loginResultVia(ctx, user, method, "")
+}
+
+func (a *Auth) loginResultVia(ctx context.Context, user *domain.User, method, mfa string) (*dto.LoginResult, error) {
+	result, err := a.issueSession(ctx, user, sessionAuth{method: method, mfa: mfa})
 	if err != nil {
 		return nil, err
+	}
+	metadata := map[string]any{"method": method}
+	if mfa != "" {
+		metadata["mfa"] = mfa
 	}
 	a.recordLogin(ctx, domain.AuditEntry{
 		ActorType:   domain.AuditActorUser,
@@ -417,7 +482,7 @@ func (a *Auth) LoginResultVia(ctx context.Context, user *domain.User, method str
 		Action:      domain.AuditAuthLoginSucceeded,
 		TargetType:  domain.AuditTargetUser,
 		TargetID:    user.ID.Base36(),
-		Metadata:    map[string]any{"method": method},
+		Metadata:    metadata,
 	})
 	return result, nil
 }
@@ -452,21 +517,59 @@ func (a *Auth) recordLogin(ctx context.Context, entry domain.AuditEntry) {
 
 // LoginResult issues the access token and refresh token for an already
 // authenticated user without recording a login; sign-in flows use
-// LoginResultVia.
+// LoginResultVia. The new session keeps the factors of the caller's session.
 func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginResult, error) {
+	var auth sessionAuth
+	if claim, ok := domain.ClaimFromContext(ctx); ok && claim.UserID == user.ID {
+		if len(claim.AuthMethods) > 0 {
+			auth.method = claim.AuthMethods[0]
+		}
+		if len(claim.AuthMethods) > 1 {
+			auth.mfa = claim.AuthMethods[1]
+		}
+	}
+	return a.issueSession(ctx, user, auth)
+}
+
+// sessionAuth is how a session signed in, carried into its access tokens.
+type sessionAuth struct {
+	method  string
+	mfa     string
+	started time.Time
+}
+
+func (s sessionAuth) methods() []string {
+	var out []string
+	for _, m := range []string{s.method, s.mfa} {
+		if m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func (a *Auth) issueSession(ctx context.Context, user *domain.User, auth sessionAuth) (*dto.LoginResult, error) {
 	now := a.now()
 	secret, hash, err := newRefreshSecret()
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
 	}
-	id, err := a.authRepo.CreateRefreshSession(ctx, user.ID, hash, now, now.Add(refreshTokenExpiration))
+	id, err := a.authRepo.CreateRefreshSession(ctx, domain.NewRefreshSession{
+		UserID:     user.ID,
+		TokenHash:  hash,
+		StartedAt:  now,
+		ExpiresAt:  now.Add(refreshTokenExpiration),
+		AuthMethod: auth.method,
+		MFA:        auth.mfa,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return a.loginResult(user, a.formatRefreshToken(id, secret))
+	auth.started = now
+	return a.loginResult(user, a.formatRefreshToken(id, secret), auth)
 }
 
-func (a *Auth) loginResult(user *domain.User, refreshToken string) (*dto.LoginResult, error) {
+func (a *Auth) loginResult(user *domain.User, refreshToken string, auth sessionAuth) (*dto.LoginResult, error) {
 	timeStart := time.Now()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -481,6 +584,10 @@ func (a *Auth) loginResult(user *domain.User, refreshToken string) (*dto.LoginRe
 		IsAdmin:      user.IsAdmin,
 		OrgID:        []snow.ID{},
 		TokenVersion: user.TokenVersion,
+		AuthMethods:  auth.methods(),
+	}
+	if !auth.started.IsZero() {
+		claims.AuthTime = jwt.NewNumericDate(auth.started)
 	}
 	jwt, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.secret))
 	if err != nil {

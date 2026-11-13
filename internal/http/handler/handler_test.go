@@ -19,6 +19,7 @@ import (
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
+	"github.com/nipalab/nipa/internal/totp"
 	"github.com/nipalab/nipa/internal/usecase"
 	"github.com/nipalab/nipa/internal/webhook"
 	"github.com/stretchr/testify/require"
@@ -116,6 +117,7 @@ func (f *fakeAppContext) HandleError(err error) {
 
 type handlerRegistry struct {
 	auth          *usecase.Auth
+	mfa           *usecase.MFA
 	user          *usecase.User
 	sshKey        *usecase.SSHKey
 	common        *usecase.Common
@@ -142,6 +144,7 @@ func (r *handlerRegistry) ServiceToken() *usecase.ServiceToken { return r.servic
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *handlerRegistry) User() *usecase.User             { return r.user }
 func (r *handlerRegistry) SSHKey() *usecase.SSHKey         { return r.sshKey }
+func (r *handlerRegistry) MFA() *usecase.MFA               { return r.mfa }
 func (r *handlerRegistry) Common() *usecase.Common         { return r.common }
 func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
@@ -249,8 +252,12 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		sqlite.NewMergeRequestRepository(dbConn),
 		branchRepo, permissionUc, node,
 	)
+	mfaCipher, err := totp.NewCipher([]byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	mfaUc := usecase.NewMFA(sqlite.NewMFARepository(dbConn), userRepo, stubPasswordHasher{}, mfaCipher, dbtx.NewTransactor(dbConn))
 	reg := &handlerRegistry{
-		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
+		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo).WithMFA(mfaUc),
+		mfa:           mfaUc,
 		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
 		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),

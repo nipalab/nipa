@@ -12,16 +12,18 @@ import (
 )
 
 const refreshSessionCreate = `-- name: RefreshSessionCreate :one
-INSERT INTO refresh_tokens (user_id, token_hash, session_started_at, expires_at)
-VALUES (?1, ?2, ?3, ?4)
+INSERT INTO refresh_tokens (user_id, token_hash, session_started_at, expires_at, auth_method, mfa)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 RETURNING id
 `
 
 type RefreshSessionCreateParams struct {
-	UserID           int64        `json:"user_id"`
-	TokenHash        string       `json:"token_hash"`
-	SessionStartedAt sql.NullTime `json:"session_started_at"`
-	ExpiresAt        time.Time    `json:"expires_at"`
+	UserID           int64          `json:"user_id"`
+	TokenHash        string         `json:"token_hash"`
+	SessionStartedAt sql.NullTime   `json:"session_started_at"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	AuthMethod       sql.NullString `json:"auth_method"`
+	Mfa              sql.NullString `json:"mfa"`
 }
 
 func (q *Queries) RefreshSessionCreate(ctx context.Context, arg RefreshSessionCreateParams) (int64, error) {
@@ -30,6 +32,8 @@ func (q *Queries) RefreshSessionCreate(ctx context.Context, arg RefreshSessionCr
 		arg.TokenHash,
 		arg.SessionStartedAt,
 		arg.ExpiresAt,
+		arg.AuthMethod,
+		arg.Mfa,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -49,7 +53,7 @@ func (q *Queries) RefreshSessionDelete(ctx context.Context, id int64) (int64, er
 }
 
 const refreshSessionGet = `-- name: RefreshSessionGet :one
-SELECT id, user_id, token_hash, previous_hash, rotated_at, session_started_at, expires_at, created_at FROM refresh_tokens WHERE id = ?1
+SELECT id, user_id, token_hash, previous_hash, rotated_at, session_started_at, expires_at, created_at, auth_method, mfa FROM refresh_tokens WHERE id = ?1
 `
 
 func (q *Queries) RefreshSessionGet(ctx context.Context, id int64) (RefreshToken, error) {
@@ -64,6 +68,8 @@ func (q *Queries) RefreshSessionGet(ctx context.Context, id int64) (RefreshToken
 		&i.SessionStartedAt,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.AuthMethod,
+		&i.Mfa,
 	)
 	return i, err
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // otherwise pick up and override file-based values.
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "HTTP_READ_HEADER_TIMEOUT_SECONDS", "HTTP_IDLE_TIMEOUT_SECONDS", "METRICS_ADDRESS", "JWT_KEY", "LOG_LEVEL", "LOG_FORMAT", "PPROF_ENABLED", "METRICS_ENABLED", "TRACING_ENABLED", "TRACING_OTLP_ENDPOINT", "TRACING_OTLP_PROTOCOL", "TRACING_OTLP_HEADERS", "TRACING_STDOUT", "TRACING_SAMPLE_RATIO", "TRACING_SERVICE_NAME", "LOGS_OTLP_ENABLED", "LOGS_OTLP_ENDPOINT", "LOGS_OTLP_PROTOCOL", "METRICS_OTLP_ENABLED", "METRICS_OTLP_ENDPOINT", "METRICS_OTLP_PROTOCOL", "METRICS_OTLP_INTERVAL_SECONDS", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "SNOWFLAKE_LEASE_TTL_SECONDS", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "STORAGE_LEDGER", "STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", "SAAS_MODE", "SAAS_FREE_QUOTA_BYTES", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "PUBLIC_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BACKOFF_SECONDS", "EMAIL_POLL_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_SCALEWAY_API_KEY", "EMAIL_SCALEWAY_PROJECT_ID", "EMAIL_SCALEWAY_REGION", "EMAIL_SCALEWAY_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE", "BILLING_PROVIDER", "BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT", "PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY", "PADDLE_PRICE_SEAT_YEARLY", "PADDLE_PRICE_STORAGE_MONTHLY", "PADDLE_PRICE_STORAGE_YEARLY"} {
+	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "HTTP_READ_HEADER_TIMEOUT_SECONDS", "HTTP_IDLE_TIMEOUT_SECONDS", "METRICS_ADDRESS", "JWT_KEY", "MFA_ENABLED", "MFA_ENCRYPTION_KEY", "LOG_LEVEL", "LOG_FORMAT", "PPROF_ENABLED", "METRICS_ENABLED", "TRACING_ENABLED", "TRACING_OTLP_ENDPOINT", "TRACING_OTLP_PROTOCOL", "TRACING_OTLP_HEADERS", "TRACING_STDOUT", "TRACING_SAMPLE_RATIO", "TRACING_SERVICE_NAME", "LOGS_OTLP_ENABLED", "LOGS_OTLP_ENDPOINT", "LOGS_OTLP_PROTOCOL", "METRICS_OTLP_ENABLED", "METRICS_OTLP_ENDPOINT", "METRICS_OTLP_PROTOCOL", "METRICS_OTLP_INTERVAL_SECONDS", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "SNOWFLAKE_LEASE_TTL_SECONDS", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "STORAGE_LEDGER", "STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", "SAAS_MODE", "SAAS_FREE_QUOTA_BYTES", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "PUBLIC_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BACKOFF_SECONDS", "EMAIL_POLL_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_SCALEWAY_API_KEY", "EMAIL_SCALEWAY_PROJECT_ID", "EMAIL_SCALEWAY_REGION", "EMAIL_SCALEWAY_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE", "BILLING_PROVIDER", "BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT", "PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY", "PADDLE_PRICE_SEAT_YEARLY", "PADDLE_PRICE_STORAGE_MONTHLY", "PADDLE_PRICE_STORAGE_YEARLY"} {
 		if old, ok := os.LookupEnv(k); ok {
 			_ = os.Unsetenv(k)
 			t.Cleanup(func() { _ = os.Setenv(k, old) })
@@ -366,4 +367,81 @@ func TestSSHLoginAudience(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestMFAKey(t *testing.T) {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i + 200)
+	}
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		key, err := (&Config{MFAEncryptionKey: " " + enc.EncodeToString(raw) + "\n"}).MFAKey()
+		require.NoError(t, err)
+		require.Equal(t, raw, key)
+	}
+
+	key, err := (&Config{}).MFAKey()
+	require.NoError(t, err)
+	require.Nil(t, key)
+
+	_, err = (&Config{MFAEncryptionKey: base64.StdEncoding.EncodeToString(raw[:31])}).MFAKey()
+	require.ErrorContains(t, err, "at least 32 bytes")
+	_, err = (&Config{MFAEncryptionKey: "not base64 !!"}).MFAKey()
+	require.ErrorContains(t, err, "must be base64")
+
+	strong := "0123456789abcdef0123456789abcdef"
+	other := "fedcba9876543210fedcba9876543210"
+	require.NoError(t, (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: "short"}).ValidateSecrets(),
+		"the MFA key is checked by ValidateMFAKey, only while MFA is on")
+}
+
+func TestValidateMFAKey(t *testing.T) {
+	good := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	for name, tc := range map[string]struct {
+		cfg       Config
+		defaultOn bool
+		wantErr   bool
+	}{
+		"free default ignores a bad key":       {cfg: Config{MFAEncryptionKey: "short"}},
+		"enterprise default checks the key":    {cfg: Config{MFAEncryptionKey: "short"}, defaultOn: true, wantErr: true},
+		"explicitly off ignores a bad key":     {cfg: Config{MFAEncryptionKey: "short", MFAEnabledSet: true}, defaultOn: true},
+		"explicitly on checks the key":         {cfg: Config{MFAEncryptionKey: "short", MFAEnabled: true, MFAEnabledSet: true}, wantErr: true},
+		"on with a good key":                   {cfg: Config{MFAEncryptionKey: good}, defaultOn: true},
+		"on without a key leaves MFA disabled": {cfg: Config{}, defaultOn: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.ValidateMFAKey(tc.defaultOn)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "MFA_ENCRYPTION_KEY")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestLoadConfig_MFAEnabled(t *testing.T) {
+	clearConfigEnv(t)
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\n")
+	t.Chdir(dir)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.False(t, cfg.MFAEnabledSet)
+	require.False(t, cfg.MFAEnabledOr(false))
+	require.True(t, cfg.MFAEnabledOr(true))
+
+	t.Setenv("MFA_ENABLED", "false")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.MFAEnabledSet)
+	require.False(t, cfg.MFAEnabledOr(true))
+
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\nMFA_ENABLED: true\n")
+	t.Setenv("MFA_ENABLED", "")
+	_ = os.Unsetenv("MFA_ENABLED")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.MFAEnabledOr(false))
 }

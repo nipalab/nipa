@@ -39,9 +39,11 @@ func TestAuth_LoginWithEmailPassword(t *testing.T) {
 		Return(user, nil)
 
 	authRepo.EXPECT().
-		CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Not(""), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ snow.ID, _ string, _, expiresAt time.Time) (int64, error) {
-			require.WithinDuration(t, time.Now().Add(60*24*time.Hour), expiresAt, 5*time.Second)
+		CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).
+		DoAndReturn(func(_ context.Context, session domain.NewRefreshSession) (int64, error) {
+			require.WithinDuration(t, time.Now().Add(60*24*time.Hour), session.ExpiresAt, 5*time.Second)
+			require.Equal(t, LoginMethodPassword, session.AuthMethod)
+			require.Empty(t, session.MFA)
 			return 1, nil
 		})
 
@@ -91,7 +93,7 @@ func TestAuth_LoginWithEmailPassword_SaveRefreshTokenError(t *testing.T) {
 		GetByEmail(gomock.Any(), "user@example.com").
 		Return(&domain.User{ID: 1, EmailVerified: true, Password: "hash"}, nil)
 	authRepo.EXPECT().
-		CreateRefreshSession(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(1))).
 		Return(int64(0), wantErr)
 
 	_, err := newTestAuth("secret", true, userRepo, authRepo).LoginWithEmailPassword(ctx, "user@example.com", "password")
@@ -222,7 +224,7 @@ func TestAuth_ValidateToken_DatabaseErrorIsNotAnAuthFailure(t *testing.T) {
 func TestAuth_LoginResult_CarriesTokenVersion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	authRepo := NewMockauthRepository(ctrl)
-	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 	got, err := NewAuth("secret", nil, nil, authRepo).LoginResult(context.Background(), &domain.User{ID: 42, TokenVersion: 7})
 	require.NoError(t, err)
@@ -232,7 +234,7 @@ func TestAuth_LoginResult_CarriesTokenVersion(t *testing.T) {
 func TestAuth_LoginResult_CarriesIssuerAndAudience(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	authRepo := NewMockauthRepository(ctrl)
-	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+	authRepo.EXPECT().CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).Return(int64(1), nil)
 
 	got, err := NewAuth("secret", nil, nil, authRepo).LoginResult(context.Background(), &domain.User{ID: 42})
 	require.NoError(t, err)
@@ -410,4 +412,11 @@ func TestAuth_LoginWithEmailPassword_UnknownUserStillSpendsAHashComparison(t *te
 
 	require.Equal(t, 1, hasher.hashes, "the equalizer hash is computed once")
 	require.Equal(t, 2, hasher.compares)
+}
+
+func sessionFor(userID snow.ID) gomock.Matcher {
+	return gomock.Cond(func(x any) bool {
+		s, ok := x.(domain.NewRefreshSession)
+		return ok && s.UserID == userID && s.TokenHash != ""
+	})
 }
