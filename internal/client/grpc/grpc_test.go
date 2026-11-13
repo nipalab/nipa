@@ -48,6 +48,10 @@ type fakeServer struct {
 	expiresIn           int32
 	lastUsername        string
 	lastPassword        string
+	lastSupportsMFA     bool
+	mfaChallenge        string
+	mfaErr              error
+	lastMFAReq          *pb.CompleteLoginMFARequest
 	lastRefreshToken    string
 	defaultBranchErr    error
 	defaultBranch       *pb.Branch
@@ -159,8 +163,24 @@ func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestR
 func (f *fakeServer) LoginWithUsernamePassword(_ context.Context, req *pb.LoginUsernamePasswordRequest) (*pb.LoginResponse, error) {
 	f.lastUsername = req.GetUsername()
 	f.lastPassword = req.GetPassword()
+	f.lastSupportsMFA = req.GetSupportsMfa()
 	if f.loginErr != nil {
 		return nil, f.loginErr
+	}
+	if f.mfaChallenge != "" {
+		return &pb.LoginResponse{MfaChallenge: f.mfaChallenge, ExpiresIn: 300}, nil
+	}
+	return &pb.LoginResponse{
+		AccessToken:  f.accessToken,
+		RefreshToken: f.refreshToken,
+		ExpiresIn:    f.expiresIn,
+	}, nil
+}
+
+func (f *fakeServer) CompleteLoginMFA(_ context.Context, req *pb.CompleteLoginMFARequest) (*pb.LoginResponse, error) {
+	f.lastMFAReq = req
+	if f.mfaErr != nil {
+		return nil, f.mfaErr
 	}
 	return &pb.LoginResponse{
 		AccessToken:  f.accessToken,
@@ -277,6 +297,46 @@ func TestClient_LoginWithUsernamePassword(t *testing.T) {
 		ExpiresIn:    1800,
 		Host:         addr,
 	}, got)
+}
+
+func TestClient_LoginWithUsernamePassword_SendsSupportsMFA(t *testing.T) {
+	srv := &fakeServer{mfaChallenge: "ch-1"}
+	addr := startTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
+	require.NoError(t, err)
+	require.True(t, srv.lastSupportsMFA)
+	require.Equal(t, &domain.LoginResult{ExpiresIn: 300, Host: addr, MFAChallenge: "ch-1"}, got)
+}
+
+func TestClient_CompleteLoginMFA(t *testing.T) {
+	srv := &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800}
+	addr := startTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{getTokenErr: errors.New("no token stored")})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.CompleteLoginMFA(context.Background(), addr, "ch-1", "123456")
+	require.NoError(t, err)
+	require.Equal(t, &domain.LoginResult{AccessToken: "access", RefreshToken: "refresh", ExpiresIn: 1800, Host: addr}, got)
+	require.Equal(t, "ch-1", srv.lastMFAReq.GetChallenge())
+	require.Equal(t, "123456", srv.lastMFAReq.GetCode())
+}
+
+func TestClient_CompleteLoginMFA_Errors(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{mfaErr: status.Error(codes.InvalidArgument, "invalid code")})
+	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.CompleteLoginMFA(context.Background(), addr, "ch-1", "000000")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "invalid code", domErr.Message)
+
+	_, err = NewClient(NewTransport(), &stubSession{}).CompleteLoginMFA(context.Background(), addr, "ch", "1")
+	require.ErrorContains(t, err, "not connected to a nipa server")
 }
 
 func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {

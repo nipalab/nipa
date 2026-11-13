@@ -111,17 +111,18 @@ func connectClient(ctx context.Context, newClient func() *clientgrpc.Client, add
 
 // serveLogin signs in over a fresh connection to the server being logged into.
 func serveLogin(newClient func() *clientgrpc.Client, storage tokenStorage) daemon.LoginFunc {
-	return func(ctx context.Context, address, username, password string) error {
-		ep, err := domain.ParseEndpoint(address)
+	return func(ctx context.Context, in daemon.LoginInput) (*domain.MFAChallenge, error) {
+		ep, err := domain.ParseEndpoint(in.Host)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		c, err := connectClient(ctx, newClient, ep.Address)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer func() { _ = c.Close() }()
-		return usecase.NewAuth(c, storage, daemonInput{}).LoginWithUsernamePassword(ctx, ep.Address, username, password)
+		in.Host = ep.Address
+		return daemon.PasswordLogin(usecase.NewAuth(c, storage, daemonInput{}))(ctx, in)
 	}
 }
 

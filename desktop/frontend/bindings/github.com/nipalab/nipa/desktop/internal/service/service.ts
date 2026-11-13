@@ -663,10 +663,18 @@ export function Settings(): $CancellablePromise<workspace$0.Settings> {
 }
 
 /**
- * SignIn logs in with an email and password; the daemon stores the session.
+ * SignIn logs in with an email and password; the daemon stores the session
+ * unless the account asks for a two-factor code (see SignInMFA).
  */
-export function SignIn(server: string, email: string, password: string): $CancellablePromise<void> {
+export function SignIn(server: string, email: string, password: string): $CancellablePromise<$models.SignInResult | null> {
     return $Call.ByID(1917223218, server, email, password);
+}
+
+/**
+ * SignInMFA finishes a password sign-in with a two-factor or recovery code.
+ */
+export function SignInMFA(server: string, email: string, challenge: string, code: string): $CancellablePromise<void> {
+    return $Call.ByID(1403687248, server, email, challenge, code);
 }
 
 /**

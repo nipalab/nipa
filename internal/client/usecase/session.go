@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type Session struct {
 	input          userInput
 	resolveSigners signerResolver
 	wait           func(ctx context.Context, d time.Duration) error
+	getenv         func(string) string
 }
 
 func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInput) *Session {
@@ -36,6 +38,7 @@ func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInpu
 		login:   login,
 		input:   input,
 		wait:    waitContext,
+		getenv:  os.Getenv,
 	}
 }
 
@@ -164,7 +167,7 @@ func (s *Session) reauth(ctx context.Context, host string, cause error) (string,
 		return "", domain.NewUserError("username cannot be empty")
 	}
 
-	loginResult, err := passwordLogin.LoginWithUsernamePassword(ctx, host, username, password)
+	loginResult, err := loginWithPassword(ctx, passwordLogin, s.input, s.getenv, host, username, password, "")
 	if err != nil {
 		return "", err
 	}

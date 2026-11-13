@@ -994,6 +994,16 @@ export interface SceneObject {
     "parent": string;
 }
 
+/**
+ * SignInResult tells the dialog whether the account still needs a two-factor
+ * code for Challenge before the session exists.
+ */
+export interface SignInResult {
+    "mfaRequired": boolean;
+    "challenge": string;
+    "expiresIn": number;
+}
+
 export interface TableColumn {
     "name": string;
     "oldName": string;

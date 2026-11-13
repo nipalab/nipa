@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
@@ -49,6 +50,7 @@ type Auth struct {
 	resolveSigners signerResolver
 	cleartextOut   io.Writer
 	cleartextOnce  sync.Once
+	getenv         func(string) string
 }
 
 func NewAuth(executor loginExecutor, storage secureStorage, input userInput) *Auth {
@@ -56,6 +58,7 @@ func NewAuth(executor loginExecutor, storage secureStorage, input userInput) *Au
 		loginExecutor: executor,
 		secureStorage: storage,
 		userInput:     input,
+		getenv:        os.Getenv,
 	}
 }
 
@@ -83,23 +86,7 @@ func (l *Auth) WarnIfCleartext(address string) {
 }
 
 func (l *Auth) LoginWithUsernamePassword(ctx context.Context, address, username, password string) error {
-	if username == "" {
-		return domain.NewUserError("username cannot be empty")
-	}
-
-	host := domain.HostForAddress(address)
-	loginResult, err := l.loginExecutor.LoginWithUsernamePassword(ctx, host, username, password)
-	if err != nil {
-		return err
-	}
-	loginResult.Email = username
-
-	err = l.secureStorage.SaveToken(loginResult)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return l.LoginWithPassword(ctx, address, username, password, "", nil)
 }
 
 // LoginWithSSHKey logs in with a registered SSH key. The email is optional:

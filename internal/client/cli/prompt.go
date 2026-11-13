@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"golang.org/x/term"
+
+	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
 type Prompter struct {
@@ -64,6 +66,27 @@ func (p *Prompter) PromptUsernameAndPassword() (username, password string, err e
 		return "", "", err
 	}
 	return username, password, nil
+}
+
+// PromptOTP asks for a two-factor code; without a terminal it fails with the
+// hint to log in interactively or with an SSH key.
+func (p *Prompter) PromptOTP(attempt int) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", usecase.MFARequiredError()
+	}
+	if attempt > 0 {
+		if _, err := fmt.Fprintln(os.Stdout, "Invalid code, try again."); err != nil {
+			return "", err
+		}
+	}
+	if _, err := fmt.Fprint(os.Stdout, "Authentication code: "); err != nil {
+		return "", err
+	}
+	code, err := p.reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(code), nil
 }
 
 func (p *Prompter) readSecret() (string, error) {

@@ -120,9 +120,28 @@ func (t *Transport) LoginWithUsernamePassword(ctx context.Context, host, usernam
 		return nil, err
 	}
 	res, err := client.LoginWithUsernamePassword(ctx, &pb.LoginUsernamePasswordRequest{
-		Username: username,
-		Password: password,
+		Username:    username,
+		Password:    password,
+		SupportsMfa: true,
 	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return &domain.LoginResult{
+		AccessToken:  res.GetAccessToken(),
+		RefreshToken: res.GetRefreshToken(),
+		ExpiresIn:    int(res.GetExpiresIn()),
+		Host:         host,
+		MFAChallenge: res.GetMfaChallenge(),
+	}, nil
+}
+
+func (t *Transport) CompleteLoginMFA(ctx context.Context, host, challenge, code string) (*domain.LoginResult, error) {
+	client, err := t.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.CompleteLoginMFA(ctx, &pb.CompleteLoginMFARequest{Challenge: challenge, Code: code})
 	if err != nil {
 		return nil, toDomainError(err)
 	}
@@ -287,6 +306,10 @@ func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, 
 	return c.transport.LoginWithUsernamePassword(ctx, host, username, password)
 }
 
+func (c *Client) CompleteLoginMFA(ctx context.Context, host, challenge, code string) (*domain.LoginResult, error) {
+	return c.transport.CompleteLoginMFA(ctx, host, challenge, code)
+}
+
 func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken string) (*domain.LoginResult, error) {
 	return c.transport.LoginWithRefreshToken(ctx, host, refreshToken)
 }
@@ -316,6 +339,7 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
 			method == "/greet.NipaService/BeginLoginSSHKey" ||
 			method == "/greet.NipaService/CompleteLoginSSHKey" ||
+			method == "/greet.NipaService/CompleteLoginMFA" ||
 			method == "/greet.NipaService/GetServerVersion" {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}

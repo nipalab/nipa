@@ -74,6 +74,7 @@ import type {
   RemoteDir,
   RemoteListing as RawRemoteListing,
   RemoteProject,
+  SignInResult,
   Repo,
   RepoChanged,
   PropChange,
@@ -114,7 +115,7 @@ export const updateState = (u: RawUpdateState | null): UpdateState => ({
   error: u?.error ?? "",
   checkedAt: u?.checkedAt ?? "",
 });
-export type { Release };
+export type { Release, SignInResult };
 
 export type { FileLock, FileLockState, LockFailure };
 export type { FileDetails, FileEntry };
@@ -259,7 +260,11 @@ export const desktop = {
     if (!a) throw new Error("No account information");
     return a;
   },
-  signIn: (server: string, email: string, password: string): Promise<void> => Service.SignIn(server, email, password),
+  signIn: async (server: string, email: string, password: string): Promise<SignInResult> => {
+    const r = await Service.SignIn(server, email, password);
+    return { mfaRequired: r?.mfaRequired ?? false, challenge: r?.challenge ?? "", expiresIn: r?.expiresIn ?? 0 };
+  },
+  signInMFA: (server: string, email: string, challenge: string, code: string): Promise<void> => Service.SignInMFA(server, email, challenge, code),
   signInSSH: (server: string, email = ""): Promise<void> => Service.SignInSSH(server, email),
   listProjects: async (server: string): Promise<RemoteProject[]> => (await Service.ListProjects(server)) ?? [],
   remoteBranches: async (server: string, org: string, project: string): Promise<RemoteBranch[]> => (await Service.RemoteBranches(server, org, project)) ?? [],

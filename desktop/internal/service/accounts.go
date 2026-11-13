@@ -85,13 +85,40 @@ func (s *Service) AccountStatus(ctx context.Context, server string) (*Account, e
 	return &Account{Host: res.GetHost(), Address: res.GetAddress(), SignedIn: res.GetSignedIn(), Email: res.GetEmail(), UserID: res.GetUserId()}, nil
 }
 
-// SignIn logs in with an email and password; the daemon stores the session.
-func (s *Service) SignIn(ctx context.Context, server, email, password string) error {
+// SignInResult tells the dialog whether the account still needs a two-factor
+// code for Challenge before the session exists.
+type SignInResult struct {
+	MFARequired bool   `json:"mfaRequired"`
+	Challenge   string `json:"challenge"`
+	ExpiresIn   int    `json:"expiresIn"`
+}
+
+// SignIn logs in with an email and password; the daemon stores the session
+// unless the account asks for a two-factor code (see SignInMFA).
+func (s *Service) SignIn(ctx context.Context, server, email, password string) (*SignInResult, error) {
+	client, err := s.daemon(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.Login(ctx, &daemonpb.LoginRequest{Host: server, Username: strings.TrimSpace(email), Password: password})
+	if err != nil {
+		return nil, s.daemonCall(err)
+	}
+	return &SignInResult{MFARequired: res.GetMfaRequired(), Challenge: res.GetMfaChallenge(), ExpiresIn: int(res.GetExpiresIn())}, nil
+}
+
+// SignInMFA finishes a password sign-in with a two-factor or recovery code.
+func (s *Service) SignInMFA(ctx context.Context, server, email, challenge, code string) error {
 	client, err := s.daemon(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = client.Login(ctx, &daemonpb.LoginRequest{Host: server, Username: strings.TrimSpace(email), Password: password})
+	_, err = client.Login(ctx, &daemonpb.LoginRequest{
+		Host:         server,
+		Username:     strings.TrimSpace(email),
+		MfaChallenge: challenge,
+		Otp:          strings.TrimSpace(code),
+	})
 	return s.daemonCall(err)
 }
 

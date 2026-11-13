@@ -79,30 +79,54 @@ func TestServer_PingRequiresToken(t *testing.T) {
 }
 
 func TestServer_Login(t *testing.T) {
-	var gotHost, gotUser, gotPass string
+	var got LoginInput
 	srv := startTestServer(t, Options{
-		Login: func(_ context.Context, host, username, password string) error {
-			gotHost, gotUser, gotPass = host, username, password
-			return nil
+		Login: func(_ context.Context, in LoginInput) (*clientDomain.MFAChallenge, error) {
+			got = in
+			return nil, nil
 		},
 	})
 
 	ctx := authed(context.Background(), srv.Endpoint().Token)
-	_, err := srv.client.Login(ctx, &daemonpb.LoginRequest{
+	res, err := srv.client.Login(ctx, &daemonpb.LoginRequest{
 		Host:     "nipa.example.com",
 		Username: "alice",
 		Password: "hunter2",
 	})
 	require.NoError(t, err)
-	require.Equal(t, "nipa.example.com", gotHost)
-	require.Equal(t, "alice", gotUser)
-	require.Equal(t, "hunter2", gotPass)
+	require.False(t, res.GetMfaRequired())
+	require.Equal(t, LoginInput{Host: "nipa.example.com", Username: "alice", Password: "hunter2"}, got)
+}
+
+func TestServer_LoginMFAChallenge(t *testing.T) {
+	var got []LoginInput
+	srv := startTestServer(t, Options{
+		Login: func(_ context.Context, in LoginInput) (*clientDomain.MFAChallenge, error) {
+			got = append(got, in)
+			if in.Challenge == "" {
+				return &clientDomain.MFAChallenge{Challenge: "ch-1", ExpiresIn: 300}, nil
+			}
+			return nil, nil
+		},
+	})
+
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+	res, err := srv.client.Login(ctx, &daemonpb.LoginRequest{Host: "h", Username: "alice", Password: "pw"})
+	require.NoError(t, err)
+	require.True(t, res.GetMfaRequired())
+	require.Equal(t, "ch-1", res.GetMfaChallenge())
+	require.Equal(t, int32(300), res.GetExpiresIn())
+
+	res, err = srv.client.Login(ctx, &daemonpb.LoginRequest{Host: "h", Username: "alice", Otp: "123456", MfaChallenge: "ch-1"})
+	require.NoError(t, err)
+	require.False(t, res.GetMfaRequired())
+	require.Equal(t, LoginInput{Host: "h", Username: "alice", OTP: "123456", Challenge: "ch-1"}, got[1])
 }
 
 func TestServer_LoginErrorIsMapped(t *testing.T) {
 	srv := startTestServer(t, Options{
-		Login: func(context.Context, string, string, string) error {
-			return clientDomain.NewTokenError("bad credentials")
+		Login: func(context.Context, LoginInput) (*clientDomain.MFAChallenge, error) {
+			return nil, clientDomain.NewTokenError("bad credentials")
 		},
 	})
 
@@ -110,6 +134,38 @@ func TestServer_LoginErrorIsMapped(t *testing.T) {
 	_, err := srv.client.Login(ctx, &daemonpb.LoginRequest{Host: "h", Username: "u", Password: "p"})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "bad credentials")
+}
+
+type stubPasswordAuth struct {
+	started   []string
+	completed []string
+	challenge *clientDomain.MFAChallenge
+}
+
+func (s *stubPasswordAuth) StartPasswordLogin(_ context.Context, address, username, password, otp string) (*clientDomain.MFAChallenge, error) {
+	s.started = append(s.started, address, username, password, otp)
+	return s.challenge, nil
+}
+
+func (s *stubPasswordAuth) CompleteLoginMFA(_ context.Context, address, username, challenge, code string) error {
+	s.completed = append(s.completed, address, username, challenge, code)
+	return nil
+}
+
+func TestPasswordLogin(t *testing.T) {
+	auth := &stubPasswordAuth{challenge: &clientDomain.MFAChallenge{Challenge: "ch"}}
+	login := PasswordLogin(auth)
+
+	challenge, err := login(context.Background(), LoginInput{Host: "h", Username: "alice", Password: "pw", OTP: "1"})
+	require.NoError(t, err)
+	require.Equal(t, "ch", challenge.Challenge)
+	require.Equal(t, []string{"h", "alice", "pw", "1"}, auth.started)
+
+	challenge, err = login(context.Background(), LoginInput{Host: "h", Username: "alice", Password: "ignored", OTP: "2", Challenge: "ch"})
+	require.NoError(t, err)
+	require.Nil(t, challenge)
+	require.Equal(t, []string{"h", "alice", "ch", "2"}, auth.completed)
+	require.Len(t, auth.started, 4)
 }
 
 func TestServer_LoginWithoutHandler(t *testing.T) {
