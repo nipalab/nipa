@@ -359,6 +359,14 @@ export interface FileEntry {
     "mtime": number;
 }
 
+export interface FileHit {
+    "path": string;
+    "name": string;
+    "size": number;
+    "binary": boolean;
+    "kind": string;
+}
+
 export interface FileListing {
     "dir": string;
     "entries": FileEntry[] | null;
@@ -407,6 +415,15 @@ export interface FileLockState {
     "lockPath": string;
     "heldByName": string;
     "tracked": boolean;
+}
+
+/**
+ * FileSearch is a ranked list of tracked files; Truncated means the clone
+ * had more candidates than the daemon ranks, so a better match may be missing.
+ */
+export interface FileSearch {
+    "hits": FileHit[] | null;
+    "truncated": boolean;
 }
 
 export interface FileSide {

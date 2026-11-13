@@ -41,6 +41,7 @@ import type {
   FileDetails,
   FileDiff,
   FileEntry,
+  FileHit,
   FileListing as RawFileListing,
   FileLock,
   FileLockState,
@@ -118,7 +119,8 @@ export const updateState = (u: RawUpdateState | null): UpdateState => ({
 export type { Release, SignInResult };
 
 export type { FileLock, FileLockState, LockFailure };
-export type { FileDetails, FileEntry };
+export type { FileDetails, FileEntry, FileHit };
+export type FileSearch = { hits: FileHit[]; truncated: boolean };
 export type FileListing = Omit<RawFileListing, "entries"> & { entries: FileEntry[] };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
 export type { Check, Comment, CommentInput, MergeRequestFilter, Mergeability, NewMergeRequest, Person, Review, TimelineEvent };
@@ -243,6 +245,10 @@ export const desktop = {
     return { dir: l?.dir ?? dir, entries: l?.entries ?? [] };
   },
   fileInfo: async (root: string, branch: string, path: string): Promise<FileDetails> => required(await Service.FileInfo(root, branch, path), "file information"),
+  searchFiles: async (root: string, query: string, limit = 50): Promise<FileSearch> => {
+    const r = await Service.SearchFiles(root, query, limit);
+    return { hits: r?.hits ?? [], truncated: r?.truncated ?? false };
+  },
   fileView: (root: string, path: string): Promise<FileDiff | null> => Service.FileView(root, path),
   fileLink: (repoUrl: string, path: string): Promise<string> => Service.FileLink(repoUrl, path),
   restoreRevision: (root: string, path: string, commitId: string): Cancellable<OpOutcome> => Service.RestoreRevision(root, path, commitId),

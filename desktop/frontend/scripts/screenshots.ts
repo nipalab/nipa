@@ -13,6 +13,7 @@ async function run(page: import("playwright-core").Page, step: Step) {
   if ("tab" in step) await page.getByRole("tab", { name: step.tab }).click();
   else if ("button" in step) await page.getByRole("button", { name: step.button }).first().click();
   else if ("text" in step) await page.getByText(step.text).first().click();
+  else if ("type" in step) await page.keyboard.type(step.type);
   else await page.waitForTimeout(step.wait);
 }
 

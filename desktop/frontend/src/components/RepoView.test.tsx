@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { ChangeSet, FileDiff, OpProgress, Repo, RepoChanged } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
+import type { Intent } from "@/components/tabs";
 
 const api = vi.hoisted(() => ({
   changes: vi.fn(),
@@ -793,13 +794,13 @@ describe("Activity and navigation", () => {
     const { rerender } = renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={activity} />);
     const update = await screen.findByRole("button", { name: /Update/ });
     expect(update).toHaveTextContent("2");
-    expect(update).toHaveAttribute("title", "2 new commits on main");
+    expect(update).toHaveAttribute("title", "2 new commits on main (Ctrl+Shift+U)");
     await userEvent.click(update);
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Up to date with main", "success"));
-    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "Get the latest version of the branch");
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "Get the latest version of the branch (Ctrl+Shift+U)");
 
     rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={{ ...activity, incoming: 1 }} />);
-    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "1 new commit on main");
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "1 new commit on main (Ctrl+Shift+U)");
     rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={{ ...activity, incoming: 100 }} />);
     expect(screen.getByRole("button", { name: /Update/ })).toHaveTextContent("100+");
   });
@@ -856,5 +857,163 @@ describe("Activity and navigation", () => {
     fireEvent.doubleClick(docs);
     expect(api.setSparse).toHaveBeenCalledWith("/work/game", ["Art", "Docs"]);
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Checkout updated", "success"));
+  });
+});
+
+describe("palette actions and shortcuts", () => {
+  const withIntent = (intent: Intent, r: Repo = repo) => <RepoView repo={r} removing={false} onRemove={() => {}} notify={notify} intent={intent} />;
+
+  it("runs update, refresh and push-message intents", async () => {
+    api.update.mockResolvedValue({ branch: "main" });
+    const { rerender } = renderWithProviders(withIntent({ tab: "", action: "update", seq: 1 }));
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith("/work/game"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Up to date with main", "success"));
+    rerender(withIntent({ tab: "", action: "update", seq: 1 }));
+    expect(api.update).toHaveBeenCalledTimes(1);
+
+    const before = api.changes.mock.calls.length;
+    rerender(withIntent({ tab: "", action: "refresh", seq: 2 }));
+    await waitFor(() => expect(api.changes.mock.calls.length).toBeGreaterThan(before));
+
+    rerender(withIntent({ tab: "history", seq: 3 }));
+    rerender(withIntent({ tab: "changes", action: "focus-message", seq: 4 }));
+    await waitFor(() => expect(screen.getByLabelText("Push message")).toHaveFocus());
+  });
+
+  it("switches branch, checks out a tag and refuses while busy", async () => {
+    let finish: (v: unknown) => void = () => {};
+    api.switchBranch.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    api.checkoutTag.mockResolvedValue({ branch: "main" });
+    const { rerender } = renderWithProviders(withIntent({ tab: "branches", action: "switch", target: "feature", seq: 1 }));
+    await waitFor(() => expect(api.switchBranch).toHaveBeenCalledWith("/work/game", "feature"));
+    rerender(withIntent({ tab: "branches", action: "checkout-tag", target: "v1", seq: 2 }));
+    expect(notify).toHaveBeenCalledWith("Wait until switch finishes");
+    rerender(withIntent({ tab: "branches", action: "switch", target: "other", seq: 3 }));
+    rerender(withIntent({ tab: "", action: "update", seq: 4 }));
+    expect(notify).toHaveBeenCalledTimes(3);
+    act(() => finish({ branch: "feature" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Switched to feature", "success"));
+    rerender(withIntent({ tab: "branches", action: "checkout-tag", target: "v1", seq: 5 }));
+    await waitFor(() => expect(api.checkoutTag).toHaveBeenCalledWith("/work/game", "v1"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Checked out tag v1", "success"));
+  });
+
+  it("does not update a clone checked out at a tag", async () => {
+    api.changes.mockResolvedValue(changeSet({ detached: "v1" }));
+    const { rerender } = renderWithProviders(withIntent({ tab: "changes", seq: 1 }));
+    await screen.findByText(/Checked out at tag/);
+    rerender(withIntent({ tab: "", action: "update", seq: 2 }));
+    expect(notify).toHaveBeenCalledWith("Checked out at tag v1: switch back to a branch to update");
+    expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it("opens the new merge request dialog", async () => {
+    api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+    api.branches.mockResolvedValue([{ name: "main", commitId: "c1", default: true, protected: false }]);
+    renderWithProviders(withIntent({ tab: "mrs", action: "new-mr", seq: 1 }));
+    expect(await screen.findByRole("dialog", { name: "New merge request" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Merge requests/ })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "New merge request" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Merge requests/ }));
+    await screen.findByRole("button", { name: "New" });
+    expect(screen.queryByRole("dialog", { name: "New merge request" })).not.toBeInTheDocument();
+  });
+
+  it("locks a file in the lock scope", async () => {
+    api.lock.mockResolvedValue({ locked: ["art/hero.png"], failed: [] });
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "feature", defaultBranch: false, canReleaseAny: false, locks: [], files: [] });
+    renderWithProviders(withIntent({ tab: "locks", action: "lock", path: "art/hero.png", seq: 1 }));
+    await waitFor(() => expect(api.lock).toHaveBeenCalledWith("/work/game", "feature", ["art/hero.png"]));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Locked art/hero.png", "success"));
+  });
+
+  it("reports a lock status that cannot be read", async () => {
+    api.lockStatus.mockRejectedValue(new Error("offline"));
+    renderWithProviders(withIntent({ tab: "", action: "lock", path: "art/hero.png", seq: 1 }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Locking failed: offline"));
+    expect(api.lock).not.toHaveBeenCalled();
+  });
+
+  it("ignores actions for an unavailable clone", async () => {
+    renderWithProviders(withIntent({ tab: "", action: "update", seq: 1 }, { ...repo, error: "gone" }));
+    expect(await screen.findByText("This clone is unavailable")).toBeInTheDocument();
+    expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it("numbers tabs with Conflicts while a merge waits", async () => {
+    api.changes.mockResolvedValue(changeSet({ pending: "merge", conflicts: ["a.txt"] }));
+    api.conflicts.mockResolvedValue(conflictSet("merge"));
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    api.tags.mockResolvedValue([]);
+    view();
+    const conflicts = await screen.findByRole("tab", { name: /Conflicts/ });
+    expect(conflicts).toHaveAttribute("title", "Ctrl+3");
+    fireEvent.keyDown(document.body, { key: "4", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("switches tabs, updates, refreshes and focuses the message from the keyboard", async () => {
+    api.update.mockResolvedValue({ branch: "main" });
+    api.files.mockResolvedValue({ dir: "", entries: [] });
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    api.tags.mockResolvedValue([]);
+    view();
+    await fileList();
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("title", "Ctrl+3");
+    fireEvent.keyDown(document.body, { key: "3", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(document.body, { key: "1", metaKey: true });
+    expect(screen.getByRole("tab", { name: /Files/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(document.body, { key: "9", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: /Files/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(document.body, { key: "M", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(screen.getByLabelText("Push message")).toHaveFocus());
+    expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute("aria-selected", "true");
+
+    const before = api.changes.mock.calls.length;
+    fireEvent.keyDown(screen.getByLabelText("Push message"), { key: "r", ctrlKey: true });
+    await waitFor(() => expect(api.changes.mock.calls.length).toBeGreaterThan(before));
+
+    fireEvent.keyDown(document.body, { key: "U", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith("/work/game"));
+  });
+
+  it("moves through and stages files with J, K and Space", async () => {
+    api.stage.mockResolvedValue(changeSet());
+    api.unstage.mockResolvedValue(changeSet());
+    view();
+    const list = await fileList();
+    const selected = () => within(list).getByRole("option", { selected: true });
+    expect(selected()).toHaveAttribute("title", "src/player.go");
+    fireEvent.keyDown(document.body, { key: "j" });
+    expect(selected()).toHaveAttribute("title", "art/hero.png");
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(document.body, { key: "j" });
+    fireEvent.keyDown(document.body, { key: "j" });
+    expect(selected()).toHaveAttribute("title", "old.wav");
+    fireEvent.keyDown(document.body, { key: "k" });
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(selected()).toHaveAttribute("title", "art/hero.png");
+    fireEvent.keyDown(document.body, { key: " " });
+    await waitFor(() => expect(api.stage).toHaveBeenCalledWith("/work/game", ["art/hero.png"]));
+
+    list.focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(selected()).toHaveAttribute("title", "src/player.go");
+    await userEvent.keyboard(" ");
+    await waitFor(() => expect(api.unstage).toHaveBeenCalledWith("/work/game", ["src/player.go"]));
+
+    fireEvent.keyDown(screen.getByLabelText("Push message"), { key: "j" });
+    expect(selected()).toHaveAttribute("title", "src/player.go");
+  });
+
+  it("opens search from the header", async () => {
+    const onSearch = vi.fn();
+    renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} onSearch={onSearch} />);
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(onSearch).toHaveBeenCalled();
   });
 });

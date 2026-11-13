@@ -111,6 +111,17 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   first (`useStageGuard`, lookup raced against 400 ms before the dialog
   opens and fills in), the Discard dialog of a modified asset names its
   referrers)
+  a command palette (`components/palette/CommandPalette.tsx`, Ctrl/Cmd+K:
+  actions, files of every clone via `SearchFiles` (daemon `SearchFiles`
+  over `localrepo.SearchPaths`, a `LIKE` subsequence prefilter ranked in
+  Go; `lib/fuzzy.ts` ranks the same way client-side), branches/tags, MRs by
+  server search or number, commits by message/id/hash plus exact id
+  lookup; "Switch branch…"/"Lock file…" sub-modes; results become `Intent`s
+  with `action`/`target` (`components/tabs.ts`) that `RepoView` runs once
+  per `seq`), keyboard shortcuts declared once in `lib/shortcuts.ts` and
+  bound through `hooks/useShortcuts.ts` (ignored in text fields, IME
+  composition and under modals; Space/arrows yield to focused controls),
+  the `?` "Keyboard shortcuts" sheet,
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),

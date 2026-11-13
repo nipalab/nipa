@@ -28,6 +28,7 @@ const service = vi.hoisted(() => ({
   GenerateMergeRequest: vi.fn(),
   LockStatus: vi.fn(),
   Lock: vi.fn(),
+  SearchFiles: vi.fn(),
   Unlock: vi.fn(),
   PickFile: vi.fn(),
   OpenFile: vi.fn(),
@@ -240,6 +241,11 @@ describe("desktop api", () => {
     service.RevealFile.mockResolvedValue(undefined);
     await desktop.revealFile("/r", "a/x");
     expect(service.RevealFile).toHaveBeenCalledWith("/r", "a/x");
+    service.SearchFiles.mockResolvedValueOnce({ hits: null, truncated: true }).mockResolvedValueOnce(null);
+    expect(await desktop.searchFiles("/r", "hero", 8)).toEqual({ hits: [], truncated: true });
+    expect(service.SearchFiles).toHaveBeenCalledWith("/r", "hero", 8);
+    expect(await desktop.searchFiles("/r", "hero")).toEqual({ hits: [], truncated: false });
+    expect(service.SearchFiles).toHaveBeenLastCalledWith("/r", "hero", 50);
     service.RestoreRevision.mockResolvedValue({ commitId: "c1" });
     expect(await desktop.restoreRevision("/r", "a/x", "c1")).toEqual({ commitId: "c1" });
     expect(service.RestoreRevision).toHaveBeenCalledWith("/r", "a/x", "c1");

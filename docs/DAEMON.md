@@ -164,6 +164,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `WatchEvents` | **server-streaming** | team activity for one watched root, polled from the server every `interval_seconds` (default 60, clamped to 15–3600; `NIPA_DAEMON_EVENT_INTERVAL` overrides it for tests): `incoming` (commits on the clone's branch it does not have, up to 100), `review_requests` (open merge requests with a pending review request for the caller) and `events` since the previous poll (`pushed` with author/message/count, `lock_released` for someone else's lock, `review_requested`). The first poll is a baseline without events; later ones are sent only when something changed. A failed poll sends `error` once and keeps the counts. Ends on unwatch or shutdown |
 | `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
 | `ListFiles` | unary | one directory level of the clone (snapshot rows of that level + working-copy status, untracked files and folders included); see below |
+| `SearchFiles` | unary | tracked files whose path holds the query's characters in order, ranked; see below |
 | `RestoreRevision` | **server-streaming** | writes a file as it was in a commit over the working file under the exclusive slot; see below |
 | `AssetRefs` | unary | what an engine asset uses and which files use it, from a reference graph cached per root; see below |
 | `Provenance` | unary | origin record, status and `required` flag per path; see below |
@@ -453,6 +454,18 @@ and cached the same way, so a listing costs the directory query plus a pass
 over the changed paths. Locks are not part of the answer: callers join their
 own lock list (the desktop uses `LockStatus`), so listing never calls the
 server.
+
+`SearchFiles(root, query, limit)` (shared slot, limit default 50, at most
+200) finds tracked files for the desktop command palette: the query's
+non-space characters must appear in the path in order, case-insensitively.
+`localrepo.SearchPaths` prefilters the snapshot with one `LIKE '%c%h%a%r%'`
+query (`%`, `_` and `\` escaped; non-ASCII characters become `_` because
+SQLite folds case for ASCII only), capped at 20000 rows; the daemon then
+ranks in Go: basename prefix, basename substring, basename subsequence, path
+substring, path subsequence, then the tighter match window, the shorter path
+and the path. `truncated` reports that the prefilter hit its cap. Hits carry
+`{path, name, size_bytes, is_binary, kind}`; untracked files are not
+searched and no server call is made.
 
 `RestoreRevision(root, path, commit_id)` ("get this version") writes the file
 as it was in a commit over the working file under the exclusive slot and

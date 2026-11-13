@@ -13,6 +13,7 @@ type Querier interface {
 	FileGet(ctx context.Context, path string) (FileGetRow, error)
 	FileList(ctx context.Context) ([]File, error)
 	FileListByTree(ctx context.Context, treePath string) ([]FileListByTreeRow, error)
+	FileSearchPaths(ctx context.Context, arg FileSearchPathsParams) ([]FileSearchPathsRow, error)
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)

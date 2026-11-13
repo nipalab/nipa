@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PanelLeftOpen } from "lucide-react";
 import { desktop, type Navigation, type Repo, type RepoActivity } from "@/api/desktop";
 import { CloneDialog, type CloneHint } from "@/components/clone/CloneDialog";
+import { CommandPalette, type Go, type PaletteMode } from "@/components/palette/CommandPalette";
+import { ShortcutsSheet } from "@/components/palette/ShortcutsSheet";
 import { RepoView, type Intent, type Notify } from "@/components/RepoView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/Sidebar";
@@ -11,6 +13,7 @@ import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/button";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { Welcome } from "@/components/Welcome";
+import { useShortcuts } from "@/hooks/useShortcuts";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
 const SELECTED_KEY = "nipa.selectedRepo";
@@ -29,6 +32,8 @@ export default function App() {
   const [cloning, setCloning] = useState(false);
   const [cloneHint, setCloneHint] = useState<CloneHint | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [palette, setPalette] = useState<PaletteMode | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarHidden, setSidebarHiddenState] = useState(() => readSetting(SIDEBAR_HIDDEN_KEY) === "1");
   const setSidebarHidden = useCallback((hidden: boolean) => {
     writeSetting(SIDEBAR_HIDDEN_KEY, hidden ? "1" : null);
@@ -55,23 +60,30 @@ export default function App() {
     [queryClient],
   );
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
+  const ready = repos.isSuccess;
+  useShortcuts(
+    {
+      palette: () => setPalette("all"),
+      help: () => setShortcutsOpen(true),
+      settings: () => setSettingsOpen(true),
+      sidebar: () =>
         setSidebarHiddenState((hidden) => {
           writeSetting(SIDEBAR_HIDDEN_KEY, hidden ? null : "1");
           return !hidden;
-        });
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+        }),
+    },
+    ready,
+  );
 
   const select = (root: string | null) => {
     writeSetting(SELECTED_KEY, root);
     setSelectedState(root);
+    setIntent(undefined);
+  };
+  const go: Go = (root, next) => {
+    select(root);
+    seq.current += 1;
+    setIntent({ ...next, root, seq: seq.current });
   };
 
   const navigate = useRef<(nav: Navigation) => void>(() => {});
@@ -81,9 +93,7 @@ export default function App() {
       return;
     }
     if (nav.root) {
-      select(nav.root);
-      seq.current += 1;
-      setIntent({ root: nav.root, tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined, seq: seq.current });
+      go(nav.root, { tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined });
       return;
     }
     if (nav.project) {
@@ -92,7 +102,6 @@ export default function App() {
       setCloning(true);
     }
   };
-  const ready = repos.isSuccess;
   useEffect(() => {
     if (!ready) return;
     const take = () =>
@@ -174,6 +183,7 @@ export default function App() {
               activity={activity.data?.find((a) => a.root === current.root)}
               intent={intent?.root === current.root ? intent : undefined}
               leading={showSidebar}
+              onSearch={() => setPalette("all")}
             />
           ) : (
             <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} leading={showSidebar} />
@@ -196,6 +206,18 @@ export default function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} notify={notify} />}
+      {palette && (
+        <CommandPalette
+          repos={list}
+          current={current}
+          initialMode={palette}
+          onClose={() => setPalette(null)}
+          onGo={go}
+          onSettings={() => setSettingsOpen(true)}
+          onShortcuts={() => setShortcutsOpen(true)}
+        />
+      )}
+      {shortcutsOpen && <ShortcutsSheet onClose={() => setShortcutsOpen(false)} />}
       {toast && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
     </div>
   );

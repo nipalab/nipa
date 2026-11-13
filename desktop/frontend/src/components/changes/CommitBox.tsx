@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpFromLine, ChevronDown, ChevronRight, Loader2, Lock, Sparkles, X } from "lucide-react";
 import type { Draft, PushChecks } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { useDraft } from "@/hooks/useGenerate";
 import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
+import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
 
 export type LockIssue = { message: string; action?: { label: string; onClick: () => void; busy?: boolean } };
 
@@ -21,10 +22,15 @@ type CommitBoxProps = {
   onPush: (message: string) => void;
   onCancel: () => void;
   onGenerate?: () => Promise<Draft>;
+  focus?: number;
 };
 
-export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel, onGenerate }: CommitBoxProps) {
+export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel, onGenerate, focus }: CommitBoxProps) {
   const draft = useDraft(message, (d) => onMessage(d.text));
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (focus) box.current?.focus();
+  }, [focus]);
   const trimmed = message.trim();
   const report = stagedCount > 0 && hasPushReport(checks) ? checks : undefined;
   const anyway = hasPushIssues(report);
@@ -38,15 +44,16 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
   return (
     <div className="shrink-0 space-y-2 border-t border-border p-3">
       <textarea
+        ref={box}
         value={message}
         onChange={(e) => onMessage(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          if (shortcut("push").chords.some((c) => chordMatches(c, e.nativeEvent))) {
             e.preventDefault();
             submit();
           }
         }}
-        placeholder="Describe your change"
+        placeholder={`Describe your change (${shortcutHint("push")} to push)`}
         aria-label="Push message"
         rows={3}
         disabled={!!op}

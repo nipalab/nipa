@@ -2,7 +2,7 @@ import type { CancellablePromise } from "@wailsio/runtime";
 import type * as Real from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/service";
 import type { FileChange, FileDiff, ImageRef, OpOutcome } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import * as d from "./data";
-import { demoFileInfo, demoFiles, demoFileView, fileImages } from "./files";
+import { demoFileInfo, demoFiles, demoFileView, demoSearch, fileImages } from "./files";
 import { demoProvenance, demoRefs } from "./insight";
 import { torusGlb } from "./media";
 
@@ -98,6 +98,7 @@ export function createService(scenario: string): typeof Real {
     Files: (_root, dir) => ok(demoFiles(dir, state)),
     FileInfo: (_root, _branch, path) => ok(demoFileInfo(String(path), state)),
     FileView: (_root, path) => ok(demoFileView(path)),
+    SearchFiles: (root, query, limit) => ok(root === d.ROOT ? demoSearch(query, limit) : { hits: [], truncated: false }),
     FileLink: (_url, path) => ok(`nipa://${d.SERVER}/acme/starfall/file/${path}`),
     RestoreRevision: (_root, _path, commitId) => ok({ commitId }),
     AssetRefs: (_root, path) => ok(demoRefs(path)),
@@ -152,7 +153,10 @@ export function createService(scenario: string): typeof Real {
     CreateTag: (_root, name, _b, _c, message) => ok({ name, commitId: "c12", message, createdAt: d.ago(0), createdBy: d.people.me.name }),
     DeleteTag: () => ok(undefined),
 
-    MergeRequests: () => ok({ items: clone(d.mergeRequests), next: 0 }),
+    MergeRequests: (_root, f) => {
+      const q = String(f?.search ?? "").toLowerCase();
+      return ok({ items: clone(d.mergeRequests).filter((m) => !q || `${m.title} ${m.description}`.toLowerCase().includes(q)), next: 0 });
+    },
     MergeRequest: (_root, n) => {
       const request = d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0];
       return ok({ request: clone(request), mergeability: { status: "mergeable", blockedBy: "", sourceCommitId: "c12", targetCommitId: "c11", mergeBaseId: "c8" }, outstanding: [] });

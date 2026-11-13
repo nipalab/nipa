@@ -32,6 +32,10 @@ const api = vi.hoisted(() => ({
   installUpdate: vi.fn(),
   restartToUpdate: vi.fn(),
   openUpdatePage: vi.fn(),
+  searchFiles: vi.fn(),
+  files: vi.fn(),
+  lockStatus: vi.fn(),
+  update: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -265,7 +269,7 @@ describe("App", () => {
     act(() => push?.({ root: "/work/game", name: "game", incoming: 3, reviewRequests: 0, error: "offline", events: [{ kind: "pushed" }, { kind: "other" }] }));
     expect(await screen.findByTitle("3 new commits to get")).toBeInTheDocument();
     expect(screen.getByLabelText("Server unreachable: offline")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "3 new commits on main");
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "3 new commits on main (Ctrl+Shift+U)");
     act(() => push?.({ root: "/work/game", name: "game", incoming: 120, reviewRequests: 1, error: "", events: [] }));
     expect(await screen.findByTitle("100+ new commits to get")).toBeInTheDocument();
     expect(screen.getByTitle("1 merge request waiting for your review")).toBeInTheDocument();
@@ -309,6 +313,59 @@ describe("App", () => {
     api.takeNavigation.mockRejectedValueOnce(new Error("gone"));
     act(() => fire?.());
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("opens the palette with Ctrl+K and jumps to a file in another clone", async () => {
+    api.searchFiles.mockImplementation(async (root: string) => ({ hits: root === tools.root ? [{ path: "bin/pack.sh", name: "pack.sh", size: 1, binary: false, kind: "text" }] : [], truncated: false }));
+    api.files.mockResolvedValue({ dir: "", entries: [] });
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "dev", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    await userEvent.keyboard("{Control>}k{/Control}");
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByRole("combobox"), "pack");
+    await userEvent.click(await within(palette).findByRole("option", { name: /pack\.sh/ }));
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "tools" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Files/ })).toHaveAttribute("aria-selected", "true");
+    expect(localStorage.getItem("nipa.selectedRepo")).toBe("/work/tools");
+  });
+
+  it("opens the palette from the header and runs an action only once", async () => {
+    api.update.mockResolvedValue({ branch: "main" });
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+    const nav = screen.getByRole("navigation", { name: "Repositories" });
+    await userEvent.click(within(nav).getByRole("button", { name: /tools/ }));
+    await userEvent.click(within(nav).getByRole("button", { name: /game/ }));
+    await screen.findByRole("heading", { name: "game" });
+    expect(api.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the shortcut sheet with ? and opens settings with Ctrl+,", async () => {
+    api.settings.mockReturnValue(new Promise(() => {}));
+    api.uploadWorkers.mockResolvedValue(0);
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    await userEvent.keyboard("?");
+    const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(within(sheet).getByRole("region", { name: "Changes" })).toHaveTextContent("Next file");
+    await userEvent.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+
+    await userEvent.keyboard("{Control>}k{/Control}");
+    await userEvent.type(screen.getByRole("combobox", { name: "Command" }), "keyboard");
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await userEvent.keyboard("{Control>},{/Control}");
     expect(await screen.findByRole("dialog", { name: "Settings" })).toBeInTheDocument();
   });
 });

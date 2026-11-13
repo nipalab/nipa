@@ -1,7 +1,8 @@
-import type { FileDetails, FileDiff, FileEntry, FileListing, ImageInfo } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
+import type { FileDetails, FileDiff, FileEntry, FileListing, FileSearch, ImageInfo } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import { BALANCE, commits, HERO, ICON, ITEMS, MODEL, MOVE, MUSIC, ROCK, SCENE, type DemoChanges } from "./data";
 import { demoMaterials } from "./insight";
 import { textureSvg } from "./media";
+import { rank } from "@/lib/fuzzy";
 
 const kinds: [RegExp, string][] = [
   [/\.(png|tga|psd|jpg|exr)$/, "image"],
@@ -150,4 +151,13 @@ export function demoFileView(path: string): FileDiff | null {
     view.hunks = [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: lines.length, lines: lines.map((t, i) => ({ kind: "context", old: 0, new: i + 1, text: t })) }];
   }
   return view;
+}
+
+// demoSearch ranks the demo project's tracked files like the daemon does.
+export function demoSearch(query: string, limit: number): FileSearch {
+  const hits = rank(tracked, query, ([p]) => p, limit || 50).map(({ item: [path, size] }) => {
+    const kind = kindOf(path);
+    return { path, name: path.slice(path.lastIndexOf("/") + 1), size, binary: kind !== "text" && kind !== "table", kind };
+  });
+  return { hits, truncated: false };
 }
