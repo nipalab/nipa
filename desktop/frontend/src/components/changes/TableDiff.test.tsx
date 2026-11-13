@@ -143,7 +143,7 @@ describe("TableDiff", () => {
 
     screen.getByRole("separator", { name: "Resize key column" }).focus();
     await userEvent.keyboard("{ArrowLeft}");
-    expect(screen.getByRole("columnheader", { name: "key" }).parentElement).toHaveStyle({ width: "144px" });
+    expect(screen.getByRole("columnheader", { name: /^key/ }).parentElement).toHaveStyle({ width: "144px" });
     expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:data/a.csv")!)).toEqual({ en: 240, key: 144 });
   });
 
@@ -170,8 +170,9 @@ describe("table filters", () => {
     renderWithProviders(<TableCompareView compare={compare()} />);
     const table = screen.getByRole("table", { name: "Table changes" });
     const header = within(table).getAllByRole("row")[0];
-    expect(within(header).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key", "en(was english)1", "de", "fr"]);
-    expect(screen.getByTitle("1 changed cell in this column")).toBeInTheDocument();
+    expect(within(header).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key2", "en(was english)3", "de1", "fr1"]);
+    expect(screen.getByTitle("3 changed cells in this column")).toBeInTheDocument();
+    expect(screen.getAllByTitle("1 changed cell in this column")).toHaveLength(2);
 
     await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "hello");
     expect(within(table).getAllByRole("row").slice(1).map((r) => r.getAttribute("data-status"))).toEqual(["changed"]);
@@ -184,7 +185,7 @@ describe("table filters", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(2);
 
     await userEvent.click(screen.getByRole("checkbox", { name: "Changed columns only" }));
-    expect(within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key", "en(was english)1", "de", "fr"]);
+    expect(within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key2", "en(was english)3", "de1", "fr1"]);
   });
 
   it("keeps the key column first and sticky, and drops unchanged columns", async () => {
@@ -197,14 +198,14 @@ describe("table filters", () => {
     renderWithProviders(<TableCompareView compare={compare({ columns, rows, keyColumn: 1 })} />);
     const table = screen.getByRole("table", { name: "Table changes" });
     const names = () => within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent);
-    expect(names()).toEqual(["Row", "id", "note", "hp1"]);
-    expect(screen.getByRole("columnheader", { name: "id" }).parentElement).toHaveClass("sticky");
+    expect(names()).toEqual(["Row", "id1", "note", "hp2"]);
+    expect(screen.getByRole("columnheader", { name: /^id/ }).parentElement).toHaveClass("sticky");
     const cells = within(within(table).getAllByRole("row")[2]).getAllByRole("cell");
     expect(cells[0]).toHaveTextContent("2");
     expect(cells[0]).toHaveClass("sticky");
     expect(cells[1]).not.toHaveClass("sticky");
     await userEvent.click(screen.getByRole("checkbox", { name: "Changed columns only" }));
-    expect(names()).toEqual(["Row", "id", "hp1"]);
+    expect(names()).toEqual(["Row", "id1", "hp2"]);
   });
 
   it("jumps between changes", async () => {

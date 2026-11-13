@@ -16,12 +16,12 @@ const rows = [
 
 describe("table helpers", () => {
   it("counts changed cells per column", () => {
-    expect(columnChanges([col("id"), col("name"), col("damage")], rows)).toEqual([0, 1, 1]);
+    expect(columnChanges([col("id"), col("name"), col("damage")], rows)).toEqual([1, 2, 2]);
   });
 
   it("puts the key column first and hides unchanged columns on request", () => {
     const columns = [col("name"), col("id"), col("damage"), col("added", { old: -1 }), col("gone", { new: -1 }), col("label", { oldName: "title" }), col("fresh", { oldName: "" })];
-    const counts = changedColumns(columns, [row({ status: "changed", cells: ["a", "1", "9", "", "", "", ""], changed: [2] })]);
+    const counts = changedColumns(columns, columnChanges(columns, [row({ status: "changed", cells: ["a", "1", "9", "", "", "", ""], changed: [2] })]));
     expect(counts).toEqual([false, false, true, true, true, true, false]);
     expect(visibleColumns(columns, counts, 1, false)).toEqual([1, 0, 2, 3, 4, 5, 6]);
     expect(visibleColumns(columns, counts, 1, true)).toEqual([1, 2, 3, 4, 5]);
@@ -31,9 +31,9 @@ describe("table helpers", () => {
   it("treats values of added and removed rows as changed columns", () => {
     const columns = [col("id"), col("name"), col("note"), col("hp")];
     const appended = [row({ cells: ["1", "a", "", "3"] }), row({ status: "added", cells: ["2", "b", "", "4", "extra"] }), row({ status: "removed", cells: ["3", "", "", "5"] })];
-    expect(changedColumns(columns, appended)).toEqual([true, true, false, true]);
-    expect(visibleColumns(columns, changedColumns(columns, appended), -1, true)).toEqual([0, 1, 3]);
-    expect(changedColumns(columns, [row({ status: "added", cells: null as unknown as string[] })])).toEqual([false, false, false, false]);
+    expect(columnChanges(columns, appended)).toEqual([2, 1, 0, 2]);
+    expect(visibleColumns(columns, changedColumns(columns, columnChanges(columns, appended)), -1, true)).toEqual([0, 1, 3]);
+    expect(columnChanges(columns, [row({ status: "added", cells: null as unknown as string[] })])).toEqual([0, 0, 0, 0]);
   });
 
   it("filters by change, text and column", () => {

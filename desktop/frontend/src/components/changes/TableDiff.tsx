@@ -81,7 +81,7 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
   const [onlyChangedColumns, setOnlyChangedColumns] = useState(false);
   const [cursor, setCursor] = useState(-1);
   const counts = useMemo(() => columnChanges(columns, all), [columns, all]);
-  const touched = useMemo(() => changedColumns(columns, all), [columns, all]);
+  const touched = useMemo(() => changedColumns(columns, counts), [columns, counts]);
   const order = useMemo(() => visibleColumns(columns, touched, compare.keyColumn, onlyChangedColumns), [columns, touched, compare.keyColumn, onlyChangedColumns]);
   const filterColumn = column < columns.length ? column : -1;
   const rows = useMemo(() => filterRows(all, { onlyChanges, text, column: filterColumn }), [all, onlyChanges, text, filterColumn]);

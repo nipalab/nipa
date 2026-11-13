@@ -2,21 +2,22 @@ import type { TableColumn, TableRow } from "@/api/desktop";
 
 export const isChange = (r: TableRow) => r.status !== "same" || !!r.moved;
 
+const changesRow = (r: TableRow) => r.status === "added" || r.status === "removed";
+
+// columnChanges counts per column the changed cells of modified rows and the
+// non-empty cells of added and removed rows.
 export function columnChanges(columns: TableColumn[], rows: TableRow[]): number[] {
   const counts = columns.map(() => 0);
-  for (const r of rows) for (const i of r.changed ?? []) if (i < counts.length) counts[i]++;
+  for (const r of rows) {
+    for (const i of r.changed ?? []) if (i < counts.length) counts[i]++;
+    if (changesRow(r)) (r.cells ?? []).forEach((v, i) => v !== "" && i < counts.length && counts[i]++);
+  }
   return counts;
 }
 
-// changedColumns flags columns with a changed cell, a value in an added or
-// removed row, or a header change.
-export function changedColumns(columns: TableColumn[], rows: TableRow[]): boolean[] {
-  const out = columns.map((c) => c.old < 0 || c.new < 0 || (c.oldName !== "" && c.oldName !== c.name));
-  for (const r of rows) {
-    for (const i of r.changed ?? []) if (i < out.length) out[i] = true;
-    if (r.status === "added" || r.status === "removed") (r.cells ?? []).forEach((v, i) => v !== "" && i < out.length && (out[i] = true));
-  }
-  return out;
+// changedColumns flags columns with a counted change or a header change.
+export function changedColumns(columns: TableColumn[], counts: number[]): boolean[] {
+  return columns.map((c, i) => counts[i] > 0 || c.old < 0 || c.new < 0 || (c.oldName !== "" && c.oldName !== c.name));
 }
 
 // visibleColumns orders the shown column indexes with the key column first.
