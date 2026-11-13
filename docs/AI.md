@@ -139,7 +139,7 @@ Revision tokens everywhere are branch names, tag names, base36 commit ids or
 
 | Tool | Inputs | Returns |
 | --- | --- | --- |
-| `nipa_asset_diff` | `path`, `old_path` (renames), `old` (default `snapshot`), `new` (default `working`), `include_images`, `max_rows`, `max_changes` | one `Result`: `kind`, `status`, sizes and a per-kind block (`scene`, `image`, `model`, `audio`, `table`, `text`) or `error` |
+| `nipa_asset_diff` | `path`, `old_path` (renames), `old` (default `snapshot`), `new` (default `working`), `include_images`, `max_rows`, `max_changes`, `sheet` (`.xlsx`; default the first changed sheet) | one `Result`: `kind`, `status`, sizes and a per-kind block (`scene`, `image`, `model`, `audio`, `table`, `text`) or `error` |
 | `nipa_describe_changes` | same as `nipa_diff` (`revisions`, `paths`, `staged`, `merge_base`, `no_cache`) plus `max_files` | `old`, `new`, one `files[]` entry per change (`path`, `status`, `kind`, `headline`), `omitted` |
 | `nipa_mr_describe_changes` | `number`, `max_files` | `base`/`head` (`revision`, `kind`: which revision stood in for the merge base), `files`, `omitted` |
 | `nipa_asset_check` | same as `nipa_describe_changes` without `max_files` | `.nipaassets.yml` report: `config`, `old`, `new`, `violations`, `checked`, `skipped` |
@@ -164,7 +164,7 @@ the caller's read filter applies.
   textures, joints, animations and bounds with deltas.
 - **Audio** (WAV, AIFF, FLAC, Vorbis, MP3): format, duration, peak, loudness
   (LUFS) and clipped samples with deltas.
-- **Tables** (CSV/TSV): changed rows and cells.
+- **Tables** (CSV/TSV, `.xlsx`): changed rows and cells; workbooks add `sheet` and `sheets[]` (status and counts per sheet) and a per-sheet headline.
 - **Text and other files**: line counts or size/hash deltas.
 
 Files over the per-kind limit (16 MiB scenes and tables, 256 MiB images,

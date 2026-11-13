@@ -17,6 +17,7 @@ export const screens: Screen[] = [
   { name: "changes-model", scenario: "default", steps: [{ text: "ring_of_dawn.glb" }], settle: 3500 },
   { name: "changes-audio", scenario: "default", steps: [{ text: "theme_main.wav" }], settle: 1500 },
   { name: "changes-table", scenario: "default", steps: [{ text: "items.csv" }], settle: 1000 },
+  { name: "changes-workbook", scenario: "default", steps: [{ text: "balance.xlsx" }], settle: 1000 },
   { name: "changes-text", scenario: "default", steps: [{ text: "Movement.cs" }], settle: 1000 },
   {
     name: "files",

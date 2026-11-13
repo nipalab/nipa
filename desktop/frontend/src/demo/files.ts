@@ -1,5 +1,5 @@
 import type { FileDetails, FileDiff, FileEntry, FileListing, ImageInfo } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
-import { commits, HERO, ICON, ITEMS, MODEL, MOVE, MUSIC, ROCK, SCENE, type DemoChanges } from "./data";
+import { BALANCE, commits, HERO, ICON, ITEMS, MODEL, MOVE, MUSIC, ROCK, SCENE, type DemoChanges } from "./data";
 import { demoMaterials } from "./insight";
 import { textureSvg } from "./media";
 
@@ -7,7 +7,7 @@ const kinds: [RegExp, string][] = [
   [/\.(png|tga|psd|jpg|exr)$/, "image"],
   [/\.(glb|gltf|fbx|obj|blend)$/, "model"],
   [/\.(wav|ogg|mp3)$/, "audio"],
-  [/\.(csv|tsv)$/, "table"],
+  [/\.(csv|tsv|xlsx)$/, "table"],
   [/\.(unity|prefab|asset|mat)$/, "scene"],
 ];
 
@@ -30,6 +30,7 @@ const tracked: [string, number][] = [
   ["Assets/Characters/Goblin/goblin_albedo.png", 2_204_810],
   ["Assets/Characters/Goblin/goblin.fbx", 6_720_400],
   [ITEMS, 4_820],
+  [BALANCE, 51_904],
   ["Assets/Data/enemies.csv", 2_210],
   [SCENE, 88_104],
   ["Assets/Levels/Desert.unity", 120_380],
@@ -94,7 +95,7 @@ const entry = (path: string, size: number, status: string, staged: boolean, isTr
     path,
     isDir: false,
     size,
-    binary: kind !== "text" && kind !== "table",
+    binary: kind !== "text" && (kind !== "table" || path.endsWith(".xlsx")),
     kind,
     status,
     staged,

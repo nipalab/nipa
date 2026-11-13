@@ -95,6 +95,7 @@ export type {
     TableColumn,
     TableCompare,
     TableRow,
+    TableSheet,
     Tag,
     TeamEvent,
     Thread,

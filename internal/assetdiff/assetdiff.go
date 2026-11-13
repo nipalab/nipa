@@ -49,9 +49,12 @@ type Ref struct {
 type Loader func(ctx context.Context, ref Ref, limit int64) ([]byte, error)
 
 type Options struct {
-	Images     bool
-	ThumbSize  int
-	MaxRows    int
+	Images    bool
+	ThumbSize int
+	MaxRows   int
+	// Sheet selects the workbook sheet whose rows are returned; empty picks
+	// the first changed one.
+	Sheet      string
 	MaxChanges int
 	MaxProps   int
 	MaxFiles   int

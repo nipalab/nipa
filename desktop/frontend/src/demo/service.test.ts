@@ -50,7 +50,14 @@ describe("demo service", () => {
     expect(await s.ImageDiff(ROOT, null, null, { maxSize: 1, level: 0, face: 0 })).toBeNull();
     expect((await s.ModelDiff(ROOT, ref("a.glb"), null))!.new).toBeNull();
     expect((await s.AudioDiff(ROOT, null, null))!.new!.peaks).toHaveLength(2);
-    expect((await s.TableDiff(ROOT, null, null))!.rowsChanged).toBe(2);
+    expect((await s.TableDiff(ROOT, null, null, ""))!.rowsChanged).toBe(2);
+    const book = (await s.TableDiff(ROOT, null, ref("Assets/Data/balance.xlsx"), ""))!;
+    expect(book.sheet).toBe("Weapons");
+    expect(book.cellsChanged).toBe(6);
+    expect(book.sheets!.map((x) => x.status)).toEqual(["changed", "changed", "added", "same", "removed"]);
+    const armor = (await s.TableDiff(ROOT, null, ref("Assets/Data/balance.xlsx"), "Armor"))!;
+    expect(armor.rowsRemoved).toBe(1);
+    expect((await s.TableDiff(ROOT, ref("a.xlsx"), null, "Nope"))!.sheet).toBe("Weapons");
   });
 
   it("browses the project files", async () => {

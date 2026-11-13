@@ -1010,8 +1010,9 @@ export interface TableColumn {
 }
 
 /**
- * TableCompare is a cell-level diff of a CSV/TSV file. Error is set, and the
- * rows are empty, when a side cannot be read as a table.
+ * TableCompare is a cell-level diff of a CSV/TSV file or of one sheet of an
+ * .xlsx workbook (Sheet, with every sheet listed in Sheets). Error is set,
+ * and the rows are empty, when a side cannot be read as a table.
  */
 export interface TableCompare {
     "columns": TableColumn[] | null;
@@ -1025,6 +1026,8 @@ export interface TableCompare {
     "cellsChanged": number;
     "columnsAdded": number;
     "columnsRemoved": number;
+    "sheet"?: string;
+    "sheets": TableSheet[] | null;
     "error"?: string;
 }
 
@@ -1047,6 +1050,19 @@ export interface TableRow {
      */
     "changed": number[] | null;
     "moved"?: boolean;
+}
+
+/**
+ * TableSheet is one workbook sheet: Status is same, added, removed or
+ * changed.
+ */
+export interface TableSheet {
+    "name": string;
+    "status": string;
+    "rowsAdded": number;
+    "rowsRemoved": number;
+    "rowsChanged": number;
+    "cellsChanged": number;
 }
 
 export interface Tag {

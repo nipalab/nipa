@@ -150,7 +150,16 @@ Sonar never compile it.
   first shared column when its values are unique (an id or localization
   key), otherwise by content. Changed cells show old and new value, added
   and removed rows/columns are tinted, moved rows marked; long tables start
-  on "Only changed rows". A switch shows the plain text diff instead.
+  on "Only changed rows". A filter bar narrows rows by text (new and old
+  values, all columns or one picked column), hides columns without changes
+  ("Changed columns only"), and steps through changes (previous/next with
+  "n of m changes", wrapping). The row gutter, the header and the key column
+  (moved first) stay put while scrolling; each header shows its changed-cell
+  count (`lib/table.ts`). `.xlsx` workbooks go through `preview.ParseSheets`:
+  the service returns the selected sheet (`TableDiff`'s `sheet` argument,
+  default and fallback the first changed sheet) plus `sheets[]` with a status
+  and counts per sheet, rendered as sheet tabs with a changed marker. A
+  switch shows the plain text diff instead.
 - Scene viewer (`SceneDiff.tsx`): `SceneDiff` in the service parses both
   sides of a Unity Force Text scene, prefab or asset (`.unity .prefab .asset
   .mat .anim .controller .overrideController .physicMaterial`, 16 MiB each)
@@ -434,7 +443,7 @@ Linux/macOS/Windows build matrix with a bindings freshness check).
 | v1 | Godot text resources (`.tscn .tres`, `project.godot`, `.import`) | same structural scene diff: node tree, properties, connections, `ext_resource` dependencies |
 | v1 | glTF/GLB OBJ FBX USDZ | 3D: synced orbit cameras, wireframe, stats diff |
 | v1 | WAV OGG FLAC MP3 | waveform + spectrogram, synced A/B playback |
-| v1 | CSV/TSV | cell-level table diff |
+| v1 | CSV/TSV, `.xlsx` | cell-level table diff, filters, sheet tabs |
 | v1 | Unity `.meta` | lint: missing/orphan sidecars, GUID change |
 | v2 | video, fonts, `.blend`/`.uasset` thumbnails | playback, glyph sheet, embedded thumbnail |
 | always | anything else | size/hash stats + external diff tool |
@@ -499,6 +508,17 @@ Pure package (no client imports), shared by the daemon and later the server.
   `MaxTableCells`), and `DiffTables(old, new)` aligns columns and rows with
   a longest-increasing-subsequence match on unique keys (content rows get an
   occurrence number), so it stays O(n log n) on large localization tables.
+- `ParseWorkbook(data)` reads `.xlsx` with `archive/zip` + `encoding/xml`:
+  sheets from `xl/workbook.xml` resolved through
+  `xl/_rels/workbook.xml.rels` (chart sheets skipped, `sheetN.xml` fallback),
+  shared strings (rich runs joined, phonetic runs dropped), inline strings,
+  booleans as `TRUE`/`FALSE`, errors and numbers as their cached values; no
+  formula evaluation or number formats. Row 1 is the header and record
+  numbers equal Excel row numbers. Bounded by `MaxWorkbookSheets`,
+  `MaxWorkbookXMLBytes` (decompressed total), `MaxWorkbookRows`/
+  `MaxWorkbookColumns`, `MaxTableCells` across sheets and 10000 zip parts;
+  bomb-tested and fuzzed. `ParseSheets` dispatches by extension (CSV/TSV =
+  one unnamed sheet) and `DiffSheets` pairs sheets by name.
 - `ParseUnityYAML(data, resolve)` splits a Unity text file on its
   `--- !u!<class> &<fileID>[ stripped]` headers, decodes each document with
   `go.yaml.in/yaml/v3` and returns a `Scene`: object paths from the
@@ -629,3 +649,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 19. Storage card (disk usage, clean up, sparse hint) in the Details tab. **(done)**
 20. Files tab: project browser with thumbnails, file versions and "Get this version" (daemon `ListFiles`, `RestoreRevision`). **(done)**
 21. Where used and provenance: references and origin panels in the Files detail and the Changes screen, "Add record…", referrer warnings on deletion (daemon `AssetRefs`, `Provenance`, `SetProvenance`). **(done)**
+22. Table filters (text, column, changed columns, jump to change, sticky key column, per-column counts) and `.xlsx` diff with sheet tabs. **(done)**

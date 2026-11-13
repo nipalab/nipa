@@ -82,7 +82,7 @@ export function createService(scenario: string): typeof Real {
         new: next ? modelSide(next.path, 0.95, 0.34, 4800) : null,
       }),
     AudioDiff: () => ok({ old: clone(d.audio.old), new: clone(d.audio.new) }),
-    TableDiff: () => ok(clone(d.table)),
+    TableDiff: (_root, old, next, sheet) => ok(/\.xlsx$/i.test((next ?? old)?.path ?? "") ? d.workbook(sheet) : clone(d.table)),
     SceneDiff: () => ok(clone(d.scene)),
     MetaWarnings: () => ok([{ path: d.ICON, kind: "missing", related: `${d.ICON}.meta`, message: "Missing .meta file: Unity will generate a new GUID" }]),
 

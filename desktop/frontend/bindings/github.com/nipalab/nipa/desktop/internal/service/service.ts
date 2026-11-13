@@ -698,10 +698,12 @@ export function SwitchBranch(root: string, branch: string): $CancellablePromise<
 }
 
 /**
- * TableDiff compares two versions of a CSV/TSV file cell by cell.
+ * TableDiff compares two versions of a CSV/TSV file cell by cell. For an
+ * .xlsx workbook it compares the named sheet, or the first changed one when
+ * sheet is empty or no longer exists.
  */
-export function TableDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.TableCompare | null> {
-    return $Call.ByID(1291294083, root, old, $new);
+export function TableDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, sheet: string): $CancellablePromise<$models.TableCompare | null> {
+    return $Call.ByID(1291294083, root, old, $new, sheet);
 }
 
 /**

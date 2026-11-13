@@ -62,7 +62,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `Preview` stream, 3D model compare via `ModelDiff` over `ReadBlob` +
   `preview.DecodeModel` rendered with three.js, audio compare via `AudioDiff`
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
-  WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
+  WebAudio), CSV/TSV and `.xlsx` cell diffs via `TableDiff`
+  (`preview.ParseSheets` + `DiffSheets`/`DiffTables`, `sheet` selector and
+  `sheets[]` for workbook tabs; `TableDiff.tsx` filters rows by text/column,
+  "Changed columns only", previous/next change, sticky key column,
+  per-column changed counts through `lib/table.ts`),
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
   (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
   per-clone `.meta` index dropped on `.meta` change notices; Godot
@@ -191,7 +195,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
   `DecodeAudio` WAV/AIFF/FLAC/Vorbis/MP3 analysis (peaks, spectrogram,
   BS.1770 loudness, playback WAV); `ParseTable`/`DiffTables` CSV/TSV cell
-  diffs; `ParseUnityYAML` (Force Text Unity files → `Scene` objects with
+  diffs; `ParseWorkbook` `.xlsx` (zip + XML, cached values only, shared/inline
+  strings, sheet, part, cell and decompressed-size caps, fuzzed) behind
+  `ParseSheets`/`DiffSheets` (sheets paired by name); `ParseUnityYAML` (Force Text Unity files → `Scene` objects with
   flattened props, GUIDs through a caller-supplied resolver) and
   `DiffScenes` (ID-matched object/prop/dependency changes, `KindScene`);
   `ParseGodotResource` (Godot text resources over `internal/godotres`,
@@ -206,7 +212,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`ErrMissing` = added/removed side, `ErrTooLarge` per-kind limits) and
   returns a JSON-friendly `Result` per kind (scene changes capped by
   `MaxChanges`, image stats + optional PNG thumbnails, model/audio stats and
-  deltas, table rows capped by `MaxRows`, text line counts, sizes otherwise);
+  deltas, table rows capped by `MaxRows` (workbooks: `Options.Sheet`/`PickSheet`
+  pick the sheet, `sheets[]` lists every sheet's status and counts), text line counts, sizes otherwise);
   `Summarize` turns items into sorted one-line `Headline`s capped by
   `MaxFiles`. It also owns `SceneEngine`/`UnityProject`/`BuildGUIDIndex`/
   `ReadGUID`/`WorkingGUIDs` (the desktop keeps its cached index) and

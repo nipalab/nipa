@@ -442,7 +442,7 @@ func TestCompareTable(t *testing.T) {
 
 func TestTableLine(t *testing.T) {
 	assert.Equal(t, "no cell changes", tableLine(&TableResult{}))
-	assert.Equal(t, "2 rows moved, -1 column", tableLine(&TableResult{RowsMoved: 2, ColumnsRemoved: 1}))
+	assert.Equal(t, "2 rows moved, -1 column", tableLine(&TableResult{TableCounts: TableCounts{RowsMoved: 2, ColumnsRemoved: 1}}))
 	r, err := compareTable([2]side{
 		{ref: oldRef("r.csv"), data: []byte("id,name\n1,a\n"), present: true},
 		{ref: newRef("r.csv"), data: []byte("key,title\n1,a\n"), present: true},
