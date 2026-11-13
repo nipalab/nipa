@@ -84,6 +84,7 @@ import type {
   TableColumn,
   TableCompare,
   TableRow,
+  TableSheet,
   IgnoreRules,
   Navigation,
   RepoActivity as RawRepoActivity,
@@ -152,7 +153,7 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
   newlyUnused: string[];
   warnings: string[];
 };
-export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
+export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow, TableSheet };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
 export type DiskUsage = Omit<RawDiskUsage, "pins" | "sparse"> & { pins: string[]; sparse: string[] };
@@ -204,7 +205,7 @@ export const desktop = {
     Service.ImageDiff(root, old, next, { maxSize: 2048, level: 0, face: 0, ...opts }),
   modelDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<ModelCompare | null> => Service.ModelDiff(root, old, next),
   audioDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<AudioCompare | null> => Service.AudioDiff(root, old, next),
-  tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next),
+  tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null, sheet = ""): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next, sheet),
   sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
   pushChecks: async (root: string): Promise<PushChecks> => {

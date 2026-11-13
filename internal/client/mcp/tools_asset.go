@@ -127,6 +127,7 @@ type assetDiffInput struct {
 	IncludeImages bool   `json:"include_images,omitempty" jsonschema:"Attach old/new image thumbnails as PNG image content"`
 	MaxRows       int    `json:"max_rows,omitempty" jsonschema:"Maximum changed table rows (default 200, at most 2000)"`
 	MaxChanges    int    `json:"max_changes,omitempty" jsonschema:"Maximum scene object changes (default 500, at most 5000)"`
+	Sheet         string `json:"sheet,omitempty" jsonschema:"Workbook sheet whose rows are returned (.xlsx; default the first changed sheet)"`
 }
 
 func (s *server) assetDiff(ctx context.Context, _ *mcp.CallToolRequest, in assetDiffInput) (*mcp.CallToolResult, *assetdiff.Result, error) {
@@ -154,6 +155,7 @@ func (s *server) assetDiff(ctx context.Context, _ *mcp.CallToolRequest, in asset
 		Images:     in.IncludeImages,
 		MaxRows:    clampLimit(in.MaxRows, defaultAssetRows, maxAssetRows),
 		MaxChanges: clampLimit(in.MaxChanges, defaultAssetChanges, maxAssetChanges),
+		Sheet:      strings.TrimSpace(in.Sheet),
 		GUIDs:      assetdiff.WorkingGUIDs(root),
 	})
 	if errors.Is(err, assetdiff.ErrMissing) {

@@ -39,7 +39,7 @@ var kindByExtension = map[string]Kind{
 
 	".ttf": KindFont, ".otf": KindFont, ".woff": KindFont, ".woff2": KindFont,
 
-	".csv": KindTable, ".tsv": KindTable,
+	".csv": KindTable, ".tsv": KindTable, ".xlsx": KindTable,
 
 	".unity": KindScene, ".prefab": KindScene, ".asset": KindScene, ".mat": KindScene,
 	".anim": KindScene, ".controller": KindScene, ".overridecontroller": KindScene,

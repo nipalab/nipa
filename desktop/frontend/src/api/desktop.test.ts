@@ -174,7 +174,7 @@ describe("desktop api", () => {
     expect(await desktop.metaWarnings("/a")).toEqual([]);
     expect(await desktop.metaWarnings("/a")).toEqual([{ path: "Assets/a" }]);
     expect(service.AudioDiff).toHaveBeenCalledWith("/a", ref, null);
-    expect(service.TableDiff).toHaveBeenCalledWith("/a", null, ref);
+    expect(service.TableDiff).toHaveBeenCalledWith("/a", null, ref, "");
   });
 
   it("loads push checks with empty lists for nulls", async () => {

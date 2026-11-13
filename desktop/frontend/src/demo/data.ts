@@ -50,6 +50,7 @@ export const HERO = "Assets/Characters/Hero/hero_albedo.png";
 export const MODEL = "Assets/Characters/Hero/ring_of_dawn.glb";
 export const MUSIC = "Assets/Audio/Music/theme_main.wav";
 export const ITEMS = "Assets/Data/items.csv";
+export const BALANCE = "Assets/Data/balance.xlsx";
 export const MOVE = "Source/Player/Movement.cs";
 export const ICON = "Assets/UI/icon_sword.png";
 export const SCENE = "Assets/Levels/Forest.unity";
@@ -82,6 +83,7 @@ export const changes = (scenario: string): DemoChanges => {
     unstaged: [
       { path: MUSIC, status: "modified", kind: "audio" },
       { path: ITEMS, status: "modified", kind: "table" },
+      { path: BALANCE, status: "modified", kind: "table" },
       { path: MOVE, status: "modified", kind: "text" },
       { path: SCENE, status: "modified", kind: "scene" },
       { path: ICON, status: "untracked", kind: "image" },
@@ -159,6 +161,7 @@ export const diffs: Record<string, FileDiff> = {
   [MODEL]: diffOf(MODEL, "model", "modified", 812_400, 958_660, null),
   [MUSIC]: diffOf(MUSIC, "audio", "modified", 28_450_000, 29_804_000, null),
   [ITEMS]: diffOf(ITEMS, "table", "modified", 4_820, 5_330, []),
+  [BALANCE]: diffOf(BALANCE, "table", "modified", 48_210, 51_904, null, { old: side(BALANCE, 48_210, true), new: side(BALANCE, 51_904, true) }),
   [MOVE]: diffOf(MOVE, "text", "modified", 1_204, 1_618, moveHunks),
   [SCENE]: diffOf(SCENE, "scene", "modified", 88_104, 88_130, sceneHunks),
   [ICON]: diffOf(ICON, "image", "untracked", 0, 18_220, null, { untracked: true }),
@@ -242,6 +245,80 @@ export const table: TableCompare = {
   cellsChanged: 5,
   columnsAdded: 1,
   columnsRemoved: 0,
+  sheets: [],
+};
+
+const sheetRow = (status: string, oldLine: number, newLine: number, cells: string[], old: string[] | null = null) => ({
+  status,
+  oldLine,
+  newLine,
+  cells,
+  old,
+  changed: old ? cells.flatMap((c, i) => (c === old[i] ? [] : [i])) : null,
+});
+
+const balanceSheets: Record<string, Omit<TableCompare, "sheet" | "sheets" | "delimiter" | "rowsAdded" | "rowsRemoved" | "rowsChanged" | "rowsMoved" | "cellsChanged" | "columnsAdded" | "columnsRemoved">> = {
+  Weapons: {
+    columns: ["id", "name", "tier", "damage", "speed", "crit", "cost"].map((name, i) => ({ name, oldName: name, old: i, new: i })),
+    keyColumn: 0,
+    rows: [
+      sheetRow("same", 2, 2, ["W-001", "Iron Sword", "1", "12", "1.0", "0.05", "120"]),
+      sheetRow("changed", 3, 3, ["W-002", "Storm Bow", "2", "22", "0.9", "0.10", "340"], ["W-002", "Storm Bow", "2", "20", "0.8", "0.10", "340"]),
+      sheetRow("same", 4, 4, ["W-003", "Ember Staff", "2", "18", "0.7", "0.08", "360"]),
+      sheetRow("changed", 5, 5, ["W-004", "Tide Hammer", "3", "34", "0.6", "0.12", "720"], ["W-004", "Tide Hammer", "3", "30", "0.6", "0.12", "650"]),
+      sheetRow("same", 6, 6, ["W-005", "Glass Dagger", "1", "8", "1.6", "0.25", "90"]),
+      sheetRow("added", 0, 7, ["W-006", "Lantern Pike", "3", "28", "0.8", "0.06", "680"]),
+      sheetRow("same", 7, 8, ["W-007", "Bone Axe", "2", "24", "0.7", "0.07", "300"]),
+      sheetRow("changed", 8, 9, ["W-008", "Sunsteel Blade", "4", "41", "1.0", "0.15", "1250"], ["W-008", "Sunsteel Blade", "4", "45", "1.0", "0.18", "1250"]),
+    ],
+  },
+  Armor: {
+    columns: ["id", "name", "slot", "armor", "weight"].map((name, i) => ({ name, oldName: name, old: i, new: i })),
+    keyColumn: 0,
+    rows: [
+      sheetRow("changed", 2, 2, ["A-001", "Leather Cap", "head", "4", "0.8"], ["A-001", "Leather Cap", "head", "3", "0.8"]),
+      sheetRow("same", 3, 3, ["A-002", "Chain Vest", "chest", "12", "6.5"]),
+      sheetRow("removed", 4, 0, ["A-003", "Debug Plate", "chest", "999", "0"]),
+    ],
+  },
+  "Loot tables": {
+    columns: ["table", "item", "weight"].map((name, i) => ({ name, oldName: "", old: -1, new: i })),
+    keyColumn: -1,
+    rows: [sheetRow("added", 0, 2, ["forest", "W-006", "5"]), sheetRow("added", 0, 3, ["forest", "A-001", "20"])],
+  },
+  Notes: {
+    columns: [{ name: "note", oldName: "note", old: 0, new: 0 }],
+    keyColumn: -1,
+    rows: [sheetRow("same", 2, 2, ["Balance pass for milestone 3"])],
+  },
+  Deprecated: {
+    columns: [{ name: "id", oldName: "id", old: 0, new: -1 }],
+    keyColumn: -1,
+    rows: [sheetRow("removed", 2, 0, ["W-000"])],
+  },
+};
+
+const sheetStatus: Record<string, string> = { Weapons: "changed", Armor: "changed", "Loot tables": "added", Notes: "same", Deprecated: "removed" };
+
+export const workbook = (sheet: string): TableCompare => {
+  const name = sheet in balanceSheets ? sheet : "Weapons";
+  const counts = (rows: TableCompare["rows"]) => ({
+    rowsAdded: rows!.filter((r) => r.status === "added").length,
+    rowsRemoved: rows!.filter((r) => r.status === "removed").length,
+    rowsChanged: rows!.filter((r) => r.status === "changed").length,
+    cellsChanged: rows!.reduce((n, r) => n + (r.changed?.length ?? 0), 0),
+  });
+  const cur = balanceSheets[name];
+  return {
+    ...cur,
+    ...counts(cur.rows),
+    rowsMoved: 0,
+    columnsAdded: cur.columns!.filter((c) => c.old < 0).length,
+    columnsRemoved: cur.columns!.filter((c) => c.new < 0).length,
+    delimiter: "",
+    sheet: name,
+    sheets: Object.entries(balanceSheets).map(([n, s]) => ({ name: n, status: sheetStatus[n], ...counts(s.rows) })),
+  };
 };
 
 export const scene: SceneCompare = {

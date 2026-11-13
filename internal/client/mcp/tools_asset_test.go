@@ -202,6 +202,8 @@ func TestAssetDiff_SidesAndErrors(t *testing.T) {
 
 	table := decode[assetdiff.Result](t, call(t, session, "nipa_asset_diff", map[string]any{"repo": root, "path": "data.csv", "max_rows": 1}))
 	require.NotNil(t, table.Table)
+	sheet := decode[assetdiff.Result](t, call(t, session, "nipa_asset_diff", map[string]any{"repo": root, "path": "data.csv", "sheet": " Items "}))
+	require.Equal(t, `no sheet named "Items"`, sheet.Error)
 
 	renamed := decode[assetdiff.Result](t, call(t, session, "nipa_asset_diff", map[string]any{"repo": root, "path": "new.txt", "old_path": "old.txt"}))
 	require.Equal(t, "old.txt", renamed.OldPath)

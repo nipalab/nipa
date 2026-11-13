@@ -35,6 +35,7 @@ const compare = (over: Partial<TableCompare> = {}): TableCompare => ({
   cellsChanged: 1,
   columnsAdded: 1,
   columnsRemoved: 1,
+  sheets: [],
   ...over,
 });
 
@@ -105,7 +106,7 @@ describe("TableDiff", () => {
     renderWithProviders(<DiffViewer root="/work/game" diff={diff()} layout="unified" onLayout={() => {}} />);
     expect(screen.getByText("Comparing table…")).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "Table changes" })).toBeInTheDocument();
-    expect(api.tableDiff).toHaveBeenCalledWith("/work/game", { source: "snapshot", path: "loc/strings.csv" }, { source: "working", path: "loc/strings.csv" });
+    expect(api.tableDiff).toHaveBeenCalledWith("/work/game", { source: "snapshot", path: "loc/strings.csv" }, { source: "working", path: "loc/strings.csv" }, "");
     expect(screen.getByRole("group", { name: "Diff layout" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Text" }));
@@ -142,7 +143,7 @@ describe("TableDiff", () => {
 
     screen.getByRole("separator", { name: "Resize key column" }).focus();
     await userEvent.keyboard("{ArrowLeft}");
-    expect(screen.getByRole("columnheader", { name: "key" }).parentElement).toHaveStyle({ width: "144px" });
+    expect(screen.getByRole("columnheader", { name: /^key/ }).parentElement).toHaveStyle({ width: "144px" });
     expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:data/a.csv")!)).toEqual({ en: 240, key: 144 });
   });
 
@@ -163,3 +164,135 @@ describe("TableDiff", () => {
     expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:dup.csv")!)).toEqual({ "value #2": 176 });
   });
 });
+
+describe("table filters", () => {
+  it("filters rows by text and column and hides unchanged columns", async () => {
+    renderWithProviders(<TableCompareView compare={compare()} />);
+    const table = screen.getByRole("table", { name: "Table changes" });
+    const header = within(table).getAllByRole("row")[0];
+    expect(within(header).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key2", "en(was english)3", "de1", "fr1"]);
+    expect(screen.getByTitle("3 changed cells in this column")).toBeInTheDocument();
+    expect(screen.getAllByTitle("1 changed cell in this column")).toHaveLength(2);
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "hello");
+    expect(within(table).getAllByRole("row").slice(1).map((r) => r.getAttribute("data-status"))).toEqual(["changed"]);
+    expect(screen.getByText("1 of 5 rows")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter column" }), "de");
+    expect(screen.getByText("No rows match the filter.")).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole("searchbox", { name: "Filter rows" }));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "nein");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Changed columns only" }));
+    expect(within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Row", "key2", "en(was english)3", "de1", "fr1"]);
+  });
+
+  it("keeps the key column first and sticky, and drops unchanged columns", async () => {
+    const columns = [
+      { name: "note", oldName: "note", old: 0, new: 0 },
+      { name: "id", oldName: "id", old: 1, new: 1 },
+      { name: "hp", oldName: "hp", old: 2, new: 2 },
+    ];
+    const rows = [row({ cells: ["a", "1", "10"], old: ["a", "1", "8"], changed: [2], status: "changed" }), row({ cells: ["", "2", "5"], status: "added", oldLine: 0 })];
+    renderWithProviders(<TableCompareView compare={compare({ columns, rows, keyColumn: 1 })} />);
+    const table = screen.getByRole("table", { name: "Table changes" });
+    const names = () => within(within(table).getAllByRole("row")[0]).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(names()).toEqual(["Row", "id1", "note", "hp2"]);
+    expect(screen.getByRole("columnheader", { name: /^id/ }).parentElement).toHaveClass("sticky");
+    const cells = within(within(table).getAllByRole("row")[2]).getAllByRole("cell");
+    expect(cells[0]).toHaveTextContent("2");
+    expect(cells[0]).toHaveClass("sticky");
+    expect(cells[1]).not.toHaveClass("sticky");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Changed columns only" }));
+    expect(names()).toEqual(["Row", "id1", "hp2"]);
+  });
+
+  it("jumps between changes", async () => {
+    renderWithProviders(<TableCompareView compare={compare()} />);
+    expect(screen.getByText("4 changes")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Previous change" }));
+    expect(screen.getByText("4 of 4 changes")).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "Next change" });
+    const current = () => screen.getByRole("table", { name: "Table changes" }).querySelector("[aria-current]")?.getAttribute("data-status");
+    await userEvent.click(next);
+    expect(screen.getByText("1 of 4 changes")).toBeInTheDocument();
+    expect(current()).toBe("changed");
+    await userEvent.click(next);
+    await userEvent.click(next);
+    expect(screen.getByText("3 of 4 changes")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Previous change" }));
+    await userEvent.click(screen.getByRole("button", { name: "Previous change" }));
+    await userEvent.click(screen.getByRole("button", { name: "Previous change" }));
+    expect(screen.getByText("4 of 4 changes")).toBeInTheDocument();
+    expect(current()).toBe("added");
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "yes");
+    expect(screen.getByText("No changes")).toBeInTheDocument();
+    await userEvent.click(next);
+    expect(current()).toBeUndefined();
+  });
+});
+
+describe("workbook sheets", () => {
+  const sheets = [
+    { name: "Weapons", status: "changed", rowsAdded: 1, rowsRemoved: 0, rowsChanged: 2, cellsChanged: 3 },
+    { name: "Notes", status: "same", rowsAdded: 0, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 },
+    { name: "Loot", status: "added", rowsAdded: 2, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 },
+    { name: "Old", status: "removed", rowsAdded: 0, rowsRemoved: 1, rowsChanged: 0, cellsChanged: 0 },
+    { name: "Cols", status: "changed", rowsAdded: 0, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 },
+  ];
+  const book = (sheet: string) => compare({ sheet, sheets, delimiter: "" });
+
+  it("shows sheet tabs with change markers and switches sheets", async () => {
+    api.tableDiff.mockImplementation((_root, _old, _next, sheet: string) => Promise.resolve(book(sheet || "Weapons")));
+    const xlsx = diff({ path: "data/balance.xlsx", hunks: null, old: { path: "data/balance.xlsx", mode: 420, size: 900, binary: true, hash: "a" }, new: { path: "data/balance.xlsx", mode: 420, size: 990, binary: true, hash: "b" } });
+    renderWithProviders(<TableDiff root="/r" diff={xlsx} layout="unified" />);
+    const tabs = await screen.findByRole("tablist", { name: "Sheets" });
+    const tab = (name: RegExp) => within(tabs).getByRole("tab", { name });
+    expect(tab(/^Weapons/)).toHaveAttribute("aria-selected", "true");
+    expect(tab(/^Weapons/)).toHaveAttribute("title", "Weapons: +1 row, 2 rows changed (3 cells)");
+    expect(within(tab(/^Weapons/)).getByLabelText("Sheet changed")).toBeInTheDocument();
+    expect(within(tab(/^Notes/)).queryByLabelText(/^Sheet/)).not.toBeInTheDocument();
+    expect(tab(/^Notes/)).toHaveAttribute("title", "Notes: no changes");
+    expect(tab(/^Loot/)).toHaveAttribute("title", "Loot: sheet added");
+    expect(tab(/^Old/)).toHaveClass("line-through");
+    expect(tab(/^Cols/)).toHaveAttribute("title", "Cols: columns changed");
+    expect(screen.queryByRole("group", { name: "Table view" })).not.toBeInTheDocument();
+
+    await userEvent.click(tab(/^Loot/));
+    await vi.waitFor(() => expect(tab(/^Loot/)).toHaveAttribute("aria-selected", "true"));
+    expect(api.tableDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), "Loot");
+  });
+
+  it("labels an unnamed sheet", () => {
+    renderWithProviders(<TableCompareView compare={compare({ sheet: "", sheets: [{ ...sheets[1], name: "" }] })} />);
+    expect(screen.getByRole("tab", { name: "Sheet" })).toBeInTheDocument();
+  });
+});
+
+describe("switching files", () => {
+  it("starts each file with fresh filters and sheet", async () => {
+    api.tableDiff.mockImplementation((_root, _old, next: { path: string }, sheet: string) =>
+      Promise.resolve(next.path.endsWith(".xlsx") ? compare({ sheet: sheet || "A", sheets: [{ name: "A", status: "changed", rowsAdded: 1, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 }, { name: "B", status: "changed", rowsAdded: 1, rowsRemoved: 0, rowsChanged: 0, cellsChanged: 0 }] }) : compare()),
+    );
+    const side = { path: "data/b.xlsx", mode: 420, size: 900, binary: true, hash: "b" };
+    const book = diff({ path: "data/b.xlsx", hunks: null, old: side, new: side });
+    const { rerender } = renderWithProviders(<TableDiff root="/r" diff={book} layout="unified" />);
+    await userEvent.click(await screen.findByRole("tab", { name: /^B/ }));
+    await vi.waitFor(() => expect(screen.getByRole("tab", { name: /^B/ })).toHaveAttribute("aria-selected", "true"));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Filter rows" }), "zzz");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter column" }), "de");
+    expect(screen.getByText("No rows match the filter.")).toBeInTheDocument();
+
+    rerender(<TableDiff root="/r" diff={diff()} layout="unified" />);
+    expect(await screen.findByRole("searchbox", { name: "Filter rows" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Filter column" })).toHaveValue("-1");
+    expect(screen.queryByRole("tablist", { name: "Sheets" })).not.toBeInTheDocument();
+
+    rerender(<TableDiff root="/r" diff={book} layout="unified" />);
+    expect(await screen.findByRole("tab", { name: /^A/ })).toHaveAttribute("aria-selected", "true");
+    expect(api.tableDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), "");
+  });
+});
+

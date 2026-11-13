@@ -243,7 +243,38 @@ func audioLine(status string, a *AudioResult) string {
 	return strings.Join(parts, ", ")
 }
 
+const maxSheetLines = 5
+
 func tableLine(t *TableResult) string {
+	if len(t.Sheets) == 0 {
+		return countsLine(t.TableCounts)
+	}
+	var parts []string
+	changed := 0
+	for _, s := range t.Sheets {
+		if s.Status == "same" {
+			continue
+		}
+		if changed++; changed > maxSheetLines {
+			continue
+		}
+		switch s.Status {
+		case "added", "removed":
+			parts = append(parts, fmt.Sprintf("sheet %q %s", s.Name, s.Status))
+		default:
+			parts = append(parts, fmt.Sprintf("%q: %s", s.Name, countsLine(s.TableCounts)))
+		}
+	}
+	if changed > maxSheetLines {
+		parts = append(parts, fmt.Sprintf("+%s", plural(changed-maxSheetLines, "more sheet")))
+	}
+	if len(parts) == 0 {
+		return "no cell changes"
+	}
+	return strings.Join(parts, "; ")
+}
+
+func countsLine(t TableCounts) string {
 	var parts []string
 	if t.RowsAdded > 0 {
 		parts = append(parts, "+"+plural(t.RowsAdded, "row"))
