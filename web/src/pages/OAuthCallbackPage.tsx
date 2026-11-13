@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link as PrimerLink, Spinner, Stack } from '@primer/react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ApiError, establishSession } from '../api/client'
+import { ApiError, startSession } from '../api/client'
+import type { MFAChallengeResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { AuthLayout } from '../components/AuthLayout'
+import { MFACodeStep } from '../components/MFACodeStep'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage } from '../hooks'
 import { OAUTH_SIGNIN_ERRORS } from '../oauth'
@@ -24,6 +26,7 @@ export default function OAuthCallbackPage() {
   // SPA paths are honored no matter what the browser sends.
   const from = fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : APP_HOME
   const [error, setError] = useState<string | null>(null)
+  const [challenge, setChallenge] = useState<MFAChallengeResponse | null>(null)
   const started = useRef(false)
 
   useEffect(() => {
@@ -37,8 +40,12 @@ export default function OAuthCallbackPage() {
       setError('This sign-in link is missing its code.')
       return
     }
-    establishSession('/api/v1/auth/oauth/complete', { code })
-      .then(() => {
+    startSession('/api/v1/auth/oauth/complete', { code })
+      .then((pending) => {
+        if (pending) {
+          setChallenge(pending)
+          return
+        }
         signIn()
         navigate(isNew ? '/onboarding' : from, { replace: true })
       })
@@ -46,6 +53,27 @@ export default function OAuthCallbackPage() {
         setError(err instanceof ApiError && err.status === 404 ? EXPIRED_CODE : errorMessage(err))
       })
   }, [code, isNew, oauthError, from, signIn, navigate])
+
+  if (challenge && !error) {
+    return (
+      <AuthLayout title="Sign in to Nipa" width={420}>
+        <MFACodeStep
+          challenge={challenge}
+          onVerified={() => {
+            signIn()
+            navigate(from, { replace: true })
+          }}
+          onRestart={(message) => {
+            if (message) {
+              setError(message)
+              return
+            }
+            navigate('/login', { replace: true })
+          }}
+        />
+      </AuthLayout>
+    )
+  }
 
   return (
     <AuthLayout width={420}>

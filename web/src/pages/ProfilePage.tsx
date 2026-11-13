@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { Banner, Button, Checkbox, FormControl, TextInput } from '@primer/react'
 import { useSearchParams } from 'react-router-dom'
-import { changeMyPassword, updateMyProfile } from '../api/endpoints'
+import { changeMyPassword, getMyMFA, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { IdentitiesCard } from '../components/IdentitiesCard'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, passwordLengthProblem } from '../components/PasswordFields'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
 import { SSHKeysCard } from '../components/SSHKeysCard'
+import { TwoFactorCard } from '../components/TwoFactorCard'
 import { isUserTab, UserSettingsLayout, type UserTab } from '../components/UserSettingsLayout'
-import { ErrorBanner } from '../components/ui'
-import { errorMessage } from '../hooks'
+import { EmptyState, ErrorBanner, Loading } from '../components/ui'
+import { errorMessage, useAsync } from '../hooks'
 
 export default function ProfilePage() {
   const [params] = useSearchParams()
@@ -22,10 +23,22 @@ export default function ProfilePage() {
     <UserSettingsLayout active={tab}>
       {tab === 'profile' && <ProfileTab />}
       {tab === 'password' && <PasswordTab />}
+      {tab === 'security' && <SecurityTab />}
       {tab === 'accounts' && <IdentitiesCard />}
       {tab === 'keys' && <SSHKeysCard />}
     </UserSettingsLayout>
   )
+}
+
+function SecurityTab() {
+  const { data, error, loading, reload } = useAsync(getMyMFA, [])
+  if (loading && !data) return <Loading />
+  if (error) return <ErrorBanner error={error} />
+  if (!data) return null
+  if (!data.available) {
+    return <EmptyState>Two-factor authentication is not available on this server.</EmptyState>
+  }
+  return <TwoFactorCard status={data} onChanged={reload} />
 }
 
 function ProfileTab() {

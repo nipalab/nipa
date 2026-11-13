@@ -9,6 +9,27 @@ export interface TokenResponse {
   expires_in: number
 }
 
+export interface MFAChallengeResponse {
+  mfa_required: true
+  mfa_challenge: string
+  expires_in: number
+}
+
+export interface MFAStatusResponse {
+  available: boolean
+  totp: { enabled: boolean; confirmed_at?: string }
+  recovery_codes_left: number
+}
+
+export interface TOTPEnrollmentResponse {
+  secret: string
+  uri: string
+}
+
+export interface RecoveryCodesResponse {
+  recovery_codes: string[]
+}
+
 export interface UserResponse {
   id: string
   name: string

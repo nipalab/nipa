@@ -43,9 +43,10 @@ unset; the SPA itself is same-origin and needs none).
 | `/var/lib/nipa/active-color` | which color receives traffic (written by `deploy/upgrade.sh`) |
 | `journalctl -u nipad-ee@blue` / `@green` | server logs |
 
-Both colors share `config.yaml`, so `JWT_KEY`, `CHUNK_URL_SIGNING_KEY` and the
-database/S3 settings are identical across flips. Sessions and presigned chunk
-URLs stay valid across restarts; do not rotate those keys during an upgrade.
+Both colors share `config.yaml`, so `JWT_KEY`, `CHUNK_URL_SIGNING_KEY`,
+`MFA_ENCRYPTION_KEY` and the database/S3 settings are identical across flips.
+Sessions, presigned chunk URLs and enrolled second factors stay valid across
+restarts; do not rotate those keys during an upgrade.
 
 ## Prerequisites
 
@@ -135,6 +136,7 @@ Caddy proxy); it is not part of the Netlify deployment.
    |---|---|
    | `DATABASE_DSN` | `postgres://user:pass@host:5432/nipa?sslmode=require` |
    | `JWT_KEY` | long random secret (`openssl rand -base64 48`) |
+   | `MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`; encrypts TOTP secrets (MFA is on by default here, `MFA_ENABLED`). Losing or changing it disables every enrolled user's second factor |
    | `CHUNK_URL_SIGNING_KEY` | different long random secret |
    | `CHUNK_STORAGE` | `s3` (or omit; enterprise defaults to S3) |
    | `CHUNK_S3_ENDPOINT`, `CHUNK_S3_REGION`, `CHUNK_S3_BUCKET`, `CHUNK_S3_PREFIX` | managed bucket |
@@ -149,7 +151,11 @@ Caddy proxy); it is not part of the Netlify deployment.
 
    `nipad-ee` refuses to start when `JWT_KEY` or `CHUNK_URL_SIGNING_KEY` is
    empty, still the sample value, shorter than 32 characters, or when both
-   are the same.
+   are the same. While MFA is on, an `MFA_ENCRYPTION_KEY` that does not
+   decode to at least 32 bytes is a startup error; an unset one leaves
+   two-factor authentication unavailable (startup logs enrolled accounts it
+   cannot ask). The host clock must be NTP-synced: drift beyond 30 s breaks
+   enrolled logins.
 
    Keep the file `0640 root:nipa`. Do **not** set `SNOWFLAKE_NODE_ID`: the
    colors run concurrently during a flip and lease distinct node ids from
@@ -239,6 +245,8 @@ Caddy proxy); it is not part of the Netlify deployment.
 - [ ] S3 bucket versioning on; credentials scoped to the bucket/prefix.
 - [ ] `JWT_KEY` and `CHUNK_URL_SIGNING_KEY` generated with `openssl rand -base64 48`
       (the server refuses weak values); `config.yaml` is `0640 root:nipa`.
+- [ ] `MFA_ENCRYPTION_KEY` generated with `openssl rand -base64 32` and backed up;
+      NTP active (`timedatectl` shows `System clock synchronized: yes`).
 - [ ] `SAAS_MODE=1`, `EMAIL_BASE_URL`, `EMAIL_SENDER` + provider keys set, and a
       registration email actually arrives.
 - [ ] `/etc/caddy/caddy.env` has the Netlify origin; `curl -sI https://<host>/pricing`

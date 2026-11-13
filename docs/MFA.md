@@ -4,8 +4,8 @@ Design for a second login factor. An account that enrolled a TOTP
 authenticator must present a 6-digit code (or a recovery code) after its
 password before a session is issued.
 
-Status: the server side (storage, login step, REST and gRPC routes, emails),
-the CLI, the daemon and the desktop sign-in are implemented; the SPA follows.
+Status: fully implemented: the server side (storage, login step, REST and
+gRPC routes, emails), the CLI, the daemon, the desktop sign-in and the SPA.
 The decisions taken are listed at the end.
 
 ## Scope
@@ -151,10 +151,20 @@ All under `/api/v1/me/mfa`, authenticated.
 Starting enrollment asks for the current password; a passwordless (OAuth-only)
 account must have signed in within the last 10 minutes instead.
 
-The SPA profile page gets a "Two-factor authentication" card. The QR code is
-rendered in the browser from the URI; the secret is never sent to a third
-party. The login page gains a code step after the password, and the OAuth
-callback page does the same when `complete` answers `mfa_required`.
+The SPA account settings have a Security tab (`/settings/profile?tab=security`)
+with the "Two-factor authentication" card, hidden when `available` is false.
+Enrollment asks the current password, then shows a QR code rendered in the
+browser from the URI (the `qrcode` package; the secret is never sent to a
+third party) plus the secret for manual entry, then takes the first code and
+shows the ten recovery codes once with Copy, Download `.txt` and a required
+"I saved these codes" checkbox. The card also disables (with a code),
+regenerates recovery codes (with a code, shown the same way) and shows how
+many recovery codes are left. The login page gains an "Authentication code"
+step after the password, and the OAuth callback page does the same when
+`complete` answers `mfa_required`. Every failure is `invalid code`, so the
+SPA tracks the five attempts and the challenge lifetime itself and sends the
+user back to the password after either runs out. Admins get "Reset
+two-factor" on the user administration page.
 
 ## Recovery
 

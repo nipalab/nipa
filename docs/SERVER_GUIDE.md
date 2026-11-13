@@ -35,6 +35,8 @@ a local directory. There is no external dependency to install.
 - Go (the module declares Go 1.27)
 - `make`
 - Node.js + npm only if you want to build the web UI (`make web`)
+- An NTP-synced clock when two-factor authentication is on: drift beyond
+  30 s breaks the logins of every enrolled account
 
 ## Build
 
@@ -90,6 +92,8 @@ CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 | `DATABASE_DSN` | SQLite database file. It is created on first start. |
 | `JWT_KEY` | Signs access tokens (HS256, `iss` `nipad`, `aud` `nipa-api`; both are required on every request). The OAuth state key on `nipad-ee` is derived from it with HKDF. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
 | `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
+| `MFA_ENABLED` | Two-factor authentication (TOTP) for password and OAuth logins. Default `false` on `nipad`, `true` on `nipad-ee`. Turning it off stops asking enrolled accounts for a code; it keeps their enrollment. |
+| `MFA_ENCRYPTION_KEY` | Encrypts the stored TOTP secrets (`openssl rand -base64 32`; base64 of at least 32 bytes, a startup error otherwise while MFA is on). Unset leaves MFA unavailable: users cannot enroll and enrolled users cannot log in with a password until an admin resets them. Losing or changing it disables every enrolled user's second factor. Keep it next to `JWT_KEY` and back it up; every instance must use the same value. |
 | `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak keys only log a warning and empty keys are replaced by random per-process ones (sessions and chunk URLs reset on restart). Local development only: anyone can forge admin tokens. |
 | `PUBLIC_BASE_URL` | Public address clients use to reach the server (for example `https://nipa.example.com`). SSH key login signatures are bound to its host and port; falls back to the host of `EMAIL_BASE_URL`. When neither is set, SSH key login is refused. Its origin is the only one the REST API grants CORS to; unset grants none (the web UI is same-origin and needs none). |
 | `CHUNK_STORAGE` | Must be `local`; this server stores chunks on disk. |
@@ -260,6 +264,8 @@ backup before upgrading.
 | Web UI loads a blank page or an old build | `web/server/dist` holds only the tracked placeholder. Run `make web` and rebuild/restart `nipad`. |
 | `database is locked (5) (SQLITE_BUSY)` | Only one `nipad` may write the same SQLite file. Stop the duplicate instance and check file permissions/disk. |
 | `/readyz` returns `503` | The process received `SIGTERM` and is draining, or the database ping fails. Check the logs. |
+| Every enrolled user's authentication code is refused | The server clock drifted. Enable NTP (`timedatectl set-ntp true`); codes are accepted within 30 s either side. |
+| `two-factor authentication is not configured on this server` | MFA is on but `MFA_ENCRYPTION_KEY` is unset. Set it (`openssl rand -base64 32`) and restart. |
 | Login as the seeded admin fails | The email is the literal string `nipa`, not an email address. |
 
 ## Where to go next
