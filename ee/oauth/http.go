@@ -167,17 +167,12 @@ func (h *Handler) Complete(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	result, err := h.auth.LoginResultVia(appCtx.Context(), user, usecase.LoginMethodOAuth)
+	result, err := h.auth.LoginWithFirstFactor(appCtx.Context(), user, usecase.LoginMethodOAuth)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.SetCookie(handler.RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
-	_ = appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
-		AccessToken: result.AccessToken,
-		TokenType:   result.TokenType,
-		ExpiresIn:   result.ExpiresIn,
-	})
+	handler.WriteLoginResult(appCtx, result)
 }
 
 func (h *Handler) ListIdentities(appCtx httpApp.AppContext) {

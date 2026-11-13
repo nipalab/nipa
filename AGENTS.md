@@ -658,6 +658,49 @@ has one, key-only otherwise. Covered by unit tests plus the
 `tests/suite/ssh_test.go` e2e specs (key-only login, lazy clone login through
 `NIPA_SSH_KEY`, unregistered-key rejection, username binding).
 
+Flow for two-factor authentication (design in `docs/MFA.md`; server side
+only so far): the pure `internal/totp` implements RFC 6238 (`Code`/`Match`
+with one step of skew either side, skipping steps at or below `last_step`),
+recovery codes (`NewRecoveryCodes` `XXXXX-XXXXX` from an unambiguous
+alphabet, `NormalizeRecoveryCode`, SHA-256 `HashRecoveryCode`), the
+`otpauth://` `URI` and `Cipher` (AES-256-GCM, key = HKDF-SHA256 of
+`MFA_ENCRYPTION_KEY`, label `nipa mfa totp v1`, the owner id as AAD).
+`Config.MFAKey` decodes the key (base64, >= 32 bytes, checked by
+`ValidateSecrets`); `serverapp.mfaCipher` leaves the cipher nil when it is
+unset or invalid, which makes MFA unavailable (enrollment 503, enrolled
+password/OAuth logins 503, recovery codes still disable; startup logs the
+enrolled count via `LogEnrolledWithoutKey`). Storage (sqlite `000022`,
+postgres `000007`): `user_totp` (one row per user, `secret_enc`,
+`confirmed_at` NULL until the first code, `last_step`), `mfa_recovery_codes`
+(PK user + hash, `used_at`), `mfa_login_challenges` (PK SHA-256 of the
+token, `method`, `attempts`, 5 min `expires_at`, swept on insert) and
+`refresh_tokens.auth_method`/`mfa`; `sqlite|postgres.NewMFARepository`
+(`Repositories.MFA`), multi-statement writes join the caller's transaction.
+`usecase.MFA` (`Status`, `StartTOTP` with the current password or, for a
+passwordless account, an `auth_time` claim under 10 min, `ConfirmTOTP`
+returning the ten codes once, `DisableTOTP`, `RegenerateRecoveryCodes`,
+`AdminReset` under `requireCanManageUser`) audits `user.mfa.*` through
+`auditedWrite` and notifies the owner through `MFAMailer` (outbox event
+`user.mfa`, ignores the email opt-out). `Auth.LoginWithFirstFactor`
+(password login and OAuth `complete`) returns `LoginResult.MFAChallenge`
+instead of tokens for a confirmed TOTP row; `Auth.CompleteLoginMFA` counts
+the attempt (fifth failure deletes the challenge), spends `auth_id`
+`mfa:<id>`, consumes the TOTP step (`AdvanceTOTPStep` is conditional, so
+replay fails) or the recovery code and the challenge in one transaction,
+and audits `auth.login.failed` reason `mfa_code` or `auth.login.succeeded`
+with `mfa`. Sessions record `auth_method`/`mfa`; access tokens carry them
+as `amr` plus `auth_time` (session start), kept across refreshes and the
+password-change reissue. REST: `/auth/login` and `/auth/oauth/complete`
+answer `{mfa_required, mfa_challenge, expires_in}` without a cookie
+(`handler.WriteLoginResult`), `POST /auth/mfa/verify`, `/me/mfa`
+(`GET`, `POST totp`, `POST totp/confirm`, `DELETE totp`, `POST
+recovery-codes`) and `DELETE /users/{id}/mfa`. gRPC:
+`LoginUsernamePasswordRequest.supports_mfa`, `LoginResponse.mfa_challenge`
+(TTL in `expires_in`) and the public `CompleteLoginMFA`; without the flag an
+enrolled account gets `FailedPrecondition` with the upgrade hint. 503
+crosses gRPC as `FailedPrecondition`. SSH key, refresh, email verification
+and service tokens never ask.
+
 Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
 the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|scaleway|http|log|off`), one message
 per recipient is persisted in the `email_deliveries` outbox and

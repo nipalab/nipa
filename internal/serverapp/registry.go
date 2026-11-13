@@ -12,6 +12,7 @@ type Usecases struct {
 	Auth               *usecase.Auth
 	User               *usecase.User
 	SSHKey             *usecase.SSHKey
+	MFA                *usecase.MFA
 	Branch             *usecase.Branch
 	Tag                *usecase.Tag
 	Common             *usecase.Common
@@ -53,6 +54,10 @@ func (r *Registry) User() *usecase.User {
 
 func (r *Registry) SSHKey() *usecase.SSHKey {
 	return r.uc.SSHKey
+}
+
+func (r *Registry) MFA() *usecase.MFA {
+	return r.uc.MFA
 }
 
 func (r *Registry) Branch() *usecase.Branch {

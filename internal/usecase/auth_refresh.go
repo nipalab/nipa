@@ -84,7 +84,11 @@ func (a *Auth) rotateRefreshSession(ctx context.Context, session *domain.Refresh
 	if !rotated {
 		return nil, domain.NewErrorRecordNotFound()
 	}
-	return a.loginResult(user, a.formatRefreshToken(session.ID, secret))
+	return a.loginResult(user, a.formatRefreshToken(session.ID, secret), sessionAuth{
+		method:  session.AuthMethod,
+		mfa:     session.MFA,
+		started: started,
+	})
 }
 
 // revokeReusedSession deletes a session whose stale secret was replayed. The

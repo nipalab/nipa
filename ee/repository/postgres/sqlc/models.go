@@ -272,6 +272,21 @@ type MergeRequestThread struct {
 	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
+type MfaLoginChallenge struct {
+	TokenHash string    `json:"token_hash"`
+	UserID    int64     `json:"user_id"`
+	Method    string    `json:"method"`
+	Attempts  int64     `json:"attempts"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type MfaRecoveryCode struct {
+	UserID   int64        `json:"user_id"`
+	CodeHash string       `json:"code_hash"`
+	UsedAt   sql.NullTime `json:"used_at"`
+}
+
 type OauthLoginCode struct {
 	Code        string         `json:"code"`
 	UserID      int64          `json:"user_id"`
@@ -403,6 +418,8 @@ type RefreshToken struct {
 	PreviousHash     sql.NullString `json:"previous_hash"`
 	RotatedAt        sql.NullTime   `json:"rotated_at"`
 	SessionStartedAt sql.NullTime   `json:"session_started_at"`
+	AuthMethod       sql.NullString `json:"auth_method"`
+	Mfa              sql.NullString `json:"mfa"`
 }
 
 type SnowflakeNodeLease struct {
@@ -484,6 +501,14 @@ type UserTermsAcceptance struct {
 	Version    string    `json:"version"`
 	Source     string    `json:"source"`
 	AcceptedAt time.Time `json:"accepted_at"`
+}
+
+type UserTotp struct {
+	UserID      int64        `json:"user_id"`
+	SecretEnc   []byte       `json:"secret_enc"`
+	ConfirmedAt sql.NullTime `json:"confirmed_at"`
+	LastStep    int64        `json:"last_step"`
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 type Webhook struct {

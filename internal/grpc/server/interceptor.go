@@ -23,6 +23,7 @@ func isPublicMethod(method string) bool {
 		"/greet.NipaService/LoginWithRefreshToken",
 		"/greet.NipaService/BeginLoginSSHKey",
 		"/greet.NipaService/CompleteLoginSSHKey",
+		"/greet.NipaService/CompleteLoginMFA",
 		"/greet.NipaService/GetServerVersion",
 		"/grpc.health.v1.Health/Check",
 		"/grpc.health.v1.Health/Watch":

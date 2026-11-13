@@ -193,6 +193,7 @@ func main() {
 		Project:            postgres.NewProjectRepository(dbConn),
 		Auth:               postgres.NewAuthRepository(dbConn),
 		SSHKey:             postgres.NewSSHKeyRepository(dbConn),
+		MFA:                postgres.NewMFARepository(dbConn),
 		User:               userRepo,
 		Branch:             postgres.NewBranchRepository(dbConn),
 		Push:               postgres.NewPushRepository(dbConn),

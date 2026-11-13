@@ -142,7 +142,7 @@ func TestAuth_CompleteSSHKeyLogin_Success(t *testing.T) {
 		GetByFingerprint(gomock.Any(), ssh.FingerprintSHA256(signer.PublicKey())).
 		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
 	authRepo.EXPECT().
-		CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).
 		Return(int64(1), nil)
 
 	result, err := auth.CompleteSSHKeyLogin(
@@ -185,7 +185,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyOnlySuccess(t *testing.T) {
 		GetByID(gomock.Any(), snow.ID(42)).
 		Return(user, nil)
 	authRepo.EXPECT().
-		CreateRefreshSession(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateRefreshSession(gomock.Any(), sessionFor(snow.ID(42))).
 		Return(int64(1), nil)
 
 	result, err := auth.CompleteSSHKeyLogin(

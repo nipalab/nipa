@@ -22,6 +22,7 @@ type Repositories struct {
 		authSSHKeyRepository
 		sshKeyRepository
 	}
+	MFA  mfaRepository
 	User interface {
 		userRepository
 		userLookup

@@ -34,6 +34,11 @@ const (
 	AuditUserEmailChanged         = "user.email.changed"
 	AuditUserTermsAccepted        = "user.terms.accepted"
 
+	AuditUserMFAEnabled                  = "user.mfa.enabled"
+	AuditUserMFADisabled                 = "user.mfa.disabled"
+	AuditUserMFARecoveryCodesRegenerated = "user.mfa.recovery_codes_regenerated"
+	AuditUserMFAResetByAdmin             = "user.mfa.reset_by_admin"
+
 	AuditAuthRefreshTokenReuseDetected = "auth.refresh_token.reuse_detected"
 	AuditAuthLoginSucceeded            = "auth.login.succeeded"
 	AuditAuthLoginFailed               = "auth.login.failed"

@@ -201,6 +201,17 @@ existing "not found" without revoking the family.
   design document, since it touches the CLI login, SSH key login and the
   OAuth flows.
 
+Decisions taken on 2026-11-13:
+
+- Sessions are not started. When they are: each session shows device (user
+  agent), client IP, login method, start and last-active time and marks the
+  current one, which needs new `refresh_tokens` columns. Actions: sign out
+  everywhere, sign out other sessions, revoke a single session (its access
+  token can live up to 30 minutes longer).
+- MFA: design in `docs/MFA.md`, no code yet. The first version is opt-in TOTP
+  with recovery codes for everyone; requiring it for global admins comes
+  later.
+
 ## Order and size
 
 | Phase | Depends on | Rough size |

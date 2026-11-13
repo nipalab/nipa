@@ -21,7 +21,7 @@ func TestAuthRepositorySuite(t *testing.T) {
 }
 
 func (s *baseSuite) createSession(auth *Auth, userID snow.ID, hash string, expiresAt time.Time) int64 {
-	id, err := auth.CreateRefreshSession(context.Background(), userID, hash, time.Now(), expiresAt)
+	id, err := auth.CreateRefreshSession(context.Background(), domain.NewRefreshSession{UserID: userID, TokenHash: hash, StartedAt: time.Now(), ExpiresAt: expiresAt})
 	s.Require().NoError(err)
 	return id
 }
@@ -51,7 +51,7 @@ func (s *AuthRepositorySuite) TestRefreshSessionLifecycle() {
 	started := time.Now().Add(-time.Minute)
 	expiresAt := started.Add(60 * 24 * time.Hour)
 
-	id, err := repo.CreateRefreshSession(ctx, userID, "hash-1", started, expiresAt)
+	id, err := repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: userID, TokenHash: "hash-1", StartedAt: started, ExpiresAt: expiresAt})
 	s.Require().NoError(err)
 	s.NotZero(id)
 
@@ -155,9 +155,9 @@ func (s *AuthRepositorySuite) TestCreateRefreshSessionPrunesExpired() {
 	s.insertRefreshRow(bob, "bob-old", past)
 	s.insertRefreshRow(alice, "alice-recent", recent)
 	now := time.Now()
-	_, err := repo.CreateRefreshSession(ctx, alice, "alice-live", now, now.Add(time.Hour))
+	_, err := repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-live", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	s.Require().NoError(err)
-	_, err = repo.CreateRefreshSession(ctx, alice, "alice-new", now, now.Add(2*time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-new", StartedAt: now, ExpiresAt: now.Add(2 * time.Hour)})
 	s.Require().NoError(err)
 
 	rows, err := s.db.QueryContext(ctx, "SELECT token_hash FROM refresh_tokens ORDER BY token_hash")
@@ -172,10 +172,10 @@ func (s *AuthRepositorySuite) TestCreateRefreshSessionPrunesExpired() {
 	s.Require().NoError(rows.Err())
 	s.Equal([]string{"alice-live", "alice-new", "alice-recent", "bob-old"}, tokens)
 
-	_, err = repo.CreateRefreshSession(ctx, alice, "alice-live", now, now.Add(time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "alice-live", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	s.Error(err)
 	s.Require().NoError(s.db.Close())
-	_, err = repo.CreateRefreshSession(ctx, alice, "after-close", now, now.Add(time.Hour))
+	_, err = repo.CreateRefreshSession(ctx, domain.NewRefreshSession{UserID: alice, TokenHash: "after-close", StartedAt: now, ExpiresAt: now.Add(time.Hour)})
 	s.Error(err)
 	_, err = repo.GetRefreshSession(ctx, 1)
 	s.Error(err)

@@ -327,7 +327,7 @@ func TestUserRepositorySQLite_RevocationsBumpTokenVersion(t *testing.T) {
 
 func createTestSession(t *testing.T, auth *Auth, userID snow.ID, hash string, expiresAt time.Time) int64 {
 	t.Helper()
-	id, err := auth.CreateRefreshSession(context.Background(), userID, hash, time.Now(), expiresAt)
+	id, err := auth.CreateRefreshSession(context.Background(), domain.NewRefreshSession{UserID: userID, TokenHash: hash, StartedAt: time.Now(), ExpiresAt: expiresAt})
 	require.NoError(t, err)
 	return id
 }

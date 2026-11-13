@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -366,4 +367,32 @@ func TestSSHLoginAudience(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestMFAKey(t *testing.T) {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i + 200)
+	}
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		key, err := (&Config{MFAEncryptionKey: " " + enc.EncodeToString(raw) + "\n"}).MFAKey()
+		require.NoError(t, err)
+		require.Equal(t, raw, key)
+	}
+
+	key, err := (&Config{}).MFAKey()
+	require.NoError(t, err)
+	require.Nil(t, key)
+
+	_, err = (&Config{MFAEncryptionKey: base64.StdEncoding.EncodeToString(raw[:31])}).MFAKey()
+	require.ErrorContains(t, err, "at least 32 bytes")
+	_, err = (&Config{MFAEncryptionKey: "not base64 !!"}).MFAKey()
+	require.ErrorContains(t, err, "must be base64")
+
+	strong := "0123456789abcdef0123456789abcdef"
+	other := "fedcba9876543210fedcba9876543210"
+	err = (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: "short"}).ValidateSecrets()
+	require.ErrorContains(t, err, "MFA_ENCRYPTION_KEY")
+	err = (&Config{JWTKey: strong, ChunkURLSigningKey: other, MFAEncryptionKey: base64.StdEncoding.EncodeToString(raw)}).ValidateSecrets()
+	require.NoError(t, err)
 }

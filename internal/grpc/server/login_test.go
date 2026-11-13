@@ -54,7 +54,7 @@ type stubAuthRepo struct {
 	createdExpiry time.Time
 }
 
-func (s *stubAuthRepo) CreateRefreshSession(_ context.Context, _ snow.ID, _ string, _, _ time.Time) (int64, error) {
+func (s *stubAuthRepo) CreateRefreshSession(_ context.Context, _ domain.NewRefreshSession) (int64, error) {
 	return 1, s.saveErr
 }
 

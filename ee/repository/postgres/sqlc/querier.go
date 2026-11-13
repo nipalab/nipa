@@ -125,6 +125,16 @@ type Querier interface {
 	LockBillingOwner(ctx context.Context, ownerID int64) error
 	LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
+	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
+	MFAChallengeCreate(ctx context.Context, arg MFAChallengeCreateParams) error
+	MFAChallengeDelete(ctx context.Context, tokenHash string) (int64, error)
+	MFAChallengeDeleteByUser(ctx context.Context, userID int64) error
+	MFAChallengeDeleteExpired(ctx context.Context, before time.Time) (int64, error)
+	MFAChallengeGet(ctx context.Context, tokenHash string) (MfaLoginChallenge, error)
+	MFARecoveryCodeCountUnused(ctx context.Context, userID int64) (int64, error)
+	MFARecoveryCodeDeleteByUser(ctx context.Context, userID int64) error
+	MFARecoveryCodeInsert(ctx context.Context, arg MFARecoveryCodeInsertParams) error
+	MFARecoveryCodeUse(ctx context.Context, arg MFARecoveryCodeUseParams) (int64, error)
 	MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error
 	MarkBillingEventProcessed(ctx context.Context, eventID string) error
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
@@ -264,6 +274,12 @@ type Querier interface {
 	UserIdentityListByUser(ctx context.Context, userID int64) ([]UserIdentity, error)
 	UserList(ctx context.Context) ([]User, error)
 	UserSetEmailVerified(ctx context.Context, id int64) error
+	UserTOTPAdvanceStep(ctx context.Context, arg UserTOTPAdvanceStepParams) (int64, error)
+	UserTOTPConfirm(ctx context.Context, arg UserTOTPConfirmParams) (int64, error)
+	UserTOTPCountConfirmed(ctx context.Context) (int64, error)
+	UserTOTPDelete(ctx context.Context, userID int64) (int64, error)
+	UserTOTPGet(ctx context.Context, userID int64) (UserTotp, error)
+	UserTOTPUpsertPending(ctx context.Context, arg UserTOTPUpsertPendingParams) (int64, error)
 	UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error
 	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error

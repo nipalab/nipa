@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -18,6 +19,7 @@ type Config struct {
 	HTTPIdleTimeoutSeconds          int     `mapstructure:"HTTP_IDLE_TIMEOUT_SECONDS"`
 	MetricsAddress                  string  `mapstructure:"METRICS_ADDRESS"`
 	JWTKey                          string  `mapstructure:"JWT_KEY"`
+	MFAEncryptionKey                string  `mapstructure:"MFA_ENCRYPTION_KEY"`
 	LogLevel                        string  `mapstructure:"LOG_LEVEL"`
 	LogFormat                       string  `mapstructure:"LOG_FORMAT"`
 	PprofEnabled                    bool    `mapstructure:"PPROF_ENABLED"`
@@ -198,7 +200,7 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
 	// config file, so the per-color systemd env files must bind explicitly.
-	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL", "METRICS_ADDRESS",
+	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "MFA_ENCRYPTION_KEY", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL", "METRICS_ADDRESS",
 		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS",
 		"BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT",
 		"PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY",
@@ -274,5 +276,31 @@ func (c *Config) ValidateSecrets() error {
 	if c.JWTKey == c.ChunkURLSigningKey {
 		return fmt.Errorf("JWT_KEY and CHUNK_URL_SIGNING_KEY must differ")
 	}
+	if _, err := c.MFAKey(); err != nil {
+		return err
+	}
 	return nil
+}
+
+const minMFAKeyBytes = 32
+
+// MFAKey decodes MFA_ENCRYPTION_KEY (standard or URL-safe base64, padded or
+// not). It returns nil without an error when the key is unset, which leaves
+// two-factor authentication unavailable.
+func (c *Config) MFAKey() ([]byte, error) {
+	raw := strings.TrimSpace(c.MFAEncryptionKey)
+	if raw == "" {
+		return nil, nil
+	}
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		key, err := enc.DecodeString(raw)
+		if err != nil {
+			continue
+		}
+		if len(key) < minMFAKeyBytes {
+			return nil, fmt.Errorf("MFA_ENCRYPTION_KEY must decode to at least %d bytes; generate one with `openssl rand -base64 32`", minMFAKeyBytes)
+		}
+		return key, nil
+	}
+	return nil, fmt.Errorf("MFA_ENCRYPTION_KEY must be base64; generate one with `openssl rand -base64 32`")
 }

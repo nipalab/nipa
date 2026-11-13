@@ -31,7 +31,7 @@ func handleError(err error) error {
 		return status.Error(codes.PermissionDenied, e.Message)
 	case 404:
 		return status.Error(codes.NotFound, e.Message)
-	case 409:
+	case 409, 503:
 		return status.Error(codes.FailedPrecondition, e.Message)
 	case 402, 429:
 		return status.Error(codes.ResourceExhausted, e.Message)

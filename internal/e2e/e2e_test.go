@@ -128,6 +128,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 		Project:            sqlite.NewProjectRepository(dbConn),
 		Auth:               sqlite.NewAuthRepository(dbConn),
 		SSHKey:             sqlite.NewSSHKeyRepository(dbConn),
+		MFA:                sqlite.NewMFARepository(dbConn),
 		User:               sqlite.NewUserRepository(dbConn),
 		Branch:             sqlite.NewBranchRepository(dbConn),
 		Push:               sqlite.NewPushRepository(dbConn),

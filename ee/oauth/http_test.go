@@ -13,10 +13,12 @@ import (
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/totp"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -27,7 +29,7 @@ func (stubCredentialHasher) Compare(hash, password string) bool   { return hash 
 
 type stubAuthSessions struct{}
 
-func (stubAuthSessions) CreateRefreshSession(context.Context, snow.ID, string, time.Time, time.Time) (int64, error) {
+func (stubAuthSessions) CreateRefreshSession(context.Context, domain.NewRefreshSession) (int64, error) {
 	return 1, nil
 }
 
@@ -434,5 +436,38 @@ func TestIdentityEndpointsRequireAuthentication(t *testing.T) {
 		require.NoError(t, err)
 		_ = resp.Body.Close()
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode, "%s %s without claims", request.method, request.path)
+	}
+}
+
+func TestCompleteAsksEnrolledAccountsForASecondFactor(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+	cipher, err := totp.NewCipher([]byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	repo := NewMockmfaRepository(gomock.NewController(t))
+	server.auth.WithMFA(usecase.NewMFA(repo, server.env.users, stubCredentialHasher{}, cipher, nil))
+	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	server.env.repo.codes["code-1"] = codeRow{userID: 42, expiresAt: server.env.now.Add(time.Minute), binding: bindingHash(testBinding)}
+
+	confirmed := time.Now()
+	repo.EXPECT().GetTOTP(gomock.Any(), snow.ID(42)).Return(&domain.UserTOTP{UserID: 42, ConfirmedAt: &confirmed}, nil)
+	repo.EXPECT().DeleteExpiredChallenges(gomock.Any(), gomock.Any()).Return(nil)
+	repo.EXPECT().CreateChallenge(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, c domain.MFAChallenge) error {
+		require.Equal(t, usecase.LoginMethodOAuth, c.Method)
+		return nil
+	})
+
+	resp, body := server.send(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":"code-1"}`, testBinding)
+	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	var challenge struct {
+		MFARequired  bool   `json:"mfa_required"`
+		MFAChallenge string `json:"mfa_challenge"`
+		AccessToken  string `json:"access_token"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &challenge))
+	require.True(t, challenge.MFARequired)
+	require.NotEmpty(t, challenge.MFAChallenge)
+	require.Empty(t, challenge.AccessToken)
+	for _, cookie := range resp.Cookies() {
+		require.NotEqual(t, "nipa_refresh", cookie.Name)
 	}
 }

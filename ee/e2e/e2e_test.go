@@ -209,6 +209,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		Project:            postgres.NewProjectRepository(dbConn),
 		Auth:               postgres.NewAuthRepository(dbConn),
 		SSHKey:             postgres.NewSSHKeyRepository(dbConn),
+		MFA:                postgres.NewMFARepository(dbConn),
 		User:               postgres.NewUserRepository(dbConn),
 		Branch:             postgres.NewBranchRepository(dbConn),
 		Push:               postgres.NewPushRepository(dbConn),

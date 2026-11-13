@@ -116,6 +116,13 @@ func NewErrorConflict(message string) *Error {
 	}
 }
 
+func NewErrorServiceUnavailable(message string) *Error {
+	return &Error{
+		Code:    503,
+		Message: message,
+	}
+}
+
 func NewErrorQuotaExceeded(message string) *Error {
 	return &Error{
 		Code:    402,

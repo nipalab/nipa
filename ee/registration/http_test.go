@@ -23,7 +23,7 @@ import (
 // only CreateRefreshSession is exercised by the login-result path.
 type stubSessionStore struct{}
 
-func (stubSessionStore) CreateRefreshSession(context.Context, snow.ID, string, time.Time, time.Time) (int64, error) {
+func (stubSessionStore) CreateRefreshSession(context.Context, domain.NewRefreshSession) (int64, error) {
 	return 1, nil
 }
 

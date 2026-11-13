@@ -11,6 +11,7 @@ import (
 func TestRegistryExposesUsecases(t *testing.T) {
 	uc := Usecases{
 		Auth:               &usecase.Auth{},
+		MFA:                &usecase.MFA{},
 		User:               &usecase.User{},
 		Branch:             &usecase.Branch{},
 		Tag:                &usecase.Tag{},
@@ -32,6 +33,7 @@ func TestRegistryExposesUsecases(t *testing.T) {
 	reg := NewRegistry(uc)
 
 	require.Same(t, uc.Auth, reg.Auth())
+	require.Same(t, uc.MFA, reg.MFA())
 	require.Same(t, uc.User, reg.User())
 	require.Same(t, uc.Branch, reg.Branch())
 	require.Same(t, uc.Tag, reg.Tag())

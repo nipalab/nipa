@@ -2,6 +2,7 @@ package serverapp
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -68,4 +69,31 @@ func errorCode(err error) int {
 		return 0
 	}
 	return domErr.Code
+}
+
+func TestBuildUsecases_MFAKey(t *testing.T) {
+	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+	require.NoError(t, db.MigrateUp(database, "sqlite3"))
+	node, err := snow.NewNode(0)
+	require.NoError(t, err)
+
+	for name, tc := range map[string]struct {
+		key       string
+		available bool
+	}{
+		"configured": {key: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")), available: true},
+		"unset":      {},
+		"invalid":    {key: "short"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			uc := BuildUsecases(usecase.Repositories{
+				User: sqlite.NewUserRepository(database),
+				Auth: sqlite.NewAuthRepository(database),
+				MFA:  sqlite.NewMFARepository(database),
+			}, UsecaseDeps{Config: &config.Config{MFAEncryptionKey: tc.key}, DB: database, Snow: node})
+			require.Equal(t, tc.available, uc.MFA.Available())
+		})
+	}
 }

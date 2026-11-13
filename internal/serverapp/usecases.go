@@ -1,6 +1,7 @@
 package serverapp
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
+	"github.com/nipalab/nipa/internal/totp"
 	"github.com/nipalab/nipa/internal/usecase"
 	"github.com/nipalab/nipa/internal/webhook"
 )
@@ -43,6 +45,11 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 
 	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
 	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter).WithSSHAudience(sshAudience(cfg)).WithAudit(auditUsecase)
+	mfaUsecase := usecase.NewMFA(repos.MFA, repos.User, deps.Hasher, mfaCipher(cfg), transactor).WithAudit(auditUsecase).WithLimiter(deps.RateLimiter)
+	if repos.MFA != nil {
+		authUsecase = authUsecase.WithMFA(mfaUsecase)
+		mfaUsecase.LogEnrolledWithoutKey(context.Background())
+	}
 	orgUsecase := usecase.NewOrg(repos.Org, node).WithAudit(auditUsecase)
 	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase).WithAudit(auditUsecase)
 	orgUsecase.WithPermissionCache(permissionUsecase)
@@ -97,6 +104,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 			repos.Email, repos.User, repos.MergeRequest, repos.MergeRequestReview, cfg.EmailBaseURL, node,
 		).WithKicker(deps.EmailDispatcher))
 		orgInvitationUsecase = orgInvitationUsecase.WithOutbox(repos.Email, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher)
+		mfaUsecase = mfaUsecase.WithNotifier(usecase.NewMFAMailer(repos.Email, node, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher))
 		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
 
@@ -113,6 +121,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Auth:               authUsecase,
 		User:               usecase.NewUser(node, repos.User, deps.Hasher).WithAudit(auditUsecase).WithLimiter(deps.RateLimiter),
 		SSHKey:             usecase.NewSSHKey(node, repos.SSHKey),
+		MFA:                mfaUsecase,
 		Common:             commonUsecase,
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,
@@ -132,6 +141,26 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		EmailDelivery:      emailDeliveryUsecase,
 		Audit:              auditUsecase,
 	}
+}
+
+// mfaCipher builds the TOTP secret cipher from MFA_ENCRYPTION_KEY; without a
+// usable key two-factor authentication stays unavailable.
+func mfaCipher(cfg *config.Config) *totp.Cipher {
+	key, err := cfg.MFAKey()
+	if err != nil {
+		slog.Error("two-factor authentication disabled", "error", err)
+		return nil
+	}
+	if key == nil {
+		slog.Warn("two-factor authentication disabled: set MFA_ENCRYPTION_KEY (openssl rand -base64 32)")
+		return nil
+	}
+	cipher, err := totp.NewCipher(key)
+	if err != nil {
+		slog.Error("two-factor authentication disabled", "error", err)
+		return nil
+	}
+	return cipher
 }
 
 func sshAudience(cfg *config.Config) string {

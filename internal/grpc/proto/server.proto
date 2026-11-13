@@ -381,6 +381,15 @@ message WalkCommitsResponse {
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
+    // Set by clients that can finish a login with CompleteLoginMFA. Without it
+    // an account with two-factor authentication is refused.
+    bool supports_mfa = 3;
+}
+
+message CompleteLoginMFARequest {
+    string challenge = 1;
+    // A six-digit TOTP code or a recovery code.
+    string code = 2;
 }
 
 message LoginWithRefreshRequest {
@@ -407,7 +416,11 @@ message CompleteLoginSSHKeyRequest {
 message LoginResponse {
     string access_token = 1;
     string refresh_token = 2;
+    // Seconds until the access token expires, or until mfa_challenge does.
     int32 expires_in = 3;
+    // Set instead of the tokens when the account must still present a second
+    // factor through CompleteLoginMFA.
+    string mfa_challenge = 4;
 }
 
 message PermissionEntry {
@@ -1068,6 +1081,7 @@ service NipaService {
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
     rpc BeginLoginSSHKey(BeginLoginSSHKeyRequest) returns (BeginLoginSSHKeyResponse);
     rpc CompleteLoginSSHKey(CompleteLoginSSHKeyRequest) returns (LoginResponse);
+    rpc CompleteLoginMFA(CompleteLoginMFARequest) returns (LoginResponse);
     rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
     rpc ListMyProjects(ListMyProjectsRequest) returns (ListMyProjectsResponse);
     rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
