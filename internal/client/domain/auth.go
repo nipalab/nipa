@@ -7,6 +7,12 @@ type LoginResult struct {
 	Host         string `json:"host"`
 	Email        string `json:"email,omitempty"`
 	ExpiresIn    int    `json:"expires_in"`
+	MFAChallenge string `json:"-"`
+}
+
+type MFAChallenge struct {
+	Challenge string `json:"challenge"`
+	ExpiresIn int    `json:"expires_in"`
 }
 
 type SSHKeyChallenge struct {

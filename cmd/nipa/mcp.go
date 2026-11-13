@@ -21,7 +21,7 @@ type nonInteractiveInput struct{}
 
 func (nonInteractiveInput) PromptUsernameAndPassword() (string, string, error) {
 	return "", "", domain.NewUserError("interactive login is not available in mcp mode").
-		WithHint("authenticate from a terminal first", "nipa clone <url> <target>")
+		WithHint(usecase.LoginHint, "nipa login")
 }
 
 type tokenStorage interface {

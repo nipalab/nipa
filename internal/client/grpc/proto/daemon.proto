@@ -27,9 +27,15 @@ message LoginRequest {
     string host = 1;
     string username = 2;
     string password = 3;
+    string otp = 4; // two-factor code, sent with the password or with mfa_challenge
+    string mfa_challenge = 5; // finishes this challenge with otp; password is then ignored
 }
 
-message LoginResponse {}
+message LoginResponse {
+    bool mfa_required = 1; // call Login again with otp (and mfa_challenge)
+    string mfa_challenge = 2;
+    int32 expires_in = 3; // seconds the challenge stays valid
+}
 
 message RepoInfo {
     string root = 1;

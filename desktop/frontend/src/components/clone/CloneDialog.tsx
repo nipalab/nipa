@@ -142,7 +142,20 @@ function SignInStep({ account, onSignedIn }: { account: Account; onSignedIn: () 
   const [email, setEmail] = useState(account.email);
   const [password, setPassword] = useState("");
   const ssh = useMutation({ mutationFn: () => desktop.signInSSH(account.address, email.trim()).then(onSignedIn) });
-  const password_ = useMutation({ mutationFn: () => desktop.signIn(account.address, email, password).then(onSignedIn) });
+  const [challenge, setChallenge] = useState("");
+  const [code, setCode] = useState("");
+  const password_ = useMutation({
+    mutationFn: async () => {
+      const result = await desktop.signIn(account.address, email, password);
+      if (result.mfaRequired) {
+        setCode("");
+        setChallenge(result.challenge);
+        return;
+      }
+      await onSignedIn();
+    },
+  });
+  const mfa = useMutation({ mutationFn: () => desktop.signInMFA(account.address, email, challenge, code).then(onSignedIn) });
   const tried = useRef(false);
   useEffect(() => {
     if (tried.current) return;
@@ -150,7 +163,40 @@ function SignInStep({ account, onSignedIn }: { account: Account; onSignedIn: () 
     ssh.mutate();
   }, [ssh]);
 
-  const busy = ssh.isPending || password_.isPending;
+  const busy = ssh.isPending || password_.isPending || mfa.isPending;
+  if (challenge) {
+    return (
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          mfa.mutate();
+        }}
+      >
+        <p className="text-[12px] text-muted-foreground">Enter the code from your authenticator app, or a recovery code.</p>
+        <Field label="Authentication code">
+          <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" autoFocus aria-label="Authentication code" className={inputClass} />
+        </Field>
+        <ErrorText error={mfa.error} />
+        <div className="flex justify-between">
+          <Button
+            size="sm"
+            onClick={() => {
+              mfa.reset();
+              setChallenge("");
+            }}
+            disabled={mfa.isPending}
+          >
+            Start over
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={mfa.isPending || !code.trim()}>
+            {mfa.isPending && <Loader2 className="animate-spin" />}
+            Verify
+          </Button>
+        </div>
+      </form>
+    );
+  }
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 rounded-md border border-border bg-background p-3 text-[12px]">

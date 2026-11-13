@@ -18,8 +18,10 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 		Long: "Authenticate against a nipa server and store the session token for the host.\n" +
 			"A registered SSH key logs in without prompting (--ssh-key, NIPA_SSH_KEY, the\n" +
 			"sshKeyPath user config, ssh-agent or ~/.ssh): the key identifies its account,\n" +
-			"like git. Password login prompts for the email and password instead. The\n" +
-			"server defaults to the host of the enclosing working copy.",
+			"like git. Password login prompts for the email and password instead, then\n" +
+			"for the two-factor code when the account uses one (--otp or NIPA_OTP supply\n" +
+			"it without a prompt). The server defaults to the host of the enclosing\n" +
+			"working copy.",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -74,7 +76,8 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.useCase.Auth().LoginWithUsernamePassword(cmd.Context(), endpoint.Address, username, password); err != nil {
+			otp, _ := cmd.Flags().GetString("otp")
+			if err := c.useCase.Auth().LoginWithPassword(cmd.Context(), endpoint.Address, username, password, otp, prompter); err != nil {
 				return err
 			}
 			cmd.Printf("Logged in to %s as %s\n", host, username)
@@ -83,6 +86,7 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 	}
 	cmd.Flags().String("username", "", "Email address for password login (prompted when omitted; SSH keys identify their account)")
 	cmd.Flags().String("ssh-key", "", "SSH private key path (defaults to NIPA_SSH_KEY, the sshKeyPath user config, ssh-agent, then ~/.ssh keys)")
+	cmd.Flags().String("otp", "", "Two-factor authentication code (defaults to NIPA_OTP, then a prompt)")
 	cmd.Flags().String("host", "", "Nipa server URL or host (defaults to the host of the enclosing working copy)")
 	return cmd
 }

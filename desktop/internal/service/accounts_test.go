@@ -22,6 +22,7 @@ type accountDaemon struct {
 	address  string
 	err      error
 	login    *daemonpb.LoginRequest
+	loginRes *daemonpb.LoginResponse
 	ssh      *daemonpb.LoginSSHRequest
 	clone    *daemonpb.CloneRequest
 	sparse   *daemonpb.SetSparseRequest
@@ -36,6 +37,9 @@ func (d *accountDaemon) AccountStatus(_ context.Context, req *daemonpb.AccountSt
 
 func (d *accountDaemon) Login(_ context.Context, req *daemonpb.LoginRequest, _ ...grpc.CallOption) (*daemonpb.LoginResponse, error) {
 	d.login = req
+	if d.loginRes != nil {
+		return d.loginRes, d.err
+	}
 	return &daemonpb.LoginResponse{}, d.err
 }
 
@@ -90,7 +94,9 @@ func TestService_Accounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Account{Host: "studio.test", Address: "http://studio.test", Email: "ann@studio.test", UserID: "u1"}, *acc)
 
-	require.NoError(t, svc.SignIn(ctx, "studio.test", " ann@studio.test ", "pw"))
+	res, err := svc.SignIn(ctx, "studio.test", " ann@studio.test ", "pw")
+	require.NoError(t, err)
+	assert.Equal(t, &SignInResult{}, res)
 	assert.Equal(t, "ann@studio.test", d.login.GetUsername())
 	assert.Equal(t, "studio.test", d.login.GetHost())
 	require.NoError(t, svc.SignInSSH(ctx, "studio.test", ""))
@@ -110,7 +116,9 @@ func TestService_Accounts(t *testing.T) {
 	d.err = status.Error(codes.Unauthenticated, "unable to get access token")
 	_, err = svc.AccountStatus(ctx, "x")
 	assert.EqualError(t, err, "unable to get access token")
-	assert.Error(t, svc.SignIn(ctx, "x", "a", "b"))
+	_, err = svc.SignIn(ctx, "x", "a", "b")
+	assert.Error(t, err)
+	assert.Error(t, svc.SignInMFA(ctx, "x", "a", "ch", "1"))
 	assert.Error(t, svc.SignInSSH(ctx, "x", ""))
 	_, err = svc.ListProjects(ctx, "x")
 	assert.Error(t, err)
@@ -120,11 +128,33 @@ func TestService_Accounts(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestService_SignInMFA(t *testing.T) {
+	svc, d, _ := newAccounts(t)
+	d.loginRes = &daemonpb.LoginResponse{MfaRequired: true, MfaChallenge: "ch-1", ExpiresIn: 300}
+
+	res, err := svc.SignIn(ctx, "studio.test", "ann@studio.test", "pw")
+	require.NoError(t, err)
+	assert.Equal(t, &SignInResult{MFARequired: true, Challenge: "ch-1", ExpiresIn: 300}, res)
+
+	d.loginRes = nil
+	require.NoError(t, svc.SignInMFA(ctx, "studio.test", " ann@studio.test ", "ch-1", " 123456 "))
+	assert.Equal(t, "studio.test", d.login.GetHost())
+	assert.Equal(t, "ann@studio.test", d.login.GetUsername())
+	assert.Equal(t, "ch-1", d.login.GetMfaChallenge())
+	assert.Equal(t, "123456", d.login.GetOtp())
+	assert.Empty(t, d.login.GetPassword())
+
+	d.err = status.Error(codes.InvalidArgument, "invalid code")
+	assert.EqualError(t, svc.SignInMFA(ctx, "studio.test", "ann@studio.test", "ch-1", "000000"), "invalid code")
+}
+
 func TestService_AccountsNeedTheDaemon(t *testing.T) {
 	svc := New(func(context.Context) (Session, error) { return nil, errors.New("no daemon") }, &memStore{}, nil)
 	_, err := svc.AccountStatus(ctx, "x")
 	assert.Error(t, err)
-	assert.Error(t, svc.SignIn(ctx, "x", "a", "b"))
+	_, err = svc.SignIn(ctx, "x", "a", "b")
+	assert.Error(t, err)
+	assert.Error(t, svc.SignInMFA(ctx, "x", "a", "ch", "1"))
 	assert.Error(t, svc.SignInSSH(ctx, "x", ""))
 	_, err = svc.ListProjects(ctx, "x")
 	assert.Error(t, err)

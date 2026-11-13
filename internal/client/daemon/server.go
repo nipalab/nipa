@@ -26,8 +26,34 @@ const EnvEventInterval = "NIPA_DAEMON_EVENT_INTERVAL"
 
 const maxRecvMsgSize = 32 << 20
 
-// LoginFunc stores credentials for host so the daemon owns the session.
-type LoginFunc func(ctx context.Context, host, username, password string) error
+// LoginInput is one sign-in step: a password (with an optional two-factor
+// code) or, when Challenge is set, the code that finishes that challenge.
+type LoginInput struct {
+	Host      string
+	Username  string
+	Password  string
+	OTP       string
+	Challenge string
+}
+
+// LoginFunc stores credentials for host so the daemon owns the session. It
+// returns the challenge when the account still needs a two-factor code.
+type LoginFunc func(ctx context.Context, in LoginInput) (*clientDomain.MFAChallenge, error)
+
+type passwordAuth interface {
+	StartPasswordLogin(ctx context.Context, address, username, password, otp string) (*clientDomain.MFAChallenge, error)
+	CompleteLoginMFA(ctx context.Context, address, username, challenge, code string) error
+}
+
+// PasswordLogin adapts a password login usecase to a LoginFunc.
+func PasswordLogin(auth passwordAuth) LoginFunc {
+	return func(ctx context.Context, in LoginInput) (*clientDomain.MFAChallenge, error) {
+		if in.Challenge != "" {
+			return nil, auth.CompleteLoginMFA(ctx, in.Host, in.Username, in.Challenge, in.OTP)
+		}
+		return auth.StartPasswordLogin(ctx, in.Host, in.Username, in.Password, in.OTP)
+	}
+}
 
 // Options configures a daemon Server.
 type Options struct {
@@ -228,16 +254,30 @@ func (s *Server) Ping(context.Context, *daemonpb.PingRequest) (*daemonpb.PingRes
 }
 
 // Login stores credentials for host via the configured LoginFunc. The daemon
-// never prompts: rejected credentials surface as RPC errors and the GUI owns
-// the dialog.
+// never prompts: rejected credentials surface as RPC errors, a two-factor
+// challenge as mfa_required, and the GUI owns the dialog.
 func (s *Server) Login(ctx context.Context, req *daemonpb.LoginRequest) (*daemonpb.LoginResponse, error) {
 	if s.login == nil {
 		return nil, status.Error(codes.FailedPrecondition, "login is not configured")
 	}
-	if err := s.login(ctx, req.GetHost(), req.GetUsername(), req.GetPassword()); err != nil {
+	challenge, err := s.login(ctx, LoginInput{
+		Host:      req.GetHost(),
+		Username:  req.GetUsername(),
+		Password:  req.GetPassword(),
+		OTP:       req.GetOtp(),
+		Challenge: req.GetMfaChallenge(),
+	})
+	if err != nil {
 		return nil, toStatusError(err)
 	}
-	return &daemonpb.LoginResponse{}, nil
+	if challenge == nil {
+		return &daemonpb.LoginResponse{}, nil
+	}
+	return &daemonpb.LoginResponse{
+		MfaRequired:  true,
+		MfaChallenge: challenge.Challenge,
+		ExpiresIn:    int32(challenge.ExpiresIn),
+	}, nil
 }
 
 // Shutdown stops the daemon gracefully.

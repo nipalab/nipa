@@ -92,6 +92,7 @@ export type {
     SceneChange,
     SceneCompare,
     SceneObject,
+    SignInResult,
     TableColumn,
     TableCompare,
     TableRow,

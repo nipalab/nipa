@@ -28,7 +28,7 @@ func startDaemon(t *testing.T, auth *clientusecase.Auth, client *clientgrpc.Clie
 	t.Helper()
 	srv, err := daemon.NewServer(daemon.Options{
 		EndpointPath: filepath.Join(t.TempDir(), "daemon.json"),
-		Login:        auth.LoginWithUsernamePassword,
+		Login:        daemon.PasswordLogin(auth),
 		Runners: daemon.Runners{New: func(string) daemon.RepoOps {
 			push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
 			return daemon.RepoOps{

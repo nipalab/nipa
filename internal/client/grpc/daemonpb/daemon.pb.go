@@ -187,6 +187,8 @@ type LoginRequest struct {
 	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
 	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
 	Password      string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
+	Otp           string                 `protobuf:"bytes,4,opt,name=otp,proto3" json:"otp,omitempty"`                                       // two-factor code, sent with the password or with mfa_challenge
+	MfaChallenge  string                 `protobuf:"bytes,5,opt,name=mfa_challenge,json=mfaChallenge,proto3" json:"mfa_challenge,omitempty"` // finishes this challenge with otp; password is then ignored
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -242,8 +244,25 @@ func (x *LoginRequest) GetPassword() string {
 	return ""
 }
 
+func (x *LoginRequest) GetOtp() string {
+	if x != nil {
+		return x.Otp
+	}
+	return ""
+}
+
+func (x *LoginRequest) GetMfaChallenge() string {
+	if x != nil {
+		return x.MfaChallenge
+	}
+	return ""
+}
+
 type LoginResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	MfaRequired   bool                   `protobuf:"varint,1,opt,name=mfa_required,json=mfaRequired,proto3" json:"mfa_required,omitempty"` // call Login again with otp (and mfa_challenge)
+	MfaChallenge  string                 `protobuf:"bytes,2,opt,name=mfa_challenge,json=mfaChallenge,proto3" json:"mfa_challenge,omitempty"`
+	ExpiresIn     int32                  `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"` // seconds the challenge stays valid
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -276,6 +295,27 @@ func (x *LoginResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
 func (*LoginResponse) Descriptor() ([]byte, []int) {
 	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *LoginResponse) GetMfaRequired() bool {
+	if x != nil {
+		return x.MfaRequired
+	}
+	return false
+}
+
+func (x *LoginResponse) GetMfaChallenge() string {
+	if x != nil {
+		return x.MfaChallenge
+	}
+	return ""
+}
+
+func (x *LoginResponse) GetExpiresIn() int32 {
+	if x != nil {
+		return x.ExpiresIn
+	}
+	return 0
 }
 
 type RepoInfo struct {
@@ -10256,12 +10296,18 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x10\n" +
 	"\x03pid\x18\x02 \x01(\x05R\x03pid\"\x11\n" +
 	"\x0fShutdownRequest\"\x12\n" +
-	"\x10ShutdownResponse\"Z\n" +
+	"\x10ShutdownResponse\"\x91\x01\n" +
 	"\fLoginRequest\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"\x0f\n" +
-	"\rLoginResponse\"`\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x10\n" +
+	"\x03otp\x18\x04 \x01(\tR\x03otp\x12#\n" +
+	"\rmfa_challenge\x18\x05 \x01(\tR\fmfaChallenge\"v\n" +
+	"\rLoginResponse\x12!\n" +
+	"\fmfa_required\x18\x01 \x01(\bR\vmfaRequired\x12#\n" +
+	"\rmfa_challenge\x18\x02 \x01(\tR\fmfaChallenge\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\x03 \x01(\x05R\texpiresIn\"`\n" +
 	"\bRepoInfo\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +

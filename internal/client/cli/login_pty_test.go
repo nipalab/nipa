@@ -3,13 +3,17 @@
 package cli
 
 import (
+	"bufio"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
 func writeLoginConfig(t *testing.T, sshKeyPath string) {
@@ -108,4 +112,93 @@ func TestLoginCmd_PasswordLoginError(t *testing.T) {
 		"--username", "alice@example.com",
 	)
 	require.ErrorContains(t, err, "invalid email or password")
+}
+
+func TestLoginCmd_OTPFlag(t *testing.T) {
+	isolateLoginEnv(t)
+	t.Setenv(usecase.EnvOTP, "")
+	executor := &fakeSSHExecutor{mfaChallenge: "ch-1"}
+	cli, _, storage := newLoginCli(executor)
+
+	feedStdin(t, "secret")
+
+	out, err := runLoginCmd(t, cli, "", "--host", "nipa.example.com", "--username", "alice@example.com", "--otp", "123456")
+	require.NoError(t, err)
+	require.Contains(t, out, "Logged in to nipa.example.com as alice@example.com")
+	require.Equal(t, []string{"123456"}, executor.codes)
+	require.Equal(t, "mfa-tok", storage.saved[0].AccessToken)
+	require.Equal(t, "alice@example.com", storage.saved[0].Email)
+}
+
+func TestLoginCmd_OTPFromEnv(t *testing.T) {
+	isolateLoginEnv(t)
+	t.Setenv(usecase.EnvOTP, "654321")
+	executor := &fakeSSHExecutor{mfaChallenge: "ch-1"}
+	cli, _, storage := newLoginCli(executor)
+
+	feedStdin(t, "secret")
+
+	_, err := runLoginCmd(t, cli, "", "--host", "nipa.example.com", "--username", "alice@example.com")
+	require.NoError(t, err)
+	require.Equal(t, []string{"654321"}, executor.codes)
+	require.Len(t, storage.saved, 1)
+}
+
+func TestLoginCmd_PromptsForOTP(t *testing.T) {
+	isolateLoginEnv(t)
+	t.Setenv(usecase.EnvOTP, "")
+	executor := &fakeSSHExecutor{mfaChallenge: "ch-1", mfaErrs: []error{domain.NewUserError("invalid code"), nil}}
+	cli, _, storage := newLoginCli(executor)
+
+	feedStdin(t, "secret", "000000", "123456")
+
+	_, err := runLoginCmd(t, cli, "", "--host", "nipa.example.com", "--username", "alice@example.com")
+	require.NoError(t, err)
+	require.Equal(t, []string{"000000", "123456"}, executor.codes)
+	require.Equal(t, "mfa-tok", storage.saved[0].AccessToken)
+}
+
+func TestLoginCmd_WrongOTPFlagFails(t *testing.T) {
+	isolateLoginEnv(t)
+	t.Setenv(usecase.EnvOTP, "")
+	executor := &fakeSSHExecutor{mfaChallenge: "ch-1", mfaErrs: []error{domain.NewUserError("invalid code")}}
+	cli, _, storage := newLoginCli(executor)
+
+	feedStdin(t, "secret")
+
+	_, err := runLoginCmd(t, cli, "", "--host", "nipa.example.com", "--username", "alice@example.com", "--otp", "000000")
+	require.ErrorContains(t, err, "invalid code")
+	require.Equal(t, []string{"000000"}, executor.codes)
+	require.Empty(t, storage.saved)
+}
+
+func TestPrompter_PromptOTP_Pty(t *testing.T) {
+	master, slave := openPty(t)
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	withStdin(t, slave)
+
+	prompter := NewPrompter()
+	go func() { _, _ = master.WriteString(" 123456 \n") }()
+
+	code, err := prompter.PromptOTP(1)
+	require.NoError(t, err)
+	require.Equal(t, "123456", code)
+}
+
+func TestPrompter_PromptOTP_NotTerminal(t *testing.T) {
+	withStdin(t, notATerminal(t))
+
+	_, err := NewPrompter().PromptOTP(0)
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Contains(t, domErr.Hint, "SSH key")
+}
+
+func TestPrompter_PromptOTP_ReadError(t *testing.T) {
+	master, slave := openPty(t)
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	withStdin(t, slave)
+
+	_, err := (&Prompter{reader: bufio.NewReader(strings.NewReader(""))}).PromptOTP(0)
+	require.ErrorIs(t, err, io.EOF)
 }

@@ -29,6 +29,21 @@ type fakeSSHExecutor struct {
 	lastEmail      string
 	lastUsername   string
 	lastPassword   string
+	mfaChallenge   string
+	mfaErrs        []error
+	codes          []string
+}
+
+func (f *fakeSSHExecutor) CompleteLoginMFA(_ context.Context, _, _, code string) (*domain.LoginResult, error) {
+	f.codes = append(f.codes, code)
+	if len(f.mfaErrs) > 0 {
+		err := f.mfaErrs[0]
+		f.mfaErrs = f.mfaErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &domain.LoginResult{AccessToken: "mfa-tok"}, nil
 }
 
 func (f *fakeSSHExecutor) LoginWithUsernamePassword(_ context.Context, _, username, password string) (*domain.LoginResult, error) {
@@ -36,6 +51,9 @@ func (f *fakeSSHExecutor) LoginWithUsernamePassword(_ context.Context, _, userna
 	f.lastPassword = password
 	if f.passwordErr != nil {
 		return nil, f.passwordErr
+	}
+	if f.mfaChallenge != "" {
+		return &domain.LoginResult{MFAChallenge: f.mfaChallenge, ExpiresIn: 300}, nil
 	}
 	if f.passwordResult != nil {
 		return f.passwordResult, nil

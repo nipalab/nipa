@@ -712,7 +712,18 @@ recovery-codes`) and `DELETE /users/{id}/mfa`. gRPC:
 (TTL in `expires_in`) and the public `CompleteLoginMFA`; without the flag an
 enrolled account gets `FailedPrecondition` with the upgrade hint. 503
 crosses gRPC as `FailedPrecondition`. SSH key, refresh, email verification
-and service tokens never ask.
+and service tokens never ask. Client: the transport always sends
+`supports_mfa` and returns the challenge in `LoginResult.MFAChallenge`
+(never stored); `usecase/login_mfa.go` takes the code from `nipa login
+--otp`, then `NIPA_OTP`, then `OTPPrompter.PromptOTP` (`Authentication
+code:`, up to 3 prompts on a 400, only on a TTY) for `nipa login`,
+`MakeSureLoggedIn` and `Session.reauth`; without a source it fails with
+`MFARequiredError` (`LoginHint`, also used by `nipa mcp`). The daemon never
+prompts: `daemon.PasswordLogin` over `Auth.StartPasswordLogin`/
+`CompleteLoginMFA` answers `LoginResponse.mfa_required` + `mfa_challenge`,
+and a second `Login` with `mfa_challenge` + `otp` finishes it; the desktop
+`SignIn` returns `SignInResult` and `SignInMFA` drives the clone dialog's
+code step.
 
 Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
 the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|scaleway|http|log|off`), one message

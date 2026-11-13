@@ -234,6 +234,7 @@ func TestUnaryInterceptor_DoesNotRetryThrottledCredentialLogins(t *testing.T) {
 		"/greet.NipaService/LoginWithUsernamePassword",
 		"/greet.NipaService/BeginLoginSSHKey",
 		"/greet.NipaService/CompleteLoginSSHKey",
+		"/greet.NipaService/CompleteLoginMFA",
 	} {
 		calls, err := interceptorMethodCalls(t, method, throttleOnly(5), limited, nil)
 		require.Equal(t, codes.ResourceExhausted, status.Code(err), method)

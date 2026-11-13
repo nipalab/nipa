@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/render";
 const api = vi.hoisted(() => ({
   accountStatus: vi.fn(),
   signIn: vi.fn(),
+  signInMFA: vi.fn(),
   signInSSH: vi.fn(),
   listProjects: vi.fn(),
   remoteBranches: vi.fn(),
@@ -119,7 +120,7 @@ describe("CloneDialog", () => {
   it("signs in with an SSH key first and falls back to a password", async () => {
     api.accountStatus.mockResolvedValueOnce(account({ signedIn: false, email: "" })).mockResolvedValue(account({ email: "" }));
     api.signInSSH.mockRejectedValueOnce(new Error("invalid email or SSH key"));
-    api.signIn.mockRejectedValueOnce(new Error("invalid credentials")).mockResolvedValueOnce(undefined);
+    api.signIn.mockRejectedValueOnce(new Error("invalid credentials")).mockResolvedValueOnce({ mfaRequired: false, challenge: "", expiresIn: 0 });
     show();
     await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "nipa.studio.test{Enter}");
     expect(await screen.findByText("SSH key sign-in failed.")).toBeInTheDocument();
@@ -134,6 +135,48 @@ describe("CloneDialog", () => {
     expect(api.signIn).toHaveBeenLastCalledWith("https://nipa.studio.test", "ann@studio.test", "secret");
     expect(await screen.findByRole("button", { name: /Game/ })).toBeInTheDocument();
     expect(screen.getByText("nipa.studio.test")).toBeInTheDocument();
+  });
+
+  it("asks for a two-factor code after the password", async () => {
+    api.accountStatus.mockResolvedValueOnce(account({ signedIn: false, email: "" })).mockResolvedValue(account({ email: "" }));
+    api.signInSSH.mockRejectedValueOnce(new Error("invalid email or SSH key"));
+    api.signIn.mockResolvedValue({ mfaRequired: true, challenge: "ch-1", expiresIn: 300 });
+    api.signInMFA.mockRejectedValueOnce(new Error("invalid code")).mockResolvedValueOnce(undefined);
+    show();
+    await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "nipa.studio.test{Enter}");
+    expect(await screen.findByText("SSH key sign-in failed.")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Email" }), "ann@studio.test");
+    await userEvent.type(screen.getByLabelText("Password"), "secret");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    const codeInput = await screen.findByRole("textbox", { name: "Authentication code" });
+    expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
+
+    await userEvent.type(codeInput, "000000");
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("invalid code");
+    expect(api.signInMFA).toHaveBeenLastCalledWith("https://nipa.studio.test", "ann@studio.test", "ch-1", "000000");
+
+    await userEvent.clear(codeInput);
+    await userEvent.type(codeInput, "123456");
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(api.signInMFA).toHaveBeenLastCalledWith("https://nipa.studio.test", "ann@studio.test", "ch-1", "123456");
+    expect(await screen.findByRole("button", { name: /Game/ })).toBeInTheDocument();
+  });
+
+  it("goes back to the password from the code step", async () => {
+    api.accountStatus.mockResolvedValueOnce(account({ signedIn: false, email: "" })).mockResolvedValue(account({ email: "" }));
+    api.signInSSH.mockRejectedValueOnce(new Error("invalid email or SSH key"));
+    api.signIn.mockResolvedValue({ mfaRequired: true, challenge: "ch-1", expiresIn: 300 });
+    show();
+    await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "nipa.studio.test{Enter}");
+    expect(await screen.findByText("SSH key sign-in failed.")).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Email" }), "ann@studio.test");
+    await userEvent.type(screen.getByLabelText("Password"), "secret");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start over" }));
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(api.signInMFA).not.toHaveBeenCalled();
   });
 
   it("signs in with an SSH key without asking", async () => {

@@ -4,9 +4,9 @@ Design for a second login factor. An account that enrolled a TOTP
 authenticator must present a 6-digit code (or a recovery code) after its
 password before a session is issued.
 
-Status: the server side (storage, login step, REST and gRPC routes, emails) is
-implemented; the SPA, CLI, daemon and desktop follow. The decisions taken are
-listed at the end.
+Status: the server side (storage, login step, REST and gRPC routes, emails),
+the CLI, the daemon and the desktop sign-in are implemented; the SPA follows.
+The decisions taken are listed at the end.
 
 ## Scope
 
@@ -173,9 +173,10 @@ callback page does the same when `complete` answers `mfa_required`.
 - The implicit login behind other commands and `Session.reauth` use the same
   prompt. Without a TTY they fail with a hint to run `nipa login` or use an
   SSH key.
-- Daemon: `LoginRequest` gets `otp`; `LoginResponse` gets `mfa_required` and
-  the challenge so the desktop app can show a code step and call again. The
-  daemon never prompts.
+- Daemon: `LoginRequest` gets `otp` and `mfa_challenge`; `LoginResponse`
+  gets `mfa_required`, `mfa_challenge` and `expires_in` so the desktop app can
+  show a code step and call again with the challenge and the code. The daemon
+  never prompts.
 - Desktop: the sign-in dialog adds the code step.
 - `nipa mcp` never prompts; it reports the same hint.
 - Automation should use SSH keys or service tokens. Neither changes.

@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
 func TestNewMCPUseCases_BuildsGraphAndCloses(t *testing.T) {
@@ -43,6 +46,10 @@ func TestNonInteractiveInput(t *testing.T) {
 	require.Empty(t, username)
 	require.Empty(t, password)
 	require.EqualError(t, err, "interactive login is not available in mcp mode")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, usecase.LoginHint, domErr.Hint)
+	require.Equal(t, "nipa login", domErr.Action)
 }
 
 func TestMCPCommand_EndsOnEOFStdin(t *testing.T) {

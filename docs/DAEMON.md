@@ -168,7 +168,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `AssetRefs` | unary | what an engine asset uses and which files use it, from a reference graph cached per root; see below |
 | `Provenance` | unary | origin record, status and `required` flag per path; see below |
 | `SetProvenance` | unary | records a file's origin by hand like `nipa provenance set` and stages `.nipaprovenance.yml`; see below |
-| `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
+| `Login` | unary | (host, user, password, otp?, mfa_challenge?) → `securestorage`, or `mfa_required` + challenge; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
 ### Proxy ops (unary pass-through to the server)

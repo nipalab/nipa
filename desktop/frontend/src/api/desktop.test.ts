@@ -42,6 +42,7 @@ const service = vi.hoisted(() => ({
   SetProvenance: vi.fn(),
   AccountStatus: vi.fn(),
   SignIn: vi.fn(),
+  SignInMFA: vi.fn(),
   SignInSSH: vi.fn(),
   ListProjects: vi.fn(),
   RemoteBranches: vi.fn(),
@@ -263,11 +264,15 @@ describe("desktop api", () => {
     service.AccountStatus.mockResolvedValueOnce({ signedIn: true }).mockResolvedValueOnce(null);
     expect(await desktop.accountStatus("h")).toEqual({ signedIn: true });
     await expect(desktop.accountStatus("h")).rejects.toThrow("No account information");
-    service.SignIn.mockResolvedValue(undefined);
+    service.SignIn.mockResolvedValueOnce(null).mockResolvedValueOnce({ mfaRequired: true, challenge: "ch", expiresIn: 300 });
+    service.SignInMFA.mockResolvedValue(undefined);
     service.SignInSSH.mockResolvedValue(undefined);
-    await desktop.signIn("h", "a", "p");
+    expect(await desktop.signIn("h", "a", "p")).toEqual({ mfaRequired: false, challenge: "", expiresIn: 0 });
+    expect(await desktop.signIn("h", "a", "p")).toEqual({ mfaRequired: true, challenge: "ch", expiresIn: 300 });
+    await desktop.signInMFA("h", "a", "ch", "123456");
     await desktop.signInSSH("h");
     expect(service.SignIn).toHaveBeenCalledWith("h", "a", "p");
+    expect(service.SignInMFA).toHaveBeenCalledWith("h", "a", "ch", "123456");
     expect(service.SignInSSH).toHaveBeenCalledWith("h", "");
     service.ListProjects.mockResolvedValueOnce(null);
     service.RemoteBranches.mockResolvedValueOnce(null);

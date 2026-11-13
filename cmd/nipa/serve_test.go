@@ -160,8 +160,10 @@ func TestServeAccounts_FailuresBeforeTheServer(t *testing.T) {
 	require.Error(t, accounts.Clone(ctx, "http://127.0.0.1:1/org/project/art", "", []string{"audio"}, target, nil))
 
 	login := serveLogin(newServeTestClient, fakeStorage{})
-	require.Error(t, login(ctx, "ftp://host", "ann", "pw"))
-	require.ErrorContains(t, login(ctx, "127.0.0.1:1", "", "pw"), "username cannot be empty")
+	_, err = login(ctx, daemon.LoginInput{Host: "ftp://host", Username: "ann", Password: "pw"})
+	require.Error(t, err)
+	_, err = login(ctx, daemon.LoginInput{Host: "127.0.0.1:1", Password: "pw"})
+	require.ErrorContains(t, err, "username cannot be empty")
 }
 
 func TestDaemonInput(t *testing.T) {
@@ -256,4 +258,61 @@ func TestLoginSigners_DefaultOrder(t *testing.T) {
 	_, err := loginSigners(func() ([]sshkey.Signer, error) { called = true; return nil, nil }, daemon.SSHLogin{Email: "ann@studio.test"})
 	require.NoError(t, err)
 	require.True(t, called)
+}
+
+type mfaLoginServer struct {
+	pb.UnimplementedNipaServiceServer
+	supportsMFA bool
+	codes       []string
+}
+
+func (s *mfaLoginServer) LoginWithUsernamePassword(_ context.Context, req *pb.LoginUsernamePasswordRequest) (*pb.LoginResponse, error) {
+	s.supportsMFA = req.GetSupportsMfa()
+	return &pb.LoginResponse{MfaChallenge: "ch-1", ExpiresIn: 300}, nil
+}
+
+func (s *mfaLoginServer) CompleteLoginMFA(_ context.Context, req *pb.CompleteLoginMFARequest) (*pb.LoginResponse, error) {
+	s.codes = append(s.codes, req.GetChallenge()+"/"+req.GetCode())
+	return &pb.LoginResponse{AccessToken: "a", RefreshToken: "r", ExpiresIn: 60}, nil
+}
+
+type recordingStorage struct{ saved []*domain.LoginResult }
+
+func (s *recordingStorage) SaveToken(r *domain.LoginResult) error {
+	s.saved = append(s.saved, r)
+	return nil
+}
+
+func (s *recordingStorage) LoadToken(string) (*domain.LoginResult, error) {
+	return nil, errors.New("no token stored")
+}
+
+func TestServeLogin_MFAChallengeThenCode(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	fake := &mfaLoginServer{}
+	srv := grpc.NewServer()
+	pb.RegisterNipaServiceServer(srv, fake)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	t.Setenv(usecase.EnvOTP, "999999")
+
+	storage := &recordingStorage{}
+	login := serveLogin(newServeTestClient, storage)
+	ctx := context.Background()
+
+	challenge, err := login(ctx, daemon.LoginInput{Host: lis.Addr().String(), Username: "ann", Password: "pw"})
+	require.NoError(t, err)
+	require.Equal(t, &domain.MFAChallenge{Challenge: "ch-1", ExpiresIn: 300}, challenge)
+	require.True(t, fake.supportsMFA)
+	require.Empty(t, fake.codes)
+	require.Empty(t, storage.saved)
+
+	challenge, err = login(ctx, daemon.LoginInput{Host: lis.Addr().String(), Username: "ann", OTP: "123456", Challenge: "ch-1"})
+	require.NoError(t, err)
+	require.Nil(t, challenge)
+	require.Equal(t, []string{"ch-1/123456"}, fake.codes)
+	require.Len(t, storage.saved, 1)
+	require.Equal(t, "ann", storage.saved[0].Email)
+	require.Equal(t, "a", storage.saved[0].AccessToken)
 }

@@ -105,7 +105,8 @@ export function createService(scenario: string): typeof Real {
     SetProvenance: (_root, input) => ok(provenance.set(input)),
 
     AccountStatus: (server) => ok({ host: d.SERVER, address: server, signedIn: true, email: "alex@acme.dev", userId: d.people.me.id }),
-    SignIn: () => ok(undefined),
+    SignIn: () => ok({ mfaRequired: false, challenge: "", expiresIn: 0 }),
+    SignInMFA: () => ok(undefined),
     SignInSSH: () => ok(undefined),
     ListProjects: () => ok(clone(d.projects)),
     RemoteBranches: () => ok(d.branches.map((b) => ({ name: b.name, isDefault: b.default, protected: b.protected }))),
