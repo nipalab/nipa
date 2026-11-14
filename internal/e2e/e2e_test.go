@@ -143,6 +143,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 		Email:              sqlite.NewEmailRepository(dbConn),
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
+		Maintenance:        sqlite.NewMaintenanceRepository(dbConn),
 	}, serverapp.UsecaseDeps{
 		Config: &config.Config{
 			JWTKey:                 e2eJWTSecret,

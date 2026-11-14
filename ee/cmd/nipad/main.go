@@ -216,6 +216,7 @@ func main() {
 		Email:              emailRepository,
 		Audit:              postgres.NewAuditRepository(dbConn),
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
+		Maintenance:        postgres.NewMaintenanceRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	if storageLedger != nil {
