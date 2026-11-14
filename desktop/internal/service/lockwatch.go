@@ -93,7 +93,7 @@ func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []wat
 				ID:     "lockwatch:" + root + ":" + w.key(),
 				Title:  name + ": " + w.Path + " is free",
 				Body:   fmt.Sprintf("%s released it. Click to lock it now.", e.Actor),
-				Target: Navigation{Root: root, Tab: "locks", Path: w.Path, Action: "lock"},
+				Target: Navigation{Root: root, Tab: "locks", Path: w.Path, Action: "lock", Branch: w.Branch},
 			},
 			watch: w,
 		})

@@ -780,6 +780,11 @@ export interface Navigation {
     "project": string;
     "path": string;
     "action": string;
+
+    /**
+     * Branch is the lock scope a "lock" action targets; empty is mainline.
+     */
+    "branch": string;
 }
 
 export interface NewMergeRequest {

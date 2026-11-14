@@ -227,7 +227,7 @@ func notificationFor(name, root string, e TeamEvent, pushes, locks, reviews bool
 
 // Data is the payload a notification carries so a click can navigate.
 func (n Notification) Data() map[string]any {
-	return map[string]any{"root": n.Target.Root, "tab": n.Target.Tab, "number": n.Target.Number, "path": n.Target.Path, "action": n.Target.Action}
+	return map[string]any{"root": n.Target.Root, "tab": n.Target.Tab, "number": n.Target.Number, "path": n.Target.Path, "action": n.Target.Action, "branch": n.Target.Branch}
 }
 
 // NavigationFromData reads a clicked notification's payload; numbers may
@@ -238,6 +238,7 @@ func NavigationFromData(data map[string]any) Navigation {
 	nav.Tab, _ = data["tab"].(string)
 	nav.Path, _ = data["path"].(string)
 	nav.Action, _ = data["action"].(string)
+	nav.Branch, _ = data["branch"].(string)
 	switch n := data["number"].(type) {
 	case int64:
 		nav.Number = n

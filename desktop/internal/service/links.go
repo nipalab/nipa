@@ -28,6 +28,8 @@ type Navigation struct {
 	Project string `json:"project"`
 	Path    string `json:"path"`
 	Action  string `json:"action"`
+	// Branch is the lock scope a "lock" action targets; empty is mainline.
+	Branch string `json:"branch"`
 }
 
 var errBadLink = errors.New("not a Nipa link; expected nipa://<server>/<org>/<project>[/merge-requests/<n>|/commits/<id>|/file/<path>|/files|/history|/branches|/locks|/changes]")

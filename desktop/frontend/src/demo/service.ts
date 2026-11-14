@@ -283,7 +283,7 @@ export function createService(scenario: string): typeof Real {
     GenerateMergeRequest: (_root, source, target) => ok(d.mrDraft(source, target)),
     IgnoreRules: () => ok({ shared: "# Unity\nLibrary/\nTemp/\nLogs/\n*.csproj\n", local: "*.tmp\n.vscode/\n" }),
     SaveIgnoreRules: () => ok(undefined),
-    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "", path: "", action: "" }),
+    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "", path: "", action: "", branch: "" }),
     TakeNavigation: () => ok(null),
     UpdateStatus: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(5) }),
     CheckForUpdate: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(0) }),

@@ -991,6 +991,13 @@ describe("palette actions and shortcuts", () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Locked art/hero.png", "success"));
   });
 
+  it("locks in the watched branch scope, mainline included", async () => {
+    api.lock.mockResolvedValue({ locked: ["art/hero.png"], failed: [] });
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    renderWithProviders(withIntent({ tab: "locks", action: "lock", path: "art/hero.png", branch: "feature", seq: 1 }));
+    await waitFor(() => expect(api.lock).toHaveBeenCalledWith("/work/game", "feature", ["art/hero.png"]));
+  });
+
   it("reports a lock status that cannot be read", async () => {
     api.lockStatus.mockRejectedValue(new Error("offline"));
     renderWithProviders(withIntent({ tab: "", action: "lock", path: "art/hero.png", seq: 1 }));

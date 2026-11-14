@@ -66,6 +66,7 @@ func TestService_WatchedLockNotifications(t *testing.T) {
 	feature := s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Branch: "feature", Path: "art/a.psd"})
 	require.Len(t, feature, 1)
 	require.Equal(t, LockWatch{Branch: "feature", Path: "art/a.psd"}, feature[0].watch)
+	require.Equal(t, "feature", feature[0].Target.Branch)
 
 	w.err = errors.New("disk")
 	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
@@ -89,7 +90,7 @@ func TestService_ActivityNotifiesWatchedLock(t *testing.T) {
 }
 
 func TestNavigationFromDataCarriesLockAction(t *testing.T) {
-	n := Notification{Target: Navigation{Root: "/w", Tab: "locks", Path: "a", Action: "lock"}}
+	n := Notification{Target: Navigation{Root: "/w", Tab: "locks", Path: "a", Action: "lock", Branch: "feature"}}
 	require.Equal(t, n.Target, NavigationFromData(n.Data()))
 }
 
