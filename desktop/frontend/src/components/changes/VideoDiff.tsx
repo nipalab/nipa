@@ -18,6 +18,8 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
     queryKey: viewerKey(root, diff, "video"),
     queryFn: () => desktop.videoDiff(root, old, next),
     staleTime: 30_000,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
   });
   if (query.isPending) {
     return (
@@ -31,9 +33,9 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
   return <VideoCompareView compare={query.data} />;
 }
 
-const safePlay = (v: HTMLVideoElement) => {
+const safePlay = async (v: HTMLVideoElement) => {
   try {
-    void Promise.resolve(v.play()).catch(() => undefined);
+    await v.play();
   } catch {
     return;
   }
@@ -72,7 +74,7 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia }: { comp
     }
     const from = position >= span && span > 0 ? 0 : position;
     seek(from);
-    for (const v of elements()) safePlay(v);
+    for (const v of elements()) void safePlay(v);
     setPlaying(true);
   };
   const step = (dir: 1 | -1) => {
@@ -91,7 +93,9 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia }: { comp
     }
   };
   const ended = (side: Side) => {
-    if (side === master) setPlaying(false);
+    if (side !== master) return;
+    for (const v of elements()) v.pause();
+    setPlaying(false);
   };
   const open = (token: string) => {
     setOpenError(null);

@@ -95,8 +95,13 @@ describe("VideoCompareView", () => {
     expect(before.muted).toBe(false);
     expect(after.muted).toBe(true);
 
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    pause.mockClear();
     fireEvent.ended(before);
+    expect(pause).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     fireEvent.ended(after);
+    expect(pause).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "Video details" });

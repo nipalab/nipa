@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -27,9 +28,11 @@ type mediaFile struct {
 	name string
 }
 
-// mediaStore keeps the last few media files written for the viewers in a
-// private temp folder, so the webview can stream them with range requests
-// instead of holding them as data URLs.
+// mediaStore keeps the most recently used media files written for the
+// viewers in a private temp folder, so the webview can stream them with
+// range requests instead of holding them as data URLs. The video viewer does
+// not cache its answer beyond its own lifetime, so mounted viewers (a few at
+// most) never hold an evicted token.
 type mediaStore struct {
 	mu    sync.Mutex
 	dir   string
@@ -73,10 +76,16 @@ func (m *mediaStore) commit(f *os.File, name string) string {
 	return token
 }
 
+// lookup finds a file and marks it recently used, so a video being streamed
+// is evicted last.
 func (m *mediaStore) lookup(token string) (mediaFile, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	f, ok := m.files[token]
+	if ok {
+		i := slices.Index(m.order, token)
+		m.order = append(append(m.order[:i:i], m.order[i+1:]...), token)
+	}
 	return f, ok
 }
 

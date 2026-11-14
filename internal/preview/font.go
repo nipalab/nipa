@@ -276,12 +276,12 @@ func RenderFontSheet(f *Font, opts FontSheetOptions) (*image.RGBA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("preview: font face: %w", err)
 	}
-	defer face.Close()
+	defer func() { _ = face.Close() }()
 	small, err := opentype.NewFace(f.face, &opentype.FaceOptions{Size: opts.Size * 0.75, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		return nil, fmt.Errorf("preview: font face: %w", err)
 	}
-	defer small.Close()
+	defer func() { _ = small.Close() }()
 
 	glyphs := sheetRunes(f.Coverage, opts.MaxCells)
 	cell := int(opts.Size * 1.6)

@@ -118,3 +118,27 @@ func TestService_MediaStoreEvictsAndOpens(t *testing.T) {
 	require.True(t, os.IsNotExist(err))
 	require.NoError(t, svc.media.close())
 }
+
+func TestMediaStoreKeepsRecentlyServedFiles(t *testing.T) {
+	var m mediaStore
+	defer func() { _ = m.close() }()
+	add := func() string {
+		f, err := m.create("a.mp4")
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		return m.commit(f, "a.mp4")
+	}
+	first := add()
+	for i := 1; i < maxMediaFiles; i++ {
+		add()
+	}
+	_, ok := m.lookup(first)
+	require.True(t, ok)
+	second := m.order[0]
+	add()
+	_, ok = m.lookup(first)
+	require.True(t, ok, "a file served recently survives eviction")
+	_, ok = m.lookup(second)
+	require.False(t, ok)
+	require.Len(t, m.order, maxMediaFiles)
+}
