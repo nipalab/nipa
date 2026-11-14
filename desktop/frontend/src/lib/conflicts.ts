@@ -83,6 +83,12 @@ export function editsText(file: ConflictFile): boolean {
   return !file.binary && (file.kind === "text" || file.kind === "add_add");
 }
 
+// mergesScene tells whether a conflicted file is a Godot text scene or
+// resource the daemon can merge node by node.
+export function mergesScene(file: ConflictFile): boolean {
+  return editsText(file) && /\.(tscn|tres)$/i.test(file.path);
+}
+
 export function kindLabel(kind: string): string {
   switch (kind) {
     case "text":

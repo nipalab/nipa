@@ -92,10 +92,16 @@ func TestNormalizeSettings(t *testing.T) {
 		{{Extension: "a b", Command: "x"}},
 		{{Extension: ".psd"}},
 		{{Extension: ".psd", Command: "a"}, {Extension: "PSD", Command: "b"}},
+		{{Extension: ".cs", Command: "code --goto x:{line}"}},
+		{{Extension: ".cs", Command: `"code --goto {file}`}},
+		{{Extension: ".cs", Command: "{file} --goto"}},
 	} {
 		_, err := normalizeSettings(workspace.Settings{Tools: tools})
 		require.Error(t, err, tools)
 	}
+	st, err = normalizeSettings(workspace.Settings{Tools: []workspace.Tool{{Extension: "cs", Command: `"C:\Program Files\code.exe" -g {file}:{line}`}}})
+	require.NoError(t, err)
+	require.Equal(t, ".cs", st.Tools[0].Extension)
 }
 
 func TestService_UploadWorkers(t *testing.T) {
@@ -217,13 +223,22 @@ func TestService_OpenFileWithTools(t *testing.T) {
 	prefs := newPrefs()
 	prefs.st.Tools = []workspace.Tool{{Extension: ".blend", Command: "blender"}}
 	h.svc.Prefs = prefs
-	var launched [][2]string
-	h.svc.LaunchFunc = func(command, path string) error {
-		launched = append(launched, [2]string{command, path})
+	var launched [][]string
+	h.svc.LaunchFunc = func(args []string) error {
+		launched = append(launched, args)
 		return nil
 	}
 	require.NoError(t, h.svc.OpenFile(ctx, root, "art/Hero.BLEND"))
-	require.Equal(t, [][2]string{{"blender", filepath.Join(root, "art", "Hero.BLEND")}}, launched)
+	require.Equal(t, [][]string{{"blender", filepath.Join(root, "art", "Hero.BLEND")}}, launched)
+
+	prefs.st.Tools = []workspace.Tool{{Extension: ".cs", Command: `"/opt/My Editor/code" --goto {file}:{line}`}}
+	launched = nil
+	require.NoError(t, h.svc.OpenFileAt(ctx, root, "src/Player.cs", 42))
+	require.NoError(t, h.svc.OpenFile(ctx, root, "src/Player.cs"))
+	full := filepath.Join(root, "src", "Player.cs")
+	require.Equal(t, [][]string{{"/opt/My Editor/code", "--goto", full + ":42"}, {"/opt/My Editor/code", "--goto", full + ":1"}}, launched)
+	require.ErrorContains(t, h.svc.OpenFileAt(ctx, root, "../x.cs", 3), "outside")
+	prefs.st.Tools = []workspace.Tool{{Extension: ".blend", Command: "blender"}}
 	require.ErrorContains(t, h.svc.OpenFile(ctx, root, "notes.txt"), "not available")
 
 	h.svc.LaunchFunc = nil
@@ -232,10 +247,13 @@ func TestService_OpenFileWithTools(t *testing.T) {
 	require.NoError(t, h.svc.OpenFile(ctx, root, "notes.txt"))
 }
 
-func TestLaunchCommandAndChooseProgram(t *testing.T) {
-	require.Equal(t, []string{"open", "-a", "/Applications/Blender.app/", "/f.blend"}, launchCommand("darwin", "/Applications/Blender.app/", "/f.blend").Args)
-	require.Equal(t, []string{"/usr/bin/blender", "/f.blend"}, launchCommand("linux", "/usr/bin/blender", "/f.blend").Args)
-	require.Equal(t, []string{"/Applications/x", "/f"}, launchCommand("darwin", "/Applications/x", "/f").Args)
+func TestToolArgsAndChooseProgram(t *testing.T) {
+	require.Equal(t, []string{"open", "-a", "/Applications/Blender.app/", "/f.blend"}, toolArgs("darwin", "/Applications/Blender.app/", "/f.blend", 0))
+	require.Equal(t, []string{"/usr/bin/blender", "/f.blend"}, toolArgs("linux", "/usr/bin/blender", "/f.blend", 3))
+	require.Equal(t, []string{"/Applications/x", "/f"}, toolArgs("darwin", "/Applications/x", "/f", 0))
+	require.Equal(t, []string{`C:\Program Files\Code.exe`, "-g", `C:\w\a.cs:7`}, toolArgs("windows", `"C:\Program Files\Code.exe" -g {file}:{line}`, `C:\w\a.cs`, 7))
+	require.Equal(t, []string{"subl", "/a {line}.txt:1"}, toolArgs("linux", "subl\t'{file}:{line}'", "/a {line}.txt", -1))
+	require.Equal(t, []string{"broken \"{file}", "/f"}, toolArgs("linux", "broken \"{file}", "/f", 2))
 
 	h := newHarness()
 	_, err := h.svc.ChooseProgram()

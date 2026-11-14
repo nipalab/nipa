@@ -448,6 +448,53 @@ func (c *Client) GetCommitLog(ctx context.Context, org, project, branch string, 
 	return entries, nil
 }
 
+// GetPathCommitLog lists the commits of rev (branch name or commit id) that
+// changed path, newest first. The server scans at most 500 commits.
+func (c *Client) GetPathCommitLog(ctx context.Context, org, project, rev, path string, limit int) ([]*serverDomain.CommitLogEntry, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetCommitLog(ctx, &pb.GetCommitLogRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Branch:  rev,
+		Limit:   int32(limit),
+		Path:    path,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	entries := make([]*serverDomain.CommitLogEntry, 0, len(res.GetCommits()))
+	for _, e := range res.GetCommits() {
+		if se := toServerCommitLogEntry(e); se != nil {
+			entries = append(entries, se)
+		}
+	}
+	return entries, nil
+}
+
+// GetCommitDirManifest returns the files of one directory of a commit: the
+// root's own files for "", otherwise the directory's subtree.
+func (c *Client) GetCommitDirManifest(ctx context.Context, org, project, commitID, dir string) (*serverDomain.TreeNode, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	req := &pb.GetTreeManifestRequest{
+		Context:  &pb.ProjectContext{Org: org, Project: project},
+		CommitId: &commitID,
+	}
+	if dir != "" {
+		req.Paths = []string{dir}
+		req.Recursive = true
+	}
+	res, err := client.GetTreeManifest(ctx, req)
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toServerTreeNode(res.GetRootTree()), nil
+}
+
 func (c *Client) CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

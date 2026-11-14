@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { FileDiff, FileSide } from "@/api/desktop";
+import { renderWithProviders } from "@/test/render";
 import { DiffViewer } from "./DiffViewer";
 
 const side = (over: Partial<FileSide> = {}): FileSide => ({ path: "a.txt", mode: 420, size: 10, binary: false, hash: "", ...over });
@@ -17,7 +18,7 @@ const diff = (over: Partial<FileDiff>): FileDiff => ({
   ...over,
 });
 
-const show = (d: FileDiff) => render(<DiffViewer root="/r" diff={d} layout="unified" onLayout={vi.fn()} />);
+const show = (d: FileDiff) => renderWithProviders(<DiffViewer root="/r" diff={d} layout="unified" onLayout={vi.fn()} />);
 
 describe("DiffViewer notices", () => {
   it.each([

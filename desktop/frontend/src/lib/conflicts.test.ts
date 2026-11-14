@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConflictFile } from "@/api/desktop";
-import { choices, compose, conflictCount, editsText, hasMarkers, kindLabel, parseConflicts, pickText, segmentsFor, unresolved } from "./conflicts";
+import { choices, compose, conflictCount, editsText, hasMarkers, kindLabel, mergesScene, parseConflicts, pickText, segmentsFor, unresolved } from "./conflicts";
 
 const marked = "top\n<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> theirs\nmiddle\n<<<<<<< ours\n=======\nadded\n>>>>>>> theirs\n";
 const file = (over: Partial<ConflictFile> = {}): ConflictFile => ({ path: "a.txt", kind: "text", binary: false, resolved: false, viewer: "text", ...over });
@@ -53,6 +53,10 @@ describe("conflicts", () => {
     expect(editsText(file({ kind: "add_add" }))).toBe(true);
     expect(editsText(file({ kind: "add_add", binary: true }))).toBe(false);
     expect(editsText(file({ kind: "modify_delete" }))).toBe(false);
+    expect(mergesScene(file({ path: "levels/Arena.TSCN" }))).toBe(true);
+    expect(mergesScene(file({ path: "items/sword.tres", kind: "add_add" }))).toBe(true);
+    expect(mergesScene(file({ path: "levels/arena.tscn", binary: true }))).toBe(false);
+    expect(mergesScene(file({ path: "player.gd" }))).toBe(false);
   });
 
   it("labels kinds and choices", () => {

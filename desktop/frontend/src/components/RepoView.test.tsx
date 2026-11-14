@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   unlock: vi.fn(),
   pickFile: vi.fn(),
   openFile: vi.fn(),
+  openFileAt: vi.fn(),
+  blame: vi.fn(),
   remoteTree: vi.fn(),
   setSparse: vi.fn(),
   push: vi.fn(),
@@ -193,6 +195,35 @@ describe("Changes view", () => {
     expect(screen.getByRole("button", { name: "Split" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByRole("button", { name: "Unified" }));
     expect(localStorage.getItem("nipa.diffLayout")).toBe("unified");
+  });
+
+  it("blames lines, opens their commit in History and opens the file at a line", async () => {
+    localStorage.removeItem("nipa.blame");
+    const date = new Date().toISOString();
+    api.blame.mockResolvedValue({
+      path: "src/player.go",
+      revision: "",
+      truncated: false,
+      lines: [
+        { commitId: "c7", uncommitted: false },
+        { commitId: "", uncommitted: true },
+      ],
+      commits: [{ id: "c7", hash: "h7", parents: [], author: "Ana", email: "", message: "Start player", date }],
+    });
+    api.openFileAt.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("no program"));
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    view();
+    const table = await screen.findByRole("table", { name: "Diff of src/player.go" });
+    await userEvent.click(within(table).getByRole("button", { name: "Open in editor at line 2" }));
+    expect(api.openFileAt).toHaveBeenCalledWith("/work/game", "src/player.go", 2);
+    await userEvent.click(within(table).getByRole("button", { name: "Open in editor at line 1" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not open src/player.go: no program"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Blame" }));
+    await userEvent.click(await screen.findByRole("button", { name: /c7 Start player/ }));
+    expect(await screen.findByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.history).toHaveBeenCalledWith("/work/game", expect.objectContaining({ start: "c7" })));
+    localStorage.removeItem("nipa.blame");
   });
 
   it("shows metadata for binary assets and handles files with no diff", async () => {

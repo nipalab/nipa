@@ -180,6 +180,39 @@ func (s *Service) ConflictDiff(ctx context.Context, root, path string) (*FileDif
 	return nil, nil
 }
 
+type SceneMergeConflict struct {
+	Section string `json:"section"`
+	Key     string `json:"key"`
+	Message string `json:"message"`
+}
+
+// SceneMerge is a Godot scene or resource merged node by node. Merged is only
+// a best effort (ours wins) when Clean is false.
+type SceneMerge struct {
+	Merged    string               `json:"merged"`
+	Clean     bool                 `json:"clean"`
+	Conflicts []SceneMergeConflict `json:"conflicts"`
+}
+
+// MergeScene merges a conflicted .tscn/.tres by nodes and properties. It only
+// reads: a clean result is applied with ResolveConflict.
+func (s *Service) MergeScene(ctx context.Context, root, path string) (*SceneMerge, error) {
+	var resp *daemonpb.MergeGodotResourceResponse
+	err := s.call(ctx, root, func(c daemonpb.NipaDaemonClient) error {
+		var err error
+		resp, err = c.MergeGodotResource(ctx, &daemonpb.MergeGodotResourceRequest{Root: root, Path: path})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &SceneMerge{Merged: string(resp.GetMerged()), Clean: resp.GetClean(), Conflicts: []SceneMergeConflict{}}
+	for _, c := range resp.GetConflicts() {
+		out.Conflicts = append(out.Conflicts, SceneMergeConflict{Section: c.GetSection(), Key: c.GetKey(), Message: c.GetMessage()})
+	}
+	return out, nil
+}
+
 // ResolveConflict settles one conflicted file and returns the refreshed
 // changes.
 func (s *Service) ResolveConflict(ctx context.Context, root string, in ResolveInput) (Changes, error) {

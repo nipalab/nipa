@@ -58,6 +58,15 @@ export function AudioDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * Blame attributes every line of a text file to the commit that last changed
+ * it: the working file when revision is empty, otherwise the file as of that
+ * commit, branch or tag.
+ */
+export function Blame(root: string, path: string, revision: string): $CancellablePromise<$models.Blame | null> {
+    return $Call.ByID(2184419263, root, path, revision);
+}
+
+/**
  * Branches lists the project's branches, the default one first.
  */
 export function Branches(root: string): $CancellablePromise<$models.Branch[] | null> {
@@ -396,6 +405,14 @@ export function MergeRequests(root: string, f: $models.MergeRequestFilter): $Can
 }
 
 /**
+ * MergeScene merges a conflicted .tscn/.tres by nodes and properties. It only
+ * reads: a clean result is applied with ResolveConflict.
+ */
+export function MergeScene(root: string, path: string): $CancellablePromise<$models.SceneMerge | null> {
+    return $Call.ByID(1436401908, root, path);
+}
+
+/**
  * MetaWarnings checks the pending changes of Unity projects inside the clone
  * for .meta sidecar mistakes.
  */
@@ -424,6 +441,15 @@ export function Navigate(nav: $models.Navigation): $CancellablePromise<void> {
  */
 export function OpenFile(root: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(3101717086, root, path);
+}
+
+/**
+ * OpenFileAt opens a clone file at a line: the program set for its extension
+ * gets the line through {line} in its command; the system's default
+ * application only opens the file.
+ */
+export function OpenFileAt(root: string, path: string, line: number): $CancellablePromise<void> {
+    return $Call.ByID(883914043, root, path, line);
 }
 
 /**

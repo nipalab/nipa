@@ -207,6 +207,10 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: 
 
         <Section title="External tools">
           <p className="text-muted-foreground">Open files with these programs instead of the system default, for example .blend with Blender.</p>
+          <p className="text-muted-foreground">
+            To open text files at a line, write a command with <code className="font-mono">{"{file}"}</code> and <code className="font-mono">{"{line}"}</code>, for example{" "}
+            <code className="font-mono">{"code --goto {file}:{line}"}</code>. Quote program paths that contain spaces.
+          </p>
           {draft.tools.map((tool, i) => (
             <div key={i} className="flex items-center gap-2">
               <input

@@ -22,6 +22,7 @@ type usecaseContainer interface {
 	Lock() *usecase.FileLock
 	Tag() *usecase.Tag
 	Version() *usecase.Version
+	Blame() BlameRunner
 }
 
 type connector interface {
@@ -61,6 +62,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupRevertCmd())
 	rootCmd.AddCommand(c.setupLogCmd())
 	rootCmd.AddCommand(c.setupDiffCmd())
+	rootCmd.AddCommand(c.setupBlameCmd())
 	rootCmd.AddCommand(c.setupAssetsCmd())
 	rootCmd.AddCommand(c.setupProvenanceCmd())
 	rootCmd.AddCommand(c.setupAclCmd())

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FolderTree, GitBranch, GitMerge, Search, Tag, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { locksKey, useLockActions } from "@/hooks/useLocks";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { RepoNavContext, type RepoNav } from "@/hooks/useTextTools";
 import { shortId } from "@/lib/history";
 import { shortcutHint } from "@/lib/shortcuts";
 import { normalizeSelection } from "@/lib/sparse";
@@ -82,7 +83,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file", "blame"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
   const finishing = useRef(false);
   const tagCheckout = useRef("");
@@ -206,177 +207,192 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
     },
     !repo.error,
   );
+  const root = repo.root;
+  const nav = useMemo<RepoNav>(
+    () => ({
+      showCommit: (id) => {
+        setHistoryNav((prev) => ({ path: "", commit: id, seq: (prev?.seq ?? 0) + 1 }));
+        setTab("history");
+      },
+      openAt: (path, line) => {
+        desktop.openFileAt(root, path, line).catch((err) => notify(`Could not open ${path}: ${errorMessage(err)}`));
+      },
+    }),
+    [root, notify],
+  );
 
   return (
-    <div className="flex h-full flex-col">
-      <header className={cn("drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-5", leading && "pl-2")}>
-        {leading}
-        <h1 className="truncate text-sm font-semibold">{repo.name}</h1>
-        {!repo.error &&
-          (detached ? (
-            <Badge className="text-warning" title={`Checked out at tag ${detached}; the clone's branch is ${repo.branch}`}>
-              <Tag />
-              {detached}
-            </Badge>
-          ) : (
-            <Badge>
-              <GitBranch />
-              {repo.branch}
-            </Badge>
-          ))}
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={repo.root}>
-          {repo.root}
-        </span>
-        {onSearch && (
-            <Button variant="ghost" size="sm" className="no-drag text-muted-foreground" onClick={onSearch} aria-label="Search" title={`Search and run commands (${shortcutHint("palette")})`}>
-              <Search />
-              <kbd className="font-sans text-[10px]">{shortcutHint("palette")}</kbd>
-            </Button>
-          )}
-        {!repo.error &&
-          (op && op.op !== "push" ? (
-            <div className="no-drag w-64">
-              <Progress op={op} onCancel={operation.cancel} />
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              onClick={startUpdate}
-              disabled={!!op || !!detached}
-              title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
-            >
-              <ArrowDownToLine />
-              Update
-              {incoming > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-foreground">{incomingLabel}</span>}
-            </Button>
-          ))}
-        <Button variant="danger" size="sm" onClick={() => onRemove(repo.root)} disabled={removing || !!op} title="Remove from list (files stay on disk)">
-          <Trash2 />
-          Remove
-        </Button>
-      </header>
-
-      {repo.error ? (
-        <div className="m-5 flex items-start gap-3 rounded-lg border border-border bg-danger-soft p-4" role="alert">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium">This clone is unavailable</p>
-            <p className="text-xs text-muted-foreground">{repo.error}</p>
-            <p className="text-xs text-muted-foreground">It may have been moved or deleted. Remove it from the list or restore the folder.</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {changes.data && (
-            <Banners
-              changes={changes.data}
-              conflicts={conflicts.data}
-              branch={repo.branch}
-              busy={!!op}
-              onSwitch={switchTo}
-              onRevert={revert}
-              onResolve={() => setTab("conflicts")}
-              onFinishMerge={finishMerge}
-              onAbortMerge={abortMerge}
-            />
-          )}
-          <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
-            {shownTabs.map(({ id, label, Icon }, i) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={current === id}
-                onClick={() => setTab(id)}
-                title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}
-                className={cn(
-                  "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",
-                  current === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-3.5" />
-                {label}
-                {id === "conflicts" && openConflicts > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] text-warning">{openConflicts}</span>}
-              </button>
-            ))}
-          </nav>
-          <div className="min-h-0 flex-1">
-            {current === "conflicts" ? (
-              <ConflictsView root={repo.root} busy={!!op} notify={notify} />
-            ) : current === "files" ? (
-              <FilesView
-                repo={repo}
-                busy={!!op}
-                notify={notify}
-                open={fileNav}
-                onHistory={showHistory}
-                onRestore={(path, commit) => {
-                  restored.current = path;
-                  operation.run("restore", () => desktop.restoreRevision(repo.root, path, commit.id));
-                }}
-                onAddSparse={(path) => operation.run("sparse", () => desktop.setSparse(repo.root, normalizeSelection([...(repo.sparse ?? []), path])))}
-              />
-            ) : current === "changes" ? (
-              <ChangesView
-                root={repo.root}
-                op={op}
-                message={message}
-                onMessage={setMessage}
-                onPush={(msg) => operation.run("push", () => desktop.push(repo.root, msg))}
-                onCancelOp={operation.cancel}
-                onError={(msg) => notify(msg)}
-                notify={notify}
-                onOpenFile={showFile}
-                focusMessage={focusMessage}
-              />
-            ) : current === "history" ? (
-              <HistoryView
-                key={historyNav?.seq ?? 0}
-                path={historyNav?.path}
-                root={repo.root}
-                branch={repo.branch}
-                detached={detached}
-                busy={!!op}
-                notify={notify}
-                onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
-                onSwitch={switchTo}
-                open={openCommit ?? (historyNav?.commit ? { id: historyNav.commit, seq: historyNav.seq } : undefined)}
-              />
-            ) : current === "branches" ? (
-              <BranchesView
-                root={repo.root}
-                branch={repo.branch}
-                detached={detached}
-                busy={!!op}
-                notify={notify}
-                onSwitch={switchTo}
-                onMerge={merge}
-                onCheckoutTag={(name) => {
-                  tagCheckout.current = name;
-                  operation.run("switch", () => desktop.checkoutTag(repo.root, name));
-                }}
-              />
-            ) : current === "mrs" ? (
-              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
-            ) : current === "locks" ? (
-              <LocksView root={repo.root} notify={notify} />
+    <RepoNavContext.Provider value={nav}>
+      <div className="flex h-full flex-col">
+        <header className={cn("drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-5", leading && "pl-2")}>
+          {leading}
+          <h1 className="truncate text-sm font-semibold">{repo.name}</h1>
+          {!repo.error &&
+            (detached ? (
+              <Badge className="text-warning" title={`Checked out at tag ${detached}; the clone's branch is ${repo.branch}`}>
+                <Tag />
+                {detached}
+              </Badge>
             ) : (
-              <Details repo={repo} busy={!!op} notify={notify} onEditSparse={() => setEditingSparse(true)} />
+              <Badge>
+                <GitBranch />
+                {repo.branch}
+              </Badge>
+            ))}
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={repo.root}>
+            {repo.root}
+          </span>
+          {onSearch && (
+              <Button variant="ghost" size="sm" className="no-drag text-muted-foreground" onClick={onSearch} aria-label="Search" title={`Search and run commands (${shortcutHint("palette")})`}>
+                <Search />
+                <kbd className="font-sans text-[10px]">{shortcutHint("palette")}</kbd>
+              </Button>
             )}
+          {!repo.error &&
+            (op && op.op !== "push" ? (
+              <div className="no-drag w-64">
+                <Progress op={op} onCancel={operation.cancel} />
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                onClick={startUpdate}
+                disabled={!!op || !!detached}
+                title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
+              >
+                <ArrowDownToLine />
+                Update
+                {incoming > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-foreground">{incomingLabel}</span>}
+              </Button>
+            ))}
+          <Button variant="danger" size="sm" onClick={() => onRemove(repo.root)} disabled={removing || !!op} title="Remove from list (files stay on disk)">
+            <Trash2 />
+            Remove
+          </Button>
+        </header>
+
+        {repo.error ? (
+          <div className="m-5 flex items-start gap-3 rounded-lg border border-border bg-danger-soft p-4" role="alert">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">This clone is unavailable</p>
+              <p className="text-xs text-muted-foreground">{repo.error}</p>
+              <p className="text-xs text-muted-foreground">It may have been moved or deleted. Remove it from the list or restore the folder.</p>
+            </div>
           </div>
-        </>
-      )}
-      {editingSparse && (
-        <SparseDialog
-          repo={repo}
-          onClose={() => setEditingSparse(false)}
-          onApply={(paths) => {
-            setEditingSparse(false);
-            operation.run("sparse", () => desktop.setSparse(repo.root, paths));
-          }}
-        />
-      )}
-    </div>
+        ) : (
+          <>
+            {changes.data && (
+              <Banners
+                changes={changes.data}
+                conflicts={conflicts.data}
+                branch={repo.branch}
+                busy={!!op}
+                onSwitch={switchTo}
+                onRevert={revert}
+                onResolve={() => setTab("conflicts")}
+                onFinishMerge={finishMerge}
+                onAbortMerge={abortMerge}
+              />
+            )}
+            <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
+              {shownTabs.map(({ id, label, Icon }, i) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={current === id}
+                  onClick={() => setTab(id)}
+                  title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}
+                  className={cn(
+                    "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",
+                    current === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                  {id === "conflicts" && openConflicts > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] text-warning">{openConflicts}</span>}
+                </button>
+              ))}
+            </nav>
+            <div className="min-h-0 flex-1">
+              {current === "conflicts" ? (
+                <ConflictsView root={repo.root} busy={!!op} notify={notify} />
+              ) : current === "files" ? (
+                <FilesView
+                  repo={repo}
+                  busy={!!op}
+                  notify={notify}
+                  open={fileNav}
+                  onHistory={showHistory}
+                  onRestore={(path, commit) => {
+                    restored.current = path;
+                    operation.run("restore", () => desktop.restoreRevision(repo.root, path, commit.id));
+                  }}
+                  onAddSparse={(path) => operation.run("sparse", () => desktop.setSparse(repo.root, normalizeSelection([...(repo.sparse ?? []), path])))}
+                />
+              ) : current === "changes" ? (
+                <ChangesView
+                  root={repo.root}
+                  op={op}
+                  message={message}
+                  onMessage={setMessage}
+                  onPush={(msg) => operation.run("push", () => desktop.push(repo.root, msg))}
+                  onCancelOp={operation.cancel}
+                  onError={(msg) => notify(msg)}
+                  notify={notify}
+                  onOpenFile={showFile}
+                  focusMessage={focusMessage}
+                />
+              ) : current === "history" ? (
+                <HistoryView
+                  key={historyNav?.seq ?? 0}
+                  path={historyNav?.path}
+                  root={repo.root}
+                  branch={repo.branch}
+                  detached={detached}
+                  busy={!!op}
+                  notify={notify}
+                  onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
+                  onSwitch={switchTo}
+                  open={openCommit ?? (historyNav?.commit ? { id: historyNav.commit, seq: historyNav.seq } : undefined)}
+                />
+              ) : current === "branches" ? (
+                <BranchesView
+                  root={repo.root}
+                  branch={repo.branch}
+                  detached={detached}
+                  busy={!!op}
+                  notify={notify}
+                  onSwitch={switchTo}
+                  onMerge={merge}
+                  onCheckoutTag={(name) => {
+                    tagCheckout.current = name;
+                    operation.run("switch", () => desktop.checkoutTag(repo.root, name));
+                  }}
+                />
+              ) : current === "mrs" ? (
+                <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
+              ) : current === "locks" ? (
+                <LocksView root={repo.root} notify={notify} />
+              ) : (
+                <Details repo={repo} busy={!!op} notify={notify} onEditSparse={() => setEditingSparse(true)} />
+              )}
+            </div>
+          </>
+        )}
+        {editingSparse && (
+          <SparseDialog
+            repo={repo}
+            onClose={() => setEditingSparse(false)}
+            onApply={(paths) => {
+              setEditingSparse(false);
+              operation.run("sparse", () => desktop.setSparse(repo.root, paths));
+            }}
+          />
+        )}
+      </div>
+    </RepoNavContext.Provider>
   );
 }
 

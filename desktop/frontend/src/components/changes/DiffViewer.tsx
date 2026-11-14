@@ -2,17 +2,19 @@ import { lazy, Suspense, type ComponentType } from "react";
 import { ArrowRight, Columns2, Rows3 } from "lucide-react";
 import type { FileDiff } from "@/api/desktop";
 import { AudioDiff } from "@/components/changes/AudioDiff";
+import { BlameToggle } from "@/components/changes/BlameToggle";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { ImageDiff } from "@/components/changes/ImageDiff";
 import { MetaDiff, Notice } from "@/components/changes/Notices";
 import { SceneDiff } from "@/components/changes/SceneDiff";
 import { TableDiff } from "@/components/changes/TableDiff";
-import { TextDiff, type DiffLayout, type LineComments } from "@/components/changes/TextDiff";
+import { TextDiff, type DiffLayout, type LineComments, type LineTools } from "@/components/changes/TextDiff";
+import { useTextTools } from "@/hooks/useTextTools";
 import { cn } from "@/lib/utils";
 
 const ModelDiff = lazy(() => import("@/components/changes/ModelDiff").then((m) => ({ default: m.ModelDiff })));
 
-type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments };
+type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments; tools?: LineTools };
 
 const isText = (d: FileDiff) => !d.old?.binary && !d.new?.binary;
 
@@ -41,6 +43,7 @@ type DiffViewerProps = {
 
 export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewerProps) {
   const Viewer = viewerFor(diff);
+  const tools = useTextTools(root, diff, Viewer === TextDiff);
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-4">
@@ -61,6 +64,7 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
           </span>
         )}
         <StatusLetter status={diff.untracked ? "untracked" : diff.status} />
+        <BlameToggle tools={tools} />
         {(Viewer === TextDiff || ((Viewer === TableDiff || Viewer === SceneDiff) && (diff.hunks ?? []).length > 0)) && (
           <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label="Diff layout">
             <LayoutButton active={layout === "unified"} label="Unified" onClick={() => onLayout("unified")} Icon={Rows3} />
@@ -70,7 +74,7 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
       </div>
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
-          <Viewer root={root} diff={diff} layout={layout} comments={comments} />
+          <Viewer root={root} diff={diff} layout={layout} comments={comments} tools={tools} />
         </Suspense>
       </div>
     </div>

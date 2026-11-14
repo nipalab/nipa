@@ -74,6 +74,7 @@ func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps 
 		Generate:   daemon.SerialGenerator(serveGenerator(auth, client)),
 		Restore:    usecase.NewRevisionRestore(auth, client, localrepo.NewLocalRepo()),
 		Refs:       daemon.NewGraphBuilder(usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
+		Blame:      daemon.SerialBlame(usecase.NewBlame(auth, client, localrepo.NewLocalRepo())),
 		Auth:       auth,
 		Downloader: client,
 	}

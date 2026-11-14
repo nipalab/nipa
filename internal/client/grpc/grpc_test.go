@@ -1277,6 +1277,53 @@ func TestClient_GetCommitLog_Error(t *testing.T) {
 	require.Equal(t, `branch "nope" not found`, domErr.Message)
 }
 
+func TestClient_GetPathCommitLog(t *testing.T) {
+	fs := &fakeServer{commitLog: []*pb.CommitLogEntry{{CommitId: snow.ID(5).Base36(), Message: "m"}}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetPathCommitLog(context.Background(), "default", "sample", "abc", "src/a.txt", 500)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, snow.ID(5), got[0].ID)
+	require.Equal(t, "abc", fs.lastCommitLogReq.GetBranch())
+	require.Equal(t, "src/a.txt", fs.lastCommitLogReq.GetPath())
+	require.Equal(t, int32(500), fs.lastCommitLogReq.GetLimit())
+
+	fs.commitLogErr = status.Error(codes.NotFound, "nope")
+	_, err = c.GetPathCommitLog(context.Background(), "default", "sample", "abc", "x", 1)
+	require.Error(t, err)
+
+	_, err = NewClient(NewTransport(), &stubSession{}).GetPathCommitLog(context.Background(), "o", "p", "r", "x", 1)
+	require.Error(t, err)
+}
+
+func TestClient_GetCommitDirManifest(t *testing.T) {
+	fs := &fakeServer{treeManifest: &pb.TreeManifest{Path: "root"}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetCommitDirManifest(context.Background(), "default", "sample", "abc", "")
+	require.NoError(t, err)
+	require.Equal(t, "abc", fs.lastCommitID)
+	require.False(t, fs.lastRecursive)
+	require.Empty(t, fs.lastPaths)
+
+	_, err = c.GetCommitDirManifest(context.Background(), "default", "sample", "abc", "src/lib")
+	require.NoError(t, err)
+	require.True(t, fs.lastRecursive)
+	require.Equal(t, []string{"src/lib"}, fs.lastPaths)
+
+	fs.treeManifestErr = status.Error(codes.NotFound, "missing")
+	_, err = c.GetCommitDirManifest(context.Background(), "default", "sample", "abc", "src")
+	require.Error(t, err)
+
+	_, err = NewClient(NewTransport(), &stubSession{}).GetCommitDirManifest(context.Background(), "o", "p", "c", "")
+	require.Error(t, err)
+}
+
 func TestClient_GetCommitLog_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 

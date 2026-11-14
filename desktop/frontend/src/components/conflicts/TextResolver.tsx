@@ -1,10 +1,10 @@
 import { useId, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Combine, Loader2 } from "lucide-react";
 import { desktop, type ConflictFile, type ConflictSet, type ConflictTexts, type ResolveChoice } from "@/api/desktop";
 import { Centered, Mono, ResolverHeader } from "@/components/conflicts/parts";
 import { Button } from "@/components/ui/button";
-import { compose, conflictCount, hasMarkers, segmentsFor, type BlockPick, type Segment } from "@/lib/conflicts";
+import { compose, conflictCount, hasMarkers, mergesScene, segmentsFor, type BlockPick, type Segment } from "@/lib/conflicts";
 import { cn, errorMessage } from "@/lib/utils";
 
 type TextResolverProps = { root: string; file: ConflictFile; set: ConflictSet; busy: boolean; onResolve: (choice: ResolveChoice, content?: string) => void };
@@ -28,10 +28,10 @@ export function TextResolver({ root, file, set, busy, onResolve }: TextResolverP
       </>
     );
   }
-  return <Editor file={file} set={set} texts={texts.data} busy={busy} onResolve={onResolve} />;
+  return <Editor root={root} file={file} set={set} texts={texts.data} busy={busy} onResolve={onResolve} />;
 }
 
-type EditorProps = Omit<TextResolverProps, "root"> & { texts: ConflictTexts };
+type EditorProps = TextResolverProps & { texts: ConflictTexts };
 
 const pickLabels: [BlockPick, string][] = [
   ["ours", "Mine"],
@@ -40,7 +40,7 @@ const pickLabels: [BlockPick, string][] = [
   ["theirs-ours", "Both, theirs first"],
 ];
 
-function Editor({ file, set, texts, busy, onResolve }: EditorProps) {
+function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
   const segments = useMemo(() => segmentsFor(texts, file.kind), [texts, file.kind]);
   const blocks = segments.filter((s): s is Extract<Segment, { kind: "conflict" }> => s.kind === "conflict");
   const [picks, setPicks] = useState<(BlockPick | undefined)[]>(() => blocks.map(() => undefined));
@@ -60,6 +60,7 @@ function Editor({ file, set, texts, busy, onResolve }: EditorProps) {
     <>
       <ResolverHeader file={file} set={set} busy={busy} onResolve={onResolve} />
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4 text-[12px]">
+        {mergesScene(file) && <SceneMerge root={root} path={file.path} busy={busy} onResolve={onResolve} />}
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span>
             {conflictCount(segments) === 0
@@ -137,6 +138,48 @@ function Editor({ file, set, texts, busy, onResolve }: EditorProps) {
         </div>
       </div>
     </>
+  );
+}
+
+// SceneMerge merges a Godot scene or resource by nodes and properties; a
+// clean result resolves the file, conflicts leave the line editor below.
+function SceneMerge({ root, path, busy, onResolve }: { root: string; path: string; busy: boolean; onResolve: TextResolverProps["onResolve"] }) {
+  const merge = useMutation({
+    mutationFn: () => desktop.mergeScene(root, path),
+    onSuccess: (m) => {
+      if (m.clean) onResolve("content", m.merged);
+    },
+  });
+  const conflicts = merge.data && !merge.data.clean ? merge.data.conflicts : [];
+  return (
+    <section aria-label="Scene merge" className="space-y-1.5 rounded-md border border-border p-2">
+      <div className="flex items-center gap-2">
+        <p className="mr-auto text-[11px] text-muted-foreground">This is a Godot scene. Nipa can merge it node by node and property by property instead of line by line.</p>
+        <Button size="sm" disabled={busy || merge.isPending} onClick={() => merge.mutate()} title="Merge both sides by nodes and properties">
+          {merge.isPending ? <Loader2 className="animate-spin" /> : <Combine />}
+          Merge scene
+        </Button>
+      </div>
+      {merge.isError && <p className="text-[11px] text-danger">{errorMessage(merge.error)}</p>}
+      {conflicts.length > 0 && (
+        <div className="space-y-1 text-[11px]">
+          <p className="text-warning">
+            Both sides changed {conflicts.length === 1 ? "one thing" : `${conflicts.length} things`} in ways Nipa cannot decide. Resolve the file line by line below.
+          </p>
+          <ul className="space-y-0.5" aria-label="Scene conflicts">
+            {conflicts.map((c, i) => (
+              <li key={i}>
+                <Mono>
+                  {c.section || "file header"}
+                  {c.key ? ` › ${c.key}` : ""}
+                </Mono>
+                : {c.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 

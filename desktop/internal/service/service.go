@@ -75,8 +75,8 @@ type Service struct {
 	ChooseFolderFunc func(title string) (string, error)
 	// ChooseProgramFunc picks an application for an external tool.
 	ChooseProgramFunc func() (string, error)
-	// LaunchFunc starts a program with a file; nil uses launch.
-	LaunchFunc func(command, path string) error
+	// LaunchFunc starts a tool's expanded command line; nil starts it.
+	LaunchFunc func(args []string) error
 	// RevealFunc shows a path in the file manager; nil uses the OS default.
 	RevealFunc func(path string) error
 	// Notifier shows a desktop notification; nil disables them.
