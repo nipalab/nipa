@@ -23,7 +23,7 @@ const SIDEBAR_HIDDEN_KEY = "nipa.layout.sidebar-hidden";
 // refreshOn lists the views a teammate event makes stale.
 const refreshOn: Record<string, string[]> = {
   pushed: ["history", "branches"],
-  lock_released: ["locks"],
+  lock_released: ["locks", "lock-watches"],
   review_requested: ["mrs"],
 };
 
@@ -94,7 +94,7 @@ export default function App() {
       return;
     }
     if (nav.root) {
-      go(nav.root, { tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined });
+      go(nav.root, { tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined, action: nav.action === "lock" ? "lock" : undefined, branch: nav.action === "lock" ? nav.branch : undefined });
       return;
     }
     if (nav.project) {

@@ -13,6 +13,7 @@ export const scenarioFrom = (search: string): string => new URLSearchParams(sear
 
 export function createService(scenario: string): typeof Real {
   let state = clone(d.changes(scenario));
+  const lockWatches = new Map<string, { branch: string; path: string }>();
   let llm = clone(d.llmSettings);
   let shelves = clone(d.shelves);
   const provenance = demoProvenance();
@@ -93,6 +94,15 @@ export function createService(scenario: string): typeof Real {
     LockStatus: () => ok(d.locks()),
     Lock: (_root, _branch, paths) => ok({ locked: paths ?? [], failed: [] }),
     Unlock: () => ok(undefined),
+    LockWatches: () => ok([...lockWatches.values()]),
+    WatchLock: (_root, branch, path) => {
+      lockWatches.set(`${branch}\0${path}`, { branch: String(branch), path: String(path) });
+      return ok(undefined);
+    },
+    UnwatchLock: (_root, branch, path) => {
+      lockWatches.delete(`${branch}\0${path}`);
+      return ok(undefined);
+    },
     PickFile: () => ok(""),
     OpenFile: () => ok(undefined),
     RevealFile: () => ok(undefined),
@@ -273,7 +283,7 @@ export function createService(scenario: string): typeof Real {
     GenerateMergeRequest: (_root, source, target) => ok(d.mrDraft(source, target)),
     IgnoreRules: () => ok({ shared: "# Unity\nLibrary/\nTemp/\nLogs/\n*.csproj\n", local: "*.tmp\n.vscode/\n" }),
     SaveIgnoreRules: () => ok(undefined),
-    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "", path: "" }),
+    OpenLink: () => ok({ root: d.ROOT, tab: "changes", number: 0, commit: "", server: "", org: "", project: "", path: "", action: "", branch: "" }),
     TakeNavigation: () => ok(null),
     UpdateStatus: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(5) }),
     CheckForUpdate: () => ok({ current: "1.4.0", enabled: true, inPlace: true, phase: "upToDate", release: null, written: 0, total: 0, checkedAt: d.ago(0) }),

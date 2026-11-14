@@ -27,4 +27,4 @@ export type RepoAction = "update" | "focus-message" | "switch" | "checkout-tag" 
 // Intent asks the view to show a tab (and a merge request, commit or file)
 // or to run an action; seq changes for every request so the same target can
 // be opened twice.
-export type Intent = { tab: string; number?: number; commit?: string; path?: string; action?: RepoAction; target?: string; seq: number };
+export type Intent = { tab: string; number?: number; commit?: string; path?: string; branch?: string; action?: RepoAction; target?: string; seq: number };

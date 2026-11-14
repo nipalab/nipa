@@ -620,6 +620,14 @@ export interface LockStatus {
     "files": FileLockState[] | null;
 }
 
+/**
+ * LockWatch is one lock the user waits on. Branch is empty for mainline.
+ */
+export interface LockWatch {
+    "branch": string;
+    "path": string;
+}
+
 export interface MergeOutcome {
     "upToDate": boolean;
     "fastForwarded": boolean;
@@ -771,6 +779,12 @@ export interface Navigation {
     "org": string;
     "project": string;
     "path": string;
+    "action": string;
+
+    /**
+     * Branch is the lock scope a "lock" action targets; empty is mainline.
+     */
+    "branch": string;
 }
 
 export interface NewMergeRequest {

@@ -17,6 +17,8 @@ type state struct {
 	Settings *Settings         `json:"settings,omitempty"`
 	Window   *Window           `json:"window,omitempty"`
 	UI       map[string]string `json:"ui,omitempty"`
+	// LockWatches are the lock paths each clone waits on, by clone root.
+	LockWatches map[string][]string `json:"lockWatches,omitempty"`
 }
 
 // Settings are the app preferences kept next to the clone list.
@@ -110,10 +112,52 @@ func (s *Store) Remove(root string) error {
 		return err
 	}
 	kept := slices.DeleteFunc(st.Repos, func(r string) bool { return r == root })
-	if len(kept) == len(st.Repos) {
+	_, watched := st.LockWatches[root]
+	if len(kept) == len(st.Repos) && !watched {
 		return nil
 	}
 	st.Repos = kept
+	delete(st.LockWatches, root)
+	return s.save(st)
+}
+
+// LockWatches returns the lock paths waited on for root.
+func (s *Store) LockWatches(root string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{}, st.LockWatches[root]...), nil
+}
+
+// SetLockWatch adds or removes one watched lock path for root.
+func (s *Store) SetLockWatch(root, path string, watch bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return err
+	}
+	paths := st.LockWatches[root]
+	has := slices.Contains(paths, path)
+	if has == watch {
+		return nil
+	}
+	if watch {
+		paths = append(paths, path)
+	} else {
+		paths = slices.DeleteFunc(paths, func(p string) bool { return p == path })
+	}
+	if st.LockWatches == nil {
+		st.LockWatches = map[string][]string{}
+	}
+	if len(paths) == 0 {
+		delete(st.LockWatches, root)
+	} else {
+		st.LockWatches[root] = paths
+	}
 	return s.save(st)
 }
 

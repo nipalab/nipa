@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileLock, LockStatus } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ lockStatus: vi.fn(), lock: vi.fn(), unlock: vi.fn(), pickFile: vi.fn(), openFile: vi.fn() }));
+const api = vi.hoisted(() => ({ lockStatus: vi.fn(), lock: vi.fn(), unlock: vi.fn(), pickFile: vi.fn(), openFile: vi.fn(), lockWatches: vi.fn(), watchLock: vi.fn(), unwatchLock: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { LocksView } from "./LocksView";
@@ -47,6 +47,9 @@ beforeEach(() => {
   api.lockStatus.mockResolvedValue(status());
   api.unlock.mockResolvedValue(undefined);
   api.openFile.mockResolvedValue(undefined);
+  api.lockWatches.mockResolvedValue([]);
+  api.watchLock.mockResolvedValue(undefined);
+  api.unwatchLock.mockResolvedValue(undefined);
 });
 
 describe("LocksView", () => {
@@ -167,5 +170,36 @@ describe("LocksView", () => {
     await userEvent.keyboard("{ArrowRight}");
     expect(cols[0]).toHaveStyle({ width: "436px" });
     expect(JSON.parse(localStorage.getItem("nipa.layout.cols.locks")!)).toEqual({ scope: 200, path: 436 });
+  });
+
+  it("watches a teammate's lock and stops watching it", async () => {
+    api.lockWatches.mockResolvedValue([{ branch: "", path: "maps/level1.umap" }]);
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    expect(within(rows()[0]).queryByRole("button", { name: /free|watching/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Notify me when audio is free" }));
+    expect(api.watchLock).toHaveBeenCalledWith("/work/game", "", "audio");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("You will be told when audio is free", "success"));
+    await userEvent.click(await screen.findByRole("button", { name: "Stop watching maps/level1.umap" }));
+    expect(api.unwatchLock).toHaveBeenCalledWith("/work/game", "", "maps/level1.umap");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Stopped watching maps/level1.umap", "success"));
+  });
+
+  it("keeps watches of the same path on another branch scope apart", async () => {
+    api.lockStatus.mockResolvedValue(
+      status({ locks: [lock({ path: "audio", heldBy: "bob", mine: false }), lock({ path: "audio", global: false, branch: "feature", heldBy: "ann", mine: false })] }),
+    );
+    api.lockWatches.mockResolvedValue([{ branch: "feature", path: "audio" }]);
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    expect(screen.getAllByRole("button", { name: "Notify me when audio is free" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Stop watching audio" })).toHaveLength(1);
+  });
+
+  it("reports a failed watch", async () => {
+    api.watchLock.mockRejectedValue(new Error("nope"));
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Notify me when audio is free" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("nope"));
   });
 });

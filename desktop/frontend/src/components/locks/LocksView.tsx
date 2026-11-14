@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ExternalLink, FolderLock, GitPullRequest, Loader2, Lock, LockOpen, RefreshCw, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ExternalLink, FolderLock, GitPullRequest, Bell, BellOff, Loader2, Lock, LockOpen, RefreshCw, Search } from "lucide-react";
 import { desktop, type FileLock } from "@/api/desktop";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
   const [query, setQuery] = useState("");
   const [releasing, setReleasing] = useState<FileLock | null>(null);
   const [picking, setPicking] = useState(false);
+  const watches = useLockWatches(root, notify);
 
   const data = status.data;
   const rows = useMemo(() => {
@@ -183,6 +185,19 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                         <ExternalLink />
                       </Button>
                     )}
+                    {!l.mine && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={watches.toggle.isPending}
+                        aria-pressed={watches.has(l)}
+                        aria-label={watches.has(l) ? `Stop watching ${l.path}` : `Notify me when ${l.path} is free`}
+                        title={watches.has(l) ? "Stop watching this lock" : "Notify me when free"}
+                        onClick={() => watches.toggle.mutate(l)}
+                      >
+                        {watches.has(l) ? <BellOff /> : <Bell />}
+                      </Button>
+                    )}
                     {(l.mine || data.canReleaseAny) && (
                       <Button size="sm" disabled={unlock.isPending} onClick={() => (l.mine ? unlock.mutate(l) : setReleasing(l))} aria-label={`Release ${l.path}`}>
                         <LockOpen />
@@ -210,6 +225,27 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
       )}
     </div>
   );
+}
+
+function useLockWatches(root: string, notify: Notify) {
+  const queryClient = useQueryClient();
+  const key = ["lock-watches", root];
+  const list = useQuery({ queryKey: key, queryFn: () => desktop.lockWatches(root), retry: false });
+  const watches = list.data ?? [];
+  const has = (l: { branch: string; path: string }) => watches.some((w) => w.branch === l.branch && w.path === l.path);
+  const toggle = useMutation({
+    mutationFn: async (l: { branch: string; path: string }) => {
+      const watching = has(l);
+      await (watching ? desktop.unwatchLock(root, l.branch, l.path) : desktop.watchLock(root, l.branch, l.path));
+      return { path: l.path, watching: !watching };
+    },
+    onSuccess: ({ path, watching }) => {
+      void queryClient.invalidateQueries({ queryKey: key });
+      notify(watching ? `You will be told when ${path} is free` : `Stopped watching ${path}`, "success");
+    },
+    onError: (err) => notify(errorMessage(err)),
+  });
+  return { has, toggle };
 }
 
 function Centered({ children }: { children: ReactNode }) {

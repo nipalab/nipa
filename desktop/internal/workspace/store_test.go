@@ -155,3 +155,36 @@ func TestWindow_SizeAndClosing(t *testing.T) {
 	require.Equal(t, Window{Width: 1300, Height: 820, Maximised: true}, prev.Closing(2560, 1440, true))
 	require.Equal(t, Window{Width: 1500, Height: 900}, prev.Closing(1500, 900, false))
 }
+
+func TestStore_LockWatches(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.json")
+	s := NewStore(path)
+	got, err := s.LockWatches("/w")
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	require.NoError(t, s.SetLockWatch("/w", "a.psd", true))
+	require.NoError(t, s.SetLockWatch("/w", "a.psd", true))
+	require.NoError(t, s.SetLockWatch("/w", "b.psd", true))
+	require.NoError(t, s.SetLockWatch("/w", "zzz", false))
+	got, err = NewStore(path).LockWatches("/w")
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.psd", "b.psd"}, got)
+
+	require.NoError(t, s.SetLockWatch("/w", "a.psd", false))
+	require.NoError(t, s.SetLockWatch("/w", "b.psd", false))
+	got, _ = s.LockWatches("/w")
+	require.Empty(t, got)
+
+	require.NoError(t, s.Add("/w"))
+	require.NoError(t, s.SetLockWatch("/w", "a.psd", true))
+	require.NoError(t, s.Remove("/w"))
+	got, _ = s.LockWatches("/w")
+	require.Empty(t, got)
+	require.NoError(t, s.Remove("/w"))
+
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	_, err = s.LockWatches("/w")
+	require.Error(t, err)
+	require.Error(t, s.SetLockWatch("/w", "a", true))
+}

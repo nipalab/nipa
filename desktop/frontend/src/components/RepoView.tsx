@@ -201,10 +201,10 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
     setTab("changes");
     setFocusMessage((n) => n + 1);
   };
-  const lockPath = async (path: string) => {
+  const lockPath = async (path: string, scope?: string) => {
     try {
       const status = await queryClient.fetchQuery({ queryKey: locksKey(repo.root), queryFn: () => desktop.lockStatus(repo.root) });
-      lock.mutate({ branch: status.branch, paths: [path] });
+      lock.mutate({ branch: scope ?? status.branch, paths: [path] });
     } catch (err) {
       notify(`Locking failed: ${errorMessage(err)}`);
     }
@@ -225,7 +225,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         setTab("mrs");
         return setCreateMR((n) => n + 1);
       case "lock":
-        if (intent.path) void lockPath(intent.path);
+        if (intent.path) void lockPath(intent.path, intent.branch);
         return;
       case "switch":
         if (op) return busyNote();

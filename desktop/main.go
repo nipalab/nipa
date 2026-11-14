@@ -63,6 +63,7 @@ func main() {
 		},
 	)
 	svc.Prefs = store
+	svc.Watches = store
 	svc.Layout = store
 	svc.Events = func(name string, data any) { app.Event.Emit(name, data) }
 	svc.PickFileFunc = func(dir string) (string, error) {

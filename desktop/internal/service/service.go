@@ -89,6 +89,8 @@ type Service struct {
 	Autostart func(enabled bool) error
 	// Prefs stores the settings; nil uses the defaults.
 	Prefs SettingsStore
+	// Watches keeps the lock paths waited on; nil disables lock watching.
+	Watches LockWatchStore
 	// Keys stores the generation API key; nil uses the OS keyring.
 	Keys LLMKeyStore
 	// Layout stores the interface state (tabs, panes, selections); nil keeps
