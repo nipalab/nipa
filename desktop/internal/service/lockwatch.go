@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
+	"github.com/nipalab/nipa/desktop/internal/lang"
 	"strings"
 )
 
@@ -74,7 +74,7 @@ type watchedNotice struct {
 // watchedLockNotifications turns a released lock that covers watched paths of
 // the same branch scope into "lock it now" notifications. The caller drops a
 // watch once its notification was delivered.
-func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []watchedNotice {
+func (s *Service) watchedLockNotifications(l lang.Language, name, root string, e TeamEvent) []watchedNotice {
 	if e.Kind != "lock_released" || s.Watches == nil {
 		return nil
 	}
@@ -91,8 +91,8 @@ func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []wat
 		out = append(out, watchedNotice{
 			Notification: Notification{
 				ID:     "lockwatch:" + root + ":" + w.key(),
-				Title:  name + ": " + w.Path + " is free",
-				Body:   fmt.Sprintf("%s released it. Click to lock it now.", e.Actor),
+				Title:  l.T("notify.lockFree", name, w.Path),
+				Body:   l.T("notify.lockFreeBody", e.Actor),
 				Target: Navigation{Root: root, Tab: "locks", Path: w.Path, Action: "lock", Branch: w.Branch},
 			},
 			watch: w,

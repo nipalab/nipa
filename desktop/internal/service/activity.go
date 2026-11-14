@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/desktop/internal/lang"
 	"github.com/nipalab/nipa/desktop/internal/workspace"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -172,7 +173,7 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 	}
 	prefs := s.prefs()
 	for _, e := range act.Events {
-		if watched := s.watchedLockNotifications(act.Name, root, e); len(watched) > 0 {
+		if watched := s.watchedLockNotifications(s.language(), act.Name, root, e); len(watched) > 0 {
 			for _, n := range watched {
 				if s.Notifier(n.Notification) == nil {
 					_ = s.Watches.SetLockWatch(root, n.watch.key(), false)
@@ -180,21 +181,21 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 			}
 			continue
 		}
-		if n, ok := notificationFor(act.Name, root, e, prefs.Notify); ok {
+		if n, ok := notificationFor(s.language(), act.Name, root, e, prefs.Notify); ok {
 			_ = s.Notifier(n)
 		}
 	}
 }
 
-func notificationFor(name, root string, e TeamEvent, prefs workspace.NotifySettings) (Notification, bool) {
+func notificationFor(l lang.Language, name, root string, e TeamEvent, prefs workspace.NotifySettings) (Notification, bool) {
 	switch e.Kind {
 	case daemon.EventPushed:
 		if !prefs.Pushes {
 			return Notification{}, false
 		}
-		title := fmt.Sprintf("%s: new commit on %s", name, e.Branch)
+		title := l.T("notify.commit", name, e.Branch)
 		if e.Count > 1 {
-			title = fmt.Sprintf("%s: %d new commits on %s", name, e.Count, e.Branch)
+			title = l.T("notify.commits", name, e.Count, e.Branch)
 		}
 		return Notification{
 			ID:     "push:" + root + ":" + e.CommitID,
@@ -208,21 +209,21 @@ func notificationFor(name, root string, e TeamEvent, prefs workspace.NotifySetti
 		}
 		return Notification{
 			ID:     "lock:" + root + ":" + e.Path,
-			Title:  name + ": lock released",
-			Body:   fmt.Sprintf("%s released %s", e.Actor, e.Path),
+			Title:  l.T("notify.lockReleased", name),
+			Body:   l.T("notify.releasedBody", e.Actor, e.Path),
 			Target: Navigation{Root: root, Tab: "locks"},
 		}, true
 	case daemon.EventLockRequested:
 		if !prefs.LockRequests {
 			return Notification{}, false
 		}
-		body := fmt.Sprintf("%s asked you to release %s", e.Actor, e.Path)
+		body := l.T("notify.askedRelease", e.Actor, e.Path)
 		if e.Message != "" {
 			body += ": " + e.Message
 		}
 		return Notification{
 			ID:     fmt.Sprintf("lockreq:%s:%s:%s", root, e.Path, e.Actor),
-			Title:  name + ": release requested",
+			Title:  l.T("notify.releaseRequested", name),
 			Body:   body,
 			Target: Navigation{Root: root, Tab: "locks"},
 		}, true
@@ -232,7 +233,7 @@ func notificationFor(name, root string, e TeamEvent, prefs workspace.NotifySetti
 		}
 		return Notification{
 			ID:     fmt.Sprintf("review:%s:%d", root, e.Number),
-			Title:  name + ": review requested",
+			Title:  l.T("notify.reviewRequested", name),
 			Body:   fmt.Sprintf("!%d %s", e.Number, e.Message),
 			Target: Navigation{Root: root, Tab: "mrs", Number: e.Number},
 		}, true

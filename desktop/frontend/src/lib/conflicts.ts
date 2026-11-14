@@ -1,4 +1,5 @@
 import type { ConflictFile, ConflictSet, ConflictTexts } from "@/api/desktop";
+import { translate } from "@/i18n";
 
 export const START = "<<<<<<< ours\n";
 export const MID = "=======\n";
@@ -92,15 +93,15 @@ export function mergesScene(file: ConflictFile): boolean {
 export function kindLabel(kind: string): string {
   switch (kind) {
     case "text":
-      return "Both changed";
+      return translate("conflicts.bothChanged");
     case "binary":
-      return "Both changed (binary)";
+      return translate("conflicts.bothChangedBinary");
     case "add_add":
-      return "Both added";
+      return translate("conflicts.bothAdded");
     case "modify_delete":
-      return "Deleted on their side";
+      return translate("conflicts.deletedOnTheirSide");
     case "delete_modify":
-      return "Deleted on your side";
+      return translate("conflicts.deletedOnYourSide");
     default:
       return kind;
   }
@@ -114,19 +115,19 @@ export function choices(file: ConflictFile, set: Pick<ConflictSet, "ours" | "the
   const theirs = set.theirs.label || "theirs";
   if (file.kind === "modify_delete") {
     return [
-      { choice: "ours", label: "Keep the file", hint: `Keep the version on ${ours}` },
-      { choice: "theirs", label: "Delete it", hint: `${theirs} deleted it` },
+      { choice: "ours", label: translate("conflicts.keepTheFile"), hint: translate("conflicts.keepTheVersionOn", { ours }) },
+      { choice: "theirs", label: translate("conflicts.deleteIt"), hint: translate("conflicts.deletedIt", { theirs }) },
     ];
   }
   if (file.kind === "delete_modify") {
     return [
-      { choice: "ours", label: "Keep it deleted", hint: `${ours} deleted it` },
-      { choice: "theirs", label: "Restore theirs", hint: `Take the version from ${theirs}` },
+      { choice: "ours", label: translate("conflicts.keepItDeleted"), hint: translate("conflicts.deletedIt2", { ours }) },
+      { choice: "theirs", label: translate("conflicts.restoreTheirs"), hint: translate("conflicts.takeTheVersionFrom", { theirs }) },
     ];
   }
   return [
-    { choice: "ours", label: "Take mine", hint: `Keep the version on ${ours}` },
-    { choice: "theirs", label: "Take theirs", hint: `Use the version from ${theirs}` },
+    { choice: "ours", label: translate("conflicts.takeMine"), hint: translate("conflicts.keepTheVersionOn", { ours }) },
+    { choice: "theirs", label: translate("conflicts.takeTheirs"), hint: translate("conflicts.useTheVersionFrom", { theirs }) },
   ];
 }
 

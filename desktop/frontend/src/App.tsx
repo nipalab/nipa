@@ -19,6 +19,7 @@ import { useShortcuts } from "@/hooks/useShortcuts";
 import { startTourOnce, useStoredMode } from "@/lib/mode";
 import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { translate } from "@/i18n";
 
 const SELECTED_KEY = "nipa.selectedRepo";
 const SIDEBAR_HIDDEN_KEY = "nipa.layout.sidebar-hidden";
@@ -103,7 +104,7 @@ export default function App() {
       return;
     }
     if (nav.project) {
-      notify(`${nav.org}/${nav.project} is not cloned on this computer yet`);
+      notify(translate("app.isNotClonedOn", { org: nav.org, project: nav.project }));
       setCloneHint({ server: nav.server, project: nav.project });
       setCloning(true);
     }
@@ -142,11 +143,11 @@ export default function App() {
     onError: (err) => setToast(errorMessage(err)),
   });
 
-  if (daemon.isPending) return <Splash label="Starting Nipa…" />;
+  if (daemon.isPending) return <Splash label={translate("app.startingNipa")} />;
   if (daemon.isError) {
     return <DaemonError message={errorMessage(daemon.error)} retrying={daemon.isFetching} onRetry={() => daemon.refetch()} />;
   }
-  if (repos.isPending) return <Splash label="Loading repositories…" />;
+  if (repos.isPending) return <Splash label={translate("app.loadingRepositories")} />;
   if (repos.isError) {
     return <DaemonError message={errorMessage(repos.error)} retrying={repos.isFetching} onRetry={() => repos.refetch()} />;
   }
@@ -155,9 +156,9 @@ export default function App() {
   const current = list.find((r) => r.root === selected) ?? list[0];
   const pending = (activity.data ?? []).some((a) => a.incoming > 0 || a.reviewRequests > 0);
   const showSidebar = sidebarHidden ? (
-    <Button variant="ghost" size="icon" className="relative shrink-0" onClick={() => setSidebarHidden(false)} aria-label="Show sidebar" title="Show sidebar (Ctrl+B)">
+    <Button variant="ghost" size="icon" className="relative shrink-0" onClick={() => setSidebarHidden(false)} aria-label={translate("app.showSidebar")} title={translate("app.showSidebarCtrlB")}>
       <PanelLeftOpen />
-      {pending && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" aria-label="New activity" />}
+      {pending && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" aria-label={translate("app.newActivity")} />}
     </Button>
   ) : null;
 
@@ -209,7 +210,7 @@ export default function App() {
             setCloneHint(undefined);
             remember(repo);
             startTourOnce();
-            notify(`Cloned ${repo.name}`, "success");
+            notify(translate("app.cloned", { name: repo.name }), "success");
           }}
         />
       )}

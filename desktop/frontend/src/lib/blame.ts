@@ -1,6 +1,7 @@
 import type { Blame, Commit, FileDiff } from "@/api/desktop";
 import { commitTitle, shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
+import { translate , locale } from "@/i18n";
 
 // BlameCell is what the gutter shows next to one line. first marks the start
 // of a run of lines from the same commit, where the author and age are shown.
@@ -30,14 +31,14 @@ export function blameCells(blame: Blame, now: number = Date.now()): BlameCells {
     let label = "";
     let title: string;
     if (line.uncommitted) {
-      label = "Not pushed";
-      title = "Changed in your clone, not pushed yet";
+      label = translate("blame.notPushed");
+      title = translate("blame.changedInYourCloneNot");
     } else if (commit) {
-      label = `${commit.author || commit.email} · ${timeAgo(commit.date, now)}`;
-      title = `${shortId(commit.id)} ${commitTitle(commit.message)}\n${commit.author || commit.email} · ${new Date(commit.date).toLocaleString()}`;
+      label = translate("blame.text", { email: commit.author || commit.email, value: timeAgo(commit.date, now) });
+      title = translate("blame.text2", { value: shortId(commit.id), value2: commitTitle(commit.message), email: commit.author || commit.email, toLocaleString: new Date(commit.date).toLocaleString(locale()) });
     } else {
-      label = "Older";
-      title = "Older than the history Nipa could read (500 commits, or a binary or too large version)";
+      label = translate("blame.older");
+      title = translate("blame.olderThanTheHistoryNipa");
     }
     out.set(i + 1, {
       commit,

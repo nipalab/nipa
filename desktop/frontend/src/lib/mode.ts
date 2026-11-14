@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { readSetting, writeSetting } from "@/lib/settings";
+import { translate } from "@/i18n";
 
 export type Mode = "simple" | "full";
 
@@ -57,6 +58,6 @@ export const startTourOnce = () => {
 export const useTour = (): TourState => useSyncExternalStore(subscribe, readTour);
 
 export const labels = (simple: boolean) => ({
-  update: simple ? "Get latest" : "Update",
-  push: simple ? "Submit" : "Push",
+  update: simple ? translate("mode.getLatest") : translate("mode.update"),
+  push: simple ? translate("mode.submit") : translate("mode.push"),
 });

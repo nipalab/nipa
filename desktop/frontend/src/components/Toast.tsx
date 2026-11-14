@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const SUCCESS_TIMEOUT_MS = 4000;
 
 type ToastProps = { message: string; tone?: "error" | "success"; onDismiss: () => void };
 
 export function Toast({ message, tone = "error", onDismiss }: ToastProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (tone !== "success") return;
     const timer = setTimeout(onDismiss, SUCCESS_TIMEOUT_MS);
@@ -20,7 +22,7 @@ export function Toast({ message, tone = "error", onDismiss }: ToastProps) {
     >
       <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", tone === "error" ? "bg-danger" : "bg-success")} />
       <p className="flex-1 select-text">{message}</p>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground">
+      <button type="button" onClick={onDismiss} aria-label={t("toast.dismiss")} className="text-muted-foreground hover:text-foreground">
         <X className="size-3.5" />
       </button>
     </div>

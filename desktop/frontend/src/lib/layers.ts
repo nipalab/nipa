@@ -1,30 +1,31 @@
 import type { ImageLayer } from "@/api/desktop";
+import { translate } from "@/i18n";
 
 export type LayerStatus = "added" | "removed" | "changed" | "unchanged";
 
 export type LayerRow = { layer: ImageLayer; status: LayerStatus; changes: string[] };
 
 const blendNames: Record<string, string> = {
-  norm: "Normal",
-  pass: "Pass through",
-  diss: "Dissolve",
-  dark: "Darken",
-  mul: "Multiply",
-  idiv: "Color burn",
-  lbrn: "Linear burn",
-  lite: "Lighten",
-  scrn: "Screen",
-  "div ": "Color dodge",
-  lddg: "Linear dodge",
-  over: "Overlay",
-  sLit: "Soft light",
-  hLit: "Hard light",
-  diff: "Difference",
-  smud: "Exclusion",
-  hue: "Hue",
-  sat: "Saturation",
-  colr: "Color",
-  lum: "Luminosity",
+  norm: translate("layers.normal"),
+  pass: translate("layers.passThrough"),
+  diss: translate("layers.dissolve"),
+  dark: translate("layers.darken"),
+  mul: translate("layers.multiply"),
+  idiv: translate("layers.colorBurn"),
+  lbrn: translate("layers.linearBurn"),
+  lite: translate("layers.lighten"),
+  scrn: translate("layers.screen"),
+  "div ": translate("layers.colorDodge"),
+  lddg: translate("layers.linearDodge"),
+  over: translate("layers.overlay"),
+  sLit: translate("layers.softLight"),
+  hLit: translate("layers.hardLight"),
+  diff: translate("layers.difference"),
+  smud: translate("layers.exclusion"),
+  hue: translate("layers.hue"),
+  sat: translate("layers.saturation"),
+  colr: translate("layers.color"),
+  lum: translate("layers.luminosity"),
 };
 
 export const blendName = (key: string): string => blendNames[key] ?? blendNames[key.trim()] ?? key.trim();
@@ -35,22 +36,22 @@ function keyed(layers: ImageLayer[]): Map<string, ImageLayer> {
   const seen = new Map<string, number>();
   const out = new Map<string, ImageLayer>();
   for (const l of layers) {
-    const base = `${l.kind}\u0000${l.name}`;
+    const base = translate("layers.text", { kind: l.kind, name: l.name });
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
-    out.set(`${base}\u0000${n}`, l);
+    out.set(translate("layers.text2", { base, n }), l);
   }
   return out;
 }
 
 function changesBetween(a: ImageLayer, b: ImageLayer): string[] {
   const out: string[] = [];
-  if (a.hash !== b.hash) out.push("pixels");
-  if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) out.push("bounds");
-  if (a.visible !== b.visible) out.push(b.visible ? "shown" : "hidden");
-  if (a.opacity !== b.opacity) out.push(`opacity ${Math.round((a.opacity / 255) * 100)}% → ${Math.round((b.opacity / 255) * 100)}%`);
-  if (a.blend !== b.blend) out.push(`${blendName(a.blend)} → ${blendName(b.blend)}`);
-  if (a.depth !== b.depth) out.push("moved");
+  if (a.hash !== b.hash) out.push(translate("layers.pixels"));
+  if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) out.push(translate("layers.bounds"));
+  if (a.visible !== b.visible) out.push(b.visible ? translate("layers.shown") : translate("layers.hidden"));
+  if (a.opacity !== b.opacity) out.push(translate("layers.opacity", { value: Math.round((a.opacity / 255) * 100), value2: Math.round((b.opacity / 255) * 100) }));
+  if (a.blend !== b.blend) out.push(translate("layers.text3", { value: blendName(a.blend), value2: blendName(b.blend) }));
+  if (a.depth !== b.depth) out.push(translate("layers.moved"));
   return out;
 }
 

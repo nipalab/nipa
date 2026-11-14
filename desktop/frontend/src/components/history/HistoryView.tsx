@@ -14,6 +14,8 @@ import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type HistoryViewProps = {
   root: string;
@@ -32,6 +34,7 @@ type Dialog = { kind: "revert" | "tag" | "branch"; commit: Commit } | null;
 const isString = (v: unknown): v is string => typeof v === "string";
 
 export function HistoryView({ root, branch, detached, busy, notify, onRevert, onSwitch, path: navPath, open }: HistoryViewProps) {
+  const { t } = useTranslation();
   const listSize = useResizableWidth("history", { initial: 340, min: 240, max: 720 });
   const queryClient = useQueryClient();
   const [path, setPath] = usePersistedState(repoSetting(root, "history.path"), "", { valid: isString, prefer: navPath });
@@ -71,9 +74,9 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
     onSuccess: (tag) => {
       setDialog(null);
       void queryClient.invalidateQueries({ queryKey: ["tags", root] });
-      notify(`Tagged ${shortId(tag.commitId)} as ${tag.name}`, "success");
+      notify(translate("historyView.taggedAs", { value: shortId(tag.commitId), name: tag.name }), "success");
     },
-    onError: (err) => notify(`Could not create the tag: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("historyView.couldNotCreateTheTag", { value: errorMessage(err) })),
   });
   const createBranch = useMutation({
     mutationFn: ({ name, commit }: { name: string; commit: Commit; switchTo: boolean }) => desktop.createBranch(root, name, { commit: commit.id }),
@@ -81,11 +84,11 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
       setDialog(null);
       void queryClient.invalidateQueries({ queryKey: ["branches", root] });
       if (vars.switchTo) {
-        notify(`Created branch ${b.name}`, "success");
+        notify(translate("historyView.createdBranch", { name: b.name }), "success");
         onSwitch(b.name);
-      } else notify(`Created branch ${b.name}. Switch to it from Branches & tags.`, "success");
+      } else notify(translate("historyView.createdBranchSwitchTo", { name: b.name }), "success");
     },
-    onError: (err) => notify(`Could not create the branch: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("historyView.couldNotCreateTheBranch", { value: errorMessage(err) })),
   });
 
   const applyPath = (e: FormEvent) => {
@@ -111,23 +114,23 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
             <input
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
-              placeholder="History of a file or folder"
-              aria-label="Path filter"
+              placeholder={t("historyView.historyOfAFileOr")}
+              aria-label={t("historyView.pathFilter")}
               className="min-w-0 flex-1 bg-transparent font-mono text-[12px] outline-none"
             />
             {path && (
-              <button type="button" aria-label="Show all commits" onClick={clearPath} className="text-muted-foreground hover:text-foreground">
+              <button type="button" aria-label={t("historyView.showAllCommits")} onClick={clearPath} className="text-muted-foreground hover:text-foreground">
                 <X className="size-3.5" />
               </button>
             )}
           </form>
           <label className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2 text-[12px]">
             <Search className="size-3.5 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter by author or message" aria-label="Filter commits" className="min-w-0 flex-1 bg-transparent outline-none" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("historyView.filterByAuthorOrMessage")} aria-label={t("historyView.filterCommits")} className="min-w-0 flex-1 bg-transparent outline-none" />
           </label>
           {log.isPending ? (
             <Centered>
-              <Loader2 className="size-4 animate-spin" /> Loading history…
+              <Loader2 className="size-4 animate-spin" /> {t("historyView.loadingHistory")}
             </Centered>
           ) : log.isError ? (
             <Centered>
@@ -135,21 +138,21 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
               <span>{errorMessage(log.error)}</span>
               <Button size="sm" onClick={() => void log.refetch()}>
                 <RefreshCw />
-                Try again
+                {t("historyView.tryAgain")}
               </Button>
             </Centered>
           ) : shown.length === 0 ? (
             <Centered>
-              <span>{commits.length === 0 ? (path ? `No commits changed ${path}` : "No commits yet") : "No commits match the loaded history"}</span>
+              <span>{commits.length === 0 ? (path ? translate("historyView.noCommitsChanged", { path }) : translate("historyView.noCommitsYet")) : translate("historyView.noCommitsMatchTheLoaded")}</span>
               {log.hasNextPage && (
                 <Button size="sm" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
                   {log.isFetchingNextPage && <Loader2 className="animate-spin" />}
-                  Load older commits
+                  {t("historyView.loadOlder")}
                 </Button>
               )}
             </Centered>
           ) : (
-            <ol className="min-h-0 flex-1 overflow-auto py-1" aria-label="Commits">
+            <ol className="min-h-0 flex-1 overflow-auto py-1" aria-label={t("historyView.commits")}>
               {shown.map((c, i) => (
                 <CommitRow key={c.id} commit={c} tags={byCommit.get(c.id) ?? []} last={i === shown.length - 1 && !log.hasNextPage} selected={c.id === selected?.id} onSelect={() => setSelectedId(c.id)} />
               ))}
@@ -157,13 +160,13 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
                 <li className="px-3 py-2">
                   <Button size="sm" className="w-full justify-center" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
                     {log.isFetchingNextPage && <Loader2 className="animate-spin" />}
-                    Load older commits
+                    {t("historyView.loadOlder")}
                   </Button>
                 </li>
               )}
             </ol>
           )}
-          <PaneResizer size={listSize} label="Resize commit list" />
+          <PaneResizer size={listSize} label={t("historyView.resizeCommitList")} />
         </aside>
         <section className="min-w-0 flex-1">
           {selected ? (
@@ -173,7 +176,7 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
               tags={byCommit.get(selected.id) ?? []}
               focusPath={path}
               busy={busy}
-              revertBlocked={detached ? `Switch back to a branch to revert (checked out at tag ${detached})` : undefined}
+              revertBlocked={detached ? translate("historyView.switchBackToABranch", { detached }) : undefined}
               onRevert={(commit) => setDialog({ kind: "revert", commit })}
               onTag={(commit) => setDialog({ kind: "tag", commit })}
               onBranch={(commit) => setDialog({ kind: "branch", commit })}
@@ -181,18 +184,18 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
             />
           ) : selectedId && lookup.isPending ? (
             <Centered>
-              <Loader2 className="size-4 animate-spin" /> Loading commit…
+              <Loader2 className="size-4 animate-spin" /> {t("historyView.loadingCommit")}
             </Centered>
           ) : (
-            <Centered>{selectedId ? "This commit could not be loaded" : "Select a commit"}</Centered>
+            <Centered>{selectedId ? translate("historyView.thisCommitCouldNotBe") : translate("historyView.selectACommit")}</Centered>
           )}
         </section>
       </div>
       {dialog?.kind === "revert" && (
         <ConfirmDialog
-          title="Revert this commit?"
-          message={`A new commit on ${branch} undoes "${commitTitle(dialog.commit.message)}". Your clone must be up to date and have no unpushed changes to the same files.`}
-          confirmLabel="Revert"
+          title={t("historyView.revertThisCommit")}
+          message={translate("historyView.aNewCommitOnUndoes", { branch, value: commitTitle(dialog.commit.message) })}
+          confirmLabel={translate("historyView.revert")}
           onCancel={() => setDialog(null)}
           onConfirm={() => {
             const commit = dialog.commit;
@@ -203,11 +206,11 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
       )}
       {dialog?.kind === "tag" && (
         <PromptDialog
-          title="Tag this commit"
-          label="Tag name"
+          title={t("historyView.tagThisCommit")}
+          label={t("historyView.tagName")}
           placeholder="v1.2.0"
-          note={`Tags mark ${shortId(dialog.commit.id)} "${commitTitle(dialog.commit.message)}" for everyone. They cannot be moved, only deleted.`}
-          confirmLabel="Create tag"
+          note={translate("historyView.tagsMarkForEveryone", { value: shortId(dialog.commit.id), value2: commitTitle(dialog.commit.message) })}
+          confirmLabel={translate("historyView.createTag")}
           withMessage
           busy={createTag.isPending}
           onCancel={() => setDialog(null)}
@@ -216,12 +219,12 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, on
       )}
       {dialog?.kind === "branch" && (
         <PromptDialog
-          title="Create a branch here"
-          label="Branch name"
-          placeholder="feature/new-level"
-          base={{ label: "Based on commit", value: `${shortId(dialog.commit.id)} "${commitTitle(dialog.commit.message)}"` }}
-          option={{ label: "Switch to the new branch", defaultChecked: true }}
-          confirmLabel="Create branch"
+          title={t("historyView.createABranchHere")}
+          label={t("historyView.branchName")}
+          placeholder={t("historyView.featureNewLevel")}
+          base={{ label: translate("historyView.basedOnCommit"), value: translate("historyView.text", { value: shortId(dialog.commit.id), value2: commitTitle(dialog.commit.message) }) }}
+          option={{ label: translate("historyView.switchToTheNewBranch"), defaultChecked: true }}
+          confirmLabel={translate("historyView.createBranch")}
           busy={createBranch.isPending}
           onCancel={() => setDialog(null)}
           onConfirm={(name, _message, switchTo) => createBranch.mutate({ name, commit: dialog.commit, switchTo })}
@@ -271,14 +274,14 @@ function CommitRow({ commit, tags, last, selected, onSelect }: { commit: Commit;
 // scan how it evolved and jump to a version.
 function AssetStrip({ root, path, commits, selected, onSelect }: { root: string; path: string; commits: Commit[]; selected?: string; onSelect: (id: string) => void }) {
   return (
-    <ol className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-sidebar px-3 py-2" aria-label={`Versions of ${path}`}>
+    <ol className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-sidebar px-3 py-2" aria-label={translate("historyView.versionsOf", { path })}>
       {commits.map((c) => (
         <li key={c.id} className="shrink-0">
           <button
             type="button"
             onClick={() => onSelect(c.id)}
-            title={`${commitTitle(c.message)} · ${c.author}`}
-            aria-label={`Version ${shortId(c.id)}`}
+            title={translate("historyView.text2", { value: commitTitle(c.message), author: c.author })}
+            aria-label={translate("historyView.version", { value: shortId(c.id) })}
             className={cn("flex w-20 flex-col items-center gap-1 rounded-md border border-transparent p-1 hover:bg-muted", c.id === selected && "border-accent bg-muted")}
           >
             <Thumbnail root={root} path={path} commit={c.id} />
@@ -305,7 +308,7 @@ function Thumbnail({ root, path, commit }: { root: string; path: string; commit:
       ) : thumb.isPending ? (
         <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
       ) : (
-        <ImageIcon className="size-4 text-muted-foreground" aria-label={thumb.isError ? "Not available in this version" : "No preview"} />
+        <ImageIcon className="size-4 text-muted-foreground" aria-label={thumb.isError ? translate("historyView.notAvailableInThisVersion") : translate("historyView.noPreview")} />
       )}
     </span>
   );

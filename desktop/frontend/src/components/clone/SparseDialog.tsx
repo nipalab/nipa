@@ -4,6 +4,7 @@ import { desktop, type Repo } from "@/api/desktop";
 import { SparsePicker } from "@/components/clone/SparsePicker";
 import { Button } from "@/components/ui/button";
 import { normalizeSelection, parseRepoUrl } from "@/lib/sparse";
+import { useTranslation } from "react-i18next";
 
 type SparseDialogProps = { repo: Repo; onClose: () => void; onApply: (paths: string[]) => void };
 
@@ -11,6 +12,7 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 
 // SparseDialog edits which folders an existing clone downloads.
 export function SparseDialog({ repo, onClose, onApply }: SparseDialogProps) {
+  const { t } = useTranslation();
   const initial = repo.sparse && repo.sparse.length > 0 ? normalizeSelection(repo.sparse) : null;
   const [value, setValue] = useState<string[] | null>(initial);
   const address = parseRepoUrl(repo.url);
@@ -21,9 +23,9 @@ export function SparseDialog({ repo, onClose, onApply }: SparseDialogProps) {
       <div role="dialog" aria-modal="true" aria-labelledby="sparse-title" className="w-full max-w-lg space-y-4 rounded-lg border border-border bg-card p-5 shadow-xl">
         <header className="flex items-center">
           <h2 id="sparse-title" className="flex-1 text-sm font-semibold">
-            Folders in this clone
+            {t("sparseDialog.foldersInThisClone")}
           </h2>
-          <button type="button" aria-label="Close" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label={t("sparseDialog.close")} onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="size-4" />
           </button>
         </header>
@@ -35,15 +37,15 @@ export function SparseDialog({ repo, onClose, onApply }: SparseDialogProps) {
             onChange={setValue}
           />
         ) : (
-          <p className="text-[12px] text-danger">This clone's server address cannot be read: {repo.url}</p>
+          <p className="text-[12px] text-danger">{t("sparseDialog.badUrl", { url: repo.url })}</p>
         )}
-        <p className="text-[11px] text-muted-foreground">Files of folders you remove are deleted from this clone, not from the server. Local changes in them are kept only if they are pushed first.</p>
+        <p className="text-[11px] text-muted-foreground">{t("sparseDialog.filesOfFoldersYouRemove")}</p>
         <div className="flex justify-end gap-2">
           <Button size="sm" onClick={onClose} autoFocus>
-            Cancel
+            {t("sparseDialog.cancel")}
           </Button>
           <Button variant="primary" size="sm" disabled={!address || unchanged || (value !== null && next.length === 0)} onClick={() => onApply(next)}>
-            Apply
+            {t("sparseDialog.apply")}
           </Button>
         </div>
       </div>

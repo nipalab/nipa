@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 type ConfirmProps = {
   title: string;
@@ -11,6 +12,7 @@ type ConfirmProps = {
 };
 
 export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, children }: ConfirmProps) {
+  const { t } = useTranslation();
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   return (
@@ -23,7 +25,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
         {children}
         <div className="flex justify-end gap-2 pt-1">
           <Button ref={cancelRef} size="sm" onClick={onCancel}>
-            Cancel
+            {t("confirm.cancel")}
           </Button>
           <Button size="sm" variant="primary" className="bg-danger hover:bg-danger/90" onClick={onConfirm}>
             {confirmLabel}

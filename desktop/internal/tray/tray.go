@@ -2,9 +2,9 @@
 package tray
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/nipalab/nipa/desktop/internal/lang"
 	"github.com/nipalab/nipa/desktop/internal/service"
 )
 
@@ -26,7 +26,7 @@ type Entry struct {
 }
 
 // Tooltip summarizes every clone in one line.
-func Tooltip(list []service.RepoActivity) string {
+func Tooltip(l lang.Language, list []service.RepoActivity) string {
 	incoming, reviews, offline := 0, 0, 0
 	for _, a := range list {
 		incoming += a.Incoming
@@ -37,49 +37,49 @@ func Tooltip(list []service.RepoActivity) string {
 	}
 	var parts []string
 	if incoming > 0 {
-		parts = append(parts, plural(incoming, "new commit", "new commits"))
+		parts = append(parts, l.N("tray.commits", incoming))
 	}
 	if reviews > 0 {
-		parts = append(parts, plural(reviews, "review waiting", "reviews waiting"))
+		parts = append(parts, l.N("tray.reviewsWaiting", reviews))
 	}
 	if offline > 0 {
-		parts = append(parts, plural(offline, "clone unreachable", "clones unreachable"))
+		parts = append(parts, l.N("tray.unreachable", offline))
 	}
 	if len(parts) == 0 {
 		if len(list) == 0 {
 			return "Nipa"
 		}
-		return "Nipa: up to date"
+		return l.T("tray.upToDate")
 	}
 	return "Nipa: " + strings.Join(parts, ", ")
 }
 
 // Menu lists the clones with what waits on each, plus the app actions.
-func Menu(list []service.RepoActivity) []Entry {
-	entries := []Entry{{Label: "Open Nipa", Action: ActionShow}}
+func Menu(l lang.Language, list []service.RepoActivity) []Entry {
+	entries := []Entry{{Label: l.T("tray.open"), Action: ActionShow}}
 	if len(list) > 0 {
 		entries = append(entries, Entry{Separator: true})
 	}
 	for _, a := range list {
-		entries = append(entries, Entry{Label: label(a), Action: ActionNavigate, Target: target(a)})
+		entries = append(entries, Entry{Label: label(l, a), Action: ActionNavigate, Target: target(a)})
 	}
 	return append(entries,
 		Entry{Separator: true},
-		Entry{Label: "Settings…", Action: ActionNavigate, Target: service.Navigation{Tab: "settings"}},
-		Entry{Label: "Quit Nipa", Action: ActionQuit},
+		Entry{Label: l.T("tray.settings"), Action: ActionNavigate, Target: service.Navigation{Tab: "settings"}},
+		Entry{Label: l.T("tray.quit"), Action: ActionQuit},
 	)
 }
 
-func label(a service.RepoActivity) string {
+func label(l lang.Language, a service.RepoActivity) string {
 	parts := []string{a.Name}
 	if a.Incoming > 0 {
-		parts = append(parts, plural(a.Incoming, "new commit", "new commits"))
+		parts = append(parts, l.N("tray.commits", a.Incoming))
 	}
 	if a.ReviewRequests > 0 {
-		parts = append(parts, plural(a.ReviewRequests, "review", "reviews"))
+		parts = append(parts, l.N("tray.reviews", a.ReviewRequests))
 	}
 	if a.Error != "" {
-		parts = append(parts, "unreachable")
+		parts = append(parts, l.T("tray.cloneUnreachable"))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -92,14 +92,4 @@ func target(a service.RepoActivity) service.Navigation {
 		return service.Navigation{Root: a.Root, Tab: "history"}
 	}
 	return service.Navigation{Root: a.Root, Tab: "changes"}
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	if n >= 100 {
-		return fmt.Sprintf("%d+ %s", n, many)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }

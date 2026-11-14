@@ -3,6 +3,8 @@ import { desktop } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { describeUpdate, downloadPercent, useUpdates, type UpdateAction } from "@/hooks/useUpdates";
 import { errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Props = {
   auto: boolean;
@@ -11,10 +13,11 @@ type Props = {
 };
 
 export function UpdatesSection({ auto, onAuto, notify }: Props) {
+  const { t } = useTranslation();
   const { state, check, install, restart } = useUpdates();
   if (!state) return null;
   if (!state.enabled) {
-    return <p className="text-muted-foreground">This is a development build{state.current ? ` (${state.current})` : ""}; it does not update itself.</p>;
+    return <p className="text-muted-foreground">{state.current ? t("updates.devBuildVersion", { version: state.current }) : t("updates.devBuild")}</p>;
   }
   const { text, action, actionLabel } = describeUpdate(state);
   const busy = check.isPending || install.isPending || restart.isPending;
@@ -30,7 +33,7 @@ export function UpdatesSection({ auto, onAuto, notify }: Props) {
     <>
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={auto} onChange={(e) => onAuto(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
-        {state.inPlace ? "Download updates automatically" : "Check for updates automatically"}
+        {state.inPlace ? translate("updatesSection.downloadUpdatesAutomatically") : translate("updatesSection.checkForUpdatesAutomatically")}
       </label>
       <div className="flex items-center justify-between gap-3">
         <span role="status" className="min-w-0">

@@ -1,18 +1,19 @@
 import type { FeedEvent } from "@/api/desktop";
+import { translate , locale } from "@/i18n";
 
 export type FeedRange = "today" | "week" | "month";
 export type FeedGroup = "commit" | "request" | "lock";
 
 export const feedRanges: { id: FeedRange; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "Last 7 days" },
-  { id: "month", label: "Last 30 days" },
+  { id: "today", label: translate("feed.today") },
+  { id: "week", label: translate("feed.last7Days") },
+  { id: "month", label: translate("feed.last30Days") },
 ];
 
 export const feedGroups: { id: FeedGroup; label: string }[] = [
-  { id: "commit", label: "Pushes" },
-  { id: "request", label: "Merge requests" },
-  { id: "lock", label: "Locks" },
+  { id: "commit", label: translate("feed.pushes") },
+  { id: "request", label: translate("feed.mergeRequests") },
+  { id: "lock", label: translate("feed.locks") },
 ];
 
 export const isFeedRange = (v: unknown): v is FeedRange => feedRanges.some((r) => r.id === v);
@@ -49,7 +50,7 @@ export function groupByDay(events: FeedEvent[], now: Date = new Date()): FeedDay
     const key = dayKey(at);
     let day = days[days.length - 1];
     if (day?.key !== key) {
-      const label = key === today ? "Today" : key === yesterday ? "Yesterday" : at.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+      const label = key === today ? translate("feed.today") : key === yesterday ? translate("feed.yesterday") : at.toLocaleDateString(locale(), { weekday: "long", month: "short", day: "numeric" });
       day = { key, label, events: [] };
       days.push(day);
     }
@@ -61,13 +62,13 @@ export function groupByDay(events: FeedEvent[], now: Date = new Date()): FeedDay
 export function feedText(e: FeedEvent): string {
   switch (e.kind) {
     case "commit":
-      return "pushed";
+      return translate("feed.pushedVerb");
     case "mr_opened":
-      return `opened !${e.number}`;
+      return translate("feed.opened", { number: e.number });
     case "mr_merged":
-      return `merged !${e.number}`;
+      return translate("feed.merged", { number: e.number });
     case "lock":
-      return "locked";
+      return translate("feed.lockedVerb");
     default:
       return e.kind.replace(/_/g, " ");
   }

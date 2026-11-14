@@ -1,5 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type ResizeHandleProps = {
   value: number;
@@ -17,6 +19,7 @@ const STEP = 16;
 const BIG_STEP = 64;
 
 export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onReset, edge = "right", className }: ResizeHandleProps) {
+  const { t } = useTranslation();
   const dir = edge === "left" ? -1 : 1;
   const start = useRef<{ x: number; width: number } | null>(null);
   const last = useRef(value);
@@ -76,7 +79,7 @@ export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onRe
       aria-valuemin={min}
       aria-valuemax={max}
       tabIndex={0}
-      title="Drag to resize, double-click to reset"
+      title={t("resizeHandle.dragToResizeDoubleClickTo")}
       data-dragging={dragging || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -124,7 +127,7 @@ export function ColumnResizer({ sizes, id, label }: { sizes: ColumnSizes; id: st
       value={sizes.width(id)}
       min={sizes.min}
       max={sizes.max}
-      label={`Resize ${label} column`}
+      label={translate("resizeHandle.resizeColumn", { label })}
       onPreview={(w) => sizes.preview(id, w)}
       onCommit={(w) => sizes.commit(id, w)}
       onReset={() => sizes.reset(id)}

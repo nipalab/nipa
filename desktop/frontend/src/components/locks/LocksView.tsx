@@ -13,6 +13,8 @@ import { repoSetting } from "@/lib/settings";
 import { describeLockResult, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
+import { Trans, useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Filter = "mine" | "team" | "all";
 
@@ -21,15 +23,16 @@ const isFilter = (v: unknown): v is Filter => v === "mine" || v === "team" || v 
 const isDirectory = (path: string) => !/\.[^/]+$/.test(path);
 
 const COLUMNS = [
-  { id: "path", label: "Path", width: 420 },
-  { id: "scope", label: "Scope", width: 120 },
-  { id: "holder", label: "Held by", width: 160 },
-  { id: "since", label: "Since", width: 110 },
+  { id: "path", label: translate("locksView.path"), width: 420 },
+  { id: "scope", label: translate("locksView.scope"), width: 120 },
+  { id: "holder", label: translate("locksView.heldBy"), width: 160 },
+  { id: "since", label: translate("locksView.since"), width: 110 },
 ];
 const COLUMN_DEFAULTS = Object.fromEntries(COLUMNS.map((c) => [c.id, c.width]));
 const ACTIONS_WIDTH = 180;
 
 export function LocksView({ root, notify }: { root: string; notify: Notify }) {
+  const { t } = useTranslation();
   const status = useLockStatus(root);
   const columns = useColumnWidths("locks", COLUMN_DEFAULTS, 64);
   const { lock, unlock, refresh } = useLockActions(root, notify);
@@ -44,7 +47,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
     onSuccess: (_, { lock: l }) => {
       setAsking(null);
       void refresh();
-      notify(`Asked ${l.heldByName || l.heldBy} to release ${l.path}`, "success");
+      notify(translate("locksView.askedToRelease", { heldBy: l.heldByName || l.heldBy, path: l.path }), "success");
     },
     onError: (err) => notify(errorMessage(err)),
   });
@@ -73,13 +76,13 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
     }
   };
 
-  const open = (l: FileLock) => desktop.openFile(root, l.path).catch((err: unknown) => notify(`Could not open ${l.path}: ${errorMessage(err)}`));
+  const open = (l: FileLock) => desktop.openFile(root, l.path).catch((err: unknown) => notify(translate("locksView.couldNotOpen", { path: l.path, value: errorMessage(err) })));
 
   if (status.isPending) {
     return (
       <Centered>
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <p className="text-sm font-medium">Loading locks…</p>
+        <p className="text-sm font-medium">{t("locksView.loadingLocks")}</p>
       </Centered>
     );
   }
@@ -87,40 +90,40 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
     return (
       <Centered>
         <AlertTriangle className="size-5 text-danger" />
-        <p className="text-sm font-medium">Could not load locks</p>
+        <p className="text-sm font-medium">{t("locksView.couldNotLoadLocks")}</p>
         <p className="max-w-sm text-xs text-muted-foreground">{errorMessage(status.error)}</p>
         <Button size="sm" onClick={() => void refresh()}>
           <RefreshCw />
-          Try again
+          {t("locksView.tryAgain")}
         </Button>
       </Centered>
     );
   }
 
   const mine = data.locks.filter((l) => l.mine).length;
-  const scope = data.defaultBranch ? `mainline (${data.branch})` : `branch ${data.branch}`;
+  const scope = data.defaultBranch ? translate("locksView.mainline", { branch: data.branch }) : translate("locksView.branch", { branch: data.branch });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-[12px]">
         <p className="mr-auto text-muted-foreground">
-          Pushes to <span className="font-medium text-foreground">{data.branch || "this clone"}</span> check locks on the {scope}.
+          <Trans i18nKey="locksView.scopeHint" values={{ branch: data.branch || t("locksView.thisClone"), scope }} components={[<span key="b" className="font-medium text-foreground">{null}</span>]} />
         </p>
-        <Button size="sm" onClick={() => void refresh()} title="Refresh locks" aria-label="Refresh locks" disabled={status.isFetching}>
+        <Button size="sm" onClick={() => void refresh()} title={t("locksView.refreshLocks")} aria-label={t("locksView.refreshLocks")} disabled={status.isFetching}>
           <RefreshCw className={cn(status.isFetching && "animate-spin")} />
         </Button>
         <Button size="sm" variant="primary" onClick={() => void lockAndEdit()} disabled={picking || lock.isPending}>
           <Lock />
-          Lock &amp; edit a file…
+          {t("locksView.lockAndEdit")}
         </Button>
       </div>
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-        <div className="flex rounded-md border border-border p-0.5 text-[12px]" role="group" aria-label="Show">
+        <div className="flex rounded-md border border-border p-0.5 text-[12px]" role="group" aria-label={t("locksView.show")}>
           {(
             [
-              ["all", `All (${data.locks.length})`],
-              ["mine", `Mine (${mine})`],
-              ["team", `Team (${data.locks.length - mine})`],
+              ["all", translate("locksView.all", { count: data.locks.length })],
+              ["mine", translate("locksView.mine", { mine })],
+              ["team", translate("locksView.team", { mine: data.locks.length - mine })],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -136,15 +139,15 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
         </div>
         <label className="ml-auto flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[12px]">
           <Search className="size-3.5 text-muted-foreground" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by path or person" aria-label="Filter locks" className="w-56 bg-transparent outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("locksView.filterByPathOrPerson")} aria-label={t("locksView.filterLocks")} className="w-56 bg-transparent outline-none" />
         </label>
       </div>
       {rows.length === 0 ? (
         <Centered>
           <LockOpen className="size-6 text-muted-foreground" />
-          <p className="text-sm font-medium">{data.locks.length === 0 ? "Nothing is locked" : "No locks match"}</p>
+          <p className="text-sm font-medium">{data.locks.length === 0 ? translate("locksView.nothingIsLocked") : translate("locksView.noLocksMatch")}</p>
           <p className="max-w-sm text-xs text-muted-foreground">
-            {data.locks.length === 0 ? "Lock an art, audio or other binary file from the Files tab before you edit it, so nobody else changes it at the same time." : "Try another filter."}
+            {data.locks.length === 0 ? translate("locksView.lockAnArtAudioOr") : translate("locksView.tryAnotherFilter")}
           </p>
         </Centered>
       ) : (
@@ -152,7 +155,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
           <table
             className="w-full table-fixed text-[12px]"
             style={{ minWidth: COLUMNS.reduce((sum, c) => sum + columns.width(c.id), ACTIONS_WIDTH) }}
-            aria-label="File locks"
+            aria-label={t("locksView.fileLocks")}
           >
             <colgroup>
               {COLUMNS.map((c) => (
@@ -176,29 +179,29 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                 <tr key={l.id || `${l.branch}:${l.path}`} className={cn("border-b border-border/60 hover:bg-muted", !l.inScope && "text-muted-foreground")}>
                   <td className="px-4 py-1.5">
                     <span className="flex items-center gap-1.5" title={l.path}>
-                      {isDirectory(l.path) ? <FolderLock className="size-3.5 shrink-0" aria-label="Folder lock" /> : <Lock className="size-3.5 shrink-0" />}
+                      {isDirectory(l.path) ? <FolderLock className="size-3.5 shrink-0" aria-label={t("locksView.folderLock")} /> : <Lock className="size-3.5 shrink-0" />}
                       <span className="truncate font-mono text-[11px]">{l.path}</span>
                       {l.mine && l.requests && l.requests.length > 0 && (
                         <Badge title={l.requests.map((r) => `${r.requesterName || r.requesterId}${r.message ? `: ${r.message}` : ""}`).join("\n")}>
                           <HandHelping />
-                          {l.requests.length === 1 ? "1 request" : `${l.requests.length} requests`}
+                          {l.requests.length === 1 ? translate("locksView.1Request") : translate("locksView.requests", { count: l.requests.length })}
                         </Badge>
                       )}
                       {l.mergeRequest > 0 && (
-                        <Badge title={`Held for merge request !${l.mergeRequest}`}>
+                        <Badge title={translate("locksView.heldForMergeRequest", { mergeRequest: l.mergeRequest })}>
                           <GitPullRequest />!{l.mergeRequest}
                         </Badge>
                       )}
                     </span>
                   </td>
-                  <td className="truncate px-2 py-1.5">{l.global ? "Mainline" : l.branch}</td>
-                  <td className={cn("truncate px-2 py-1.5", l.mine && "font-medium text-accent")}>{l.mine ? "You" : l.heldByName || l.heldBy}</td>
+                  <td className="truncate px-2 py-1.5">{l.global ? translate("locksView.mainline2") : l.branch}</td>
+                  <td className={cn("truncate px-2 py-1.5", l.mine && "font-medium text-accent")}>{l.mine ? translate("locksView.you") : l.heldByName || l.heldBy}</td>
                   <td className="truncate px-2 py-1.5 text-muted-foreground" title={l.acquiredAt}>
                     {timeAgo(l.acquiredAt)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-1.5 text-right">
                     {l.mine && !isDirectory(l.path) && (
-                      <Button variant="ghost" size="sm" onClick={() => void open(l)} aria-label={`Open ${l.path}`} title="Open in its default app">
+                      <Button variant="ghost" size="sm" onClick={() => void open(l)} aria-label={translate("locksView.open", { path: l.path })} title={t("locksView.openInItsDefaultApp")}>
                         <ExternalLink />
                       </Button>
                     )}
@@ -207,8 +210,8 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                         variant="ghost"
                         size="sm"
                         disabled={ask.isPending}
-                        aria-label={`Ask to release ${l.path}`}
-                        title={askedBefore(l, data.userId) ? "You already asked; ask again" : "Ask the holder to release"}
+                        aria-label={translate("locksView.askToRelease2", { path: l.path })}
+                        title={askedBefore(l, data.userId) ? translate("locksView.youAlreadyAskedAskAgain") : translate("locksView.askTheHolderToRelease")}
                         onClick={() => setAsking(l)}
                       >
                         <HandHelping />
@@ -220,17 +223,17 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                         size="sm"
                         disabled={watches.toggle.isPending}
                         aria-pressed={watches.has(l)}
-                        aria-label={watches.has(l) ? `Stop watching ${l.path}` : `Notify me when ${l.path} is free`}
-                        title={watches.has(l) ? "Stop watching this lock" : "Notify me when free"}
+                        aria-label={watches.has(l) ? translate("locksView.stopWatching", { path: l.path }) : translate("locksView.notifyMeWhenIsFree", { path: l.path })}
+                        title={watches.has(l) ? translate("locksView.stopWatchingThisLock") : translate("locksView.notifyMeWhenFree")}
                         onClick={() => watches.toggle.mutate(l)}
                       >
                         {watches.has(l) ? <BellOff /> : <Bell />}
                       </Button>
                     )}
                     {(l.mine || data.canReleaseAny) && (
-                      <Button size="sm" disabled={unlock.isPending} onClick={() => (l.mine ? unlock.mutate(l) : setReleasing(l))} aria-label={`Release ${l.path}`}>
+                      <Button size="sm" disabled={unlock.isPending} onClick={() => (l.mine ? unlock.mutate(l) : setReleasing(l))} aria-label={translate("locksView.release2", { path: l.path })}>
                         <LockOpen />
-                        Release
+                        {t("locksView.release")}
                       </Button>
                     )}
                   </td>
@@ -250,9 +253,9 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
       )}
       {releasing && (
         <ConfirmDialog
-          title="Release someone else's lock?"
-          message={`${releasing.heldByName || releasing.heldBy} holds ${releasing.path}. If they are still editing it, their work can no longer be pushed without merging by hand.`}
-          confirmLabel="Release"
+          title={t("locksView.releaseSomeoneElseSLock")}
+          message={translate("locksView.holdsIfThey", { heldBy: releasing.heldByName || releasing.heldBy, path: releasing.path })}
+          confirmLabel={translate("locksView.release")}
           onCancel={() => setReleasing(null)}
           onConfirm={() => {
             unlock.mutate(releasing);
@@ -267,12 +270,13 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
 const askedBefore = (l: FileLock, userId: string) => (l.requests ?? []).some((r) => r.requesterId === userId);
 
 function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const [message, setMessage] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => field.current?.focus(), []);
   const holder = lock.heldByName || lock.heldBy;
   return (
-    <Dialog title="Ask to release" onClose={onCancel}>
+    <Dialog title={t("locksView.askToRelease")} onClose={onCancel}>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -281,10 +285,10 @@ function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: 
         }}
       >
         <p className="break-words text-xs text-muted-foreground">
-          {holder} holds <span className="font-mono">{lock.path}</span>. They get a notification and an email.
+          <Trans i18nKey="locksView.holderNotice" values={{ holder, path: lock.path }} components={[<span key="p" className="font-mono">{null}</span>]} />
         </p>
         <label className="block space-y-1 text-[12px]">
-          <span className="text-muted-foreground">Message (optional)</span>
+          <span className="text-muted-foreground">{t("locksView.messageOptional")}</span>
           <textarea
             ref={field}
             value={message}
@@ -296,10 +300,10 @@ function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: 
         </label>
         <div className="flex justify-end gap-2">
           <Button type="button" size="sm" onClick={onCancel}>
-            Cancel
+            {t("locksView.cancel")}
           </Button>
           <Button type="submit" size="sm" variant="primary" disabled={busy}>
-            Send request
+            {t("locksView.sendRequest")}
           </Button>
         </div>
       </form>
@@ -321,7 +325,7 @@ function useLockWatches(root: string, notify: Notify) {
     },
     onSuccess: ({ path, watching }) => {
       void queryClient.invalidateQueries({ queryKey: key });
-      notify(watching ? `You will be told when ${path} is free` : `Stopped watching ${path}`, "success");
+      notify(watching ? translate("locksView.youWillBeToldWhen", { path }) : translate("locksView.stoppedWatching", { path }), "success");
     },
     onError: (err) => notify(errorMessage(err)),
   });

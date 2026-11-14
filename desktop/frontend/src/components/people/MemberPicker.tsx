@@ -5,6 +5,8 @@ import { desktop, type Person } from "@/api/desktop";
 import { Avatar } from "@/components/people/Avatar";
 import { useDebounced } from "@/hooks/useDebounced";
 import { cn, errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -20,7 +22,8 @@ type Props = {
 
 // MemberPicker searches the people who can read the project and keeps a
 // multi-selection; the chips are removable and the list works from the keyboard.
-export function MemberPicker({ root, label, selected, onChange, exclude = [], placeholder = "Search people", disabled }: Props) {
+export function MemberPicker({ root, label, selected, onChange, exclude = [], placeholder = translate("memberPicker.searchPeople"), disabled }: Props) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -63,7 +66,7 @@ export function MemberPicker({ root, label, selected, onChange, exclude = [], pl
           <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-0.5 pr-1.5 text-[11px]">
             <Avatar name={p.name} id={p.id} className="size-4 text-[8px]" />
             {p.name}
-            <button type="button" aria-label={`Remove ${p.name}`} disabled={disabled} onClick={() => toggle(p)} className="text-muted-foreground hover:text-foreground">
+            <button type="button" aria-label={translate("memberPicker.remove", { name: p.name })} disabled={disabled} onClick={() => toggle(p)} className="text-muted-foreground hover:text-foreground">
               <X className="size-3" />
             </button>
           </span>
@@ -87,16 +90,16 @@ export function MemberPicker({ root, label, selected, onChange, exclude = [], pl
           spellCheck={false}
           className="min-w-20 flex-1 bg-transparent px-1 text-[12px] outline-none placeholder:text-muted-foreground"
         />
-        {open && members.isFetching && <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label="Searching" />}
+        {open && members.isFetching && <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label={t("memberPicker.searching")} />}
       </div>
       {open && (
-        <div id={listId} role="listbox" aria-label={`${label} results`} aria-multiselectable className="absolute inset-x-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
+        <div id={listId} role="listbox" aria-label={translate("memberPicker.results", { label })} aria-multiselectable className="absolute inset-x-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
           {members.isError ? (
             <p role="alert" className="px-3 py-2 text-[11px] text-danger">
               {errorMessage(members.error)}
             </p>
           ) : results.length === 0 ? (
-            !members.isFetching && <p className="px-3 py-2 text-[11px] text-muted-foreground">{debounced ? "Nobody with that name can read this project" : "No other people can read this project yet"}</p>
+            !members.isFetching && <p className="px-3 py-2 text-[11px] text-muted-foreground">{debounced ? translate("memberPicker.nobodyWithThatNameCan") : translate("memberPicker.noOtherPeopleCanRead")}</p>
           ) : (
             results.map((p, i) => (
               <div

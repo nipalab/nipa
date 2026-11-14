@@ -4,8 +4,10 @@ import { desktop } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { describeUpdate, useUpdates } from "@/hooks/useUpdates";
 import { errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export function UpdateBanner({ notify }: { notify: (message: string) => void }) {
+  const { t } = useTranslation();
   const { state, install, restart } = useUpdates();
   const [dismissed, setDismissed] = useState("");
   if (!state?.release || dismissed === state.release.version) return null;
@@ -24,7 +26,7 @@ export function UpdateBanner({ notify }: { notify: (message: string) => void }) 
         {action === "restart" ? <RotateCw /> : <Download />}
         {actionLabel}
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Dismiss update" onClick={() => setDismissed(state.release?.version ?? "")}>
+      <Button variant="ghost" size="icon" aria-label={t("updateBanner.dismissUpdate")} onClick={() => setDismissed(state.release?.version ?? "")}>
         <X />
       </Button>
     </div>

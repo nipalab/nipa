@@ -6,15 +6,18 @@ import { Centered, Mono, ResolverHeader } from "@/components/conflicts/parts";
 import { Button } from "@/components/ui/button";
 import { compose, conflictCount, hasMarkers, mergesScene, segmentsFor, type BlockPick, type Segment } from "@/lib/conflicts";
 import { cn, errorMessage } from "@/lib/utils";
+import { Trans, useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type TextResolverProps = { root: string; file: ConflictFile; set: ConflictSet; busy: boolean; onResolve: (choice: ResolveChoice, content?: string) => void };
 
 export function TextResolver({ root, file, set, busy, onResolve }: TextResolverProps) {
+  const { t } = useTranslation();
   const texts = useQuery({ queryKey: ["conflict-texts", root, file.path], queryFn: () => desktop.conflictTexts(root, file.path), staleTime: 0 });
   if (texts.isPending) {
     return (
       <Centered>
-        <Loader2 className="size-4 animate-spin" /> Loading the versions…
+        <Loader2 className="size-4 animate-spin" /> {t("textResolver.loadingTheVersions")}
       </Centered>
     );
   }
@@ -34,13 +37,14 @@ export function TextResolver({ root, file, set, busy, onResolve }: TextResolverP
 type EditorProps = TextResolverProps & { texts: ConflictTexts };
 
 const pickLabels: [BlockPick, string][] = [
-  ["ours", "Mine"],
-  ["theirs", "Theirs"],
-  ["ours-theirs", "Both, mine first"],
-  ["theirs-ours", "Both, theirs first"],
+  ["ours", translate("textResolver.mine2")],
+  ["theirs", translate("textResolver.theirs2")],
+  ["ours-theirs", translate("textResolver.bothMineFirst")],
+  ["theirs-ours", translate("textResolver.bothTheirsFirst")],
 ];
 
 function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
+  const { t } = useTranslation();
   const segments = useMemo(() => segmentsFor(texts, file.kind), [texts, file.kind]);
   const blocks = segments.filter((s): s is Extract<Segment, { kind: "conflict" }> => s.kind === "conflict");
   const [picks, setPicks] = useState<(BlockPick | undefined)[]>(() => blocks.map(() => undefined));
@@ -64,32 +68,32 @@ function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span>
             {conflictCount(segments) === 0
-              ? "No conflict markers left in this file."
-              : `${picked} of ${blocks.length} conflict${blocks.length === 1 ? "" : "s"} picked. Mine is `}
+              ? t("textResolver.noMarkers")
+              : t("textResolver.picked", { picked, count: blocks.length })}
             {conflictCount(segments) > 0 && (
               <>
-                <Mono>{set.ours.label}</Mono>, theirs is <Mono>{set.theirs.label}</Mono>.
+                <Trans i18nKey="textResolver.theirsIs" values={{ ours: set.ours.label, theirs: set.theirs.label }} components={[<Mono key="a">{null}</Mono>, <Mono key="b">{null}</Mono>]} />
               </>
             )}
           </span>
           {!texts.base.missing && (
             <Button size="sm" variant="ghost" className="ml-auto" aria-pressed={showBase} onClick={() => setShowBase((v) => !v)}>
-              {showBase ? "Hide" : "Show"} common ancestor
+              {showBase ? t("textResolver.hideBase") : t("textResolver.showBase")}
             </Button>
           )}
         </div>
         {showBase && (
           <figure className="rounded-md border border-border">
-            <figcaption className="border-b border-border px-2 py-1 text-[11px] text-muted-foreground">Common ancestor ({set.base.label || "base"})</figcaption>
-            <pre className="max-h-60 overflow-auto p-2 font-mono text-[11px] whitespace-pre-wrap" aria-label="Common ancestor">
+            <figcaption className="border-b border-border px-2 py-1 text-[11px] text-muted-foreground">{t("textResolver.ancestorCaption", { label: set.base.label || t("textResolver.base") })}</figcaption>
+            <pre className="max-h-60 overflow-auto p-2 font-mono text-[11px] whitespace-pre-wrap" aria-label={t("textResolver.commonAncestor")}>
               {texts.base.text}
             </pre>
           </figure>
         )}
         {blocks.map((b, i) => (
-          <section key={i} aria-label={`Conflict ${i + 1}`} className="rounded-md border border-border">
+          <section key={i} aria-label={t("textResolver.conflictN", { n: i + 1 })} className="rounded-md border border-border">
             <header className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1">
-              <span className="mr-auto text-[11px] font-medium">Conflict {i + 1}</span>
+              <span className="mr-auto text-[11px] font-medium">{t("textResolver.conflictN", { n: i + 1 })}</span>
               {pickLabels.map(([id, label]) => (
                 <button
                   key={id}
@@ -103,19 +107,19 @@ function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
               ))}
             </header>
             <div className="grid grid-cols-2 divide-x divide-border">
-              <Side title={`Mine (${set.ours.label})`} text={b.ours} chosen={picks[i] === "ours"} />
-              <Side title={`Theirs (${set.theirs.label})`} text={b.theirs} chosen={picks[i] === "theirs"} />
+              <Side title={translate("textResolver.mine", { label: set.ours.label })} text={b.ours} chosen={picks[i] === "ours"} />
+              <Side title={translate("textResolver.theirs", { label: set.theirs.label })} text={b.theirs} chosen={picks[i] === "theirs"} />
             </div>
           </section>
         ))}
         <div className="space-y-1">
           <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <label htmlFor={resultId}>Result</label>
+            <label htmlFor={resultId}>{t("textResolver.result")}</label>
             {manual !== null && (
               <>
-                <span>· edited by hand</span>
+                <span>{t("textResolver.editedByHand")}</span>
                 <button type="button" className="text-accent hover:underline" onClick={() => setManual(null)}>
-                  Reset to picks
+                  {t("textResolver.resetToPicks")}
                 </button>
               </>
             )}
@@ -130,10 +134,10 @@ function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
           />
         </div>
         <div className="flex items-center justify-end gap-2">
-          {markers && <span className="mr-auto text-[11px] text-warning">Pick a side for every conflict, or remove the markers by hand.</span>}
+          {markers && <span className="mr-auto text-[11px] text-warning">{t("textResolver.pickASideForEvery")}</span>}
           <Button size="sm" variant="primary" disabled={busy || markers} onClick={() => onResolve("content", result)}>
             {busy && <Loader2 className="animate-spin" />}
-            Mark resolved
+            {t("textResolver.markResolved")}
           </Button>
         </div>
       </div>
@@ -144,6 +148,7 @@ function Editor({ root, file, set, texts, busy, onResolve }: EditorProps) {
 // SceneMerge merges a Godot scene or resource by nodes and properties; a
 // clean result resolves the file, conflicts leave the line editor below.
 function SceneMerge({ root, path, busy, onResolve }: { root: string; path: string; busy: boolean; onResolve: TextResolverProps["onResolve"] }) {
+  const { t } = useTranslation();
   const merge = useMutation({
     mutationFn: () => desktop.mergeScene(root, path),
     onSuccess: (m) => {
@@ -152,26 +157,26 @@ function SceneMerge({ root, path, busy, onResolve }: { root: string; path: strin
   });
   const conflicts = merge.data && !merge.data.clean ? merge.data.conflicts : [];
   return (
-    <section aria-label="Scene merge" className="space-y-1.5 rounded-md border border-border p-2">
+    <section aria-label={t("textResolver.sceneMerge")} className="space-y-1.5 rounded-md border border-border p-2">
       <div className="flex items-center gap-2">
-        <p className="mr-auto text-[11px] text-muted-foreground">This is a Godot scene. Nipa can merge it node by node and property by property instead of line by line.</p>
-        <Button size="sm" disabled={busy || merge.isPending} onClick={() => merge.mutate()} title="Merge both sides by nodes and properties">
+        <p className="mr-auto text-[11px] text-muted-foreground">{t("textResolver.thisIsAGodotScene")}</p>
+        <Button size="sm" disabled={busy || merge.isPending} onClick={() => merge.mutate()} title={t("textResolver.mergeBothSidesByNodes")}>
           {merge.isPending ? <Loader2 className="animate-spin" /> : <Combine />}
-          Merge scene
+          {t("textResolver.mergeScene")}
         </Button>
       </div>
       {merge.isError && <p className="text-[11px] text-danger">{errorMessage(merge.error)}</p>}
       {conflicts.length > 0 && (
         <div className="space-y-1 text-[11px]">
           <p className="text-warning">
-            Both sides changed {conflicts.length === 1 ? "one thing" : `${conflicts.length} things`} in ways Nipa cannot decide. Resolve the file line by line below.
+            {t("textResolver.sceneConflictsSummary", { count: conflicts.length })}
           </p>
-          <ul className="space-y-0.5" aria-label="Scene conflicts">
+          <ul className="space-y-0.5" aria-label={t("textResolver.sceneConflicts")}>
             {conflicts.map((c, i) => (
               <li key={i}>
                 <Mono>
-                  {c.section || "file header"}
-                  {c.key ? ` › ${c.key}` : ""}
+                  {c.section || translate("textResolver.fileHeader")}
+                  {c.key ? translate("textResolver.text", { key: c.key }) : ""}
                 </Mono>
                 : {c.message}
               </li>
@@ -184,10 +189,11 @@ function SceneMerge({ root, path, busy, onResolve }: { root: string; path: strin
 }
 
 function Side({ title, text, chosen }: { title: string; text: string; chosen: boolean }) {
+  const { t } = useTranslation();
   return (
     <figure className={cn("min-w-0", chosen && "bg-success/10")}>
       <figcaption className="truncate px-2 pt-1 text-[10px] text-muted-foreground">{title}</figcaption>
-      <pre className="max-h-48 overflow-auto px-2 pb-2 font-mono text-[11px] whitespace-pre-wrap">{text || <span className="italic text-muted-foreground">(nothing)</span>}</pre>
+      <pre className="max-h-48 overflow-auto px-2 pb-2 font-mono text-[11px] whitespace-pre-wrap">{text || <span className="italic text-muted-foreground">{t("textResolver.nothing")}</span>}</pre>
     </figure>
   );
 }

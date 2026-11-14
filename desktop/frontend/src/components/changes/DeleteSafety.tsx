@@ -5,6 +5,8 @@ import { desktop, type AssetReferences, type ChangeSet } from "@/api/desktop";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { refsKey, useAssetRefs, useReferrers } from "@/hooks/useAssetInsight";
 import { deletionTargets, plural, referrerSummary } from "@/lib/insight";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 export const QUICK_LOOKUP_MS = 400;
 const LOOKUP_STALE_MS = 5_000;
@@ -60,6 +62,7 @@ export function useStageGuard(root: string, changes: ChangeSet | undefined, stag
 }
 
 function DeleteReferrersDialog({ root, targets, onCancel, onConfirm }: { root: string; targets: string[]; onCancel: () => void; onConfirm: () => void }) {
+  const { t } = useTranslation();
   const results = useReferrers(root, targets);
   const loading = results.some((r) => r.isPending);
   const used = targets.flatMap((path, i) => {
@@ -68,7 +71,7 @@ function DeleteReferrersDialog({ root, targets, onCancel, onConfirm }: { root: s
   });
   const what = targets.length === 1 ? targets[0] : plural(targets.length, "file");
   return (
-    <ConfirmDialog title="Stage deletion?" message={`Staging deletes ${what} from the project when you push.`} confirmLabel="Stage deletion" onCancel={onCancel} onConfirm={onConfirm}>
+    <ConfirmDialog title={t("deleteSafety.stageDeletion")} message={translate("deleteSafety.stagingDeletesFromTheProject", { what })} confirmLabel={translate("deleteSafety.stageDeletion2")} onCancel={onCancel} onConfirm={onConfirm}>
       <div aria-live="polite" className="space-y-1.5">
         {used.map((u) => (
           <Warning key={u.path}>
@@ -78,10 +81,10 @@ function DeleteReferrersDialog({ root, targets, onCancel, onConfirm }: { root: s
         ))}
         {loading ? (
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" /> Checking which files use {targets.length === 1 ? "it" : "them"}…
+            <Loader2 className="size-3 animate-spin" /> {t("deleteSafety.checking", { count: targets.length })}
           </p>
         ) : (
-          used.length === 0 && <p className="text-[11px] text-muted-foreground">No other file references {targets.length === 1 ? "it" : "them"}.</p>
+          used.length === 0 && <p className="text-[11px] text-muted-foreground">{t("deleteSafety.none", { count: targets.length })}</p>
         )}
       </div>
     </ConfirmDialog>

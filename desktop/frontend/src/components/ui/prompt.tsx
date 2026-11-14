@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 type PromptProps = {
   title: string;
@@ -18,6 +19,7 @@ type PromptProps = {
 // PromptDialog asks for a name, and optionally a message, before creating a
 // branch or a tag.
 export function PromptDialog({ title, label, confirmLabel, note, base, option, placeholder, withMessage, busy, onConfirm, onCancel }: PromptProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [checked, setChecked] = useState(option?.defaultChecked ?? false);
@@ -50,7 +52,7 @@ export function PromptDialog({ title, label, confirmLabel, note, base, option, p
         </label>
         {withMessage && (
           <label className="block space-y-1 text-[12px]">
-            <span className="text-muted-foreground">Message (optional)</span>
+            <span className="text-muted-foreground">{t("prompt.messageOptional")}</span>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -67,7 +69,7 @@ export function PromptDialog({ title, label, confirmLabel, note, base, option, p
         )}
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" size="sm" onClick={onCancel}>
-            Cancel
+            {t("prompt.cancel")}
           </Button>
           <Button type="submit" size="sm" variant="primary" disabled={!name.trim() || busy}>
             {confirmLabel}

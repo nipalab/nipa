@@ -1,5 +1,11 @@
 package service
 
+import (
+	"os"
+
+	"github.com/nipalab/nipa/desktop/internal/lang"
+)
+
 import "fmt"
 
 type UIStore interface {
@@ -35,3 +41,19 @@ func (s *Service) SaveUIState(state map[string]string) error {
 	}
 	return s.Layout.SaveUI(state)
 }
+
+// language is the language of the strings the Go side shows: the choice kept
+// in the interface state, else the operating system's.
+func (s *Service) language() lang.Language {
+	setting := ""
+	if s.Layout != nil {
+		if state, err := s.Layout.UI(); err == nil {
+			setting = state[lang.SettingKey]
+		}
+	}
+	return lang.Resolve(setting, os.Getenv)
+}
+
+// LanguageOf is language for callers outside the package; it is not a method
+// so the Wails bindings do not expose it.
+func LanguageOf(s *Service) lang.Language { return s.language() }

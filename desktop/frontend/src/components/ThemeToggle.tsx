@@ -1,17 +1,20 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const options: { value: Theme; label: string; Icon: typeof Sun }[] = [
-  { value: "light", label: "Light", Icon: Sun },
-  { value: "dark", label: "Dark", Icon: Moon },
-  { value: "system", label: "System", Icon: Monitor },
+  { value: "light", label: translate("themeToggle.light"), Icon: Sun },
+  { value: "dark", label: translate("themeToggle.dark"), Icon: Moon },
+  { value: "system", label: translate("themeToggle.system"), Icon: Monitor },
 ];
 
 export function ThemeToggle() {
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   return (
-    <div role="radiogroup" aria-label="Theme" className="no-drag flex rounded-md border border-border bg-card p-0.5">
+    <div role="radiogroup" aria-label={t("themeToggle.theme")} className="no-drag flex rounded-md border border-border bg-card p-0.5">
       {options.map(({ value, label, Icon }) => (
         <button
           key={value}

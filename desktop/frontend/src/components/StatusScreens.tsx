@@ -1,6 +1,7 @@
 import { Loader2, RotateCw, ServerCrash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { useTranslation } from "react-i18next";
 
 export function Splash({ label }: { label: string }) {
   return (
@@ -15,6 +16,7 @@ export function Splash({ label }: { label: string }) {
 }
 
 export function DaemonError({ message, retrying, onRetry }: { message: string; retrying: boolean; onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="drag-region flex h-full items-center justify-center p-10">
       <div className="w-full max-w-md space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm" role="alert">
@@ -23,18 +25,18 @@ export function DaemonError({ message, retrying, onRetry }: { message: string; r
             <ServerCrash className="size-5 text-danger" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold">Can't reach the Nipa daemon</h1>
-            <p className="text-xs text-muted-foreground">The app talks to your clones through `nipa serve`.</p>
+            <h1 className="text-sm font-semibold">{t("statusScreens.canTReachTheNipaDaemon")}</h1>
+            <p className="text-xs text-muted-foreground">{t("statusScreens.theAppTalksToYour")}</p>
           </div>
         </div>
         <pre className="select-text whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-[11px]">{message}</pre>
         <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-          <li>Make sure the `nipa` CLI is installed next to the app or on your PATH.</li>
-          <li>Or point the app at it with the NIPA_BIN environment variable.</li>
+          <li>{t("statusScreens.makeSureTheNipaCLI")}</li>
+          <li>{t("statusScreens.orPointTheAppAt")}</li>
         </ul>
         <Button variant="primary" onClick={onRetry} disabled={retrying} className="w-full">
           <RotateCw className={retrying ? "animate-spin" : undefined} />
-          Try again
+          {t("statusScreens.tryAgain")}
         </Button>
       </div>
     </div>

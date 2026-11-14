@@ -9,6 +9,8 @@ import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { formatBytes } from "@/lib/diff";
 import { canPreview, kindName, lockFor, lockState, thumbKey, type Row, type Sort, type SortKey } from "@/lib/files";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const ROW_HEIGHT = 28;
 const HEADER_HEIGHT = 32;
@@ -26,11 +28,11 @@ type TableProps = {
 };
 
 const columns: { key: SortKey; label: string; width: number; className: string }[] = [
-  { key: "name", label: "Name", width: 280, className: "" },
-  { key: "kind", label: "Kind", width: 96, className: "" },
-  { key: "size", label: "Size", width: 80, className: "justify-end" },
-  { key: "status", label: "Status", width: 64, className: "justify-center" },
-  { key: "lock", label: "Lock", width: 112, className: "" },
+  { key: "name", label: translate("fileTable.name"), width: 280, className: "" },
+  { key: "kind", label: translate("fileTable.kind"), width: 96, className: "" },
+  { key: "size", label: translate("fileTable.size"), width: 80, className: "justify-end" },
+  { key: "status", label: translate("fileTable.status"), width: 64, className: "justify-center" },
+  { key: "lock", label: translate("fileTable.lock"), width: 112, className: "" },
 ];
 const COLUMN_DEFAULTS = Object.fromEntries(columns.map((c) => [c.key, c.width]));
 const ROW_PADDING = 24;
@@ -46,9 +48,9 @@ function menuHandler(row: Row, onSelect: (r: Row) => void, onMenu: TableProps["o
 function LockCell({ lock }: { lock?: FileLock }) {
   const state = lockState(lock);
   if (!state) return null;
-  const who = state === "mine" ? "You" : lock?.heldByName || lock?.heldBy || "Someone";
+  const who = state === "mine" ? translate("fileTable.you") : lock?.heldByName || lock?.heldBy || translate("fileTable.someone");
   return (
-    <span className={cn("flex min-w-0 items-center gap-1 truncate", state === "mine" ? "text-success" : "text-warning")} title={`Locked by ${who}${lock && lock.path ? ` (${lock.path})` : ""}`}>
+    <span className={cn("flex min-w-0 items-center gap-1 truncate", state === "mine" ? "text-success" : "text-warning")} title={translate("fileTable.lockedBy", { who, path: lock && lock.path ? translate("fileTable.text", { path: lock.path }) : "" })}>
       <Lock className="size-3 shrink-0" />
       <span className="truncate">{who}</span>
     </span>
@@ -56,6 +58,7 @@ function LockCell({ lock }: { lock?: FileLock }) {
 }
 
 export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort, onSort }: TableProps & { sort: Sort; onSort: (key: SortKey) => void }) {
+  const { t } = useTranslation();
   const parent = useRef<HTMLDivElement>(null);
   const sizes = useColumnWidths("files", COLUMN_DEFAULTS, 48);
   const w = (key: SortKey) => ({ width: sizes.width(key), flex: "none" as const });
@@ -69,7 +72,7 @@ export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort
     initialRect: { width: 800, height: 800 },
   });
   return (
-    <div ref={parent} className="h-full min-h-0 overflow-auto" role="table" aria-label="Files" aria-rowcount={rows.length}>
+    <div ref={parent} className="h-full min-h-0 overflow-auto" role="table" aria-label={t("fileTable.files")} aria-rowcount={rows.length}>
       <div style={{ minWidth: total }}>
         <div role="row" className="sticky top-0 z-10 flex h-8 items-center border-b border-border bg-background px-3 text-[11px] text-muted-foreground">
           {columns.map((c) => (
@@ -104,7 +107,7 @@ export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort
                 onDoubleClick={() => onOpen(row)}
                 onKeyDown={(e) => e.key === "Enter" && onOpen(row)}
                 onContextMenu={menuHandler(row, onSelect, onMenu)}
-                title={row.remote ? `${row.path} is not in this clone's checkout` : row.path}
+                title={row.remote ? translate("fileTable.isNotInThis", { path: row.path }) : row.path}
                 className={cn(
                   "absolute left-0 right-0 flex cursor-default items-center px-3 text-[12px] outline-none hover:bg-muted focus-visible:bg-muted",
                   row.path === selected && "bg-muted font-medium",
@@ -121,10 +124,10 @@ export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort
                     <FileIcon kind={row.kind} />
                   )}
                   <span className="truncate">{row.name}</span>
-                  {row.childrenChanged && <span className="size-1.5 shrink-0 rounded-full bg-warning" title="Something inside changed" aria-label="Changes inside" />}
+                  {row.childrenChanged && <span className="size-1.5 shrink-0 rounded-full bg-warning" title={t("fileTable.somethingInsideChanged")} aria-label={t("fileTable.changesInside")} />}
                 </span>
                 <span role="cell" className="truncate pr-2 text-muted-foreground" style={w("kind")}>
-                  {row.remote ? "Not downloaded" : kindName(row)}
+                  {row.remote ? translate("fileTable.notDownloaded") : kindName(row)}
                 </span>
                 <span role="cell" className="truncate pr-2 text-right font-mono text-[11px] text-muted-foreground" style={w("size")}>
                   {row.isDir ? "" : formatBytes(row.size)}
@@ -158,6 +161,7 @@ function useColumnsFor(el: HTMLDivElement | null): number {
 }
 
 export function FileGrid({ root, rows, locks, selected, onSelect, onOpen, onMenu }: TableProps) {
+  const { t } = useTranslation();
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const perRow = useColumnsFor(el);
   const lines = Math.ceil(rows.length / perRow);
@@ -169,7 +173,7 @@ export function FileGrid({ root, rows, locks, selected, onSelect, onOpen, onMenu
     initialRect: { width: 800, height: 800 },
   });
   return (
-    <div ref={setEl} className="h-full overflow-y-auto" role="grid" aria-label="Files" aria-rowcount={lines}>
+    <div ref={setEl} className="h-full overflow-y-auto" role="grid" aria-label={t("fileTable.files")} aria-rowcount={lines}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => (
           <div key={item.key} role="row" className="absolute left-0 right-0 flex gap-1 px-2" style={{ top: 0, height: CELL_HEIGHT, transform: `translateY(${item.start}px)` }}>
@@ -201,7 +205,7 @@ export function FileGrid({ root, rows, locks, selected, onSelect, onOpen, onMenu
                     )}
                     {lockState(lock) && (
                       <span className={cn("absolute bottom-0.5 right-0.5 rounded bg-card/90 p-0.5", lockState(lock) === "mine" ? "text-success" : "text-warning")}>
-                        <Lock className="size-3" aria-label={lockState(lock) === "mine" ? "Locked by you" : `Locked by ${lock?.heldByName || "someone"}`} />
+                        <Lock className="size-3" aria-label={lockState(lock) === "mine" ? translate("fileTable.lockedByYou") : translate("fileTable.lockedBy2", { value: lock?.heldByName || "someone" })} />
                       </span>
                     )}
                   </span>

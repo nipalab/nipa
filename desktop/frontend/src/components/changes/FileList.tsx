@@ -6,6 +6,8 @@ import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { Button } from "@/components/ui/button";
 import { splitPath } from "@/lib/diff";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 export type Selection = { path: string; staged: boolean };
 
@@ -44,6 +46,7 @@ export function buildRows(changes: ChangeSet): Row[] {
 }
 
 export function FileList({ changes, selected, busy, onSelect, onToggle, onStage, onUnstage, onDiscard, warnings, locks, onLock, onShelve }: FileListProps) {
+  const { t } = useTranslation();
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -77,7 +80,7 @@ export function FileList({ changes, selected, busy, onSelect, onToggle, onStage,
   };
 
   return (
-    <div ref={parent} role="listbox" aria-label="Changed files" tabIndex={0} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto outline-none">
+    <div ref={parent} role="listbox" aria-label={t("fileList.changedFiles")} tabIndex={0} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto outline-none">
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index];
@@ -122,10 +125,10 @@ function SectionHeader({ staged, count, busy, onAll }: { staged: boolean; count:
   return (
     <div className="flex h-full items-center justify-between bg-sidebar px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
       <span>
-        {staged ? "Staged" : "Changes"} <span className="font-normal">({count})</span>
+        {staged ? translate("fileList.staged") : translate("fileList.changes")} <span className="font-normal">({count})</span>
       </span>
       <button type="button" disabled={busy} onClick={onAll} className="normal-case tracking-normal text-accent hover:underline disabled:opacity-50">
-        {staged ? "Unstage all" : "Stage all"}
+        {staged ? translate("fileList.unstageAll") : translate("fileList.stageAll")}
       </button>
     </div>
   );
@@ -146,6 +149,7 @@ type FileRowProps = {
 };
 
 function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, onToggle, onDiscard, onShelve }: FileRowProps) {
+  const { t } = useTranslation();
   const { dir, name } = splitPath(file.path);
   const discardable = !staged && file.status !== "untracked";
   return (
@@ -162,7 +166,7 @@ function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, 
         disabled={busy}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        aria-label={`${staged ? "Unstage" : "Stage"} ${file.path}`}
+        aria-label={translate("fileList.text", { staged: staged ? translate("fileList.unstage") : translate("fileList.stage"), path: file.path })}
         className="size-3.5 shrink-0 accent-[var(--accent)]"
       />
       <FileIcon kind={file.kind} />
@@ -178,8 +182,8 @@ function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, 
           size="icon"
           disabled={busy}
           className="size-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [&_svg]:size-3"
-          aria-label={`Shelve ${file.path}`}
-          title="Shelve this file"
+          aria-label={translate("fileList.shelve", { path: file.path })}
+          title={t("fileList.shelveThisFile")}
           onClick={(e) => {
             e.stopPropagation();
             onShelve();
@@ -194,8 +198,8 @@ function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, 
           size="icon"
           disabled={busy}
           className="size-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [&_svg]:size-3"
-          aria-label={`Discard changes to ${file.path}`}
-          title="Discard changes"
+          aria-label={translate("fileList.discardChangesTo", { path: file.path })}
+          title={t("fileList.discardChanges")}
           onClick={(e) => {
             e.stopPropagation();
             onDiscard();
@@ -210,12 +214,13 @@ function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, 
 }
 
 function LockBadge({ lock, busy, onLock }: { lock: FileLockState; busy: boolean; onLock?: () => void }) {
-  if (lock.state === "mine") return <Lock className="size-3 shrink-0 text-accent" aria-label="Locked by you" />;
+  const { t } = useTranslation();
+  if (lock.state === "mine") return <Lock className="size-3 shrink-0 text-accent" aria-label={t("fileList.lockedByYou")} />;
   if (lock.state === "theirs") {
-    return <Lock className="size-3 shrink-0 text-danger" aria-label={`Locked by ${lock.heldByName || "someone else"}${lock.lockPath !== lock.path ? ` (folder ${lock.lockPath})` : ""}`} />;
+    return <Lock className="size-3 shrink-0 text-danger" aria-label={translate("fileList.lockedBy", { value: lock.heldByName || translate("fileList.someoneElse"), lockPath: lock.lockPath !== lock.path ? translate("fileList.folder", { lockPath: lock.lockPath }) : "" })} />;
   }
   const needed = lock.state === "needed";
-  if (!onLock) return needed ? <LockOpen className="size-3 shrink-0 text-warning" aria-label="Needs a lock to push" /> : null;
+  if (!onLock) return needed ? <LockOpen className="size-3 shrink-0 text-warning" aria-label={t("fileList.needsALockToPush")} /> : null;
   return (
     <button
       type="button"
@@ -224,8 +229,8 @@ function LockBadge({ lock, busy, onLock }: { lock: FileLockState; busy: boolean;
         e.stopPropagation();
         onLock();
       }}
-      aria-label={needed ? "Needs a lock to push: lock it" : "Lock this file"}
-      title={needed ? "Needs a lock to push. Click to lock it." : "Lock this file"}
+      aria-label={needed ? translate("fileList.needsALockToPush2") : translate("fileList.lockThisFile")}
+      title={needed ? translate("fileList.needsALockToPush3") : translate("fileList.lockThisFile")}
       className={cn("shrink-0 disabled:opacity-50", needed ? "text-warning" : "text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}
     >
       <LockOpen className="size-3" />

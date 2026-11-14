@@ -4,6 +4,8 @@ import { desktop, type Activity, type MergeRequest, type Person } from "@/api/de
 import { Avatar } from "@/components/people/Avatar";
 import { MemberPicker } from "@/components/people/MemberPicker";
 import { personNames } from "@/lib/mergeRequests";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Props = {
   root: string;
@@ -18,6 +20,7 @@ type Props = {
 // PeopleBar shows who a request is assigned to and who was asked to review,
 // and lets the author (or any writer) change both while it is open.
 export function PeopleBar({ root, request, outstanding, activity, busy, onAssign, onRequestReview }: Props) {
+  const { t } = useTranslation();
   const open = request.status === "open";
   const [assignees, setAssignees] = useState(request.assignees);
   const key = request.assignees.map((p) => p.id).join(",");
@@ -29,12 +32,12 @@ export function PeopleBar({ root, request, outstanding, activity, busy, onAssign
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-2 pt-1 text-[11px]">
       <div className="min-w-48 flex-1 space-y-1">
-        <span className="text-muted-foreground">Assignees</span>
+        <span className="text-muted-foreground">{t("peopleBar.assignees")}</span>
         {open ? (
           <MemberPicker
             root={root}
-            label="Assignees"
-            placeholder="Assign someone"
+            label={t("peopleBar.assignees")}
+            placeholder={t("peopleBar.assignSomeone")}
             selected={assignees}
             disabled={busy}
             onChange={(next) => {
@@ -43,17 +46,17 @@ export function PeopleBar({ root, request, outstanding, activity, busy, onAssign
             }}
           />
         ) : (
-          <Chips people={request.assignees} empty="Nobody" />
+          <Chips people={request.assignees} empty={translate("peopleBar.nobody")} />
         )}
       </div>
       <div className="min-w-48 flex-1 space-y-1">
-        <span className="text-muted-foreground">Review requested from</span>
-        <Chips people={asked} empty="Nobody yet" />
+        <span className="text-muted-foreground">{t("peopleBar.reviewRequestedFrom")}</span>
+        <Chips people={asked} empty={translate("peopleBar.nobodyYet")} />
         {open && (
           <MemberPicker
             root={root}
-            label="Request review"
-            placeholder="Ask someone to review"
+            label={t("peopleBar.requestReview")}
+            placeholder={t("peopleBar.askSomeoneToReview")}
             selected={[]}
             exclude={[request.authorId, ...outstanding]}
             disabled={busy}

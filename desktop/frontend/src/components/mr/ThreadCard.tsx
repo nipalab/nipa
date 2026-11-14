@@ -4,6 +4,8 @@ import type { DiffLine, Thread } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type ThreadCardProps = {
   thread: Thread;
@@ -16,6 +18,7 @@ type ThreadCardProps = {
 };
 
 export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet, onOpenFile }: ThreadCardProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(!thread.resolved);
   const where = thread.path ? `${thread.path}:${thread.newLine || thread.oldLine}` : "";
   if (thread.resolved && !open) {
@@ -26,22 +29,22 @@ export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet,
         className={cn("flex w-full items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-left text-[11px] text-muted-foreground hover:text-foreground", compact && "mx-2 my-1 w-auto font-sans")}
       >
         <CheckCircle2 className="size-3.5 text-success" />
-        Resolved{thread.resolvedBy ? ` by ${thread.resolvedBy}` : ""} · {thread.comments.length} comment{thread.comments.length === 1 ? "" : "s"}
+        {t("threadCard.summary", { count: thread.comments.length, status: thread.resolvedBy ? t("threadCard.resolvedBy", { name: thread.resolvedBy }) : t("threadCard.resolved") })}
         {where && <span className="truncate font-mono">{where}</span>}
       </button>
     );
   }
   return (
-    <div className={cn("space-y-2 rounded-md border border-border bg-card p-3 font-sans text-[12px]", compact && "mx-2 my-1")} aria-label={`Thread ${thread.id}`} role="group">
+    <div className={cn("space-y-2 rounded-md border border-border bg-card p-3 font-sans text-[12px]", compact && "mx-2 my-1")} aria-label={translate("threadCard.thread", { id: thread.id })} role="group">
       {where && !compact && (
         <p className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
           <MessageSquare className="size-3" />
           {where}
-          {thread.outdated && <span className="ml-1 rounded bg-muted px-1 font-sans">outdated</span>}
+          {thread.outdated && <span className="ml-1 rounded bg-muted px-1 font-sans">{t("threadCard.outdated")}</span>}
           {onOpenFile && (
             <Button size="sm" variant="ghost" className="ml-auto font-sans" onClick={onOpenFile}>
               <FileDiff />
-              View file
+              {t("threadCard.viewFile")}
             </Button>
           )}
         </p>
@@ -51,7 +54,7 @@ export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet,
         <div key={c.id} className="space-y-0.5">
           <p className="text-[11px] text-muted-foreground">
             <span className="font-medium text-foreground">{c.author.name || c.author.id}</span> · <span title={c.createdAt}>{timeAgo(c.createdAt)}</span>
-            {c.edited && " · edited"}
+            {c.edited && translate("threadCard.edited")}
           </p>
           <p className="select-text whitespace-pre-wrap break-words">{c.body}</p>
         </div>
@@ -61,12 +64,12 @@ export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet,
         {thread.resolved ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => onResolve(false)}>
             <RotateCcw />
-            Reopen thread
+            {t("threadCard.reopenThread")}
           </Button>
         ) : (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => onResolve(true)}>
             <CheckCircle2 />
-            Resolve
+            {t("threadCard.resolve")}
           </Button>
         )}
       </div>
@@ -75,6 +78,7 @@ export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet,
 }
 
 function ReplyBox({ busy, onReply }: { busy: boolean; onReply: (body: string) => Promise<unknown> }) {
+  const { t } = useTranslation();
   const [body, setBody] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -90,12 +94,12 @@ function ReplyBox({ busy, onReply }: { busy: boolean; onReply: (body: string) =>
       <input
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Reply…"
-        aria-label="Reply"
+        placeholder={t("threadCard.reply")}
+        aria-label={t("threadCard.reply2")}
         className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none focus:border-accent"
       />
       <Button type="submit" size="sm" disabled={busy || !body.trim()}>
-        Reply
+        {t("threadCard.reply2")}
       </Button>
     </form>
   );
@@ -105,6 +109,7 @@ type CommentBoxProps = { label: string; placeholder?: string; busy: boolean; aut
 
 // CommentBox writes a new comment; the text stays when sending fails.
 export function CommentBox({ label, placeholder, busy, autoFocus, onSubmit, onCancel }: CommentBoxProps) {
+  const { t } = useTranslation();
   const [body, setBody] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -130,11 +135,11 @@ export function CommentBox({ label, placeholder, busy, autoFocus, onSubmit, onCa
       <div className="flex justify-end gap-2">
         {onCancel && (
           <Button type="button" size="sm" onClick={onCancel}>
-            Cancel
+            {t("threadCard.cancel")}
           </Button>
         )}
         <Button type="submit" size="sm" variant="primary" disabled={busy || !body.trim()}>
-          Comment
+          {t("threadCard.comment")}
         </Button>
       </div>
     </form>
@@ -142,8 +147,9 @@ export function CommentBox({ label, placeholder, busy, autoFocus, onSubmit, onCa
 }
 
 function Snippet({ lines }: { lines: DiffLine[] }) {
+  const { t } = useTranslation();
   return (
-    <pre aria-label="Commented code" className="overflow-x-auto rounded border border-border bg-background py-1 font-mono text-[11px] leading-5">
+    <pre aria-label={t("threadCard.commentedCode")} className="overflow-x-auto rounded border border-border bg-background py-1 font-mono text-[11px] leading-5">
       {lines.map((l, i) => (
         <div key={i} className={cn("flex gap-2 px-2", l.kind === "added" && "bg-success/10", l.kind === "removed" && "bg-danger/10", i === lines.length - 1 && "font-semibold")}>
           <span className="w-8 shrink-0 select-none text-right text-muted-foreground">{l.new || l.old}</span>

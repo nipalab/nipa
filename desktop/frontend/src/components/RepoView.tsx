@@ -29,6 +29,8 @@ import { repoSetting } from "@/lib/settings";
 import { shortcutHint } from "@/lib/shortcuts";
 import { normalizeSelection } from "@/lib/sparse";
 import { cn, errorMessage } from "@/lib/utils";
+import { Trans, useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const REPO_POLL_MS = 30_000;
 
@@ -49,6 +51,7 @@ type RepoViewProps = {
 };
 
 export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading, onSearch }: RepoViewProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const simple = useSimple();
   const [tab, setTab] = usePersistedState<TabId>(repoSetting(repo.root, "tab"), "changes", { valid: isTab });
@@ -126,9 +129,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
       }
       if (op === "push") {
         setMessage("");
-        const what = finishing.current ? "Merged and pushed" : "Pushed";
+        const what = finishing.current ? translate("repoView.mergedAndPushed") : translate("repoView.pushed");
         finishing.current = false;
-        notify(`${what} to ${repo.branch}${outcome.commitId ? ` (${outcome.commitId})` : ""}`, "success");
+        notify(translate("repoView.to", { what, branch: repo.branch, commitId: outcome.commitId ? translate("repoView.text2", { commitId: outcome.commitId }) : "" }), "success");
         return;
       }
       if (op === "revert") {
@@ -142,25 +145,25 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         return;
       }
       if (op === "restore") {
-        notify(`${restored.current} is now the version from ${shortId(outcome.commitId ?? "")}. Push it to share it, or discard the change.`, "success");
+        notify(translate("repoView.isNowTheVersion", { current: restored.current, value: shortId(outcome.commitId ?? "") }), "success");
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
       setUpdated(true);
-      if (op === "sparse") notify("Checkout updated", "success");
-      else if (op === "switch") notify(tagCheckout.current ? `Checked out tag ${tagCheckout.current}` : `Switched to ${outcome.branch || repo.branch}`, "success");
-      else notify(`Up to date with ${outcome.branch || repo.branch}`, "success");
+      if (op === "sparse") notify(translate("repoView.checkoutUpdated"), "success");
+      else if (op === "switch") notify(tagCheckout.current ? translate("repoView.checkedOutTag", { current: tagCheckout.current }) : translate("repoView.switchedTo", { branch: outcome.branch || repo.branch }), "success");
+      else notify(translate("repoView.upToDateWith", { branch: outcome.branch || repo.branch }), "success");
     },
     onError: (op, err) => {
       finishing.current = false;
       afterShelve.current = null;
       refresh();
-      notify(`${opLabel[op]} failed: ${errorMessage(err)}`);
+      notify(translate("repoView.failed", { value: opLabel[op], value2: errorMessage(err) }));
     },
     onCancelled: (op) => {
       afterShelve.current = null;
       refresh();
-      notify(`${opLabel[op]} cancelled`);
+      notify(translate("repoView.cancelled", { value: opLabel[op] }));
     },
   });
   const op = operation.state;
@@ -176,8 +179,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const switchTo = (branch: string) =>
     guarded({
       target: { branch },
-      verb: `Switching to ${branch}`,
-      shelfName: `Before switching to ${branch}`,
+      verb: translate("repoView.switchingTo", { branch }),
+      shelfName: translate("repoView.beforeSwitchingTo", { branch }),
       start: () => {
         tagCheckout.current = "";
         operation.run("switch", () => desktop.switchBranch(repo.root, branch));
@@ -186,8 +189,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const checkoutTag = (name: string) =>
     guarded({
       target: { tag: name },
-      verb: `Checking out tag ${name}`,
-      shelfName: `Before checking out ${name}`,
+      verb: translate("repoView.checkingOutTag", { name }),
+      shelfName: translate("repoView.beforeCheckingOut", { name }),
       start: () => {
         tagCheckout.current = name;
         operation.run("switch", () => desktop.checkoutTag(repo.root, name));
@@ -199,7 +202,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const finishMerge = () => {
     finishing.current = true;
     const source = conflicts.data?.theirs.label;
-    operation.run("push", () => desktop.push(repo.root, source ? `Merge branch '${source}' into '${repo.branch}'` : `Merge into '${repo.branch}'`));
+    operation.run("push", () => desktop.push(repo.root, source ? translate("repoView.mergeBranchInto", { source, branch: repo.branch }) : translate("repoView.mergeInto", { branch: repo.branch })));
   };
   const hasConflicts = hasOpenConflicts(changes.data);
   const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
@@ -211,11 +214,11 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const incomingLabel = incoming >= 100 ? "100+" : String(incoming);
 
   const { lock } = useLockActions(repo.root, notify);
-  const busyNote = () => notify(`Wait until ${opLabel[op!.op].toLowerCase()} finishes`);
+  const busyNote = () => notify(translate("repoView.waitUntilFinishes", { toLowerCase: opLabel[op!.op].toLowerCase() }));
   const startUpdate = () => {
     if (op) return busyNote();
-    if (detached) return notify(`Checked out at tag ${detached}: switch back to a branch to update`);
-    guarded({ target: {}, verb: "Updating", shelfName: "Before updating", start: () => operation.run("update", () => desktop.update(repo.root)) });
+    if (detached) return notify(translate("repoView.checkedOutAtTag", { detached }));
+    guarded({ target: {}, verb: translate("repoView.updating"), shelfName: translate("repoView.beforeUpdating"), start: () => operation.run("update", () => desktop.update(repo.root)) });
   };
   const writeMessage = () => {
     setTab("changes");
@@ -226,7 +229,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
       const status = await queryClient.fetchQuery({ queryKey: locksKey(repo.root), queryFn: () => desktop.lockStatus(repo.root) });
       lock.mutate({ branch: scope ?? status.branch, paths: [path] });
     } catch (err) {
-      notify(`Locking failed: ${errorMessage(err)}`);
+      notify(translate("repoView.lockingFailed", { value: errorMessage(err) }));
     }
   };
   const handled = useRef(0);
@@ -275,7 +278,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         setTab("history");
       },
       openAt: (path, line) => {
-        desktop.openFileAt(root, path, line).catch((err) => notify(`Could not open ${path}: ${errorMessage(err)}`));
+        desktop.openFileAt(root, path, line).catch((err) => notify(translate("repoView.couldNotOpen", { path, value: errorMessage(err) })));
       },
     }),
     [root, notify],
@@ -289,7 +292,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
           <h1 className="truncate text-sm font-semibold">{repo.name}</h1>
           {!repo.error &&
             (detached ? (
-              <Badge className="text-warning" title={`Checked out at tag ${detached}; the clone's branch is ${repo.branch}`}>
+              <Badge className="text-warning" title={translate("repoView.checkedOutAtTag2", { detached, branch: repo.branch })}>
                 <Tag />
                 {detached}
               </Badge>
@@ -303,7 +306,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
             {repo.root}
           </span>
           {onSearch && (
-              <Button variant="ghost" size="sm" className="no-drag text-muted-foreground" onClick={onSearch} aria-label="Search" title={`Search and run commands (${shortcutHint("palette")})`}>
+              <Button variant="ghost" size="sm" className="no-drag text-muted-foreground" onClick={onSearch} aria-label={t("repoView.search")} title={translate("repoView.searchAndRunCommands", { value: shortcutHint("palette") })}>
                 <Search />
                 <kbd className="font-sans text-[10px]">{shortcutHint("palette")}</kbd>
               </Button>
@@ -319,16 +322,16 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 data-tour="update"
                 onClick={startUpdate}
                 disabled={!!op || !!detached || syncGuard.checking}
-                title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
+                title={translate("repoView.text", { incoming: incoming > 0 ? translate("repoView.newCommitsOn", { count: incoming, incoming: incomingLabel, branch: repo.branch }) : translate("repoView.getTheLatestVersionOf"), value: shortcutHint("update") })}
               >
                 <ArrowDownToLine />
                 {labels(simple).update}
                 {incoming > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-foreground">{incomingLabel}</span>}
               </Button>
             ))}
-          <Button variant="danger" size="sm" onClick={() => onRemove(repo.root)} disabled={removing || !!op} title="Remove from list (files stay on disk)">
+          <Button variant="danger" size="sm" onClick={() => onRemove(repo.root)} disabled={removing || !!op} title={t("repoView.removeFromListFilesStay")}>
             <Trash2 />
-            Remove
+            {t("repoView.remove")}
           </Button>
         </header>
 
@@ -336,9 +339,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
           <div className="m-5 flex items-start gap-3 rounded-lg border border-border bg-danger-soft p-4" role="alert">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">This clone is unavailable</p>
+              <p className="text-sm font-medium">{t("repoView.thisCloneIsUnavailable")}</p>
               <p className="text-xs text-muted-foreground">{repo.error}</p>
-              <p className="text-xs text-muted-foreground">It may have been moved or deleted. Remove it from the list or restore the folder.</p>
+              <p className="text-xs text-muted-foreground">{t("repoView.itMayHaveBeenMoved")}</p>
             </div>
           </div>
         ) : (
@@ -357,7 +360,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 onAbortShelf={() => operation.run("shelve", () => desktop.abortShelfApply(repo.root))}
               />
             )}
-            <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
+            <nav aria-label={t("repoView.views")} role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
               {shownTabs.map(({ id, label, Icon }, i) => (
                 <button
                   key={id}
@@ -462,47 +465,47 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
 }
 
 const opLabel: Record<OpName, string> = {
-  push: "Push",
-  update: "Update",
-  sparse: "Checkout change",
-  clone: "Clone",
-  switch: "Switch",
-  revert: "Revert",
-  merge: "Merge",
-  restore: "Getting the version",
-  shelve: "Shelving",
+  push: translate("repoView.push"),
+  update: translate("repoView.update"),
+  sparse: translate("repoView.checkoutChange"),
+  clone: translate("repoView.clone"),
+  switch: translate("repoView.switch"),
+  revert: translate("repoView.revert"),
+  merge: translate("repoView.merge"),
+  restore: translate("repoView.gettingTheVersion"),
+  shelve: translate("repoView.shelving"),
 };
 
 export function describeShelve(outcome: OpOutcome): [string, "error" | "success" | undefined, boolean] {
   if (outcome.shelf) {
     const n = outcome.shelf.entries?.length ?? 0;
-    return [`Shelved ${n} file${n === 1 ? "" : "s"} as "${outcome.shelf.name}"`, "success", false];
+    return [translate("repoView.shelved", { count: n, name: outcome.shelf.name }), "success", false];
   }
   const a = outcome.shelfApply;
-  if (a?.aborted) return ["Stopped applying the shelf; the files are back as they were and the shelf was kept", "success", false];
+  if (a?.aborted) return [translate("repoView.stoppedApplyingTheShelfThe"), "success", false];
   const conflicts = a?.conflicts ?? [];
-  if (conflicts.length > 0) return [`Applying "${a?.name}" stopped: ${conflicts.length} file${conflicts.length === 1 ? "" : "s"} conflict. Resolve them in the Conflicts tab.`, "error", true];
-  return [`Applied "${a?.name ?? "the shelf"}"${a?.dropped ? " and deleted the shelf" : ""}`, "success", false];
+  if (conflicts.length > 0) return [translate("repoView.applyStopped", { name: a?.name, count: conflicts.length }), "error", true];
+  return [translate("repoView.applied", { value: a?.name ?? translate("repoView.theShelf"), dropped: a?.dropped ? translate("repoView.andDeletedTheShelf") : "" }), "success", false];
 }
 
 export function describeMerge(outcome: OpOutcome, branch: string): [string, "error" | "success" | undefined] {
   const m = outcome.merge;
   const conflicts = m?.conflicts ?? [];
-  if (conflicts.length > 0) return [`The merge stopped: ${conflicts.length} file${conflicts.length === 1 ? "" : "s"} conflict. Resolve them, then finish the merge.`, "error"];
-  if (m?.aborted) return ["Merge aborted; the clone is back at the branch head", "success"];
-  if (m?.upToDate) return [`${branch} already has those changes`, "success"];
-  if (m?.fastForwarded) return [`Fast-forwarded ${branch}`, "success"];
-  return [`Merged and pushed to ${branch}`, "success"];
+  if (conflicts.length > 0) return [translate("repoView.mergeStopped", { count: conflicts.length }), "error"];
+  if (m?.aborted) return [translate("repoView.mergeAbortedTheCloneIs"), "success"];
+  if (m?.upToDate) return [translate("repoView.alreadyHasThoseChanges", { branch }), "success"];
+  if (m?.fastForwarded) return [translate("repoView.fastForwarded", { branch }), "success"];
+  return [translate("repoView.mergedAndPushedTo", { branch }), "success"];
 }
 
 export function describeRevert(outcome: OpOutcome): [string, "error" | "success" | undefined] {
   const r = outcome.revert;
   const conflicts = r?.conflicts ?? [];
-  if (conflicts.length > 0) return [`Revert stopped: ${conflicts.length} file${conflicts.length === 1 ? "" : "s"} conflict. Resolve them, then continue.`, "error"];
-  if (r?.aborted) return ["Revert aborted; the clone is back where it was", "success"];
-  if (r?.skipped) return ["Skipped that commit", "success"];
-  if (r?.noChange) return ["Nothing to revert: the changes are already gone", "success"];
-  return ["Reverted and pushed", "success"];
+  if (conflicts.length > 0) return [translate("repoView.revertStopped", { count: conflicts.length }), "error"];
+  if (r?.aborted) return [translate("repoView.revertAbortedTheCloneIs"), "success"];
+  if (r?.skipped) return [translate("repoView.skippedThatCommit"), "success"];
+  if (r?.noChange) return [translate("repoView.nothingToRevertTheChanges"), "success"];
+  return [translate("repoView.revertedAndPushed"), "success"];
 }
 
 type BannersProps = {
@@ -519,11 +522,12 @@ type BannersProps = {
 };
 
 function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, onResolve, onFinishMerge, onAbortMerge, onAbortShelf }: BannersProps) {
+  const { t } = useTranslation();
   const open = changes.conflicts.filter((p) => !changes.resolved.includes(p)).length;
   const resolveButton = open > 0 && (
     <Button size="sm" disabled={busy} onClick={onResolve}>
       <GitMerge />
-      Resolve conflicts
+      {t("repoView.resolveConflicts")}
     </Button>
   );
   if (changes.pending === "revert") {
@@ -534,19 +538,19 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
         <AlertTriangle className="size-3.5 text-danger" />
         <span className="mr-auto">
           {conflicts > 0
-            ? `A revert is waiting: ${conflicts} conflicting file${conflicts === 1 ? "" : "s"}. Fix ${conflicts === 1 ? "it" : "them"}, then continue.`
-            : "A revert is waiting to be continued."}
-          {remaining > 1 && ` ${remaining - 1} more commit${remaining === 2 ? "" : "s"} to revert after this one.`}
+            ? translate("repoView.revertWaiting", { count: conflicts })
+            : translate("repoView.aRevertIsWaitingTo")}
+          {remaining > 1 && translate("repoView.text3", { value: translate("repoView.revertMore", { count: remaining - 1 }) })}
         </span>
         {resolveButton}
-        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? "Resolve every conflict first" : undefined} onClick={() => onRevert("continue")}>
-          Continue
+        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? translate("repoView.resolveEveryConflictFirst") : undefined} onClick={() => onRevert("continue")}>
+          {t("repoView.continue")}
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => onRevert("skip")} title="Leave this commit as it is and go on with the next">
-          Skip
+        <Button size="sm" disabled={busy} onClick={() => onRevert("skip")} title={t("repoView.leaveThisCommitAsIt")}>
+          {t("repoView.skip")}
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => onRevert("abort")} title="Undo the revert and restore the clone">
-          Abort
+        <Button size="sm" disabled={busy} onClick={() => onRevert("abort")} title={t("repoView.undoTheRevertAndRestore")}>
+          {t("repoView.abort")}
         </Button>
       </div>
     );
@@ -557,15 +561,15 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
       <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
         <AlertTriangle className="size-3.5 text-danger" />
         <span className="mr-auto">
-          {source ? `Merging ${source} into ${branch}: ` : "A merge is waiting: "}
-          {open > 0 ? `${open} conflicting file${open === 1 ? "" : "s"} left to resolve.` : "everything is resolved. Finish to push the merge commit."}
+          {source ? translate("repoView.mergingInto", { source, branch }) : translate("repoView.aMergeIsWaiting")}
+          {open > 0 ? translate("repoView.conflictsLeft", { count: open }) : translate("repoView.everythingIsResolvedFinishTo")}
         </span>
         {resolveButton}
-        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? "Resolve every conflict first" : "Push the merge commit"} onClick={onFinishMerge}>
-          Finish merge
+        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? translate("repoView.resolveEveryConflictFirst") : translate("repoView.pushTheMergeCommit")} onClick={onFinishMerge}>
+          {t("repoView.finishMerge")}
         </Button>
-        <Button size="sm" disabled={busy} onClick={onAbortMerge} title="Drop the merge and restore the branch head">
-          Abort
+        <Button size="sm" disabled={busy} onClick={onAbortMerge} title={t("repoView.dropTheMergeAndRestore")}>
+          {t("repoView.abort")}
         </Button>
       </div>
     );
@@ -576,12 +580,12 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
       <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
         <AlertTriangle className="size-3.5 text-danger" />
         <span className="mr-auto">
-          {name ? `Applying shelf "${name}": ` : "A shelf is being applied: "}
-          {`${open} conflicting file${open === 1 ? "" : "s"} left. Resolving the last one finishes the apply.`}
+          {name ? translate("repoView.applyingShelf", { name }) : translate("repoView.aShelfIsBeingApplied")}
+          {translate("repoView.applyLeft", { count: open })}
         </span>
         {resolveButton}
-        <Button size="sm" disabled={busy} onClick={onAbortShelf} title="Put the files back as they were before applying; the shelf is kept">
-          Abort
+        <Button size="sm" disabled={busy} onClick={onAbortShelf} title={t("repoView.putTheFilesBackAs")}>
+          {t("repoView.abort")}
         </Button>
       </div>
     );
@@ -591,11 +595,11 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
       <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-5 py-2 text-[12px]">
         <Tag className="size-3.5 text-warning" />
         <span className="mr-auto">
-          Checked out at tag <span className="font-medium">{changes.detached}</span>. You can look and build, but not push: switch back to a branch to make changes.
+          <Trans i18nKey="repoView.detachedNotice" values={{ tag: changes.detached }} components={[<span className="font-medium" />]} />
         </span>
         <Button size="sm" disabled={busy} onClick={() => onSwitch(branch)}>
           <GitBranch />
-          Back to {branch}
+          {t("repoView.backTo", { branch })}
         </Button>
       </div>
     );
@@ -604,27 +608,28 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
 }
 
 function Details({ repo, busy, notify, onEditSparse }: { repo: Repo; busy: boolean; notify: Notify; onEditSparse: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="h-full overflow-y-auto">
       <dl className="m-5 max-w-xl space-y-3 rounded-lg border border-border bg-card p-4 text-xs">
-        <Detail label="Server" value={repo.url} />
-        <Detail label="Branch" value={repo.branch} />
-        <Detail label="Location" value={repo.root} />
+        <Detail label={t("repoView.server")} value={repo.url} />
+        <Detail label={t("repoView.branch")} value={repo.branch} />
+        <Detail label={t("repoView.location")} value={repo.root} />
         <div>
-          <dt className="mb-1 text-muted-foreground">Checkout</dt>
+          <dt className="mb-1 text-muted-foreground">{t("repoView.checkout")}</dt>
           <dd className="flex flex-wrap gap-1">
-            {repo.sparse && repo.sparse.length > 0 ? repo.sparse.map((p) => <Badge key={p}>{p}</Badge>) : <span>Full checkout</span>}
+            {repo.sparse && repo.sparse.length > 0 ? repo.sparse.map((p) => <Badge key={p}>{p}</Badge>) : <span>{t("repoView.fullCheckout")}</span>}
           </dd>
           <Button size="sm" className="mt-2" onClick={onEditSparse} disabled={busy}>
             <FolderTree />
-            Change folders…
+            {t("repoView.changeFolders")}
           </Button>
         </div>
       </dl>
-      <section aria-label="Storage" className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
+      <section aria-label={t("repoView.storage")} className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
         <StorageCard root={repo.root} busy={busy} notify={notify} onEditSparse={onEditSparse} />
       </section>
-      <section aria-label="Ignore rules" className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
+      <section aria-label={t("repoView.ignoreRules")} className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
         <IgnoreRulesEditor root={repo.root} notify={notify} />
       </section>
     </div>

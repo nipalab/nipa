@@ -6,6 +6,8 @@ import type { BlameCell, BlameCells } from "@/lib/blame";
 import { splitRows, unifiedRows, type SplitCell, type SplitRow, type UnifiedRow } from "@/lib/diff";
 import { highlightLine, languageFor } from "@/lib/highlight";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 export type DiffLayout = "unified" | "split";
 
@@ -20,12 +22,13 @@ export type LineComments = { render: (anchor: LineAnchor) => ReactNode; onAdd?: 
 const anchorOf = (kind: string, oldLine: number, newLine: number): LineAnchor => (kind === "removed" ? { oldLine, newLine: 0 } : { oldLine: 0, newLine });
 
 function AddComment({ anchor, comments }: { anchor: LineAnchor; comments?: LineComments }) {
+  const { t } = useTranslation();
   if (!comments?.onAdd) return null;
   return (
     <button
       type="button"
-      aria-label={anchor.newLine ? `Comment on line ${anchor.newLine}` : `Comment on removed line ${anchor.oldLine}`}
-      title="Comment on this line"
+      aria-label={anchor.newLine ? translate("textDiff.commentOnLine", { newLine: anchor.newLine }) : translate("textDiff.commentOnRemovedLine", { oldLine: anchor.oldLine })}
+      title={t("textDiff.commentOnThisLine")}
       onClick={() => comments.onAdd?.(anchor)}
       className="absolute left-0.5 top-0.5 hidden rounded bg-accent p-0.5 text-white group-hover:block focus:block"
     >
@@ -45,7 +48,7 @@ function BlameGutter({ cell, onSelect }: { cell?: BlameCell; onSelect?: (id: str
   const commit = cell.commit;
   if (commit && onSelect) {
     return (
-      <button type="button" title={cell.title} aria-label={`Show the commit that last changed this line: ${cell.title.split("\n", 1)[0]}`} onClick={() => onSelect(commit.id)} className={cn(base, tone, "hover:bg-muted hover:text-foreground")}>
+      <button type="button" title={cell.title} aria-label={translate("textDiff.showTheCommitThatLast", { value: cell.title.split("\n", 1)[0] })} onClick={() => onSelect(commit.id)} className={cn(base, tone, "hover:bg-muted hover:text-foreground")}>
         {cell.label}
       </button>
     );
@@ -58,13 +61,14 @@ function BlameGutter({ cell, onSelect }: { cell?: BlameCell; onSelect?: (id: str
 }
 
 function OpenLine({ line, tools }: { line: number; tools?: LineTools }) {
+  const { t } = useTranslation();
   const open = tools?.onOpenLine;
   if (!open || !line) return null;
   return (
     <button
       type="button"
-      aria-label={`Open in editor at line ${line}`}
-      title="Open in editor at this line"
+      aria-label={translate("textDiff.openInEditorAtLine", { line })}
+      title={t("textDiff.openInEditorAtThis")}
       onClick={() => open(line)}
       className="absolute right-1 top-0.5 hidden rounded bg-muted p-0.5 text-muted-foreground hover:text-foreground group-hover:block focus:block"
     >
@@ -88,11 +92,12 @@ const gutterTone = {
 };
 
 function Code({ text, language, noNewline }: { text: string; language?: string; noNewline: boolean }) {
+  const { t } = useTranslation();
   return (
     <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">
       <span dangerouslySetInnerHTML={{ __html: highlightLine(text, language) }} />
       {noNewline && (
-        <span className="ml-2 select-none text-[10px] text-muted-foreground" title="No newline at end of file">
+        <span className="ml-2 select-none text-[10px] text-muted-foreground" title={t("textDiff.noNewlineAtEndOf")}>
           ⏎̸
         </span>
       )}
@@ -173,7 +178,7 @@ export function TextDiff({ diff, layout, comments, tools }: { diff: FileDiff; la
   });
 
   return (
-    <div ref={parent} className="hljs-scope h-full overflow-y-auto select-text font-mono text-[12px] leading-5" role="table" aria-label={`Diff of ${diff.path}`}>
+    <div ref={parent} className="hljs-scope h-full overflow-y-auto select-text font-mono text-[12px] leading-5" role="table" aria-label={translate("textDiff.diffOf", { path: diff.path })}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index];

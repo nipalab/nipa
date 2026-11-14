@@ -9,10 +9,13 @@ import { formatTime } from "@/lib/audio";
 import { formatBytes } from "@/lib/diff";
 import { clampTime, formatAudio, formatBitrate, formatFrameRate, formatResolution, frameStep } from "@/lib/video";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Side = "old" | "new";
 
 export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
+  const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "video"),
@@ -25,12 +28,12 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Preparing video…
+        <Loader2 className="size-4 animate-spin" /> {t("videoDiff.preparingVideo")}
       </div>
     );
   }
-  if (query.isError) return <MetaDiff diff={diff} detail={`The video could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
-  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail="There is no preview for this video." />;
+  if (query.isError) return <MetaDiff diff={diff} detail={translate("videoDiff.theVideoCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
+  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail={translate("videoDiff.thereIsNoPreviewFor")} />;
   const data = query.data;
   const reload = () => {
     if (reloaded.current === diff.path) return false;
@@ -60,6 +63,7 @@ type CompareProps = {
 };
 
 export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia = desktop.hasMedia, release = desktop.releaseMedia, onExpired }: CompareProps) {
+  const { t } = useTranslation();
   const { old, new: next } = compare;
   const tokens = [old?.media, next?.media].filter((t): t is string => !!t).join(" ");
   useEffect(() => {
@@ -138,8 +142,8 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
   };
 
   const notices: string[] = [];
-  for (const [label, s] of [["Before", old], ["After", next]] as const) {
-    if (s?.statsError) notices.push(`${label}: ${s.statsError}`);
+  for (const [label, s] of [[translate("videoDiff.before"), old], [translate("videoDiff.after"), next]] as const) {
+    if (s?.statsError) notices.push(translate("videoDiff.text", { label, statsError: s.statsError }));
   }
   if (openError) notices.push(openError);
   const both = !!old && !!next;
@@ -149,18 +153,18 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5 text-[11px]">
-        <ToolButton label={playing ? "Pause" : "Play"} onClick={toggle}>
+        <ToolButton label={playing ? translate("videoDiff.pause") : translate("videoDiff.play")} onClick={toggle}>
           {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
         </ToolButton>
-        <ToolButton label="Previous frame" onClick={() => step(-1)}>
+        <ToolButton label={t("videoDiff.previousFrame")} onClick={() => step(-1)}>
           <SkipBack className="size-3.5" />
         </ToolButton>
-        <ToolButton label="Next frame" onClick={() => step(1)}>
+        <ToolButton label={t("videoDiff.nextFrame")} onClick={() => step(1)}>
           <SkipForward className="size-3.5" />
         </ToolButton>
         <input
           type="range"
-          aria-label="Seek"
+          aria-label={t("videoDiff.seek")}
           min={0}
           max={span || 0}
           step={0.001}
@@ -169,16 +173,16 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
           onChange={(e) => seek(Number(e.target.value))}
           className="w-48 accent-accent"
         />
-        <span className="font-mono tabular-nums text-muted-foreground" aria-label="Playback position">
+        <span className="font-mono tabular-nums text-muted-foreground" aria-label={t("videoDiff.playbackPosition")}>
           {formatTime(position)} / {formatTime(span)}
         </span>
         {choosable && (
-          <Group label="Listen to">
-            <ToolButton active={listen === "old"} label="Listen to before" onClick={() => setListen("old")}>
-              <span className="px-1">A · Before</span>
+          <Group label={t("videoDiff.listenTo")}>
+            <ToolButton active={listen === "old"} label={t("videoDiff.listenToBefore")} onClick={() => setListen("old")}>
+              <span className="px-1">{t("videoDiff.aBefore")}</span>
             </ToolButton>
-            <ToolButton active={listen === "new"} label="Listen to after" onClick={() => setListen("new")}>
-              <span className="px-1">B · After</span>
+            <ToolButton active={listen === "new"} label={t("videoDiff.listenToAfter")} onClick={() => setListen("new")}>
+              <span className="px-1">{t("videoDiff.bAfter")}</span>
             </ToolButton>
           </Group>
         )}
@@ -190,7 +194,7 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
           return (
             <Lane
               key={which}
-              label={which === "old" ? (next ? "Before" : "Deleted") : old ? "After" : "Added"}
+              label={which === "old" ? (next ? translate("videoDiff.before") : translate("videoDiff.deleted")) : old ? translate("videoDiff.after") : translate("videoDiff.added")}
               side={side}
               videoRef={refs[which]}
               failed={failed[which]}
@@ -232,6 +236,7 @@ type LaneProps = {
 };
 
 function Lane({ label, side, videoRef, failed, muted, onFail, onMetadata, onTime, onEnded, onOpen }: LaneProps) {
+  const { t } = useTranslation();
   const s = side.stats;
   return (
     <section aria-label={label} className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
@@ -239,19 +244,19 @@ function Lane({ label, side, videoRef, failed, muted, onFail, onMetadata, onTime
         <span className="font-medium">{label}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{s ? [s.videoCodec, formatResolution(s), formatFrameRate(s.frameRate)].filter((p) => p && p !== "—").join(" · ") : side.path}</span>
         {side.media && (
-          <button type="button" onClick={() => onOpen(side.media)} className="flex items-center gap-1 text-muted-foreground hover:text-foreground" title="Open in the default video player">
-            <ExternalLink className="size-3" /> Open externally
+          <button type="button" onClick={() => onOpen(side.media)} className="flex items-center gap-1 text-muted-foreground hover:text-foreground" title={t("videoDiff.openInTheDefaultVideo")}>
+            <ExternalLink className="size-3" /> {t("videoDiff.openExternally")}
           </button>
         )}
       </header>
       <div className="flex min-h-0 flex-1 items-center justify-center bg-black/90">
         {!side.url ? (
-          <p className="p-4 text-center text-[11px] text-white/70">{side.statsError || "This video can't be previewed."}</p>
+          <p className="p-4 text-center text-[11px] text-white/70">{side.statsError || translate("videoDiff.thisVideoCanTBePreviewed")}</p>
         ) : failed ? (
           <div className="flex flex-col items-center gap-2 p-4 text-center text-[11px] text-white/70">
-            <p>This video's format can't play in the app{s?.videoCodec ? ` (${s.videoCodec})` : ""}.</p>
+            <p>{s?.videoCodec ? t("videoDiff.cannotPlayCodec", { codec: s.videoCodec }) : t("videoDiff.cannotPlay")}</p>
             <button type="button" onClick={() => onOpen(side.media)} className="rounded border border-white/30 px-2 py-1 text-white hover:bg-white/10">
-              Open externally
+              {t("videoDiff.openExternally")}
             </button>
           </div>
         ) : (
@@ -261,7 +266,7 @@ function Lane({ label, side, videoRef, failed, muted, onFail, onMetadata, onTime
             preload="metadata"
             playsInline
             muted={muted}
-            aria-label={`${label} video`}
+            aria-label={translate("videoDiff.video", { label })}
             className="max-h-full max-w-full"
             onError={onFail}
             onLoadedMetadata={(e) => onMetadata(e.currentTarget.duration)}
@@ -278,29 +283,30 @@ function Lane({ label, side, videoRef, failed, muted, onFail, onMetadata, onTime
 type StatRow = { label: string; text: (s: VideoStats) => string };
 
 const statRows: StatRow[] = [
-  { label: "Container", text: (s) => s.container.toUpperCase() },
-  { label: "Duration", text: (s) => formatTime(s.duration) },
-  { label: "Resolution", text: formatResolution },
-  { label: "Video", text: (s) => s.videoCodec || "None" },
-  { label: "Frame rate", text: (s) => formatFrameRate(s.frameRate) },
-  { label: "Audio", text: formatAudio },
-  { label: "Bitrate", text: (s) => formatBitrate(s.bitrate) },
+  { label: translate("videoDiff.container"), text: (s) => s.container.toUpperCase() },
+  { label: translate("videoDiff.duration"), text: (s) => formatTime(s.duration) },
+  { label: translate("videoDiff.resolution"), text: formatResolution },
+  { label: translate("videoDiff.video2"), text: (s) => s.videoCodec || translate("videoDiff.none") },
+  { label: translate("videoDiff.frameRate"), text: (s) => formatFrameRate(s.frameRate) },
+  { label: translate("videoDiff.audio"), text: formatAudio },
+  { label: translate("videoDiff.bitrate"), text: (s) => formatBitrate(s.bitrate) },
 ];
 
 function StatsTable({ old, next }: { old: VideoSide | null; next: VideoSide | null }) {
+  const { t } = useTranslation();
   const [a, b] = [old?.stats ?? null, next?.stats ?? null];
   return (
-    <table aria-label="Video details">
+    <table aria-label={t("videoDiff.videoDetails")}>
       <thead>
         <tr className="text-muted-foreground">
           <th />
-          <th className="px-3 text-left font-medium">Before</th>
-          <th className="px-3 text-left font-medium">After</th>
+          <th className="px-3 text-left font-medium">{t("videoDiff.before")}</th>
+          <th className="px-3 text-left font-medium">{t("videoDiff.after")}</th>
         </tr>
       </thead>
       <tbody className="font-mono">
         <tr>
-          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">File size</th>
+          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{t("videoDiff.fileSize")}</th>
           <td className="px-3">{old ? formatBytes(old.size) : "—"}</td>
           <td className="px-3">{next ? formatBytes(next.size) : "—"}</td>
         </tr>

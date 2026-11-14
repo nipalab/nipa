@@ -1,4 +1,5 @@
 import type { DiffHunk } from "@/api/desktop";
+import { translate } from "@/i18n";
 
 export type LineKind = "context" | "added" | "removed";
 
@@ -11,7 +12,7 @@ export type SplitCell = { kind: LineKind; line: number; text: string; noNewline:
 export type SplitRow = { type: "hunk"; header: string } | { type: "pair"; left: SplitCell; right: SplitCell };
 
 export function hunkHeader(h: DiffHunk): string {
-  return `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
+  return translate("diff.text", { oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines });
 }
 
 const kindOf = (kind: string): LineKind => (kind === "added" || kind === "removed" ? kind : "context");
@@ -73,7 +74,7 @@ export function formatBytes(n: number): string {
     value /= 1024;
     unit++;
   }
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+  return translate("diff.text2", { value: value.toFixed(value < 10 ? 1 : 0), value2: units[unit] });
 }
 
 export function splitPath(path: string): { dir: string; name: string } {

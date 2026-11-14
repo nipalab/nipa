@@ -3,6 +3,7 @@ import { desktop, type CommentInput, type Person } from "@/api/desktop";
 import type { Notify } from "@/hooks/useLocks";
 import type { Strategy } from "@/lib/mergeRequests";
 import { errorMessage } from "@/lib/utils";
+import { translate } from "@/i18n";
 
 export type ReviewState = "approved" | "changes_requested" | "commented";
 
@@ -24,33 +25,33 @@ export function useMergeRequest(root: string, number: number, notify: Notify) {
         refresh();
         if (success) notify(success(arg), "success");
       },
-      onError: (err: unknown) => notify(`${failure}: ${errorMessage(err)}`),
+      onError: (err: unknown) => notify(translate("useMergeRequest.text", { failure, value: errorMessage(err) })),
     });
 
-  const comment = action((input: Partial<CommentInput> & { body: string }) => desktop.comment(root, number, input), "Could not comment");
-  const reply = action(({ threadId, body }: { threadId: string; body: string }) => desktop.reply(root, number, threadId, body), "Could not reply");
-  const resolve = action(({ threadId, resolved }: { threadId: string; resolved: boolean }) => desktop.resolveThread(root, number, threadId, resolved), "Could not update the thread");
+  const comment = action((input: Partial<CommentInput> & { body: string }) => desktop.comment(root, number, input), translate("useMergeRequest.couldNotComment"));
+  const reply = action(({ threadId, body }: { threadId: string; body: string }) => desktop.reply(root, number, threadId, body), translate("useMergeRequest.couldNotReply"));
+  const resolve = action(({ threadId, resolved }: { threadId: string; resolved: boolean }) => desktop.resolveThread(root, number, threadId, resolved), translate("useMergeRequest.couldNotUpdateTheThread"));
   const review = action(
     ({ state, body }: { state: ReviewState; body: string }) => desktop.submitReview(root, number, state, body),
-    "Could not submit the review",
-    ({ state }) => (state === "approved" ? "Approved" : state === "changes_requested" ? "Requested changes" : "Review sent"),
+    translate("useMergeRequest.couldNotSubmitTheReview"),
+    ({ state }) => (state === "approved" ? translate("useMergeRequest.approved") : state === "changes_requested" ? translate("useMergeRequest.requestedChanges") : translate("useMergeRequest.reviewSent")),
   );
   const merge = action(
     ({ strategy, deleteSource }: { strategy: Strategy; deleteSource: boolean }) => desktop.mergeMergeRequest(root, number, strategy, deleteSource),
-    "Could not merge",
-    () => `Merged !${number}`,
+    translate("useMergeRequest.couldNotMerge"),
+    () => translate("useMergeRequest.merged", { number }),
   );
-  const close = action(() => desktop.closeMergeRequest(root, number), "Could not close", () => `Closed !${number}`);
-  const reopen = action(() => desktop.reopenMergeRequest(root, number), "Could not reopen", () => `Reopened !${number}`);
+  const close = action(() => desktop.closeMergeRequest(root, number), translate("useMergeRequest.couldNotClose"), () => translate("useMergeRequest.closed", { number }));
+  const reopen = action(() => desktop.reopenMergeRequest(root, number), translate("useMergeRequest.couldNotReopen"), () => translate("useMergeRequest.reopened", { number }));
   const draft = action(
     (value: boolean) => desktop.setDraft(root, number, value),
-    "Could not change the draft state",
-    (value) => (value ? "Marked as draft" : "Marked ready for review"),
+    translate("useMergeRequest.couldNotChangeTheDraft"),
+    (value) => (value ? translate("useMergeRequest.markedAsDraft") : translate("useMergeRequest.markedReadyForReview")),
   );
-  const edit = action(({ title, description }: { title: string; description: string }) => desktop.editMergeRequest(root, number, title, description), "Could not save", () => "Saved");
+  const edit = action(({ title, description }: { title: string; description: string }) => desktop.editMergeRequest(root, number, title, description), translate("useMergeRequest.couldNotSave"), () => translate("useMergeRequest.saved"));
 
-  const assign = action((ids: string[]) => desktop.assignMergeRequest(root, number, ids), "Could not assign");
-  const askReview = action((person: Person) => desktop.requestReview(root, number, person.id), "Could not request a review", (person) => `Asked ${person.name} to review`);
+  const assign = action((ids: string[]) => desktop.assignMergeRequest(root, number, ids), translate("useMergeRequest.couldNotAssign"));
+  const askReview = action((person: Person) => desktop.requestReview(root, number, person.id), translate("useMergeRequest.couldNotRequestAReview"), (person) => translate("useMergeRequest.askedToReview", { name: person.name }));
 
   const busy = [comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview].some((m) => m.isPending);
   return { detail, activity, comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview, busy };

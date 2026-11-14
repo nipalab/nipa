@@ -2,8 +2,10 @@ import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { shortcutGroups, shortcutKeys, shortcuts } from "@/lib/shortcuts";
+import { useTranslation } from "react-i18next";
 
 export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => close.current?.focus(), []);
   return (
@@ -22,9 +24,9 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
       <div role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-lg border border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 id="shortcuts-title" className="text-sm font-semibold">
-            Keyboard shortcuts
+            {t("shortcutsSheet.keyboardShortcuts")}
           </h2>
-          <Button ref={close} variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+          <Button ref={close} variant="ghost" size="icon" onClick={onClose} aria-label={t("shortcutsSheet.close")}>
             <X />
           </Button>
         </div>
@@ -41,7 +43,7 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
                       <dd className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
                         {shortcutKeys(s).map((keys, i) => (
                           <span key={i} className="flex items-center gap-0.5">
-                            {i > 0 && <span className="mr-1">or</span>}
+                            {i > 0 && <span className="mr-1">{t("shortcutsSheet.or")}</span>}
                             {keys.map((k) => (
                               <kbd key={k} className="min-w-5 rounded border border-border bg-muted px-1 text-center font-sans text-[10px] text-foreground">
                                 {k}

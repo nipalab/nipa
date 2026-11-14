@@ -15,6 +15,8 @@ import { FileMenu, type FileAction } from "./FileMenu";
 import { FileGrid, FileList } from "./FileTable";
 import { FolderTree } from "./FolderTree";
 import { filesKey, useDirectory } from "./useDirectory";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type FilesViewProps = {
   repo: Repo;
@@ -35,6 +37,7 @@ const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(
 const isSort = (v: unknown): v is Sort => !!v && typeof v === "object" && isString((v as Sort).key) && typeof (v as Sort).desc === "boolean";
 
 export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAddSparse }: FilesViewProps) {
+  const { t } = useTranslation();
   const root = repo.root;
   const queryClient = useQueryClient();
   const treeSize = useResizableWidth("files-tree", { initial: 220, min: 140, max: 480 });
@@ -117,50 +120,50 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
 
   const copy = (text: string, done: string) => {
     if (!navigator.clipboard) {
-      notify("The clipboard is not available");
+      notify(translate("filesView.theClipboardIsNotAvailable"));
       return;
     }
     navigator.clipboard.writeText(text).then(
       () => notify(done, "success"),
-      (err: unknown) => notify(`Could not copy: ${errorMessage(err)}`),
+      (err: unknown) => notify(translate("filesView.couldNotCopy", { value: errorMessage(err) })),
     );
   };
 
   const openRow = (r: Row) => {
     if (r.remote) onAddSparse(r.path);
     else if (r.isDir) browse(r.path);
-    else desktop.openFile(root, r.path).catch((err: unknown) => notify(`Could not open ${r.path}: ${errorMessage(err)}`));
+    else desktop.openFile(root, r.path).catch((err: unknown) => notify(translate("filesView.couldNotOpen", { path: r.path, value: errorMessage(err) })));
   };
 
   const actionsFor = (r: Row): FileAction[] => {
     if (r.remote) {
-      return [{ id: "download", label: "Download this folder", Icon: CloudDownload, run: () => onAddSparse(r.path), disabled: busy, title: `Add ${r.path} to this clone's checkout` }];
+      return [{ id: "download", label: translate("filesView.downloadThisFolder"), Icon: CloudDownload, run: () => onAddSparse(r.path), disabled: busy, title: translate("filesView.addToThisCloneSCheckout", { path: r.path }) }];
     }
     const gone = r.status === "missing" || r.status === "deleted";
     const actions: FileAction[] = [
       r.isDir
-        ? { id: "browse", label: "Open folder", Icon: FolderOpen, run: () => browse(r.path) }
-        : { id: "open", label: "Open", Icon: ExternalLink, run: () => openRow(r), disabled: gone },
+        ? { id: "browse", label: translate("filesView.openFolder"), Icon: FolderOpen, run: () => browse(r.path) }
+        : { id: "open", label: translate("filesView.open"), Icon: ExternalLink, run: () => openRow(r), disabled: gone },
       {
         id: "reveal",
-        label: "Reveal in file manager",
+        label: translate("filesView.revealInFileManager"),
         Icon: FolderSearch,
         disabled: gone,
-        run: () => desktop.revealFile(root, r.path).catch((err: unknown) => notify(`Could not show ${r.path}: ${errorMessage(err)}`)),
+        run: () => desktop.revealFile(root, r.path).catch((err: unknown) => notify(translate("filesView.couldNotShow", { path: r.path, value: errorMessage(err) }))),
       },
     ];
     if (!r.isDir) actions.push(lockAction(r));
     actions.push(
-      { id: "history", label: "History", Icon: HistoryIcon, run: () => onHistory(r.path), disabled: !r.tracked },
-      { id: "copy-path", label: "Copy path", Icon: Copy, run: () => copy(r.path, "Path copied") },
+      { id: "history", label: translate("filesView.history"), Icon: HistoryIcon, run: () => onHistory(r.path), disabled: !r.tracked },
+      { id: "copy-path", label: translate("filesView.copyPath"), Icon: Copy, run: () => copy(r.path, translate("filesView.pathCopied")) },
       {
         id: "copy-link",
-        label: "Copy nipa:// link",
+        label: translate("filesView.copyNipaLink"),
         Icon: Link2,
         run: () =>
           desktop.fileLink(repo.url, r.path).then(
-            (link) => copy(link, "Link copied"),
-            (err: unknown) => notify(`Could not make a link: ${errorMessage(err)}`),
+            (link) => copy(link, translate("filesView.linkCopied")),
+            (err: unknown) => notify(translate("filesView.couldNotMakeALink", { value: errorMessage(err) })),
           ),
       },
     );
@@ -172,7 +175,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
     if (!lock) {
       return {
         id: "lock",
-        label: "Lock",
+        label: translate("filesView.lock"),
         Icon: Lock,
         disabled: !lockStatus.data || lockActions.lock.isPending,
         run: () => lockStatus.data && lockActions.lock.mutate({ branch: lockStatus.data.branch, paths: [r.path] }),
@@ -181,14 +184,14 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
     if (lock.mine) {
       return {
         id: "unlock",
-        label: "Unlock",
+        label: translate("filesView.unlock"),
         Icon: LockOpen,
         disabled: lockActions.unlock.isPending,
-        title: lock.path === r.path ? "Release your lock" : `Releases your lock on ${lock.path}`,
+        title: lock.path === r.path ? translate("filesView.releaseYourLock") : translate("filesView.releasesYourLockOn", { path: lock.path }),
         run: () => lockActions.unlock.mutate(lock),
       };
     }
-    return { id: "locked", label: `Locked by ${lock.heldByName || lock.heldBy}`, Icon: Lock, disabled: true, run: () => {} };
+    return { id: "locked", label: translate("filesView.lockedBy", { heldBy: lock.heldByName || lock.heldBy }), Icon: Lock, disabled: true, run: () => {} };
   };
 
   const crumbs = dir ? dir.split("/") : [];
@@ -197,11 +200,11 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
     <div className="flex h-full min-h-0">
       <aside className="relative shrink-0 border-r border-border" ref={treeSize.ref} style={{ width: treeSize.width }}>
         <FolderTree repo={repo} current={dir} expanded={expanded} onToggle={toggle} onSelect={browse} onMenu={(r, x, y) => setMenu({ row: r, x, y })} />
-        <PaneResizer size={treeSize} label="Resize folder tree" />
+        <PaneResizer size={treeSize} label={t("filesView.resizeFolderTree")} />
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
-          <nav aria-label="Folder path" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden text-[12px]">
+          <nav aria-label={t("filesView.folderPath")} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden text-[12px]">
             <Crumb onClick={() => browse("")} current={dir === ""}>
               {repo.name}
             </Crumb>
@@ -217,16 +220,16 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
               );
             })}
           </nav>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{rows.length} items</span>
-          <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label="View">
-            <ModeButton active={mode === "list"} label="List" onClick={() => setMode("list")} Icon={List} />
-            <ModeButton active={mode === "grid"} label="Thumbnails" onClick={() => setMode("grid")} Icon={LayoutGrid} />
+          <span className="shrink-0 text-[11px] text-muted-foreground">{t("filesView.items", { count: rows.length })}</span>
+          <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label={t("filesView.view")}>
+            <ModeButton active={mode === "list"} label={t("filesView.list")} onClick={() => setMode("list")} Icon={List} />
+            <ModeButton active={mode === "grid"} label={t("filesView.thumbnails")} onClick={() => setMode("grid")} Icon={LayoutGrid} />
           </div>
         </div>
         <div className="min-h-0 flex-1">
           {listing.loading ? (
             <Centered>
-              <Loader2 className="size-4 animate-spin" /> Loading files…
+              <Loader2 className="size-4 animate-spin" /> {t("filesView.loadingFiles")}
             </Centered>
           ) : listing.error ? (
             <Centered>
@@ -234,11 +237,11 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
               <span>{errorMessage(listing.error)}</span>
               <Button size="sm" onClick={() => void listing.refetch()}>
                 <RefreshCw />
-                Try again
+                {t("filesView.tryAgain")}
               </Button>
             </Centered>
           ) : rows.length === 0 ? (
-            <Centered>This folder is empty.</Centered>
+            <Centered>{t("filesView.thisFolderIsEmpty")}</Centered>
           ) : mode === "grid" ? (
             <FileGrid root={root} rows={rows} locks={locks} selected={selected} onSelect={(r) => setSelected(r.path)} onOpen={openRow} onMenu={(r, x, y) => setMenu({ row: r, x, y })} />
           ) : (
@@ -257,8 +260,8 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
         </div>
       </section>
       {detailRow && (
-        <section className="relative shrink-0 border-l border-border" aria-label="File details" ref={detailSize.ref} style={{ width: detailSize.width }}>
-          <PaneResizer size={detailSize} label="Resize file details" edge="left" />
+        <section className="relative shrink-0 border-l border-border" aria-label={t("filesView.fileDetails")} ref={detailSize.ref} style={{ width: detailSize.width }}>
+          <PaneResizer size={detailSize} label={t("filesView.resizeFileDetails")} edge="left" />
           <FileDetail
             key={detailRow.path}
             root={root}

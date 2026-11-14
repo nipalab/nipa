@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop, type Cancellable, type OpOutcome, type OpProgress } from "@/api/desktop";
 import { formatBytes } from "@/lib/diff";
+import { translate } from "@/i18n";
 
 export type OpName = "push" | "update" | "sparse" | "clone" | "switch" | "revert" | "merge" | "restore" | "shelve";
 
@@ -56,23 +57,23 @@ export function useRepoOperation(root: string, handlers: Handlers) {
   return { state, run, cancel };
 }
 
-const verbs: Record<OpName, string> = { push: "Pushing", update: "Updating", sparse: "Updating checkout", clone: "Cloning", switch: "Switching", revert: "Reverting", merge: "Merging", restore: "Getting version", shelve: "Shelving" };
+const verbs: Record<OpName, string> = { push: translate("useRepoOperation.pushing"), update: translate("useRepoOperation.updating"), sparse: translate("useRepoOperation.updatingCheckout"), clone: translate("useRepoOperation.cloning"), switch: translate("useRepoOperation.switching"), revert: translate("useRepoOperation.reverting"), merge: translate("useRepoOperation.merging"), restore: translate("useRepoOperation.gettingVersion"), shelve: translate("useRepoOperation.shelving") };
 
 export function describeProgress(state: OpState): { label: string; percent?: number } {
   const p = state.progress;
-  if (state.cancelling) return { label: "Cancelling…" };
-  if (!p) return { label: `${verbs[state.op]}…` };
+  if (state.cancelling) return { label: translate("useRepoOperation.cancelling") };
+  if (!p) return { label: translate("useRepoOperation.text", { value: verbs[state.op] }) };
   if (p.phase === "queued") {
-    return { label: p.ahead > 0 ? `Waiting for ${p.ahead} other operation${p.ahead === 1 ? "" : "s"}…` : "Waiting for another operation…" };
+    return { label: p.ahead > 0 ? translate("repoOperation.waiting", { count: p.ahead }) : translate("useRepoOperation.waitingForAnotherOperation") };
   }
   if (p.phase === "verify" && p.objectsTotal > 0) {
-    return { label: `Verifying ${p.objectsTotal} object${p.objectsTotal === 1 ? "" : "s"} on the server…` };
+    return { label: translate("repoOperation.verifying", { count: p.objectsTotal }) };
   }
   if ((p.phase === "upload" || p.phase === "download") && p.objectsTotal > 0) {
-    const verb = p.phase === "upload" ? "Uploading" : "Downloading";
-    const bytes = p.bytesTotal > 0 ? ` · ${formatBytes(p.bytesDone)} of ${formatBytes(p.bytesTotal)}` : "";
+    const verb = p.phase === "upload" ? translate("useRepoOperation.uploading") : translate("useRepoOperation.downloading");
+    const bytes = p.bytesTotal > 0 ? translate("useRepoOperation.of", { value: formatBytes(p.bytesDone), value2: formatBytes(p.bytesTotal) }) : "";
     const ratio = p.bytesTotal > 0 ? p.bytesDone / p.bytesTotal : p.objectsDone / p.objectsTotal;
-    return { label: `${verb} ${p.objectsDone}/${p.objectsTotal}${bytes}`, percent: Math.min(100, Math.round(ratio * 100)) };
+    return { label: translate("useRepoOperation.text2", { verb, objectsDone: p.objectsDone, objectsTotal: p.objectsTotal, bytes }), percent: Math.min(100, Math.round(ratio * 100)) };
   }
-  return { label: `${verbs[state.op]}…` };
+  return { label: translate("useRepoOperation.text", { value: verbs[state.op] }) };
 }

@@ -1,6 +1,7 @@
 import type { FileEntry, FileLock, RemoteDir } from "@/api/desktop";
 import { isCovered } from "@/lib/sparse";
 import { readSetting, writeSetting } from "@/lib/utils";
+import { translate } from "@/i18n";
 
 export type SortKey = "name" | "kind" | "size" | "status" | "lock";
 export type Sort = { key: SortKey; desc: boolean };
@@ -125,29 +126,29 @@ export const canPreview = (e: FileEntry): boolean =>
   !e.isDir && (e.kind === "image" || hasEmbeddedThumbnail(e.path)) && e.status !== "missing" && e.status !== "deleted";
 
 const statusNames: Record<string, string> = {
-  modified: "Modified",
-  added: "Added",
-  deleted: "Deleted",
-  missing: "Missing from disk",
-  untracked: "New, not tracked yet",
-  conflict: "Conflict",
+  modified: translate("files.modified"),
+  added: translate("files.added"),
+  deleted: translate("files.deleted"),
+  missing: translate("files.missingFromDisk"),
+  untracked: translate("files.newNotTrackedYet"),
+  conflict: translate("files.conflict"),
 };
 
-export const statusName = (status: string): string => statusNames[status] ?? "Unchanged";
+export const statusName = (status: string): string => statusNames[status] ?? translate("files.unchanged");
 
 const kindNames: Record<string, string> = {
-  text: "Text",
-  image: "Image",
-  model: "3D model",
-  audio: "Audio",
-  video: "Video",
-  font: "Font",
-  table: "Table",
-  scene: "Scene",
-  opaque: "Binary",
+  text: translate("files.text"),
+  image: translate("files.image"),
+  model: translate("files.3DModel"),
+  audio: translate("files.audio"),
+  video: translate("files.video"),
+  font: translate("files.font"),
+  table: translate("files.table"),
+  scene: translate("files.scene"),
+  opaque: translate("files.binary"),
 };
 
-export const kindName = (e: FileEntry): string => (e.isDir ? "Folder" : (kindNames[e.kind] ?? "File"));
+export const kindName = (e: FileEntry): string => (e.isDir ? translate("files.folder") : (kindNames[e.kind] ?? translate("files.file")));
 
 // dirsToRefresh lists the folders whose listing a change notice affects:
 // every folder above each changed path (their children_changed flags move).
