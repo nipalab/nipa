@@ -144,7 +144,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
           <LockOpen className="size-6 text-muted-foreground" />
           <p className="text-sm font-medium">{data.locks.length === 0 ? "Nothing is locked" : "No locks match"}</p>
           <p className="max-w-sm text-xs text-muted-foreground">
-            {data.locks.length === 0 ? "Lock a binary file before you edit it so nobody else changes it at the same time." : "Try another filter."}
+            {data.locks.length === 0 ? "Lock an art, audio or other binary file from the Files tab before you edit it, so nobody else changes it at the same time." : "Try another filter."}
           </p>
         </Centered>
       ) : (

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Draft, PushChecks } from "@/api/desktop";
+import { setMode } from "@/lib/mode";
 import { CommitBox } from "./CommitBox";
 
 const none: PushChecks = { violations: [], broken: [], newlyUnused: [], warnings: [], truncated: false, scanned: 0 };
@@ -20,6 +21,16 @@ const box = (checks?: PushChecks, over: { stagedCount?: number; onSelectPath?: (
       onCancel={() => {}}
     />,
   );
+
+describe("CommitBox simple mode", () => {
+  afterEach(() => setMode("full"));
+
+  it("says Submit instead of Push", () => {
+    setMode("simple");
+    box(none);
+    expect(screen.getByRole("button", { name: /Submit 2 files/ })).toBeEnabled();
+  });
+});
 
 describe("CommitBox checks", () => {
   it("hides the block when there is nothing to report", () => {

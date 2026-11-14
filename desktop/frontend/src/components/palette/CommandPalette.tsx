@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { desktop, type Repo } from "@/api/desktop";
 import { FileIcon } from "@/components/changes/FileIcon";
+import { labels, useSimple } from "@/lib/mode";
 import { hasOpenConflicts, visibleTabs, type Intent } from "@/components/tabs";
 import { useDebounced } from "@/hooks/useDebounced";
 import { fuzzyMatch, rank, segments } from "@/lib/fuzzy";
@@ -62,6 +63,7 @@ type PaletteProps = {
 };
 
 export function CommandPalette({ repos, current, initialMode = "all", onClose, onGo, onSettings, onShortcuts }: PaletteProps) {
+  const simple = useSimple();
   const [mode, setMode] = useState<PaletteMode>(current ? initialMode : "all");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -160,14 +162,18 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     const actions: Omit<Item, "section">[] = [];
     if (root) {
       actions.push(
-        { key: "update", icon: icon(ArrowDownToLine), title: "Update", detail: "Get the latest version of the branch", hint: shortcutHint("update"), run: () => go(root, { tab: "", action: "update" }) },
-        { key: "push", icon: icon(ArrowUpFromLine), title: "Push…", detail: "Write the push message", hint: shortcutHint("focusMessage"), run: () => go(root, { tab: "changes", action: "focus-message" }) },
-        { key: "switch", icon: icon(GitBranch), title: "Switch branch…", run: () => enter("switch") },
-        { key: "new-mr", icon: icon(GitPullRequestCreate), title: "New merge request", run: () => go(root, { tab: "mrs", action: "new-mr" }) },
+        { key: "update", icon: icon(ArrowDownToLine), title: labels(simple).update, detail: "Get the latest version of the branch", hint: shortcutHint("update"), run: () => go(root, { tab: "", action: "update" }) },
+        { key: "push", icon: icon(ArrowUpFromLine), title: `${labels(simple).push}…`, detail: `Write the ${simple ? "submit" : "push"} message`, hint: shortcutHint("focusMessage"), run: () => go(root, { tab: "changes", action: "focus-message" }) },
+        ...(simple
+          ? []
+          : [
+              { key: "switch", icon: icon(GitBranch), title: "Switch branch…", run: () => enter("switch") },
+              { key: "new-mr", icon: icon(GitPullRequestCreate), title: "New merge request", run: () => go(root, { tab: "mrs", action: "new-mr" }) },
+            ]),
         { key: "lock", icon: icon(Lock), title: "Lock file…", run: () => enter("lock") },
         { key: "refresh", icon: icon(RefreshCw), title: "Refresh", hint: shortcutHint("refresh"), run: () => go(root, { tab: "", action: "refresh" }) },
       );
-      visibleTabs(hasOpenConflicts(changes.data))
+      visibleTabs(hasOpenConflicts(changes.data), simple)
         .forEach((t, i) =>
           actions.push({ key: `tab:${t.id}`, icon: icon(t.Icon), title: `Go to ${t.label}`, hint: i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined, run: () => go(root, { tab: t.id }) }),
         );

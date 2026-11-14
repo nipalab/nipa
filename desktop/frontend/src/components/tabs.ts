@@ -19,7 +19,11 @@ export const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
 export const hasOpenConflicts = (changes?: { pending?: string; conflicts: string[] }): boolean => !!changes?.pending && changes.conflicts.length > 0;
 
 // visibleTabs is the tab strip in order; Mod+1–9 index into it.
-export const visibleTabs = (conflicts: boolean) => tabs.filter((t) => t.id !== "conflicts" || conflicts);
+// Simple mode keeps the tabs an artist or designer needs day to day.
+export const simpleTabIds: TabId[] = ["files", "changes", "locks", "history"];
+
+export const visibleTabs = (conflicts: boolean, simple = false) =>
+  tabs.filter((t) => (t.id === "conflicts" ? conflicts : !simple || simpleTabIds.includes(t.id)));
 
 // RepoAction is something a palette or shortcut asks the repository view to
 // do; target names the branch or tag for switch and checkout-tag.

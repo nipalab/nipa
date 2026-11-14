@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { AISection, aiFormValid, type AIForm } from "@/components/settings/AISection";
 import { llmSettingsKey, useLLMSettings } from "@/hooks/useGenerate";
+import { setMode, startTour, useMode } from "@/lib/mode";
 import { errorMessage } from "@/lib/utils";
 
 export const pollOptions: { seconds: number; label: string }[] = [
@@ -198,6 +199,10 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: 
           )}
         </Section>
 
+        <Section title="Interface">
+          <InterfaceSection onTour={onClose} />
+        </Section>
+
         <Section title="AI assistance">
           <AISection value={ai} onChange={(patch) => setAI((f) => ({ ...f, ...patch }))} keySaved={initialLLM.keySaved} configured={initialLLM.configured} notify={notify} />
         </Section>
@@ -287,5 +292,31 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
       {label}
     </label>
+  );
+}
+
+function InterfaceSection({ onTour }: { onTour: () => void }) {
+  const mode = useMode();
+  const simple = mode === "simple";
+  return (
+    <>
+      <label className="flex items-start gap-2">
+        <input type="checkbox" className="mt-0.5" checked={simple} onChange={(e) => setMode(e.target.checked ? "simple" : "full")} />
+        <span>
+          Simple mode
+          <span className="block text-muted-foreground">Fewer tabs and plain words, for art, audio and design work. Branches, tags, merge requests and revert are hidden.</span>
+        </span>
+      </label>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => {
+          startTour();
+          onTour();
+        }}
+      >
+        Replay the quick tour
+      </Button>
+    </>
   );
 }
