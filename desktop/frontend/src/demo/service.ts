@@ -196,6 +196,9 @@ export function createService(scenario: string): typeof Real {
     Conflicts: () => ok(scenario === "conflicts" ? clone(d.conflictSet) : { op: "", base: { id: "", label: "" }, ours: { id: "", label: "" }, theirs: { id: "", label: "" }, files: [] }),
     ConflictTexts: () => ok(clone(d.conflictTexts)),
     ConflictDiff: (_root, path) => ok(diffFor(path)),
+    MergeScene: () => ok(clone(d.sceneMerge)),
+    Blame: (_root, path, revision) => ok(d.blame(path, revision)),
+    OpenFileAt: () => ok(undefined),
     ResolveConflict: (_root, input) => {
       state = { ...state, conflicts: state.conflicts.filter((p) => p !== input.path), resolved: [...state.resolved, input.path] };
       return ok(clone(state));

@@ -122,6 +122,17 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   bound through `hooks/useShortcuts.ts` (ignored in text fields, IME
   composition and under modals; Space/arrows yield to focused controls),
   the `?` "Keyboard shortcuts" sheet,
+  a blame gutter on text viewers via `Blame` (daemon `Blame`; the
+  "Blame" toggle in `DiffViewer` and the Files detail viewer, kept in
+  `localStorage` `nipa.blame`, `hooks/useTextTools.ts` +
+  `lib/blame.ts`: author and age once per run of lines, "Not pushed" /
+  "Older", click → the commit in History through `RepoNavContext`, which
+  `RepoView` provides), "Open in editor at line N" on working-copy text
+  diff rows via `OpenFileAt` (tool commands may be templates with
+  `{file}`/`{line}`, split on spaces outside quotes by `toolArgs`),
+  "Merge scene" for conflicted Godot `.tscn`/`.tres` in the text resolver
+  via `MergeScene` (daemon `MergeGodotResource`; a clean merge resolves
+  with the content, conflicts are listed above the line editor),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -170,9 +181,15 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
+  merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
-  merge, revert, diff, log, tag management,
+  merge, revert, diff, log, blame (`blame.go`: path log via
+  `GetPathCommitLog` capped at 500 scanned commits, each version through a
+  dir-scoped `GetCommitDirManifest` + commit-scoped download, lines
+  carried back with `diff.Lines` and attributed newest first until every
+  line has an owner; working file vs pinned commit marks `Uncommitted`,
+  text ≤ 2 MiB, older binary/large versions end the history like the cap),
+  tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
@@ -1211,7 +1228,10 @@ nothing staged; refuses pending merge/revert, paths outside the sparse set,
 folders, unknown commits or paths). `AssetRefs`, `Provenance` and
 `SetProvenance` (`daemon/assetrefs.go`, `daemon/provenance.go`, shared slot)
 serve the desktop where-used and origin panels; see the asset references and
-provenance flows. `LoginSSH` takes an optional `key_path` +
+provenance flows. `Blame` (`daemon/blame.go`, shared slot, `SerialBlame`
+over `RepoOps.Blame` = `usecase.Blame`) streams `progress` per version read
+and then the `result` (lines with `commit_id`/`uncommitted`, the commits
+they point at, `truncated`). `LoginSSH` takes an optional `key_path` +
 `passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):

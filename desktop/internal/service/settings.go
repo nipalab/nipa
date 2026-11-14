@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +112,9 @@ func normalizeSettings(in workspace.Settings) (workspace.Settings, error) {
 		}
 		if command == "" {
 			return workspace.Settings{}, fmt.Errorf("choose a program for %s files", ext)
+		}
+		if err := checkToolCommand(ext, command); err != nil {
+			return workspace.Settings{}, err
 		}
 		if slices.ContainsFunc(out.Tools, func(o workspace.Tool) bool { return o.Extension == ext }) {
 			return workspace.Settings{}, fmt.Errorf("%s files already have a program", ext)
@@ -257,11 +261,12 @@ func toolFor(tools []workspace.Tool, path string) string {
 	return ""
 }
 
-func (s *Service) launch(command, path string) error {
+func (s *Service) launch(command, path string, line int) error {
+	args := toolArgs(runtime.GOOS, command, path, line)
 	if s.LaunchFunc != nil {
-		return s.LaunchFunc(command, path)
+		return s.LaunchFunc(args)
 	}
-	cmd := launchCommand(runtime.GOOS, command, path)
+	cmd := exec.Command(args[0], args[1:]...) // NOSONAR user-configured tool
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -269,9 +274,75 @@ func (s *Service) launch(command, path string) error {
 	return nil
 }
 
-func launchCommand(goos, command, path string) *exec.Cmd {
-	if goos == "darwin" && strings.HasSuffix(strings.ToLower(strings.TrimRight(command, "/")), ".app") {
-		return exec.Command("open", "-a", command, path)
+const (
+	fileToken = "{file}"
+	lineToken = "{line}"
+)
+
+// toolArgs expands a tool command. A command naming {file} is a template
+// whose words may also use {line} (1 when unknown); any other command is a
+// program started with the file.
+func toolArgs(goos, command, path string, line int) []string {
+	if strings.Contains(command, fileToken) {
+		if words, err := splitCommand(command); err == nil && len(words) > 0 {
+			r := strings.NewReplacer(fileToken, path, lineToken, strconv.Itoa(max(line, 1)))
+			for i, w := range words {
+				words[i] = r.Replace(w)
+			}
+			return words
+		}
 	}
-	return exec.Command(command, path) // NOSONAR user-configured tool
+	if goos == "darwin" && strings.HasSuffix(strings.ToLower(strings.TrimRight(command, "/")), ".app") {
+		return []string{"open", "-a", command, path}
+	}
+	return []string{command, path}
+}
+
+// splitCommand splits a command line on spaces outside single or double
+// quotes. Backslashes are kept as they are, so Windows paths need no escaping.
+func splitCommand(command string) ([]string, error) {
+	var words []string
+	var word strings.Builder
+	var quote rune
+	inWord := false
+	for _, r := range command {
+		switch {
+		case quote != 0 && r == quote:
+			quote = 0
+		case quote != 0:
+			word.WriteRune(r)
+		case r == '"' || r == '\'':
+			quote, inWord = r, true
+		case r == ' ' || r == '\t':
+			if inWord {
+				words = append(words, word.String())
+				word.Reset()
+				inWord = false
+			}
+		default:
+			word.WriteRune(r)
+			inWord = true
+		}
+	}
+	if quote != 0 {
+		return nil, errors.New("unbalanced quotes")
+	}
+	if inWord {
+		words = append(words, word.String())
+	}
+	return words, nil
+}
+
+func checkToolCommand(ext, command string) error {
+	if !strings.Contains(command, fileToken) {
+		if strings.Contains(command, lineToken) {
+			return fmt.Errorf("the program for %s files uses {line}; add {file} where the file goes", ext)
+		}
+		return nil
+	}
+	words, err := splitCommand(command)
+	if err != nil || len(words) == 0 || strings.Contains(words[0], fileToken) {
+		return fmt.Errorf("the program for %s files is not a valid command: start with the program, then its arguments, and quote paths with spaces", ext)
+	}
+	return nil
 }

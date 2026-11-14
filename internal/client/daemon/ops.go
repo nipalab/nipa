@@ -31,6 +31,7 @@ type RepoOps struct {
 	Generate   GenerateRunner
 	Restore    RevisionRestorer
 	Refs       GraphBuilder
+	Blame      BlameRunner
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
 }

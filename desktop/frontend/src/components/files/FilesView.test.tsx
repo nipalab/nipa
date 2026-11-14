@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   unlock: vi.fn(),
   fileInfo: vi.fn(),
   fileView: vi.fn(),
+  blame: vi.fn(),
   history: vi.fn(),
   imageDiff: vi.fn(),
   openFile: vi.fn(),
@@ -200,6 +201,28 @@ describe("FilesView", () => {
     await userEvent.click(within(versions).getAllByRole("button", { name: "Get this version" })[1]);
     expect(props.onRestore).toHaveBeenCalledWith("Assets/notes.txt", expect.objectContaining({ id: "c4" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("blames a text file from its viewer", async () => {
+    localStorage.removeItem("nipa.blame");
+    api.fileView.mockResolvedValue({
+      path: "Assets/notes.txt",
+      status: "",
+      kind: "text",
+      old: null,
+      new: { path: "Assets/notes.txt", mode: 420, size: 4, binary: false, hash: "" },
+      additions: 0,
+      deletions: 0,
+      hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: [{ kind: "context", old: 0, new: 1, text: "todo" }] }],
+    });
+    api.blame.mockResolvedValue({ path: "Assets/notes.txt", revision: "", truncated: false, lines: [{ commitId: "c9", uncommitted: false }], commits: [commit("c9", "Repaint the hero")] });
+    await openAssets();
+    await selectRow("notes.txt");
+    const detail = screen.getByRole("region", { name: "File details" });
+    await userEvent.click(await within(detail).findByRole("button", { name: "Blame" }));
+    expect(await within(detail).findByTitle(/c9 Repaint the hero/)).toBeInTheDocument();
+    expect(api.blame).toHaveBeenCalledWith("/work/game", "Assets/notes.txt", "");
+    localStorage.removeItem("nipa.blame");
   });
 
   it("asks before replacing local changes with another version", async () => {

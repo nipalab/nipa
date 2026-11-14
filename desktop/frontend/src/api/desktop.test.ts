@@ -32,6 +32,9 @@ const service = vi.hoisted(() => ({
   Unlock: vi.fn(),
   PickFile: vi.fn(),
   OpenFile: vi.fn(),
+  OpenFileAt: vi.fn(),
+  Blame: vi.fn(),
+  MergeScene: vi.fn(),
   RevealFile: vi.fn(),
   Files: vi.fn(),
   FileInfo: vi.fn(),
@@ -438,6 +441,23 @@ describe("desktop api", () => {
     await expect(desktop.conflictTexts("/a", "f")).rejects.toThrow("No file versions");
     service.ConflictDiff.mockResolvedValue(null);
     expect(await desktop.conflictDiff("/a", "f")).toBeNull();
+
+    service.MergeScene.mockResolvedValueOnce({ merged: "x", clean: false, conflicts: null }).mockResolvedValueOnce(null);
+    expect(await desktop.mergeScene("/a", "s.tscn")).toEqual({ merged: "x", clean: false, conflicts: [] });
+    expect(service.MergeScene).toHaveBeenCalledWith("/a", "s.tscn");
+    await expect(desktop.mergeScene("/a", "s.tscn")).rejects.toThrow("No scene merge");
+
+    service.Blame.mockResolvedValueOnce({ path: "f", revision: "", truncated: false, lines: null, commits: null })
+      .mockResolvedValueOnce({ path: "f", revision: "c1", truncated: false, lines: [{ commitId: "c1", uncommitted: false }], commits: [{ id: "c1", parents: null }] })
+      .mockResolvedValueOnce(null);
+    expect(await desktop.blame("/a", "f")).toEqual({ path: "f", revision: "", truncated: false, lines: [], commits: [] });
+    expect(service.Blame).toHaveBeenCalledWith("/a", "f", "");
+    expect((await desktop.blame("/a", "f", "c1")).commits).toEqual([{ id: "c1", parents: [] }]);
+    await expect(desktop.blame("/a", "f")).rejects.toThrow("No blame");
+
+    service.OpenFileAt.mockResolvedValue(undefined);
+    await desktop.openFileAt("/a", "f.cs", 12);
+    expect(service.OpenFileAt).toHaveBeenCalledWith("/a", "f.cs", 12);
 
     service.ResolveConflict.mockResolvedValue({ branch: "main", conflicts: ["f"], resolved: ["f"] });
     expect((await desktop.resolveConflict("/a", "f", "content", "x")).resolved).toEqual(["f"]);

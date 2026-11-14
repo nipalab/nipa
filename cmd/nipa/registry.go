@@ -1,6 +1,9 @@
 package main
 
-import "github.com/nipalab/nipa/internal/client/usecase"
+import (
+	"github.com/nipalab/nipa/internal/client/cli"
+	"github.com/nipalab/nipa/internal/client/usecase"
+)
 
 type Registry struct {
 	authUsecase       *usecase.Auth
@@ -15,6 +18,7 @@ type Registry struct {
 	lockUsecase       *usecase.FileLock
 	tagUsecase        *usecase.Tag
 	versionUsecase    *usecase.Version
+	blameUsecase      *usecase.Blame
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -63,4 +67,8 @@ func (r *Registry) Tag() *usecase.Tag {
 
 func (r *Registry) Version() *usecase.Version {
 	return r.versionUsecase
+}
+
+func (r *Registry) Blame() cli.BlameRunner {
+	return r.blameUsecase
 }

@@ -89,6 +89,27 @@ export interface AudioStats {
     "truncated": boolean;
 }
 
+/**
+ * Blame attributes the lines of a file version, in line order.
+ */
+export interface Blame {
+    "path": string;
+    "revision": string;
+    "lines": BlameLine[] | null;
+    "commits": Commit[] | null;
+    "truncated": boolean;
+}
+
+/**
+ * BlameLine names the commit that last changed one line. CommitID is empty
+ * when the line is not pushed yet (Uncommitted) or older than the history
+ * that could be read.
+ */
+export interface BlameLine {
+    "commitId": string;
+    "uncommitted": boolean;
+}
+
 export interface Branch {
     "name": string;
     "commitId": string;
@@ -1002,6 +1023,22 @@ export interface SceneCompare {
     "changed": number;
     "refs": RefChange[] | null;
     "error"?: string;
+}
+
+/**
+ * SceneMerge is a Godot scene or resource merged node by node. Merged is only
+ * a best effort (ours wins) when Clean is false.
+ */
+export interface SceneMerge {
+    "merged": string;
+    "clean": boolean;
+    "conflicts": SceneMergeConflict[] | null;
+}
+
+export interface SceneMergeConflict {
+    "section": string;
+    "key": string;
+    "message": string;
 }
 
 export interface SceneObject {

@@ -153,13 +153,20 @@ func (s *Service) PickFile(_ context.Context, root string) (string, error) {
 
 // OpenFile opens a clone file with the program set for its extension, or the
 // system's default application.
-func (s *Service) OpenFile(_ context.Context, root, path string) error {
+func (s *Service) OpenFile(ctx context.Context, root, path string) error {
+	return s.OpenFileAt(ctx, root, path, 0)
+}
+
+// OpenFileAt opens a clone file at a line: the program set for its extension
+// gets the line through {line} in its command; the system's default
+// application only opens the file.
+func (s *Service) OpenFileAt(_ context.Context, root, path string, line int) error {
 	full := filepath.Join(root, filepath.FromSlash(path))
 	if _, ok := insideRoot(root, full); !ok {
 		return errors.New("the file is outside this clone")
 	}
 	if tool := toolFor(s.prefs().Tools, full); tool != "" {
-		return s.launch(tool, full)
+		return s.launch(tool, full, line)
 	}
 	if s.OpenFunc == nil {
 		return errors.New("opening files is not available")

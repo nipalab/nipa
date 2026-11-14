@@ -3,6 +3,10 @@ import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal
 import type {
   Account,
   Activity as RawActivity,
+  Blame as RawBlame,
+  BlameLine,
+  SceneMerge as RawSceneMerge,
+  SceneMergeConflict,
   AudioCompare,
   Check,
   Comment,
@@ -159,6 +163,9 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow, TableSheet };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
+export type Blame = Omit<RawBlame, "lines" | "commits"> & { lines: BlameLine[]; commits: Commit[] };
+export type SceneMerge = Omit<RawSceneMerge, "conflicts"> & { conflicts: SceneMergeConflict[] };
+export type { BlameLine, SceneMergeConflict };
 export type DiskUsage = Omit<RawDiskUsage, "pins" | "sparse"> & { pins: string[]; sparse: string[] };
 export type { CleanUpResult };
 export type { AssetRef, Origin, OriginInput, OriginSaved };
@@ -239,6 +246,11 @@ export const desktop = {
   unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
   pickFile: (root: string): Promise<string> => Service.PickFile(root),
   openFile: (root: string, path: string): Promise<void> => Service.OpenFile(root, path),
+  openFileAt: (root: string, path: string, line: number): Promise<void> => Service.OpenFileAt(root, path, line),
+  blame: async (root: string, path: string, revision = ""): Promise<Blame> => {
+    const b = required(await Service.Blame(root, path, revision), "blame");
+    return { ...b, lines: b.lines ?? [], commits: (b.commits ?? []).map((c) => ({ ...c, parents: c.parents ?? [] })) };
+  },
   revealFile: (root: string, path: string): Promise<void> => Service.RevealFile(root, path),
   files: async (root: string, dir: string): Promise<FileListing> => {
     const l = await Service.Files(root, dir);
@@ -339,6 +351,10 @@ export const desktop = {
   },
   conflictTexts: async (root: string, path: string): Promise<ConflictTexts> => required(await Service.ConflictTexts(root, path), "file versions"),
   conflictDiff: (root: string, path: string): Promise<FileDiff | null> => Service.ConflictDiff(root, path),
+  mergeScene: async (root: string, path: string): Promise<SceneMerge> => {
+    const m = required(await Service.MergeScene(root, path), "scene merge");
+    return { ...m, conflicts: m.conflicts ?? [] };
+  },
   resolveConflict: async (root: string, path: string, choice: ResolveChoice, content = ""): Promise<ChangeSet> =>
     changeSet(await Service.ResolveConflict(root, { path, choice, content })),
 

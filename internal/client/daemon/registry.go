@@ -39,6 +39,7 @@ type repo struct {
 	generate  GenerateRunner
 	restore   RevisionRestorer
 	refGraph  GraphBuilder
+	blame     BlameRunner
 
 	statusMu  sync.Mutex
 	status    *clientDomain.Status
@@ -197,6 +198,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.generate = ops.Generate
 		rp.restore = ops.Restore
 		rp.refGraph = ops.Refs
+		rp.blame = ops.Blame
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

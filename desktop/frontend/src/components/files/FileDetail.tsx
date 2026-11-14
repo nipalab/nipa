@@ -2,7 +2,10 @@ import { Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, History as HistoryIcon, Image as ImageIcon, Loader2, Lock, RotateCcw } from "lucide-react";
 import { desktop, type Commit, type FileLock } from "@/api/desktop";
+import { BlameToggle } from "@/components/changes/BlameToggle";
 import { viewerFor } from "@/components/changes/DiffViewer";
+import { TextDiff } from "@/components/changes/TextDiff";
+import { useTextTools } from "@/hooks/useTextTools";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
@@ -128,10 +131,20 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
 
 function Viewer({ root, view }: { root: string; view: NonNullable<Awaited<ReturnType<typeof desktop.fileView>>> }) {
   const Component = viewerFor(view);
+  const tools = useTextTools(root, view, Component === TextDiff);
   return (
-    <Suspense fallback={null}>
-      <Component root={root} diff={view} layout="unified" />
-    </Suspense>
+    <div className="flex h-full flex-col">
+      {tools.available && (
+        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
+          <BlameToggle tools={tools} />
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <Suspense fallback={null}>
+          <Component root={root} diff={view} layout="unified" tools={tools} />
+        </Suspense>
+      </div>
+    </div>
   );
 }
 

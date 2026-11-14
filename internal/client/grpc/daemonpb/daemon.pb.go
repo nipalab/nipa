@@ -10473,6 +10473,439 @@ func (x *SetProvenanceResponse) GetCreated() bool {
 	return false
 }
 
+// BlameRequest attributes every line of a text file (up to 2 MiB) to the
+// commit that last changed it, reading at most the last 500 commits.
+type BlameRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Root          string                 `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Revision      string                 `protobuf:"bytes,3,opt,name=revision,proto3" json:"revision,omitempty"` // branch, tag, commit id or HEAD; empty blames the working file
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameRequest) Reset() {
+	*x = BlameRequest{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[171]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameRequest) ProtoMessage() {}
+
+func (x *BlameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[171]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameRequest.ProtoReflect.Descriptor instead.
+func (*BlameRequest) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{171}
+}
+
+func (x *BlameRequest) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *BlameRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *BlameRequest) GetRevision() string {
+	if x != nil {
+		return x.Revision
+	}
+	return ""
+}
+
+type BlameLine struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	CommitId      string                 `protobuf:"bytes,2,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"` // empty: not pushed yet, or older than the history read
+	Uncommitted   bool                   `protobuf:"varint,3,opt,name=uncommitted,proto3" json:"uncommitted,omitempty"`          // the working file has it but the pinned commit does not
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameLine) Reset() {
+	*x = BlameLine{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[172]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameLine) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameLine) ProtoMessage() {}
+
+func (x *BlameLine) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[172]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameLine.ProtoReflect.Descriptor instead.
+func (*BlameLine) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{172}
+}
+
+func (x *BlameLine) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *BlameLine) GetCommitId() string {
+	if x != nil {
+		return x.CommitId
+	}
+	return ""
+}
+
+func (x *BlameLine) GetUncommitted() bool {
+	if x != nil {
+		return x.Uncommitted
+	}
+	return false
+}
+
+type BlameCommit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Hash          string                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	AuthorName    string                 `protobuf:"bytes,3,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
+	AuthorEmail   string                 `protobuf:"bytes,4,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
+	Message       string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC 3339
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameCommit) Reset() {
+	*x = BlameCommit{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[173]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameCommit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameCommit) ProtoMessage() {}
+
+func (x *BlameCommit) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[173]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameCommit.ProtoReflect.Descriptor instead.
+func (*BlameCommit) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{173}
+}
+
+func (x *BlameCommit) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetAuthorName() string {
+	if x != nil {
+		return x.AuthorName
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetAuthorEmail() string {
+	if x != nil {
+		return x.AuthorEmail
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type BlameResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Revision      string                 `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"` // commit id blamed; empty for the working file
+	Lines         []*BlameLine           `protobuf:"bytes,3,rep,name=lines,proto3" json:"lines,omitempty"`
+	Commits       []*BlameCommit         `protobuf:"bytes,4,rep,name=commits,proto3" json:"commits,omitempty"`      // the commits lines point at, newest first
+	Truncated     bool                   `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"` // some lines are older than the history read
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameResult) Reset() {
+	*x = BlameResult{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[174]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameResult) ProtoMessage() {}
+
+func (x *BlameResult) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[174]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameResult.ProtoReflect.Descriptor instead.
+func (*BlameResult) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{174}
+}
+
+func (x *BlameResult) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *BlameResult) GetRevision() string {
+	if x != nil {
+		return x.Revision
+	}
+	return ""
+}
+
+func (x *BlameResult) GetLines() []*BlameLine {
+	if x != nil {
+		return x.Lines
+	}
+	return nil
+}
+
+func (x *BlameResult) GetCommits() []*BlameCommit {
+	if x != nil {
+		return x.Commits
+	}
+	return nil
+}
+
+func (x *BlameResult) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+type BlameProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Done          int32                  `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`   // versions read
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"` // most versions blame may read
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameProgress) Reset() {
+	*x = BlameProgress{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[175]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameProgress) ProtoMessage() {}
+
+func (x *BlameProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[175]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameProgress.ProtoReflect.Descriptor instead.
+func (*BlameProgress) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{175}
+}
+
+func (x *BlameProgress) GetDone() int32 {
+	if x != nil {
+		return x.Done
+	}
+	return 0
+}
+
+func (x *BlameProgress) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+// BlameEvent streams progress, then one result or failure.
+type BlameEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*BlameEvent_Progress
+	//	*BlameEvent_Result
+	//	*BlameEvent_Failure
+	Event         isBlameEvent_Event `protobuf_oneof:"event"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlameEvent) Reset() {
+	*x = BlameEvent{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[176]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlameEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlameEvent) ProtoMessage() {}
+
+func (x *BlameEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[176]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlameEvent.ProtoReflect.Descriptor instead.
+func (*BlameEvent) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{176}
+}
+
+func (x *BlameEvent) GetEvent() isBlameEvent_Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+func (x *BlameEvent) GetProgress() *BlameProgress {
+	if x != nil {
+		if x, ok := x.Event.(*BlameEvent_Progress); ok {
+			return x.Progress
+		}
+	}
+	return nil
+}
+
+func (x *BlameEvent) GetResult() *BlameResult {
+	if x != nil {
+		if x, ok := x.Event.(*BlameEvent_Result); ok {
+			return x.Result
+		}
+	}
+	return nil
+}
+
+func (x *BlameEvent) GetFailure() *OpFailure {
+	if x != nil {
+		if x, ok := x.Event.(*BlameEvent_Failure); ok {
+			return x.Failure
+		}
+	}
+	return nil
+}
+
+type isBlameEvent_Event interface {
+	isBlameEvent_Event()
+}
+
+type BlameEvent_Progress struct {
+	Progress *BlameProgress `protobuf:"bytes,1,opt,name=progress,proto3,oneof"`
+}
+
+type BlameEvent_Result struct {
+	Result *BlameResult `protobuf:"bytes,2,opt,name=result,proto3,oneof"`
+}
+
+type BlameEvent_Failure struct {
+	Failure *OpFailure `protobuf:"bytes,3,opt,name=failure,proto3,oneof"`
+}
+
+func (*BlameEvent_Progress) isBlameEvent_Event() {}
+
+func (*BlameEvent_Result) isBlameEvent_Event() {}
+
+func (*BlameEvent_Failure) isBlameEvent_Event() {}
+
 var File_internal_client_grpc_proto_daemon_proto protoreflect.FileDescriptor
 
 const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
@@ -11204,7 +11637,39 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x0e_prompt_sha256\"d\n" +
 	"\x15SetProvenanceResponse\x121\n" +
 	"\x05entry\x18\x01 \x01(\v2\x1b.nipadaemon.ProvenanceEntryR\x05entry\x12\x18\n" +
-	"\acreated\x18\x02 \x01(\bR\acreated2\x9b2\n" +
+	"\acreated\x18\x02 \x01(\bR\acreated\"R\n" +
+	"\fBlameRequest\x12\x12\n" +
+	"\x04root\x18\x01 \x01(\tR\x04root\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\tR\brevision\"^\n" +
+	"\tBlameLine\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1b\n" +
+	"\tcommit_id\x18\x02 \x01(\tR\bcommitId\x12 \n" +
+	"\vuncommitted\x18\x03 \x01(\bR\vuncommitted\"\xae\x01\n" +
+	"\vBlameCommit\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04hash\x18\x02 \x01(\tR\x04hash\x12\x1f\n" +
+	"\vauthor_name\x18\x03 \x01(\tR\n" +
+	"authorName\x12!\n" +
+	"\fauthor_email\x18\x04 \x01(\tR\vauthorEmail\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\"\xbb\x01\n" +
+	"\vBlameResult\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\tR\brevision\x12+\n" +
+	"\x05lines\x18\x03 \x03(\v2\x15.nipadaemon.BlameLineR\x05lines\x121\n" +
+	"\acommits\x18\x04 \x03(\v2\x17.nipadaemon.BlameCommitR\acommits\x12\x1c\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"9\n" +
+	"\rBlameProgress\x12\x12\n" +
+	"\x04done\x18\x01 \x01(\x05R\x04done\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xb4\x01\n" +
+	"\n" +
+	"BlameEvent\x127\n" +
+	"\bprogress\x18\x01 \x01(\v2\x19.nipadaemon.BlameProgressH\x00R\bprogress\x121\n" +
+	"\x06result\x18\x02 \x01(\v2\x17.nipadaemon.BlameResultH\x00R\x06result\x121\n" +
+	"\afailure\x18\x03 \x01(\v2\x15.nipadaemon.OpFailureH\x00R\afailureB\a\n" +
+	"\x05event2\xd82\n" +
 	"\n" +
 	"NipaDaemon\x129\n" +
 	"\x04Ping\x12\x17.nipadaemon.PingRequest\x1a\x18.nipadaemon.PingResponse\x12E\n" +
@@ -11283,7 +11748,8 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\tAssetRefs\x12\x1c.nipadaemon.AssetRefsRequest\x1a\x1d.nipadaemon.AssetRefsResponse\x12K\n" +
 	"\n" +
 	"Provenance\x12\x1d.nipadaemon.ProvenanceRequest\x1a\x1e.nipadaemon.ProvenanceResponse\x12T\n" +
-	"\rSetProvenance\x12 .nipadaemon.SetProvenanceRequest\x1a!.nipadaemon.SetProvenanceResponseB\fZ\n" +
+	"\rSetProvenance\x12 .nipadaemon.SetProvenanceRequest\x1a!.nipadaemon.SetProvenanceResponse\x12;\n" +
+	"\x05Blame\x12\x18.nipadaemon.BlameRequest\x1a\x16.nipadaemon.BlameEvent0\x01B\fZ\n" +
 	"./daemonpbb\x06proto3"
 
 var (
@@ -11298,7 +11764,7 @@ func file_internal_client_grpc_proto_daemon_proto_rawDescGZIP() []byte {
 	return file_internal_client_grpc_proto_daemon_proto_rawDescData
 }
 
-var file_internal_client_grpc_proto_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 171)
+var file_internal_client_grpc_proto_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 177)
 var file_internal_client_grpc_proto_daemon_proto_goTypes = []any{
 	(*PingRequest)(nil),                           // 0: nipadaemon.PingRequest
 	(*PingResponse)(nil),                          // 1: nipadaemon.PingResponse
@@ -11471,74 +11937,80 @@ var file_internal_client_grpc_proto_daemon_proto_goTypes = []any{
 	(*ProvenanceResponse)(nil),                    // 168: nipadaemon.ProvenanceResponse
 	(*SetProvenanceRequest)(nil),                  // 169: nipadaemon.SetProvenanceRequest
 	(*SetProvenanceResponse)(nil),                 // 170: nipadaemon.SetProvenanceResponse
-	(*pb.DiffHunkDetail)(nil),                     // 171: greet.DiffHunkDetail
-	(*pb.GetListBranchRequest)(nil),               // 172: greet.GetListBranchRequest
-	(*pb.GetListBranchResponse)(nil),              // 173: greet.GetListBranchResponse
-	(*pb.CreateBranchRequest)(nil),                // 174: greet.CreateBranchRequest
-	(*pb.CreateBranchResponse)(nil),               // 175: greet.CreateBranchResponse
-	(*pb.DeleteBranchRequest)(nil),                // 176: greet.DeleteBranchRequest
-	(*pb.DeleteBranchResponse)(nil),               // 177: greet.DeleteBranchResponse
-	(*pb.GetTreeManifestRequest)(nil),             // 178: greet.GetTreeManifestRequest
-	(*pb.GetTreeManifestResponse)(nil),            // 179: greet.GetTreeManifestResponse
-	(*pb.GetCommitLogRequest)(nil),                // 180: greet.GetCommitLogRequest
-	(*pb.GetCommitLogResponse)(nil),               // 181: greet.GetCommitLogResponse
-	(*pb.GetCommitRequest)(nil),                   // 182: greet.GetCommitRequest
-	(*pb.GetCommitResponse)(nil),                  // 183: greet.GetCommitResponse
-	(*pb.WalkCommitsRequest)(nil),                 // 184: greet.WalkCommitsRequest
-	(*pb.WalkCommitsResponse)(nil),                // 185: greet.WalkCommitsResponse
-	(*pb.GetMergeBaseRequest)(nil),                // 186: greet.GetMergeBaseRequest
-	(*pb.GetMergeBaseResponse)(nil),               // 187: greet.GetMergeBaseResponse
-	(*pb.ListMergeRequestsRequest)(nil),           // 188: greet.ListMergeRequestsRequest
-	(*pb.ListMergeRequestsResponse)(nil),          // 189: greet.ListMergeRequestsResponse
-	(*pb.CreateMergeRequestRequest)(nil),          // 190: greet.CreateMergeRequestRequest
-	(*pb.CreateMergeRequestResponse)(nil),         // 191: greet.CreateMergeRequestResponse
-	(*pb.MergeMergeRequestRequest)(nil),           // 192: greet.MergeMergeRequestRequest
-	(*pb.MergeMergeRequestResponse)(nil),          // 193: greet.MergeMergeRequestResponse
-	(*pb.CloseMergeRequestRequest)(nil),           // 194: greet.CloseMergeRequestRequest
-	(*pb.CloseMergeRequestResponse)(nil),          // 195: greet.CloseMergeRequestResponse
-	(*pb.ListMergeRequestReviewsRequest)(nil),     // 196: greet.ListMergeRequestReviewsRequest
-	(*pb.ListMergeRequestReviewsResponse)(nil),    // 197: greet.ListMergeRequestReviewsResponse
-	(*pb.GetMergeRequestReviewStateRequest)(nil),  // 198: greet.GetMergeRequestReviewStateRequest
-	(*pb.GetMergeRequestReviewStateResponse)(nil), // 199: greet.GetMergeRequestReviewStateResponse
-	(*pb.ListMergeRequestThreadsRequest)(nil),     // 200: greet.ListMergeRequestThreadsRequest
-	(*pb.ListMergeRequestThreadsResponse)(nil),    // 201: greet.ListMergeRequestThreadsResponse
-	(*pb.GetMergeRequestRequest)(nil),             // 202: greet.GetMergeRequestRequest
-	(*pb.GetMergeRequestResponse)(nil),            // 203: greet.GetMergeRequestResponse
-	(*pb.CheckMergeRequestRequest)(nil),           // 204: greet.CheckMergeRequestRequest
-	(*pb.CheckMergeRequestResponse)(nil),          // 205: greet.CheckMergeRequestResponse
-	(*pb.ReopenMergeRequestRequest)(nil),          // 206: greet.ReopenMergeRequestRequest
-	(*pb.ReopenMergeRequestResponse)(nil),         // 207: greet.ReopenMergeRequestResponse
-	(*pb.SubmitMergeRequestReviewRequest)(nil),    // 208: greet.SubmitMergeRequestReviewRequest
-	(*pb.SubmitMergeRequestReviewResponse)(nil),   // 209: greet.SubmitMergeRequestReviewResponse
-	(*pb.UpdateMergeRequestRequest)(nil),          // 210: greet.UpdateMergeRequestRequest
-	(*pb.UpdateMergeRequestResponse)(nil),         // 211: greet.UpdateMergeRequestResponse
-	(*pb.ListMergeRequestCommitsRequest)(nil),     // 212: greet.ListMergeRequestCommitsRequest
-	(*pb.ListMergeRequestCommitsResponse)(nil),    // 213: greet.ListMergeRequestCommitsResponse
-	(*pb.ListMergeRequestChecksRequest)(nil),      // 214: greet.ListMergeRequestChecksRequest
-	(*pb.ListMergeRequestChecksResponse)(nil),     // 215: greet.ListMergeRequestChecksResponse
-	(*pb.ListMergeRequestTimelineRequest)(nil),    // 216: greet.ListMergeRequestTimelineRequest
-	(*pb.ListMergeRequestTimelineResponse)(nil),   // 217: greet.ListMergeRequestTimelineResponse
-	(*pb.AddMergeRequestCommentRequest)(nil),      // 218: greet.AddMergeRequestCommentRequest
-	(*pb.AddMergeRequestCommentResponse)(nil),     // 219: greet.AddMergeRequestCommentResponse
-	(*pb.ReplyMergeRequestThreadRequest)(nil),     // 220: greet.ReplyMergeRequestThreadRequest
-	(*pb.ReplyMergeRequestThreadResponse)(nil),    // 221: greet.ReplyMergeRequestThreadResponse
-	(*pb.ResolveMergeRequestThreadRequest)(nil),   // 222: greet.ResolveMergeRequestThreadRequest
-	(*pb.ResolveMergeRequestThreadResponse)(nil),  // 223: greet.ResolveMergeRequestThreadResponse
-	(*pb.LockFileRequest)(nil),                    // 224: greet.LockFileRequest
-	(*pb.LockFileResponse)(nil),                   // 225: greet.LockFileResponse
-	(*pb.UnlockFileRequest)(nil),                  // 226: greet.UnlockFileRequest
-	(*pb.UnlockFileResponse)(nil),                 // 227: greet.UnlockFileResponse
-	(*pb.ListFileLocksRequest)(nil),               // 228: greet.ListFileLocksRequest
-	(*pb.ListFileLocksResponse)(nil),              // 229: greet.ListFileLocksResponse
-	(*pb.ListTagsRequest)(nil),                    // 230: greet.ListTagsRequest
-	(*pb.ListTagsResponse)(nil),                   // 231: greet.ListTagsResponse
-	(*pb.CreateTagRequest)(nil),                   // 232: greet.CreateTagRequest
-	(*pb.CreateTagResponse)(nil),                  // 233: greet.CreateTagResponse
-	(*pb.DeleteTagRequest)(nil),                   // 234: greet.DeleteTagRequest
-	(*pb.DeleteTagResponse)(nil),                  // 235: greet.DeleteTagResponse
-	(*pb.FileLockDetail)(nil),                     // 236: greet.FileLockDetail
-	(*pb.ProjectSummary)(nil),                     // 237: greet.ProjectSummary
-	(*pb.Branch)(nil),                             // 238: greet.Branch
+	(*BlameRequest)(nil),                          // 171: nipadaemon.BlameRequest
+	(*BlameLine)(nil),                             // 172: nipadaemon.BlameLine
+	(*BlameCommit)(nil),                           // 173: nipadaemon.BlameCommit
+	(*BlameResult)(nil),                           // 174: nipadaemon.BlameResult
+	(*BlameProgress)(nil),                         // 175: nipadaemon.BlameProgress
+	(*BlameEvent)(nil),                            // 176: nipadaemon.BlameEvent
+	(*pb.DiffHunkDetail)(nil),                     // 177: greet.DiffHunkDetail
+	(*pb.GetListBranchRequest)(nil),               // 178: greet.GetListBranchRequest
+	(*pb.GetListBranchResponse)(nil),              // 179: greet.GetListBranchResponse
+	(*pb.CreateBranchRequest)(nil),                // 180: greet.CreateBranchRequest
+	(*pb.CreateBranchResponse)(nil),               // 181: greet.CreateBranchResponse
+	(*pb.DeleteBranchRequest)(nil),                // 182: greet.DeleteBranchRequest
+	(*pb.DeleteBranchResponse)(nil),               // 183: greet.DeleteBranchResponse
+	(*pb.GetTreeManifestRequest)(nil),             // 184: greet.GetTreeManifestRequest
+	(*pb.GetTreeManifestResponse)(nil),            // 185: greet.GetTreeManifestResponse
+	(*pb.GetCommitLogRequest)(nil),                // 186: greet.GetCommitLogRequest
+	(*pb.GetCommitLogResponse)(nil),               // 187: greet.GetCommitLogResponse
+	(*pb.GetCommitRequest)(nil),                   // 188: greet.GetCommitRequest
+	(*pb.GetCommitResponse)(nil),                  // 189: greet.GetCommitResponse
+	(*pb.WalkCommitsRequest)(nil),                 // 190: greet.WalkCommitsRequest
+	(*pb.WalkCommitsResponse)(nil),                // 191: greet.WalkCommitsResponse
+	(*pb.GetMergeBaseRequest)(nil),                // 192: greet.GetMergeBaseRequest
+	(*pb.GetMergeBaseResponse)(nil),               // 193: greet.GetMergeBaseResponse
+	(*pb.ListMergeRequestsRequest)(nil),           // 194: greet.ListMergeRequestsRequest
+	(*pb.ListMergeRequestsResponse)(nil),          // 195: greet.ListMergeRequestsResponse
+	(*pb.CreateMergeRequestRequest)(nil),          // 196: greet.CreateMergeRequestRequest
+	(*pb.CreateMergeRequestResponse)(nil),         // 197: greet.CreateMergeRequestResponse
+	(*pb.MergeMergeRequestRequest)(nil),           // 198: greet.MergeMergeRequestRequest
+	(*pb.MergeMergeRequestResponse)(nil),          // 199: greet.MergeMergeRequestResponse
+	(*pb.CloseMergeRequestRequest)(nil),           // 200: greet.CloseMergeRequestRequest
+	(*pb.CloseMergeRequestResponse)(nil),          // 201: greet.CloseMergeRequestResponse
+	(*pb.ListMergeRequestReviewsRequest)(nil),     // 202: greet.ListMergeRequestReviewsRequest
+	(*pb.ListMergeRequestReviewsResponse)(nil),    // 203: greet.ListMergeRequestReviewsResponse
+	(*pb.GetMergeRequestReviewStateRequest)(nil),  // 204: greet.GetMergeRequestReviewStateRequest
+	(*pb.GetMergeRequestReviewStateResponse)(nil), // 205: greet.GetMergeRequestReviewStateResponse
+	(*pb.ListMergeRequestThreadsRequest)(nil),     // 206: greet.ListMergeRequestThreadsRequest
+	(*pb.ListMergeRequestThreadsResponse)(nil),    // 207: greet.ListMergeRequestThreadsResponse
+	(*pb.GetMergeRequestRequest)(nil),             // 208: greet.GetMergeRequestRequest
+	(*pb.GetMergeRequestResponse)(nil),            // 209: greet.GetMergeRequestResponse
+	(*pb.CheckMergeRequestRequest)(nil),           // 210: greet.CheckMergeRequestRequest
+	(*pb.CheckMergeRequestResponse)(nil),          // 211: greet.CheckMergeRequestResponse
+	(*pb.ReopenMergeRequestRequest)(nil),          // 212: greet.ReopenMergeRequestRequest
+	(*pb.ReopenMergeRequestResponse)(nil),         // 213: greet.ReopenMergeRequestResponse
+	(*pb.SubmitMergeRequestReviewRequest)(nil),    // 214: greet.SubmitMergeRequestReviewRequest
+	(*pb.SubmitMergeRequestReviewResponse)(nil),   // 215: greet.SubmitMergeRequestReviewResponse
+	(*pb.UpdateMergeRequestRequest)(nil),          // 216: greet.UpdateMergeRequestRequest
+	(*pb.UpdateMergeRequestResponse)(nil),         // 217: greet.UpdateMergeRequestResponse
+	(*pb.ListMergeRequestCommitsRequest)(nil),     // 218: greet.ListMergeRequestCommitsRequest
+	(*pb.ListMergeRequestCommitsResponse)(nil),    // 219: greet.ListMergeRequestCommitsResponse
+	(*pb.ListMergeRequestChecksRequest)(nil),      // 220: greet.ListMergeRequestChecksRequest
+	(*pb.ListMergeRequestChecksResponse)(nil),     // 221: greet.ListMergeRequestChecksResponse
+	(*pb.ListMergeRequestTimelineRequest)(nil),    // 222: greet.ListMergeRequestTimelineRequest
+	(*pb.ListMergeRequestTimelineResponse)(nil),   // 223: greet.ListMergeRequestTimelineResponse
+	(*pb.AddMergeRequestCommentRequest)(nil),      // 224: greet.AddMergeRequestCommentRequest
+	(*pb.AddMergeRequestCommentResponse)(nil),     // 225: greet.AddMergeRequestCommentResponse
+	(*pb.ReplyMergeRequestThreadRequest)(nil),     // 226: greet.ReplyMergeRequestThreadRequest
+	(*pb.ReplyMergeRequestThreadResponse)(nil),    // 227: greet.ReplyMergeRequestThreadResponse
+	(*pb.ResolveMergeRequestThreadRequest)(nil),   // 228: greet.ResolveMergeRequestThreadRequest
+	(*pb.ResolveMergeRequestThreadResponse)(nil),  // 229: greet.ResolveMergeRequestThreadResponse
+	(*pb.LockFileRequest)(nil),                    // 230: greet.LockFileRequest
+	(*pb.LockFileResponse)(nil),                   // 231: greet.LockFileResponse
+	(*pb.UnlockFileRequest)(nil),                  // 232: greet.UnlockFileRequest
+	(*pb.UnlockFileResponse)(nil),                 // 233: greet.UnlockFileResponse
+	(*pb.ListFileLocksRequest)(nil),               // 234: greet.ListFileLocksRequest
+	(*pb.ListFileLocksResponse)(nil),              // 235: greet.ListFileLocksResponse
+	(*pb.ListTagsRequest)(nil),                    // 236: greet.ListTagsRequest
+	(*pb.ListTagsResponse)(nil),                   // 237: greet.ListTagsResponse
+	(*pb.CreateTagRequest)(nil),                   // 238: greet.CreateTagRequest
+	(*pb.CreateTagResponse)(nil),                  // 239: greet.CreateTagResponse
+	(*pb.DeleteTagRequest)(nil),                   // 240: greet.DeleteTagRequest
+	(*pb.DeleteTagResponse)(nil),                  // 241: greet.DeleteTagResponse
+	(*pb.FileLockDetail)(nil),                     // 242: greet.FileLockDetail
+	(*pb.ProjectSummary)(nil),                     // 243: greet.ProjectSummary
+	(*pb.Branch)(nil),                             // 244: greet.Branch
 }
 var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	6,   // 0: nipadaemon.WatchRepoResponse.repo:type_name -> nipadaemon.RepoInfo
@@ -11552,7 +12024,7 @@ var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	54,  // 8: nipadaemon.DiffEvent.failure:type_name -> nipadaemon.OpFailure
 	33,  // 9: nipadaemon.DiffFile.old:type_name -> nipadaemon.DiffFileSide
 	33,  // 10: nipadaemon.DiffFile.new:type_name -> nipadaemon.DiffFileSide
-	171, // 11: nipadaemon.DiffFile.hunks:type_name -> greet.DiffHunkDetail
+	177, // 11: nipadaemon.DiffFile.hunks:type_name -> greet.DiffHunkDetail
 	34,  // 12: nipadaemon.DiffFileEvent.file:type_name -> nipadaemon.DiffFile
 	54,  // 13: nipadaemon.DiffFileEvent.failure:type_name -> nipadaemon.OpFailure
 	36,  // 14: nipadaemon.ReadBlobRequest.blob:type_name -> nipadaemon.BlobRef
@@ -11576,79 +12048,79 @@ var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	53,  // 32: nipadaemon.OpEvent.progress:type_name -> nipadaemon.OpProgress
 	59,  // 33: nipadaemon.OpEvent.result:type_name -> nipadaemon.OpResult
 	54,  // 34: nipadaemon.OpEvent.failure:type_name -> nipadaemon.OpFailure
-	172, // 35: nipadaemon.ProxyBranchListRequest.request:type_name -> greet.GetListBranchRequest
-	173, // 36: nipadaemon.ProxyBranchListResponse.response:type_name -> greet.GetListBranchResponse
-	174, // 37: nipadaemon.ProxyBranchCreateRequest.request:type_name -> greet.CreateBranchRequest
-	175, // 38: nipadaemon.ProxyBranchCreateResponse.response:type_name -> greet.CreateBranchResponse
-	176, // 39: nipadaemon.ProxyBranchDeleteRequest.request:type_name -> greet.DeleteBranchRequest
-	177, // 40: nipadaemon.ProxyBranchDeleteResponse.response:type_name -> greet.DeleteBranchResponse
-	178, // 41: nipadaemon.ProxyTreeManifestRequest.request:type_name -> greet.GetTreeManifestRequest
-	179, // 42: nipadaemon.ProxyTreeManifestResponse.response:type_name -> greet.GetTreeManifestResponse
-	180, // 43: nipadaemon.ProxyCommitLogRequest.request:type_name -> greet.GetCommitLogRequest
-	181, // 44: nipadaemon.ProxyCommitLogResponse.response:type_name -> greet.GetCommitLogResponse
-	182, // 45: nipadaemon.ProxyCommitGetRequest.request:type_name -> greet.GetCommitRequest
-	183, // 46: nipadaemon.ProxyCommitGetResponse.response:type_name -> greet.GetCommitResponse
-	184, // 47: nipadaemon.ProxyCommitWalkRequest.request:type_name -> greet.WalkCommitsRequest
-	185, // 48: nipadaemon.ProxyCommitWalkResponse.response:type_name -> greet.WalkCommitsResponse
-	186, // 49: nipadaemon.ProxyMergeBaseRequest.request:type_name -> greet.GetMergeBaseRequest
-	187, // 50: nipadaemon.ProxyMergeBaseResponse.response:type_name -> greet.GetMergeBaseResponse
-	188, // 51: nipadaemon.ProxyMergeRequestListRequest.request:type_name -> greet.ListMergeRequestsRequest
-	189, // 52: nipadaemon.ProxyMergeRequestListResponse.response:type_name -> greet.ListMergeRequestsResponse
-	190, // 53: nipadaemon.ProxyMergeRequestCreateRequest.request:type_name -> greet.CreateMergeRequestRequest
-	191, // 54: nipadaemon.ProxyMergeRequestCreateResponse.response:type_name -> greet.CreateMergeRequestResponse
-	192, // 55: nipadaemon.ProxyMergeRequestMergeRequest.request:type_name -> greet.MergeMergeRequestRequest
-	193, // 56: nipadaemon.ProxyMergeRequestMergeResponse.response:type_name -> greet.MergeMergeRequestResponse
-	194, // 57: nipadaemon.ProxyMergeRequestCloseRequest.request:type_name -> greet.CloseMergeRequestRequest
-	195, // 58: nipadaemon.ProxyMergeRequestCloseResponse.response:type_name -> greet.CloseMergeRequestResponse
-	196, // 59: nipadaemon.ProxyMergeRequestReviewsRequest.request:type_name -> greet.ListMergeRequestReviewsRequest
-	197, // 60: nipadaemon.ProxyMergeRequestReviewsResponse.response:type_name -> greet.ListMergeRequestReviewsResponse
-	198, // 61: nipadaemon.ProxyMergeRequestReviewStateRequest.request:type_name -> greet.GetMergeRequestReviewStateRequest
-	199, // 62: nipadaemon.ProxyMergeRequestReviewStateResponse.response:type_name -> greet.GetMergeRequestReviewStateResponse
-	200, // 63: nipadaemon.ProxyMergeRequestThreadsRequest.request:type_name -> greet.ListMergeRequestThreadsRequest
-	201, // 64: nipadaemon.ProxyMergeRequestThreadsResponse.response:type_name -> greet.ListMergeRequestThreadsResponse
-	202, // 65: nipadaemon.ProxyMergeRequestGetRequest.request:type_name -> greet.GetMergeRequestRequest
-	203, // 66: nipadaemon.ProxyMergeRequestGetResponse.response:type_name -> greet.GetMergeRequestResponse
-	204, // 67: nipadaemon.ProxyMergeRequestCheckRequest.request:type_name -> greet.CheckMergeRequestRequest
-	205, // 68: nipadaemon.ProxyMergeRequestCheckResponse.response:type_name -> greet.CheckMergeRequestResponse
-	206, // 69: nipadaemon.ProxyMergeRequestReopenRequest.request:type_name -> greet.ReopenMergeRequestRequest
-	207, // 70: nipadaemon.ProxyMergeRequestReopenResponse.response:type_name -> greet.ReopenMergeRequestResponse
-	208, // 71: nipadaemon.ProxyMergeRequestSubmitReviewRequest.request:type_name -> greet.SubmitMergeRequestReviewRequest
-	209, // 72: nipadaemon.ProxyMergeRequestSubmitReviewResponse.response:type_name -> greet.SubmitMergeRequestReviewResponse
-	210, // 73: nipadaemon.ProxyMergeRequestUpdateRequest.request:type_name -> greet.UpdateMergeRequestRequest
-	211, // 74: nipadaemon.ProxyMergeRequestUpdateResponse.response:type_name -> greet.UpdateMergeRequestResponse
-	212, // 75: nipadaemon.ProxyMergeRequestCommitsRequest.request:type_name -> greet.ListMergeRequestCommitsRequest
-	213, // 76: nipadaemon.ProxyMergeRequestCommitsResponse.response:type_name -> greet.ListMergeRequestCommitsResponse
-	214, // 77: nipadaemon.ProxyMergeRequestChecksRequest.request:type_name -> greet.ListMergeRequestChecksRequest
-	215, // 78: nipadaemon.ProxyMergeRequestChecksResponse.response:type_name -> greet.ListMergeRequestChecksResponse
-	216, // 79: nipadaemon.ProxyMergeRequestTimelineRequest.request:type_name -> greet.ListMergeRequestTimelineRequest
-	217, // 80: nipadaemon.ProxyMergeRequestTimelineResponse.response:type_name -> greet.ListMergeRequestTimelineResponse
-	218, // 81: nipadaemon.ProxyMergeRequestAddCommentRequest.request:type_name -> greet.AddMergeRequestCommentRequest
-	219, // 82: nipadaemon.ProxyMergeRequestAddCommentResponse.response:type_name -> greet.AddMergeRequestCommentResponse
-	220, // 83: nipadaemon.ProxyMergeRequestReplyRequest.request:type_name -> greet.ReplyMergeRequestThreadRequest
-	221, // 84: nipadaemon.ProxyMergeRequestReplyResponse.response:type_name -> greet.ReplyMergeRequestThreadResponse
-	222, // 85: nipadaemon.ProxyMergeRequestResolveRequest.request:type_name -> greet.ResolveMergeRequestThreadRequest
-	223, // 86: nipadaemon.ProxyMergeRequestResolveResponse.response:type_name -> greet.ResolveMergeRequestThreadResponse
-	224, // 87: nipadaemon.ProxyLockFileRequest.request:type_name -> greet.LockFileRequest
-	225, // 88: nipadaemon.ProxyLockFileResponse.response:type_name -> greet.LockFileResponse
-	226, // 89: nipadaemon.ProxyUnlockFileRequest.request:type_name -> greet.UnlockFileRequest
-	227, // 90: nipadaemon.ProxyUnlockFileResponse.response:type_name -> greet.UnlockFileResponse
-	228, // 91: nipadaemon.ProxyListFileLocksRequest.request:type_name -> greet.ListFileLocksRequest
-	229, // 92: nipadaemon.ProxyListFileLocksResponse.response:type_name -> greet.ListFileLocksResponse
-	230, // 93: nipadaemon.ProxyTagListRequest.request:type_name -> greet.ListTagsRequest
-	231, // 94: nipadaemon.ProxyTagListResponse.response:type_name -> greet.ListTagsResponse
-	232, // 95: nipadaemon.ProxyTagCreateRequest.request:type_name -> greet.CreateTagRequest
-	233, // 96: nipadaemon.ProxyTagCreateResponse.response:type_name -> greet.CreateTagResponse
-	234, // 97: nipadaemon.ProxyTagDeleteRequest.request:type_name -> greet.DeleteTagRequest
-	235, // 98: nipadaemon.ProxyTagDeleteResponse.response:type_name -> greet.DeleteTagResponse
+	178, // 35: nipadaemon.ProxyBranchListRequest.request:type_name -> greet.GetListBranchRequest
+	179, // 36: nipadaemon.ProxyBranchListResponse.response:type_name -> greet.GetListBranchResponse
+	180, // 37: nipadaemon.ProxyBranchCreateRequest.request:type_name -> greet.CreateBranchRequest
+	181, // 38: nipadaemon.ProxyBranchCreateResponse.response:type_name -> greet.CreateBranchResponse
+	182, // 39: nipadaemon.ProxyBranchDeleteRequest.request:type_name -> greet.DeleteBranchRequest
+	183, // 40: nipadaemon.ProxyBranchDeleteResponse.response:type_name -> greet.DeleteBranchResponse
+	184, // 41: nipadaemon.ProxyTreeManifestRequest.request:type_name -> greet.GetTreeManifestRequest
+	185, // 42: nipadaemon.ProxyTreeManifestResponse.response:type_name -> greet.GetTreeManifestResponse
+	186, // 43: nipadaemon.ProxyCommitLogRequest.request:type_name -> greet.GetCommitLogRequest
+	187, // 44: nipadaemon.ProxyCommitLogResponse.response:type_name -> greet.GetCommitLogResponse
+	188, // 45: nipadaemon.ProxyCommitGetRequest.request:type_name -> greet.GetCommitRequest
+	189, // 46: nipadaemon.ProxyCommitGetResponse.response:type_name -> greet.GetCommitResponse
+	190, // 47: nipadaemon.ProxyCommitWalkRequest.request:type_name -> greet.WalkCommitsRequest
+	191, // 48: nipadaemon.ProxyCommitWalkResponse.response:type_name -> greet.WalkCommitsResponse
+	192, // 49: nipadaemon.ProxyMergeBaseRequest.request:type_name -> greet.GetMergeBaseRequest
+	193, // 50: nipadaemon.ProxyMergeBaseResponse.response:type_name -> greet.GetMergeBaseResponse
+	194, // 51: nipadaemon.ProxyMergeRequestListRequest.request:type_name -> greet.ListMergeRequestsRequest
+	195, // 52: nipadaemon.ProxyMergeRequestListResponse.response:type_name -> greet.ListMergeRequestsResponse
+	196, // 53: nipadaemon.ProxyMergeRequestCreateRequest.request:type_name -> greet.CreateMergeRequestRequest
+	197, // 54: nipadaemon.ProxyMergeRequestCreateResponse.response:type_name -> greet.CreateMergeRequestResponse
+	198, // 55: nipadaemon.ProxyMergeRequestMergeRequest.request:type_name -> greet.MergeMergeRequestRequest
+	199, // 56: nipadaemon.ProxyMergeRequestMergeResponse.response:type_name -> greet.MergeMergeRequestResponse
+	200, // 57: nipadaemon.ProxyMergeRequestCloseRequest.request:type_name -> greet.CloseMergeRequestRequest
+	201, // 58: nipadaemon.ProxyMergeRequestCloseResponse.response:type_name -> greet.CloseMergeRequestResponse
+	202, // 59: nipadaemon.ProxyMergeRequestReviewsRequest.request:type_name -> greet.ListMergeRequestReviewsRequest
+	203, // 60: nipadaemon.ProxyMergeRequestReviewsResponse.response:type_name -> greet.ListMergeRequestReviewsResponse
+	204, // 61: nipadaemon.ProxyMergeRequestReviewStateRequest.request:type_name -> greet.GetMergeRequestReviewStateRequest
+	205, // 62: nipadaemon.ProxyMergeRequestReviewStateResponse.response:type_name -> greet.GetMergeRequestReviewStateResponse
+	206, // 63: nipadaemon.ProxyMergeRequestThreadsRequest.request:type_name -> greet.ListMergeRequestThreadsRequest
+	207, // 64: nipadaemon.ProxyMergeRequestThreadsResponse.response:type_name -> greet.ListMergeRequestThreadsResponse
+	208, // 65: nipadaemon.ProxyMergeRequestGetRequest.request:type_name -> greet.GetMergeRequestRequest
+	209, // 66: nipadaemon.ProxyMergeRequestGetResponse.response:type_name -> greet.GetMergeRequestResponse
+	210, // 67: nipadaemon.ProxyMergeRequestCheckRequest.request:type_name -> greet.CheckMergeRequestRequest
+	211, // 68: nipadaemon.ProxyMergeRequestCheckResponse.response:type_name -> greet.CheckMergeRequestResponse
+	212, // 69: nipadaemon.ProxyMergeRequestReopenRequest.request:type_name -> greet.ReopenMergeRequestRequest
+	213, // 70: nipadaemon.ProxyMergeRequestReopenResponse.response:type_name -> greet.ReopenMergeRequestResponse
+	214, // 71: nipadaemon.ProxyMergeRequestSubmitReviewRequest.request:type_name -> greet.SubmitMergeRequestReviewRequest
+	215, // 72: nipadaemon.ProxyMergeRequestSubmitReviewResponse.response:type_name -> greet.SubmitMergeRequestReviewResponse
+	216, // 73: nipadaemon.ProxyMergeRequestUpdateRequest.request:type_name -> greet.UpdateMergeRequestRequest
+	217, // 74: nipadaemon.ProxyMergeRequestUpdateResponse.response:type_name -> greet.UpdateMergeRequestResponse
+	218, // 75: nipadaemon.ProxyMergeRequestCommitsRequest.request:type_name -> greet.ListMergeRequestCommitsRequest
+	219, // 76: nipadaemon.ProxyMergeRequestCommitsResponse.response:type_name -> greet.ListMergeRequestCommitsResponse
+	220, // 77: nipadaemon.ProxyMergeRequestChecksRequest.request:type_name -> greet.ListMergeRequestChecksRequest
+	221, // 78: nipadaemon.ProxyMergeRequestChecksResponse.response:type_name -> greet.ListMergeRequestChecksResponse
+	222, // 79: nipadaemon.ProxyMergeRequestTimelineRequest.request:type_name -> greet.ListMergeRequestTimelineRequest
+	223, // 80: nipadaemon.ProxyMergeRequestTimelineResponse.response:type_name -> greet.ListMergeRequestTimelineResponse
+	224, // 81: nipadaemon.ProxyMergeRequestAddCommentRequest.request:type_name -> greet.AddMergeRequestCommentRequest
+	225, // 82: nipadaemon.ProxyMergeRequestAddCommentResponse.response:type_name -> greet.AddMergeRequestCommentResponse
+	226, // 83: nipadaemon.ProxyMergeRequestReplyRequest.request:type_name -> greet.ReplyMergeRequestThreadRequest
+	227, // 84: nipadaemon.ProxyMergeRequestReplyResponse.response:type_name -> greet.ReplyMergeRequestThreadResponse
+	228, // 85: nipadaemon.ProxyMergeRequestResolveRequest.request:type_name -> greet.ResolveMergeRequestThreadRequest
+	229, // 86: nipadaemon.ProxyMergeRequestResolveResponse.response:type_name -> greet.ResolveMergeRequestThreadResponse
+	230, // 87: nipadaemon.ProxyLockFileRequest.request:type_name -> greet.LockFileRequest
+	231, // 88: nipadaemon.ProxyLockFileResponse.response:type_name -> greet.LockFileResponse
+	232, // 89: nipadaemon.ProxyUnlockFileRequest.request:type_name -> greet.UnlockFileRequest
+	233, // 90: nipadaemon.ProxyUnlockFileResponse.response:type_name -> greet.UnlockFileResponse
+	234, // 91: nipadaemon.ProxyListFileLocksRequest.request:type_name -> greet.ListFileLocksRequest
+	235, // 92: nipadaemon.ProxyListFileLocksResponse.response:type_name -> greet.ListFileLocksResponse
+	236, // 93: nipadaemon.ProxyTagListRequest.request:type_name -> greet.ListTagsRequest
+	237, // 94: nipadaemon.ProxyTagListResponse.response:type_name -> greet.ListTagsResponse
+	238, // 95: nipadaemon.ProxyTagCreateRequest.request:type_name -> greet.CreateTagRequest
+	239, // 96: nipadaemon.ProxyTagCreateResponse.response:type_name -> greet.CreateTagResponse
+	240, // 97: nipadaemon.ProxyTagDeleteRequest.request:type_name -> greet.DeleteTagRequest
+	241, // 98: nipadaemon.ProxyTagDeleteResponse.response:type_name -> greet.DeleteTagResponse
 	127, // 99: nipadaemon.MetaWarningsResponse.warnings:type_name -> nipadaemon.MetaWarning
 	132, // 100: nipadaemon.AssetImpact.broken:type_name -> nipadaemon.BrokenReference
 	130, // 101: nipadaemon.PushPlanResponse.changes:type_name -> nipadaemon.PushPlanChange
 	131, // 102: nipadaemon.PushPlanResponse.asset_violations:type_name -> nipadaemon.AssetViolation
 	133, // 103: nipadaemon.PushPlanResponse.asset_impact:type_name -> nipadaemon.AssetImpact
-	236, // 104: nipadaemon.LockStatusResponse.locks:type_name -> greet.FileLockDetail
+	242, // 104: nipadaemon.LockStatusResponse.locks:type_name -> greet.FileLockDetail
 	139, // 105: nipadaemon.LockStatusResponse.files:type_name -> nipadaemon.FileLockState
-	237, // 106: nipadaemon.ListProjectsResponse.projects:type_name -> greet.ProjectSummary
-	238, // 107: nipadaemon.RemoteBranchesResponse.branches:type_name -> greet.Branch
+	243, // 106: nipadaemon.ListProjectsResponse.projects:type_name -> greet.ProjectSummary
+	244, // 107: nipadaemon.RemoteBranchesResponse.branches:type_name -> greet.Branch
 	148, // 108: nipadaemon.RemoteTreeResponse.dirs:type_name -> nipadaemon.RemoteTreeDir
 	157, // 109: nipadaemon.ListFilesResponse.entries:type_name -> nipadaemon.FileEntry
 	160, // 110: nipadaemon.SearchFilesResponse.hits:type_name -> nipadaemon.SearchFileHit
@@ -11656,159 +12128,166 @@ var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	164, // 112: nipadaemon.AssetRefsResponse.unknown:type_name -> nipadaemon.AssetRef
 	167, // 113: nipadaemon.ProvenanceResponse.entries:type_name -> nipadaemon.ProvenanceEntry
 	167, // 114: nipadaemon.SetProvenanceResponse.entry:type_name -> nipadaemon.ProvenanceEntry
-	0,   // 115: nipadaemon.NipaDaemon.Ping:input_type -> nipadaemon.PingRequest
-	2,   // 116: nipadaemon.NipaDaemon.Shutdown:input_type -> nipadaemon.ShutdownRequest
-	4,   // 117: nipadaemon.NipaDaemon.Login:input_type -> nipadaemon.LoginRequest
-	7,   // 118: nipadaemon.NipaDaemon.WatchRepo:input_type -> nipadaemon.WatchRepoRequest
-	9,   // 119: nipadaemon.NipaDaemon.UnwatchRepo:input_type -> nipadaemon.UnwatchRepoRequest
-	11,  // 120: nipadaemon.NipaDaemon.ListRepos:input_type -> nipadaemon.ListReposRequest
-	13,  // 121: nipadaemon.NipaDaemon.Status:input_type -> nipadaemon.StatusRequest
-	16,  // 122: nipadaemon.NipaDaemon.Stage:input_type -> nipadaemon.StageRequest
-	17,  // 123: nipadaemon.NipaDaemon.Restore:input_type -> nipadaemon.RestoreRequest
-	18,  // 124: nipadaemon.NipaDaemon.Update:input_type -> nipadaemon.UpdateRequest
-	19,  // 125: nipadaemon.NipaDaemon.Switch:input_type -> nipadaemon.SwitchRequest
-	20,  // 126: nipadaemon.NipaDaemon.Push:input_type -> nipadaemon.PushRequest
-	21,  // 127: nipadaemon.NipaDaemon.Merge:input_type -> nipadaemon.MergeOpRequest
-	22,  // 128: nipadaemon.NipaDaemon.Revert:input_type -> nipadaemon.RevertOpRequest
-	23,  // 129: nipadaemon.NipaDaemon.Conflicts:input_type -> nipadaemon.ConflictsRequest
-	27,  // 130: nipadaemon.NipaDaemon.ResolveConflict:input_type -> nipadaemon.ResolveConflictRequest
-	28,  // 131: nipadaemon.NipaDaemon.MergeGodotResource:input_type -> nipadaemon.MergeGodotResourceRequest
-	31,  // 132: nipadaemon.NipaDaemon.Diff:input_type -> nipadaemon.DiffRequest
-	31,  // 133: nipadaemon.NipaDaemon.DiffFiles:input_type -> nipadaemon.DiffRequest
-	37,  // 134: nipadaemon.NipaDaemon.ReadBlob:input_type -> nipadaemon.ReadBlobRequest
-	40,  // 135: nipadaemon.NipaDaemon.Preview:input_type -> nipadaemon.PreviewRequest
-	46,  // 136: nipadaemon.NipaDaemon.WatchChanges:input_type -> nipadaemon.WatchChangesRequest
-	48,  // 137: nipadaemon.NipaDaemon.WatchEvents:input_type -> nipadaemon.WatchEventsRequest
-	62,  // 138: nipadaemon.NipaDaemon.ProxyBranchList:input_type -> nipadaemon.ProxyBranchListRequest
-	64,  // 139: nipadaemon.NipaDaemon.ProxyBranchCreate:input_type -> nipadaemon.ProxyBranchCreateRequest
-	66,  // 140: nipadaemon.NipaDaemon.ProxyBranchDelete:input_type -> nipadaemon.ProxyBranchDeleteRequest
-	120, // 141: nipadaemon.NipaDaemon.ProxyTagList:input_type -> nipadaemon.ProxyTagListRequest
-	122, // 142: nipadaemon.NipaDaemon.ProxyTagCreate:input_type -> nipadaemon.ProxyTagCreateRequest
-	124, // 143: nipadaemon.NipaDaemon.ProxyTagDelete:input_type -> nipadaemon.ProxyTagDeleteRequest
-	68,  // 144: nipadaemon.NipaDaemon.ProxyTreeManifest:input_type -> nipadaemon.ProxyTreeManifestRequest
-	70,  // 145: nipadaemon.NipaDaemon.ProxyCommitLog:input_type -> nipadaemon.ProxyCommitLogRequest
-	72,  // 146: nipadaemon.NipaDaemon.ProxyCommitGet:input_type -> nipadaemon.ProxyCommitGetRequest
-	74,  // 147: nipadaemon.NipaDaemon.ProxyCommitWalk:input_type -> nipadaemon.ProxyCommitWalkRequest
-	76,  // 148: nipadaemon.NipaDaemon.ProxyMergeBase:input_type -> nipadaemon.ProxyMergeBaseRequest
-	78,  // 149: nipadaemon.NipaDaemon.ProxyMergeRequestList:input_type -> nipadaemon.ProxyMergeRequestListRequest
-	80,  // 150: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:input_type -> nipadaemon.ProxyMergeRequestCreateRequest
-	82,  // 151: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:input_type -> nipadaemon.ProxyMergeRequestMergeRequest
-	84,  // 152: nipadaemon.NipaDaemon.ProxyMergeRequestClose:input_type -> nipadaemon.ProxyMergeRequestCloseRequest
-	86,  // 153: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:input_type -> nipadaemon.ProxyMergeRequestReviewsRequest
-	88,  // 154: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:input_type -> nipadaemon.ProxyMergeRequestReviewStateRequest
-	90,  // 155: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:input_type -> nipadaemon.ProxyMergeRequestThreadsRequest
-	92,  // 156: nipadaemon.NipaDaemon.ProxyMergeRequestGet:input_type -> nipadaemon.ProxyMergeRequestGetRequest
-	94,  // 157: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:input_type -> nipadaemon.ProxyMergeRequestCheckRequest
-	96,  // 158: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:input_type -> nipadaemon.ProxyMergeRequestReopenRequest
-	98,  // 159: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:input_type -> nipadaemon.ProxyMergeRequestSubmitReviewRequest
-	100, // 160: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:input_type -> nipadaemon.ProxyMergeRequestUpdateRequest
-	102, // 161: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:input_type -> nipadaemon.ProxyMergeRequestCommitsRequest
-	104, // 162: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:input_type -> nipadaemon.ProxyMergeRequestChecksRequest
-	106, // 163: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:input_type -> nipadaemon.ProxyMergeRequestTimelineRequest
-	108, // 164: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:input_type -> nipadaemon.ProxyMergeRequestAddCommentRequest
-	110, // 165: nipadaemon.NipaDaemon.ProxyMergeRequestReply:input_type -> nipadaemon.ProxyMergeRequestReplyRequest
-	112, // 166: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:input_type -> nipadaemon.ProxyMergeRequestResolveRequest
-	114, // 167: nipadaemon.NipaDaemon.ProxyLockFile:input_type -> nipadaemon.ProxyLockFileRequest
-	116, // 168: nipadaemon.NipaDaemon.ProxyUnlockFile:input_type -> nipadaemon.ProxyUnlockFileRequest
-	118, // 169: nipadaemon.NipaDaemon.ProxyListFileLocks:input_type -> nipadaemon.ProxyListFileLocksRequest
-	137, // 170: nipadaemon.NipaDaemon.LockStatus:input_type -> nipadaemon.LockStatusRequest
-	126, // 171: nipadaemon.NipaDaemon.MetaWarnings:input_type -> nipadaemon.MetaWarningsRequest
-	129, // 172: nipadaemon.NipaDaemon.PushPlan:input_type -> nipadaemon.PushPlanRequest
-	135, // 173: nipadaemon.NipaDaemon.Generate:input_type -> nipadaemon.GenerateRequest
-	152, // 174: nipadaemon.NipaDaemon.DiskUsage:input_type -> nipadaemon.DiskUsageRequest
-	154, // 175: nipadaemon.NipaDaemon.GC:input_type -> nipadaemon.GCRequest
-	140, // 176: nipadaemon.NipaDaemon.AccountStatus:input_type -> nipadaemon.AccountStatusRequest
-	142, // 177: nipadaemon.NipaDaemon.LoginSSH:input_type -> nipadaemon.LoginSSHRequest
-	143, // 178: nipadaemon.NipaDaemon.ListProjects:input_type -> nipadaemon.ListProjectsRequest
-	145, // 179: nipadaemon.NipaDaemon.RemoteBranches:input_type -> nipadaemon.RemoteBranchesRequest
-	147, // 180: nipadaemon.NipaDaemon.RemoteTree:input_type -> nipadaemon.RemoteTreeRequest
-	150, // 181: nipadaemon.NipaDaemon.Clone:input_type -> nipadaemon.CloneRequest
-	151, // 182: nipadaemon.NipaDaemon.SetSparse:input_type -> nipadaemon.SetSparseRequest
-	156, // 183: nipadaemon.NipaDaemon.ListFiles:input_type -> nipadaemon.ListFilesRequest
-	162, // 184: nipadaemon.NipaDaemon.RestoreRevision:input_type -> nipadaemon.RestoreRevisionRequest
-	159, // 185: nipadaemon.NipaDaemon.SearchFiles:input_type -> nipadaemon.SearchFilesRequest
-	163, // 186: nipadaemon.NipaDaemon.AssetRefs:input_type -> nipadaemon.AssetRefsRequest
-	166, // 187: nipadaemon.NipaDaemon.Provenance:input_type -> nipadaemon.ProvenanceRequest
-	169, // 188: nipadaemon.NipaDaemon.SetProvenance:input_type -> nipadaemon.SetProvenanceRequest
-	1,   // 189: nipadaemon.NipaDaemon.Ping:output_type -> nipadaemon.PingResponse
-	3,   // 190: nipadaemon.NipaDaemon.Shutdown:output_type -> nipadaemon.ShutdownResponse
-	5,   // 191: nipadaemon.NipaDaemon.Login:output_type -> nipadaemon.LoginResponse
-	8,   // 192: nipadaemon.NipaDaemon.WatchRepo:output_type -> nipadaemon.WatchRepoResponse
-	10,  // 193: nipadaemon.NipaDaemon.UnwatchRepo:output_type -> nipadaemon.UnwatchRepoResponse
-	12,  // 194: nipadaemon.NipaDaemon.ListRepos:output_type -> nipadaemon.ListReposResponse
-	14,  // 195: nipadaemon.NipaDaemon.Status:output_type -> nipadaemon.StatusResponse
-	14,  // 196: nipadaemon.NipaDaemon.Stage:output_type -> nipadaemon.StatusResponse
-	14,  // 197: nipadaemon.NipaDaemon.Restore:output_type -> nipadaemon.StatusResponse
-	61,  // 198: nipadaemon.NipaDaemon.Update:output_type -> nipadaemon.OpEvent
-	61,  // 199: nipadaemon.NipaDaemon.Switch:output_type -> nipadaemon.OpEvent
-	61,  // 200: nipadaemon.NipaDaemon.Push:output_type -> nipadaemon.OpEvent
-	61,  // 201: nipadaemon.NipaDaemon.Merge:output_type -> nipadaemon.OpEvent
-	61,  // 202: nipadaemon.NipaDaemon.Revert:output_type -> nipadaemon.OpEvent
-	26,  // 203: nipadaemon.NipaDaemon.Conflicts:output_type -> nipadaemon.ConflictsResponse
-	14,  // 204: nipadaemon.NipaDaemon.ResolveConflict:output_type -> nipadaemon.StatusResponse
-	30,  // 205: nipadaemon.NipaDaemon.MergeGodotResource:output_type -> nipadaemon.MergeGodotResourceResponse
-	32,  // 206: nipadaemon.NipaDaemon.Diff:output_type -> nipadaemon.DiffEvent
-	35,  // 207: nipadaemon.NipaDaemon.DiffFiles:output_type -> nipadaemon.DiffFileEvent
-	39,  // 208: nipadaemon.NipaDaemon.ReadBlob:output_type -> nipadaemon.BlobEvent
-	45,  // 209: nipadaemon.NipaDaemon.Preview:output_type -> nipadaemon.PreviewEvent
-	47,  // 210: nipadaemon.NipaDaemon.WatchChanges:output_type -> nipadaemon.RepoChange
-	50,  // 211: nipadaemon.NipaDaemon.WatchEvents:output_type -> nipadaemon.RepoActivity
-	63,  // 212: nipadaemon.NipaDaemon.ProxyBranchList:output_type -> nipadaemon.ProxyBranchListResponse
-	65,  // 213: nipadaemon.NipaDaemon.ProxyBranchCreate:output_type -> nipadaemon.ProxyBranchCreateResponse
-	67,  // 214: nipadaemon.NipaDaemon.ProxyBranchDelete:output_type -> nipadaemon.ProxyBranchDeleteResponse
-	121, // 215: nipadaemon.NipaDaemon.ProxyTagList:output_type -> nipadaemon.ProxyTagListResponse
-	123, // 216: nipadaemon.NipaDaemon.ProxyTagCreate:output_type -> nipadaemon.ProxyTagCreateResponse
-	125, // 217: nipadaemon.NipaDaemon.ProxyTagDelete:output_type -> nipadaemon.ProxyTagDeleteResponse
-	69,  // 218: nipadaemon.NipaDaemon.ProxyTreeManifest:output_type -> nipadaemon.ProxyTreeManifestResponse
-	71,  // 219: nipadaemon.NipaDaemon.ProxyCommitLog:output_type -> nipadaemon.ProxyCommitLogResponse
-	73,  // 220: nipadaemon.NipaDaemon.ProxyCommitGet:output_type -> nipadaemon.ProxyCommitGetResponse
-	75,  // 221: nipadaemon.NipaDaemon.ProxyCommitWalk:output_type -> nipadaemon.ProxyCommitWalkResponse
-	77,  // 222: nipadaemon.NipaDaemon.ProxyMergeBase:output_type -> nipadaemon.ProxyMergeBaseResponse
-	79,  // 223: nipadaemon.NipaDaemon.ProxyMergeRequestList:output_type -> nipadaemon.ProxyMergeRequestListResponse
-	81,  // 224: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:output_type -> nipadaemon.ProxyMergeRequestCreateResponse
-	83,  // 225: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:output_type -> nipadaemon.ProxyMergeRequestMergeResponse
-	85,  // 226: nipadaemon.NipaDaemon.ProxyMergeRequestClose:output_type -> nipadaemon.ProxyMergeRequestCloseResponse
-	87,  // 227: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:output_type -> nipadaemon.ProxyMergeRequestReviewsResponse
-	89,  // 228: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:output_type -> nipadaemon.ProxyMergeRequestReviewStateResponse
-	91,  // 229: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:output_type -> nipadaemon.ProxyMergeRequestThreadsResponse
-	93,  // 230: nipadaemon.NipaDaemon.ProxyMergeRequestGet:output_type -> nipadaemon.ProxyMergeRequestGetResponse
-	95,  // 231: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:output_type -> nipadaemon.ProxyMergeRequestCheckResponse
-	97,  // 232: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:output_type -> nipadaemon.ProxyMergeRequestReopenResponse
-	99,  // 233: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:output_type -> nipadaemon.ProxyMergeRequestSubmitReviewResponse
-	101, // 234: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:output_type -> nipadaemon.ProxyMergeRequestUpdateResponse
-	103, // 235: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:output_type -> nipadaemon.ProxyMergeRequestCommitsResponse
-	105, // 236: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:output_type -> nipadaemon.ProxyMergeRequestChecksResponse
-	107, // 237: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:output_type -> nipadaemon.ProxyMergeRequestTimelineResponse
-	109, // 238: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:output_type -> nipadaemon.ProxyMergeRequestAddCommentResponse
-	111, // 239: nipadaemon.NipaDaemon.ProxyMergeRequestReply:output_type -> nipadaemon.ProxyMergeRequestReplyResponse
-	113, // 240: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:output_type -> nipadaemon.ProxyMergeRequestResolveResponse
-	115, // 241: nipadaemon.NipaDaemon.ProxyLockFile:output_type -> nipadaemon.ProxyLockFileResponse
-	117, // 242: nipadaemon.NipaDaemon.ProxyUnlockFile:output_type -> nipadaemon.ProxyUnlockFileResponse
-	119, // 243: nipadaemon.NipaDaemon.ProxyListFileLocks:output_type -> nipadaemon.ProxyListFileLocksResponse
-	138, // 244: nipadaemon.NipaDaemon.LockStatus:output_type -> nipadaemon.LockStatusResponse
-	128, // 245: nipadaemon.NipaDaemon.MetaWarnings:output_type -> nipadaemon.MetaWarningsResponse
-	134, // 246: nipadaemon.NipaDaemon.PushPlan:output_type -> nipadaemon.PushPlanResponse
-	136, // 247: nipadaemon.NipaDaemon.Generate:output_type -> nipadaemon.GenerateResponse
-	153, // 248: nipadaemon.NipaDaemon.DiskUsage:output_type -> nipadaemon.DiskUsageResponse
-	155, // 249: nipadaemon.NipaDaemon.GC:output_type -> nipadaemon.GCResponse
-	141, // 250: nipadaemon.NipaDaemon.AccountStatus:output_type -> nipadaemon.AccountStatusResponse
-	5,   // 251: nipadaemon.NipaDaemon.LoginSSH:output_type -> nipadaemon.LoginResponse
-	144, // 252: nipadaemon.NipaDaemon.ListProjects:output_type -> nipadaemon.ListProjectsResponse
-	146, // 253: nipadaemon.NipaDaemon.RemoteBranches:output_type -> nipadaemon.RemoteBranchesResponse
-	149, // 254: nipadaemon.NipaDaemon.RemoteTree:output_type -> nipadaemon.RemoteTreeResponse
-	61,  // 255: nipadaemon.NipaDaemon.Clone:output_type -> nipadaemon.OpEvent
-	61,  // 256: nipadaemon.NipaDaemon.SetSparse:output_type -> nipadaemon.OpEvent
-	158, // 257: nipadaemon.NipaDaemon.ListFiles:output_type -> nipadaemon.ListFilesResponse
-	61,  // 258: nipadaemon.NipaDaemon.RestoreRevision:output_type -> nipadaemon.OpEvent
-	161, // 259: nipadaemon.NipaDaemon.SearchFiles:output_type -> nipadaemon.SearchFilesResponse
-	165, // 260: nipadaemon.NipaDaemon.AssetRefs:output_type -> nipadaemon.AssetRefsResponse
-	168, // 261: nipadaemon.NipaDaemon.Provenance:output_type -> nipadaemon.ProvenanceResponse
-	170, // 262: nipadaemon.NipaDaemon.SetProvenance:output_type -> nipadaemon.SetProvenanceResponse
-	189, // [189:263] is the sub-list for method output_type
-	115, // [115:189] is the sub-list for method input_type
-	115, // [115:115] is the sub-list for extension type_name
-	115, // [115:115] is the sub-list for extension extendee
-	0,   // [0:115] is the sub-list for field type_name
+	172, // 115: nipadaemon.BlameResult.lines:type_name -> nipadaemon.BlameLine
+	173, // 116: nipadaemon.BlameResult.commits:type_name -> nipadaemon.BlameCommit
+	175, // 117: nipadaemon.BlameEvent.progress:type_name -> nipadaemon.BlameProgress
+	174, // 118: nipadaemon.BlameEvent.result:type_name -> nipadaemon.BlameResult
+	54,  // 119: nipadaemon.BlameEvent.failure:type_name -> nipadaemon.OpFailure
+	0,   // 120: nipadaemon.NipaDaemon.Ping:input_type -> nipadaemon.PingRequest
+	2,   // 121: nipadaemon.NipaDaemon.Shutdown:input_type -> nipadaemon.ShutdownRequest
+	4,   // 122: nipadaemon.NipaDaemon.Login:input_type -> nipadaemon.LoginRequest
+	7,   // 123: nipadaemon.NipaDaemon.WatchRepo:input_type -> nipadaemon.WatchRepoRequest
+	9,   // 124: nipadaemon.NipaDaemon.UnwatchRepo:input_type -> nipadaemon.UnwatchRepoRequest
+	11,  // 125: nipadaemon.NipaDaemon.ListRepos:input_type -> nipadaemon.ListReposRequest
+	13,  // 126: nipadaemon.NipaDaemon.Status:input_type -> nipadaemon.StatusRequest
+	16,  // 127: nipadaemon.NipaDaemon.Stage:input_type -> nipadaemon.StageRequest
+	17,  // 128: nipadaemon.NipaDaemon.Restore:input_type -> nipadaemon.RestoreRequest
+	18,  // 129: nipadaemon.NipaDaemon.Update:input_type -> nipadaemon.UpdateRequest
+	19,  // 130: nipadaemon.NipaDaemon.Switch:input_type -> nipadaemon.SwitchRequest
+	20,  // 131: nipadaemon.NipaDaemon.Push:input_type -> nipadaemon.PushRequest
+	21,  // 132: nipadaemon.NipaDaemon.Merge:input_type -> nipadaemon.MergeOpRequest
+	22,  // 133: nipadaemon.NipaDaemon.Revert:input_type -> nipadaemon.RevertOpRequest
+	23,  // 134: nipadaemon.NipaDaemon.Conflicts:input_type -> nipadaemon.ConflictsRequest
+	27,  // 135: nipadaemon.NipaDaemon.ResolveConflict:input_type -> nipadaemon.ResolveConflictRequest
+	28,  // 136: nipadaemon.NipaDaemon.MergeGodotResource:input_type -> nipadaemon.MergeGodotResourceRequest
+	31,  // 137: nipadaemon.NipaDaemon.Diff:input_type -> nipadaemon.DiffRequest
+	31,  // 138: nipadaemon.NipaDaemon.DiffFiles:input_type -> nipadaemon.DiffRequest
+	37,  // 139: nipadaemon.NipaDaemon.ReadBlob:input_type -> nipadaemon.ReadBlobRequest
+	40,  // 140: nipadaemon.NipaDaemon.Preview:input_type -> nipadaemon.PreviewRequest
+	46,  // 141: nipadaemon.NipaDaemon.WatchChanges:input_type -> nipadaemon.WatchChangesRequest
+	48,  // 142: nipadaemon.NipaDaemon.WatchEvents:input_type -> nipadaemon.WatchEventsRequest
+	62,  // 143: nipadaemon.NipaDaemon.ProxyBranchList:input_type -> nipadaemon.ProxyBranchListRequest
+	64,  // 144: nipadaemon.NipaDaemon.ProxyBranchCreate:input_type -> nipadaemon.ProxyBranchCreateRequest
+	66,  // 145: nipadaemon.NipaDaemon.ProxyBranchDelete:input_type -> nipadaemon.ProxyBranchDeleteRequest
+	120, // 146: nipadaemon.NipaDaemon.ProxyTagList:input_type -> nipadaemon.ProxyTagListRequest
+	122, // 147: nipadaemon.NipaDaemon.ProxyTagCreate:input_type -> nipadaemon.ProxyTagCreateRequest
+	124, // 148: nipadaemon.NipaDaemon.ProxyTagDelete:input_type -> nipadaemon.ProxyTagDeleteRequest
+	68,  // 149: nipadaemon.NipaDaemon.ProxyTreeManifest:input_type -> nipadaemon.ProxyTreeManifestRequest
+	70,  // 150: nipadaemon.NipaDaemon.ProxyCommitLog:input_type -> nipadaemon.ProxyCommitLogRequest
+	72,  // 151: nipadaemon.NipaDaemon.ProxyCommitGet:input_type -> nipadaemon.ProxyCommitGetRequest
+	74,  // 152: nipadaemon.NipaDaemon.ProxyCommitWalk:input_type -> nipadaemon.ProxyCommitWalkRequest
+	76,  // 153: nipadaemon.NipaDaemon.ProxyMergeBase:input_type -> nipadaemon.ProxyMergeBaseRequest
+	78,  // 154: nipadaemon.NipaDaemon.ProxyMergeRequestList:input_type -> nipadaemon.ProxyMergeRequestListRequest
+	80,  // 155: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:input_type -> nipadaemon.ProxyMergeRequestCreateRequest
+	82,  // 156: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:input_type -> nipadaemon.ProxyMergeRequestMergeRequest
+	84,  // 157: nipadaemon.NipaDaemon.ProxyMergeRequestClose:input_type -> nipadaemon.ProxyMergeRequestCloseRequest
+	86,  // 158: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:input_type -> nipadaemon.ProxyMergeRequestReviewsRequest
+	88,  // 159: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:input_type -> nipadaemon.ProxyMergeRequestReviewStateRequest
+	90,  // 160: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:input_type -> nipadaemon.ProxyMergeRequestThreadsRequest
+	92,  // 161: nipadaemon.NipaDaemon.ProxyMergeRequestGet:input_type -> nipadaemon.ProxyMergeRequestGetRequest
+	94,  // 162: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:input_type -> nipadaemon.ProxyMergeRequestCheckRequest
+	96,  // 163: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:input_type -> nipadaemon.ProxyMergeRequestReopenRequest
+	98,  // 164: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:input_type -> nipadaemon.ProxyMergeRequestSubmitReviewRequest
+	100, // 165: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:input_type -> nipadaemon.ProxyMergeRequestUpdateRequest
+	102, // 166: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:input_type -> nipadaemon.ProxyMergeRequestCommitsRequest
+	104, // 167: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:input_type -> nipadaemon.ProxyMergeRequestChecksRequest
+	106, // 168: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:input_type -> nipadaemon.ProxyMergeRequestTimelineRequest
+	108, // 169: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:input_type -> nipadaemon.ProxyMergeRequestAddCommentRequest
+	110, // 170: nipadaemon.NipaDaemon.ProxyMergeRequestReply:input_type -> nipadaemon.ProxyMergeRequestReplyRequest
+	112, // 171: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:input_type -> nipadaemon.ProxyMergeRequestResolveRequest
+	114, // 172: nipadaemon.NipaDaemon.ProxyLockFile:input_type -> nipadaemon.ProxyLockFileRequest
+	116, // 173: nipadaemon.NipaDaemon.ProxyUnlockFile:input_type -> nipadaemon.ProxyUnlockFileRequest
+	118, // 174: nipadaemon.NipaDaemon.ProxyListFileLocks:input_type -> nipadaemon.ProxyListFileLocksRequest
+	137, // 175: nipadaemon.NipaDaemon.LockStatus:input_type -> nipadaemon.LockStatusRequest
+	126, // 176: nipadaemon.NipaDaemon.MetaWarnings:input_type -> nipadaemon.MetaWarningsRequest
+	129, // 177: nipadaemon.NipaDaemon.PushPlan:input_type -> nipadaemon.PushPlanRequest
+	135, // 178: nipadaemon.NipaDaemon.Generate:input_type -> nipadaemon.GenerateRequest
+	152, // 179: nipadaemon.NipaDaemon.DiskUsage:input_type -> nipadaemon.DiskUsageRequest
+	154, // 180: nipadaemon.NipaDaemon.GC:input_type -> nipadaemon.GCRequest
+	140, // 181: nipadaemon.NipaDaemon.AccountStatus:input_type -> nipadaemon.AccountStatusRequest
+	142, // 182: nipadaemon.NipaDaemon.LoginSSH:input_type -> nipadaemon.LoginSSHRequest
+	143, // 183: nipadaemon.NipaDaemon.ListProjects:input_type -> nipadaemon.ListProjectsRequest
+	145, // 184: nipadaemon.NipaDaemon.RemoteBranches:input_type -> nipadaemon.RemoteBranchesRequest
+	147, // 185: nipadaemon.NipaDaemon.RemoteTree:input_type -> nipadaemon.RemoteTreeRequest
+	150, // 186: nipadaemon.NipaDaemon.Clone:input_type -> nipadaemon.CloneRequest
+	151, // 187: nipadaemon.NipaDaemon.SetSparse:input_type -> nipadaemon.SetSparseRequest
+	156, // 188: nipadaemon.NipaDaemon.ListFiles:input_type -> nipadaemon.ListFilesRequest
+	162, // 189: nipadaemon.NipaDaemon.RestoreRevision:input_type -> nipadaemon.RestoreRevisionRequest
+	159, // 190: nipadaemon.NipaDaemon.SearchFiles:input_type -> nipadaemon.SearchFilesRequest
+	163, // 191: nipadaemon.NipaDaemon.AssetRefs:input_type -> nipadaemon.AssetRefsRequest
+	166, // 192: nipadaemon.NipaDaemon.Provenance:input_type -> nipadaemon.ProvenanceRequest
+	169, // 193: nipadaemon.NipaDaemon.SetProvenance:input_type -> nipadaemon.SetProvenanceRequest
+	171, // 194: nipadaemon.NipaDaemon.Blame:input_type -> nipadaemon.BlameRequest
+	1,   // 195: nipadaemon.NipaDaemon.Ping:output_type -> nipadaemon.PingResponse
+	3,   // 196: nipadaemon.NipaDaemon.Shutdown:output_type -> nipadaemon.ShutdownResponse
+	5,   // 197: nipadaemon.NipaDaemon.Login:output_type -> nipadaemon.LoginResponse
+	8,   // 198: nipadaemon.NipaDaemon.WatchRepo:output_type -> nipadaemon.WatchRepoResponse
+	10,  // 199: nipadaemon.NipaDaemon.UnwatchRepo:output_type -> nipadaemon.UnwatchRepoResponse
+	12,  // 200: nipadaemon.NipaDaemon.ListRepos:output_type -> nipadaemon.ListReposResponse
+	14,  // 201: nipadaemon.NipaDaemon.Status:output_type -> nipadaemon.StatusResponse
+	14,  // 202: nipadaemon.NipaDaemon.Stage:output_type -> nipadaemon.StatusResponse
+	14,  // 203: nipadaemon.NipaDaemon.Restore:output_type -> nipadaemon.StatusResponse
+	61,  // 204: nipadaemon.NipaDaemon.Update:output_type -> nipadaemon.OpEvent
+	61,  // 205: nipadaemon.NipaDaemon.Switch:output_type -> nipadaemon.OpEvent
+	61,  // 206: nipadaemon.NipaDaemon.Push:output_type -> nipadaemon.OpEvent
+	61,  // 207: nipadaemon.NipaDaemon.Merge:output_type -> nipadaemon.OpEvent
+	61,  // 208: nipadaemon.NipaDaemon.Revert:output_type -> nipadaemon.OpEvent
+	26,  // 209: nipadaemon.NipaDaemon.Conflicts:output_type -> nipadaemon.ConflictsResponse
+	14,  // 210: nipadaemon.NipaDaemon.ResolveConflict:output_type -> nipadaemon.StatusResponse
+	30,  // 211: nipadaemon.NipaDaemon.MergeGodotResource:output_type -> nipadaemon.MergeGodotResourceResponse
+	32,  // 212: nipadaemon.NipaDaemon.Diff:output_type -> nipadaemon.DiffEvent
+	35,  // 213: nipadaemon.NipaDaemon.DiffFiles:output_type -> nipadaemon.DiffFileEvent
+	39,  // 214: nipadaemon.NipaDaemon.ReadBlob:output_type -> nipadaemon.BlobEvent
+	45,  // 215: nipadaemon.NipaDaemon.Preview:output_type -> nipadaemon.PreviewEvent
+	47,  // 216: nipadaemon.NipaDaemon.WatchChanges:output_type -> nipadaemon.RepoChange
+	50,  // 217: nipadaemon.NipaDaemon.WatchEvents:output_type -> nipadaemon.RepoActivity
+	63,  // 218: nipadaemon.NipaDaemon.ProxyBranchList:output_type -> nipadaemon.ProxyBranchListResponse
+	65,  // 219: nipadaemon.NipaDaemon.ProxyBranchCreate:output_type -> nipadaemon.ProxyBranchCreateResponse
+	67,  // 220: nipadaemon.NipaDaemon.ProxyBranchDelete:output_type -> nipadaemon.ProxyBranchDeleteResponse
+	121, // 221: nipadaemon.NipaDaemon.ProxyTagList:output_type -> nipadaemon.ProxyTagListResponse
+	123, // 222: nipadaemon.NipaDaemon.ProxyTagCreate:output_type -> nipadaemon.ProxyTagCreateResponse
+	125, // 223: nipadaemon.NipaDaemon.ProxyTagDelete:output_type -> nipadaemon.ProxyTagDeleteResponse
+	69,  // 224: nipadaemon.NipaDaemon.ProxyTreeManifest:output_type -> nipadaemon.ProxyTreeManifestResponse
+	71,  // 225: nipadaemon.NipaDaemon.ProxyCommitLog:output_type -> nipadaemon.ProxyCommitLogResponse
+	73,  // 226: nipadaemon.NipaDaemon.ProxyCommitGet:output_type -> nipadaemon.ProxyCommitGetResponse
+	75,  // 227: nipadaemon.NipaDaemon.ProxyCommitWalk:output_type -> nipadaemon.ProxyCommitWalkResponse
+	77,  // 228: nipadaemon.NipaDaemon.ProxyMergeBase:output_type -> nipadaemon.ProxyMergeBaseResponse
+	79,  // 229: nipadaemon.NipaDaemon.ProxyMergeRequestList:output_type -> nipadaemon.ProxyMergeRequestListResponse
+	81,  // 230: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:output_type -> nipadaemon.ProxyMergeRequestCreateResponse
+	83,  // 231: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:output_type -> nipadaemon.ProxyMergeRequestMergeResponse
+	85,  // 232: nipadaemon.NipaDaemon.ProxyMergeRequestClose:output_type -> nipadaemon.ProxyMergeRequestCloseResponse
+	87,  // 233: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:output_type -> nipadaemon.ProxyMergeRequestReviewsResponse
+	89,  // 234: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:output_type -> nipadaemon.ProxyMergeRequestReviewStateResponse
+	91,  // 235: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:output_type -> nipadaemon.ProxyMergeRequestThreadsResponse
+	93,  // 236: nipadaemon.NipaDaemon.ProxyMergeRequestGet:output_type -> nipadaemon.ProxyMergeRequestGetResponse
+	95,  // 237: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:output_type -> nipadaemon.ProxyMergeRequestCheckResponse
+	97,  // 238: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:output_type -> nipadaemon.ProxyMergeRequestReopenResponse
+	99,  // 239: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:output_type -> nipadaemon.ProxyMergeRequestSubmitReviewResponse
+	101, // 240: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:output_type -> nipadaemon.ProxyMergeRequestUpdateResponse
+	103, // 241: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:output_type -> nipadaemon.ProxyMergeRequestCommitsResponse
+	105, // 242: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:output_type -> nipadaemon.ProxyMergeRequestChecksResponse
+	107, // 243: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:output_type -> nipadaemon.ProxyMergeRequestTimelineResponse
+	109, // 244: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:output_type -> nipadaemon.ProxyMergeRequestAddCommentResponse
+	111, // 245: nipadaemon.NipaDaemon.ProxyMergeRequestReply:output_type -> nipadaemon.ProxyMergeRequestReplyResponse
+	113, // 246: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:output_type -> nipadaemon.ProxyMergeRequestResolveResponse
+	115, // 247: nipadaemon.NipaDaemon.ProxyLockFile:output_type -> nipadaemon.ProxyLockFileResponse
+	117, // 248: nipadaemon.NipaDaemon.ProxyUnlockFile:output_type -> nipadaemon.ProxyUnlockFileResponse
+	119, // 249: nipadaemon.NipaDaemon.ProxyListFileLocks:output_type -> nipadaemon.ProxyListFileLocksResponse
+	138, // 250: nipadaemon.NipaDaemon.LockStatus:output_type -> nipadaemon.LockStatusResponse
+	128, // 251: nipadaemon.NipaDaemon.MetaWarnings:output_type -> nipadaemon.MetaWarningsResponse
+	134, // 252: nipadaemon.NipaDaemon.PushPlan:output_type -> nipadaemon.PushPlanResponse
+	136, // 253: nipadaemon.NipaDaemon.Generate:output_type -> nipadaemon.GenerateResponse
+	153, // 254: nipadaemon.NipaDaemon.DiskUsage:output_type -> nipadaemon.DiskUsageResponse
+	155, // 255: nipadaemon.NipaDaemon.GC:output_type -> nipadaemon.GCResponse
+	141, // 256: nipadaemon.NipaDaemon.AccountStatus:output_type -> nipadaemon.AccountStatusResponse
+	5,   // 257: nipadaemon.NipaDaemon.LoginSSH:output_type -> nipadaemon.LoginResponse
+	144, // 258: nipadaemon.NipaDaemon.ListProjects:output_type -> nipadaemon.ListProjectsResponse
+	146, // 259: nipadaemon.NipaDaemon.RemoteBranches:output_type -> nipadaemon.RemoteBranchesResponse
+	149, // 260: nipadaemon.NipaDaemon.RemoteTree:output_type -> nipadaemon.RemoteTreeResponse
+	61,  // 261: nipadaemon.NipaDaemon.Clone:output_type -> nipadaemon.OpEvent
+	61,  // 262: nipadaemon.NipaDaemon.SetSparse:output_type -> nipadaemon.OpEvent
+	158, // 263: nipadaemon.NipaDaemon.ListFiles:output_type -> nipadaemon.ListFilesResponse
+	61,  // 264: nipadaemon.NipaDaemon.RestoreRevision:output_type -> nipadaemon.OpEvent
+	161, // 265: nipadaemon.NipaDaemon.SearchFiles:output_type -> nipadaemon.SearchFilesResponse
+	165, // 266: nipadaemon.NipaDaemon.AssetRefs:output_type -> nipadaemon.AssetRefsResponse
+	168, // 267: nipadaemon.NipaDaemon.Provenance:output_type -> nipadaemon.ProvenanceResponse
+	170, // 268: nipadaemon.NipaDaemon.SetProvenance:output_type -> nipadaemon.SetProvenanceResponse
+	176, // 269: nipadaemon.NipaDaemon.Blame:output_type -> nipadaemon.BlameEvent
+	195, // [195:270] is the sub-list for method output_type
+	120, // [120:195] is the sub-list for method input_type
+	120, // [120:120] is the sub-list for extension type_name
+	120, // [120:120] is the sub-list for extension extendee
+	0,   // [0:120] is the sub-list for field type_name
 }
 
 func init() { file_internal_client_grpc_proto_daemon_proto_init() }
@@ -11851,13 +12330,18 @@ func file_internal_client_grpc_proto_daemon_proto_init() {
 	}
 	file_internal_client_grpc_proto_daemon_proto_msgTypes[167].OneofWrappers = []any{}
 	file_internal_client_grpc_proto_daemon_proto_msgTypes[169].OneofWrappers = []any{}
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[176].OneofWrappers = []any{
+		(*BlameEvent_Progress)(nil),
+		(*BlameEvent_Result)(nil),
+		(*BlameEvent_Failure)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_client_grpc_proto_daemon_proto_rawDesc), len(file_internal_client_grpc_proto_daemon_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   171,
+			NumMessages:   177,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

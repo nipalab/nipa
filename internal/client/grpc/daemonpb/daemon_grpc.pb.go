@@ -93,6 +93,7 @@ const (
 	NipaDaemon_AssetRefs_FullMethodName                     = "/nipadaemon.NipaDaemon/AssetRefs"
 	NipaDaemon_Provenance_FullMethodName                    = "/nipadaemon.NipaDaemon/Provenance"
 	NipaDaemon_SetProvenance_FullMethodName                 = "/nipadaemon.NipaDaemon/SetProvenance"
+	NipaDaemon_Blame_FullMethodName                         = "/nipadaemon.NipaDaemon/Blame"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -173,6 +174,7 @@ type NipaDaemonClient interface {
 	AssetRefs(ctx context.Context, in *AssetRefsRequest, opts ...grpc.CallOption) (*AssetRefsResponse, error)
 	Provenance(ctx context.Context, in *ProvenanceRequest, opts ...grpc.CallOption) (*ProvenanceResponse, error)
 	SetProvenance(ctx context.Context, in *SetProvenanceRequest, opts ...grpc.CallOption) (*SetProvenanceResponse, error)
+	Blame(ctx context.Context, in *BlameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlameEvent], error)
 }
 
 type nipaDaemonClient struct {
@@ -1049,6 +1051,25 @@ func (c *nipaDaemonClient) SetProvenance(ctx context.Context, in *SetProvenanceR
 	return out, nil
 }
 
+func (c *nipaDaemonClient) Blame(ctx context.Context, in *BlameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlameEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[14], NipaDaemon_Blame_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[BlameRequest, BlameEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_BlameClient = grpc.ServerStreamingClient[BlameEvent]
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -1127,6 +1148,7 @@ type NipaDaemonServer interface {
 	AssetRefs(context.Context, *AssetRefsRequest) (*AssetRefsResponse, error)
 	Provenance(context.Context, *ProvenanceRequest) (*ProvenanceResponse, error)
 	SetProvenance(context.Context, *SetProvenanceRequest) (*SetProvenanceResponse, error)
+	Blame(*BlameRequest, grpc.ServerStreamingServer[BlameEvent]) error
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -1358,6 +1380,9 @@ func (UnimplementedNipaDaemonServer) Provenance(context.Context, *ProvenanceRequ
 }
 func (UnimplementedNipaDaemonServer) SetProvenance(context.Context, *SetProvenanceRequest) (*SetProvenanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetProvenance not implemented")
+}
+func (UnimplementedNipaDaemonServer) Blame(*BlameRequest, grpc.ServerStreamingServer[BlameEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method Blame not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -2614,6 +2639,17 @@ func _NipaDaemon_SetProvenance_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_Blame_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(BlameRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).Blame(m, &grpc.GenericServerStream[BlameRequest, BlameEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_BlameServer = grpc.ServerStreamingServer[BlameEvent]
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2931,6 +2967,11 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "RestoreRevision",
 			Handler:       _NipaDaemon_RestoreRevision_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Blame",
+			Handler:       _NipaDaemon_Blame_Handler,
 			ServerStreams: true,
 		},
 	},

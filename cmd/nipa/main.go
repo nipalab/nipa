@@ -66,6 +66,7 @@ func main() {
 		lockUsecase:       lockUsecase,
 		tagUsecase:        tagUsecase,
 		versionUsecase:    versionUsecase,
+		blameUsecase:      usecase.NewBlame(authUsecase, grpcClient, localrepo.NewLocalRepo()),
 	}
 
 	newClient := func() *grpc.Client {

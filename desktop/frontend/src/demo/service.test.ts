@@ -1,5 +1,6 @@
 import { createService, scenarioFrom } from "./service";
 import { spectrogramBytes, textureSvg, torusGlb, waveformPeaks } from "./media";
+import * as d from "./data";
 import { ROOT } from "./data";
 
 const ref = (path: string) => ({ source: "working", path });
@@ -72,6 +73,20 @@ describe("demo service", () => {
     const armor = (await s.TableDiff(ROOT, null, ref("Assets/Data/balance.xlsx"), "Armor"))!;
     expect(armor.rowsRemoved).toBe(1);
     expect((await s.TableDiff(ROOT, ref("a.xlsx"), null, "Nope"))!.sheet).toBe("Weapons");
+  });
+
+  it("blames demo files and merges scenes", async () => {
+    const s = createService("default");
+    const working = await s.Blame(d.ROOT, d.MOVE, "");
+    expect(working?.lines ?? []).toHaveLength(32);
+    expect(working?.lines?.[20]).toEqual({ commitId: "", uncommitted: true });
+    expect(working?.lines?.[0].commitId).toBe("c2");
+    expect(working?.commits?.map((c) => c.id)).toEqual(["c7", "c3", "c2"]);
+    const pushed = await s.Blame(d.ROOT, d.MOVE, "c11");
+    expect(pushed?.lines?.[20]).toEqual({ commitId: "c11", uncommitted: false });
+    expect((await s.Blame(d.ROOT, "nothing.txt", ""))?.lines).toEqual([]);
+    expect((await s.MergeScene(d.ROOT, "a.tscn"))?.clean).toBe(true);
+    await expect(s.OpenFileAt(d.ROOT, d.MOVE, 3)).resolves.toBeUndefined();
   });
 
   it("browses the project files", async () => {

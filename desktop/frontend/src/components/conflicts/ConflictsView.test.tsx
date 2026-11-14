@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   conflictTexts: vi.fn(),
   conflictDiff: vi.fn(),
   resolveConflict: vi.fn(),
+  mergeScene: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -60,6 +61,53 @@ beforeEach(() => {
 });
 
 const view = (busy = false) => renderWithProviders(<ConflictsView root="/work/game" busy={busy} notify={notify} />);
+
+const sceneSet = () => set({ files: [{ path: "levels/arena.tscn", kind: "text", binary: false, resolved: false, viewer: "scene" }] });
+
+describe("Godot scene merge", () => {
+  it("resolves a clean scene merge in one click", async () => {
+    api.conflicts.mockResolvedValue(sceneSet());
+    api.mergeScene.mockResolvedValue({ merged: "[gd_scene]\n", clean: true, conflicts: [] });
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Merge scene" }));
+    expect(api.mergeScene).toHaveBeenCalledWith("/work/game", "levels/arena.tscn");
+    await waitFor(() => expect(api.resolveConflict).toHaveBeenCalledWith("/work/game", "levels/arena.tscn", "content", "[gd_scene]\n"));
+  });
+
+  it("lists what the scene merge could not decide and keeps the line editor", async () => {
+    api.conflicts.mockResolvedValue(sceneSet());
+    api.mergeScene.mockResolvedValue({
+      merged: "",
+      clean: false,
+      conflicts: [
+        { section: 'node name="Player"', key: "position", message: "changed on both sides" },
+        { section: "", key: "", message: "header differs" },
+      ],
+    });
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Merge scene" }));
+    const list = await screen.findByRole("list", { name: "Scene conflicts" });
+    expect(within(list).getAllByRole("listitem")[0]).toHaveTextContent('node name="Player" › position: changed on both sides');
+    expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("file header: header differs");
+    expect(screen.getByText(/Both sides changed 2 things/)).toBeInTheDocument();
+    expect(api.resolveConflict).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Conflict 1" })).toBeInTheDocument();
+  });
+
+  it("shows why a scene cannot be merged", async () => {
+    api.conflicts.mockResolvedValue(sceneSet());
+    api.mergeScene.mockRejectedValue(new Error("levels/arena.tscn cannot be merged: bad header"));
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Merge scene" }));
+    expect(await screen.findByText("levels/arena.tscn cannot be merged: bad header")).toBeInTheDocument();
+  });
+
+  it("is not offered for other text files", async () => {
+    view();
+    await screen.findByRole("region", { name: "Conflict 1" });
+    expect(screen.queryByRole("button", { name: "Merge scene" })).not.toBeInTheDocument();
+  });
+});
 
 describe("ConflictsView", () => {
   it("lists the conflicts with their state and opens the first open one", async () => {

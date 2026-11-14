@@ -281,6 +281,26 @@ Sonar never compile it.
   nothing fires during IME composition or while a modal is open; a test
   fails when two shortcuts share a chord. `?` opens the "Keyboard shortcuts"
   sheet built from the same map.
+- Blame: a "Blame" toggle on text viewers (the Changes and History diffs,
+  merge request files, the Files detail viewer; remembered in
+  `localStorage` `nipa.blame`) adds a gutter to the new side naming the
+  author and age of the commit that last changed each line, once per run
+  of lines from the same commit, with the commit title and date as a
+  tooltip. Clicking it opens that commit in History. The working file
+  (`newRevision` empty) is blamed against the pinned commit, so lines that
+  are not pushed yet read "Not pushed"; a commit diff blames its
+  `newRevision`. `Blame` reads the daemon `Blame` stream (`useTextTools`,
+  query `["blame", root, path, revision, ...]`, refreshed with the other
+  repository queries after an operation); lines older than the history the
+  daemon could read show "Older". Text files only, up to 2 MiB.
+- Open at line: external tools in Settings may be command templates with
+  `{file}` and `{line}` (`code --goto {file}:{line}`; words are split on
+  spaces outside quotes, so quote program paths with spaces; a command
+  without `{file}` is still a program started with the file). Rows of a
+  working-copy text diff have "Open in editor at line N" on hover, using
+  the row's new-side line (`OpenFileAt`; `{line}` is 1 for plain opens).
+  Without a tool for the extension the system default opens the file
+  without the line.
 - Delete safety: staging a missing file (a deletion) first looks up its
   referrers; when another file uses it, a "Stage deletion?" confirmation
   names how many and the first three. The lookup is raced against 400 ms:
@@ -361,8 +381,11 @@ Sonar never compile it.
   conflicts is pushed right away.
 - Godot scenes: the daemon's `MergeGodotResource` (see `docs/DAEMON.md`)
   merges a conflicted `.tscn`/`.tres` section by section without markers.
-  The Godot add-on uses it; the desktop Conflicts tab can adopt it as a
-  "Merge scene" action before falling back to the text editor.
+  The Conflicts tab offers it as "Merge scene" above the text editor of a
+  conflicted text `.tscn`/`.tres` (`MergeScene`, `lib/conflicts.ts`
+  `mergesScene`): a clean merge resolves the file with the merged content
+  in one click; otherwise the sections and keys it could not decide are
+  listed and the line-by-line editor below stays the way to resolve it.
 - Conflicts tab (shown while a merge or revert waits with conflicts, with
   the open count): the conflicted files with their kind (both changed, both
   added, deleted on one side) and resolved state; the merge banner reads
@@ -675,3 +698,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 21. Where used and provenance: references and origin panels in the Files detail and the Changes screen, "Add record…", referrer warnings on deletion (daemon `AssetRefs`, `Provenance`, `SetProvenance`). **(done)**
 22. Table filters (text, column, changed columns, jump to change, sticky key column, per-column counts) and `.xlsx` diff with sheet tabs. **(done)**
 23. Search, command palette and keyboard shortcuts (daemon `SearchFiles`, `lib/shortcuts.ts`, "Keyboard shortcuts" sheet). **(done)**
+24. Blame gutter (daemon `Blame`, `nipa blame`), open at line through `{file}`/`{line}` tool templates, "Merge scene" for Godot conflicts. **(done)**

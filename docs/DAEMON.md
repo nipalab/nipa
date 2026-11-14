@@ -169,6 +169,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `AssetRefs` | unary | what an engine asset uses and which files use it, from a reference graph cached per root; see below |
 | `Provenance` | unary | origin record, status and `required` flag per path; see below |
 | `SetProvenance` | unary | records a file's origin by hand like `nipa provenance set` and stages `.nipaprovenance.yml`; see below |
+| `Blame` | **server-streaming** | which commit last changed each line of a text file (`nipa blame`); progress, then the result; see below |
 | `Login` | unary | (host, user, password, otp?, mfa_challenge?) → `securestorage`, or `mfa_required` + challenge; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -479,6 +480,27 @@ the path is not tracked any more). It refuses a pending merge or revert, a
 path outside the sparse checkout, a folder, a commit that does not exist
 (`revision "<id>" not found`) and a path the commit does not have (`<path>
 does not exist in <id>`, 404).
+
+`Blame(root, path, revision)` (shared slot, serialized per root) streams
+`BlameEvent`s: `progress {done, total}` per file version read, then one
+`result` or `failure`. `usecase.Blame` blames the working file when
+`revision` is empty (against the pinned commit, so lines the commit lacks
+are `uncommitted`), otherwise the file as of a branch, tag, commit id or
+`HEAD`. It lists the commits that changed the path through `GetCommitLog`
+with `path` (the server scans at most 500 commits, first-parent), reads each
+version newest first through a dir-scoped `GetTreeManifest` of that commit
+(the root's own files, or the parent folder's subtree) and the
+commit-scoped chunk download, and attributes lines with `diff.Lines`: a
+line a version adds compared with the next older one belongs to that
+version's commit. After the oldest listed commit it reads that commit's
+first parent; when the file still exists there, the remaining lines are
+older than the scan and stay without a commit (`truncated`). The walk stops
+as soon as every line is attributed. Text files up to 2 MiB only: a binary
+or larger blamed version is a 400, an older one ends the history like the
+scan cap. The result is `{path, revision, lines[] {text, commit_id,
+uncommitted}, commits[] {id, hash, author_name, author_email, message,
+created_at}, truncated}` with the commits lines point at, newest first.
+Chunks it downloads are pruned once the root is idle.
 
 `AssetRefs(root, path)` answers `{path, asset, uses[], used_by[],
 unknown[], scanned, truncated, partial}` under the shared slot. `uses` are

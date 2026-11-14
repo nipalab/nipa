@@ -1,6 +1,8 @@
 import type {
   Activity,
   AudioSide,
+  Blame,
+  SceneMerge,
   Branch,
   Changes,
   Commit,
@@ -571,4 +573,20 @@ export const conflictTexts: ConflictTexts = {
     ),
     missing: false,
   },
+};
+
+export const sceneMerge: SceneMerge = { merged: "[gd_scene load_steps=3 format=3]\n", clean: true, conflicts: [] };
+
+// blame attributes a demo file's lines in runs of earlier commits; lines the
+// working copy added are not pushed yet.
+export const blame = (path: string, revision: string): Blame => {
+  const rows = diffs[path]?.hunks?.flatMap((h) => h.lines ?? []) ?? [];
+  const total = Math.max(0, ...rows.map((l) => l.new));
+  const added = new Set(rows.filter((l) => l.kind === "added").map((l) => l.new));
+  const owners = ["c2", "c3", "c7", "c3"];
+  const lines = Array.from({ length: total }, (_, i) =>
+    added.has(i + 1) ? { commitId: revision ? "c11" : "", uncommitted: !revision } : { commitId: owners[Math.floor(i / 5) % owners.length], uncommitted: false },
+  );
+  const used = new Set(lines.map((l) => l.commitId));
+  return { path, revision, lines, commits: commits.filter((c) => used.has(c.id)), truncated: false };
 };
