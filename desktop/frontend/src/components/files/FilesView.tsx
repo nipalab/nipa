@@ -28,6 +28,8 @@ type FilesViewProps = {
 
 type Menu = { row: Row; x: number; y: number } | null;
 
+export const MAX_EXPANDED = 200;
+
 const isString = (v: unknown): v is string => typeof v === "string";
 const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString);
 const isSort = (v: unknown): v is Sort => !!v && typeof v === "object" && isString((v as Sort).key) && typeof (v as Sort).desc === "boolean";
@@ -41,7 +43,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
   const [selected, setSelected] = usePersistedState(repoSetting(root, "files.selected"), "", { valid: isString });
   const [expandedList, setExpandedList] = usePersistedState<string[]>(repoSetting(root, "files.expanded"), [], { valid: isStringList });
   const expanded = useMemo(() => new Set(expandedList), [expandedList]);
-  const setExpanded = (update: (prev: Set<string>) => Set<string>) => setExpandedList((prev) => [...update(new Set(prev))]);
+  const setExpanded = (update: (prev: Set<string>) => Set<string>) => setExpandedList((prev) => [...update(new Set(prev))].slice(-MAX_EXPANDED));
   const [mode, setModeState] = useState<ViewMode>(readViewMode);
   const [sort, setSort] = usePersistedState<Sort>(repoSetting(root, "files.sort"), { key: "name", desc: false }, { valid: isSort });
   const [menu, setMenu] = useState<Menu>(null);

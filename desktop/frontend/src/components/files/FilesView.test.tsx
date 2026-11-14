@@ -24,7 +24,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-import { FilesView } from "./FilesView";
+import { FilesView, MAX_EXPANDED } from "./FilesView";
 
 const repo: Repo = { root: "/work/game", name: "game", url: "https://nipa.test/studio/game", branch: "main", sparse: null };
 
@@ -344,6 +344,19 @@ describe("FilesView", () => {
     expect(within(list()).getAllByRole("row").find((r) => r.getAttribute("aria-selected") === "true")).toHaveTextContent("notes.txt");
     expect(screen.getByRole("region", { name: "File details" })).toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "Folders" })).getByRole("button", { name: "Collapse Assets" })).toBeInTheDocument();
+  });
+
+  it("keeps only the most recently expanded folders", async () => {
+    const old = Array.from({ length: MAX_EXPANDED }, (_, i) => `old/${i}`);
+    localStorage.setItem("nipa.repo:/work/game:files.expanded", JSON.stringify(old));
+    view();
+    const tree = await screen.findByRole("navigation", { name: "Folders" });
+    await userEvent.click(await within(tree).findByText("Assets"));
+    await waitFor(() => expect(rowNames()).toContain("hero.png"));
+    const kept: string[] = JSON.parse(localStorage.getItem("nipa.repo:/work/game:files.expanded") ?? "[]");
+    expect(kept).toHaveLength(MAX_EXPANDED);
+    expect(kept).toContain("Assets");
+    expect(kept).not.toContain("old/0");
   });
 
   it("resizes and remembers the list columns", async () => {
