@@ -16,7 +16,7 @@ Each phase is a self-contained brief for a separate agent and one PR. Every agen
 | 10 | Table filters and `.xlsx` diff | M | preview, desktop | — | Done |
 | 11 | Blame, open at line, Godot scene merge | M | client, daemon, desktop | — | Done |
 | 12 | Video, font and embedded-thumbnail viewers | L | preview, daemon, desktop | — | Done |
-| 13 | Simple mode and first-run tour | M | desktop | 4 | To do |
+| 13 | Simple mode and first-run tour | M | desktop | 4 | Done |
 | 14 | Localization | L | desktop | after 1–13 | To do (after 13) |
 | 15 | Review comments on image regions and audio ranges (deferred) | XL | server, web, daemon, desktop | owner decision | Deferred |
 

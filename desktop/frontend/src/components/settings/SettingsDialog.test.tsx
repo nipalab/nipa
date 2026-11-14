@@ -2,6 +2,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsDialog, pollChoices } from "./SettingsDialog";
+import { readTour } from "@/lib/mode";
 import { renderWithProviders } from "@/test/render";
 import type { Settings, UpdateState } from "@/api/desktop";
 
@@ -47,6 +48,18 @@ beforeEach(() => {
 const noLLM = { endpoint: "", model: "", keySaved: false, configured: false };
 
 const render = () => renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
+
+describe("SettingsDialog interface", () => {
+  it("replays the tour only when a project is open", async () => {
+    const { unmount } = renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} canReplayTour={false} />);
+    expect(await screen.findByRole("button", { name: "Replay the quick tour" })).toBeDisabled();
+    unmount();
+    renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Replay the quick tour" }));
+    expect(readTour()).toBe(0);
+    expect(onClose).toHaveBeenCalled();
+  });
+});
 
 describe("SettingsDialog", () => {
   it("saves the preferences", async () => {

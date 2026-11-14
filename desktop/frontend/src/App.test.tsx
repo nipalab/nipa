@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { renderWithProviders } from "./test/render";
 import type { Repo } from "./api/desktop";
+import { readTour, setMode, storedMode } from "./lib/mode";
+import { resetSettingsForTest } from "./lib/settings";
 
 const api = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -45,6 +47,9 @@ const tools: Repo = { root: "/work/tools", name: "tools", url: "https://nipa.tes
 
 beforeEach(() => {
   vi.resetAllMocks();
+  resetSettingsForTest();
+  localStorage.clear();
+  setMode("full");
   api.connect.mockResolvedValue(daemon);
   api.repos.mockResolvedValue([game, tools]);
   api.changes.mockImplementation(async (root: string) => ({ branch: root === tools.root ? tools.branch : game.branch, staged: [], unstaged: [], conflicts: [] }));
@@ -161,12 +166,26 @@ describe("App", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Location" }), "/work");
     await userEvent.click(screen.getByRole("button", { name: "Clone" }));
     expect(await screen.findByRole("heading", { name: "game" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Quick tour" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Skip tour" }));
+    expect(readTour()).toBe("done");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("Cloned game")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Clone a repository" }));
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("asks how the app is used on first run and switches to simple mode", async () => {
+    localStorage.clear();
+    resetSettingsForTest();
+    renderWithProviders(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /art, audio or design/ }));
+    expect(storedMode()).toBe("simple");
+    expect(await screen.findByRole("tab", { name: /Locks/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Branches/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Get latest/ })).toBeInTheDocument();
   });
 
   it("does not duplicate a clone that is opened twice", async () => {

@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { AISection, aiFormValid, type AIForm } from "@/components/settings/AISection";
 import { llmSettingsKey, useLLMSettings } from "@/hooks/useGenerate";
+import { setMode, startTour, useMode } from "@/lib/mode";
 import { errorMessage } from "@/lib/utils";
 
 export const pollOptions: { seconds: number; label: string }[] = [
@@ -18,11 +19,12 @@ export const pollOptions: { seconds: number; label: string }[] = [
 ];
 
 type SettingsDialogProps = {
+  canReplayTour?: boolean;
   onClose: () => void;
   notify: (message: string, tone?: "error" | "success") => void;
 };
 
-export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
+export function SettingsDialog({ onClose, notify, canReplayTour = true }: SettingsDialogProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -53,7 +55,7 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
             Could not load settings: {errorMessage(settings.error ?? workers.error ?? llm.error)}
           </p>
         ) : settings.data && workers.data !== undefined && llm.data ? (
-          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} />
+          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} canReplayTour={canReplayTour} />
         ) : (
           <p role="status" className="p-5 text-xs text-muted-foreground">
             Loading settings…
@@ -70,9 +72,10 @@ type FormProps = {
   initialLLM: LLMSettings;
   onClose: () => void;
   notify: SettingsDialogProps["notify"];
+  canReplayTour: boolean;
 };
 
-function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: FormProps) {
+function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, canReplayTour }: FormProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Settings>(initial);
   const [workers, setWorkers] = useState(initialWorkers > 0 ? String(initialWorkers) : "");
@@ -198,6 +201,10 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: 
           )}
         </Section>
 
+        <Section title="Interface">
+          <InterfaceSection onTour={onClose} canReplay={canReplayTour} />
+        </Section>
+
         <Section title="AI assistance">
           <AISection value={ai} onChange={(patch) => setAI((f) => ({ ...f, ...patch }))} keySaved={initialLLM.keySaved} configured={initialLLM.configured} notify={notify} />
         </Section>
@@ -287,5 +294,33 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
       {label}
     </label>
+  );
+}
+
+function InterfaceSection({ onTour, canReplay }: { onTour: () => void; canReplay: boolean }) {
+  const mode = useMode();
+  const simple = mode === "simple";
+  return (
+    <>
+      <label className="flex items-start gap-2">
+        <input type="checkbox" className="mt-0.5" checked={simple} onChange={(e) => setMode(e.target.checked ? "simple" : "full")} />
+        <span>
+          Simple mode
+          <span className="block text-muted-foreground">Fewer tabs and plain words, for art, audio and design work. Branches, tags, merge requests and revert are hidden.</span>
+        </span>
+      </label>
+      <Button
+        type="button"
+        size="sm"
+        disabled={!canReplay}
+        title={canReplay ? undefined : "Open or clone a project first"}
+        onClick={() => {
+          startTour();
+          onTour();
+        }}
+      >
+        Replay the quick tour
+      </Button>
+    </>
   );
 }

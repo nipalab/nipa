@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowUpFromLine, ChevronDown, ChevronRight, Loader2, Loc
 import type { Draft, PushChecks } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { useDraft } from "@/hooks/useGenerate";
+import { labels, useSimple } from "@/lib/mode";
 import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
 import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
@@ -32,6 +33,8 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
     if (focus) box.current?.focus();
   }, [focus]);
   const trimmed = message.trim();
+  const simple = useSimple();
+  const verb = labels(simple).push;
   const report = stagedCount > 0 && hasPushReport(checks) ? checks : undefined;
   const anyway = hasPushIssues(report);
   const canPush = stagedCount > 0 && trimmed !== "" && !op && !busy && !blockedReason && !lockIssue;
@@ -53,8 +56,8 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
             submit();
           }
         }}
-        placeholder={`Describe your change (${shortcutHint("push")} to push)`}
-        aria-label="Push message"
+        placeholder={`Describe your change (${shortcutHint("push")} to ${verb.toLowerCase()})`}
+        aria-label={`${verb} message`}
         rows={3}
         disabled={!!op}
         className="no-drag w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
@@ -78,7 +81,7 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
       {!op && (
         <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason ?? lockIssue?.message}>
           <ArrowUpFromLine />
-          {anyway ? "Push anyway" : stagedCount > 0 ? `Push ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : "Push"}
+          {anyway ? `${verb} anyway` : stagedCount > 0 ? `${verb} ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : verb}
         </Button>
       )}
       {!op && blockedReason && <p className="text-[11px] text-muted-foreground">{blockedReason}</p>}
@@ -96,7 +99,7 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
           )}
         </div>
       )}
-      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to push.</p>}
+      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to {verb.toLowerCase()}.</p>}
     </div>
   );
 }

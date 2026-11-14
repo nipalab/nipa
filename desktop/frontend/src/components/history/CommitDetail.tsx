@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useSimple } from "@/lib/mode";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, GitBranchPlus, Loader2, Tag as TagIcon, Undo2 } from "lucide-react";
 import { desktop, type Commit, type FileDiff, type Tag } from "@/api/desktop";
@@ -43,6 +44,7 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
   const wanted = picked?.commit === commit.id ? picked.path : focusPath;
   const selected: FileDiff | undefined = list.find((f) => f.path === wanted || f.oldPath === wanted) ?? list[0];
   const body = commitBody(commit.message);
+  const simple = useSimple();
   const merge = commit.parents.length > 1;
   const blocked = revertBlocked ?? (merge ? "Reverting a merge commit is only available from the command line (nipa revert --mainline)" : undefined);
 
@@ -51,18 +53,22 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
       <header className="shrink-0 space-y-2 border-b border-border px-4 py-3">
         <div className="flex items-start gap-2">
           <h2 className="min-w-0 flex-1 select-text break-words text-sm font-semibold">{commitTitle(commit.message)}</h2>
-          <Button size="sm" onClick={() => onBranch(commit)} disabled={busy} title="Create a branch starting at this commit">
-            <GitBranchPlus />
-            Branch…
-          </Button>
-          <Button size="sm" onClick={() => onTag(commit)} disabled={busy} title="Tag this commit as a release or milestone">
-            <TagIcon />
-            Tag…
-          </Button>
-          <Button size="sm" onClick={() => onRevert(commit)} disabled={busy || !!blocked} title={blocked ?? "Undo this commit with a new commit"}>
-            <Undo2 />
-            Revert…
-          </Button>
+          {!simple && (
+            <>
+              <Button size="sm" onClick={() => onBranch(commit)} disabled={busy} title="Create a branch starting at this commit">
+                <GitBranchPlus />
+                Branch…
+              </Button>
+              <Button size="sm" onClick={() => onTag(commit)} disabled={busy} title="Tag this commit as a release or milestone">
+                <TagIcon />
+                Tag…
+              </Button>
+              <Button size="sm" onClick={() => onRevert(commit)} disabled={busy || !!blocked} title={blocked ?? "Undo this commit with a new commit"}>
+                <Undo2 />
+                Revert…
+              </Button>
+            </>
+          )}
         </div>
         {body && <p className="max-h-24 select-text overflow-auto whitespace-pre-wrap text-[12px] text-muted-foreground">{body}</p>}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { InsightPanel } from "@/components/files/AssetInsight";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
+import { useSimple } from "@/lib/mode";
 import { usePushChecks } from "@/hooks/usePushChecks";
 import { useLLMSettings } from "@/hooks/useGenerate";
 import type { OpState } from "@/hooks/useRepoOperation";
@@ -59,6 +60,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
 }
 
 export function ChangesView({ root, op, message, onMessage, onPush, onShelve, onApplyShelf, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
+  const simple = useSimple();
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
   const [picked, setPicked] = usePersistedState<Selection | null>(repoSetting(root, "changes.selected"), null, { valid: isSelection });
@@ -204,7 +206,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <CheckCircle2 className="size-6 text-success" />
             <p className="text-sm font-medium">No local changes</p>
-            <p className="text-xs text-muted-foreground">Edits you make in this clone show up here as you save them.</p>
+            <p className="max-w-xs text-xs text-muted-foreground">Edit a file in this folder with your usual program and save it. It shows up here, ready to review and {simple ? "submit" : "push"}.</p>
           </div>
         ) : (
           <FileList

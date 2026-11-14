@@ -9,11 +9,14 @@ import { RepoView, type Intent, type Notify } from "@/components/RepoView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { DaemonError, Splash } from "@/components/StatusScreens";
+import { ModePrompt } from "@/components/tour/ModePrompt";
+import { Tour } from "@/components/tour/Tour";
 import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/button";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { Welcome } from "@/components/Welcome";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { startTourOnce, useStoredMode } from "@/lib/mode";
 import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
@@ -30,6 +33,7 @@ const refreshOn: Record<string, string[]> = {
 
 export default function App() {
   const queryClient = useQueryClient();
+  const storedMode = useStoredMode();
   const [selected, setSelectedState] = useState<string | null>(() => readSetting(SELECTED_KEY));
   const [cloning, setCloning] = useState(false);
   const [cloneHint, setCloneHint] = useState<CloneHint | undefined>();
@@ -204,11 +208,12 @@ export default function App() {
             setCloning(false);
             setCloneHint(undefined);
             remember(repo);
+            startTourOnce();
             notify(`Cloned ${repo.name}`, "success");
           }}
         />
       )}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} notify={notify} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} notify={notify} canReplayTour={!!current && !current.error} />}
       {palette && (
         <CommandPalette
           repos={list}
@@ -221,6 +226,8 @@ export default function App() {
         />
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={() => setShortcutsOpen(false)} />}
+      {storedMode === null && <ModePrompt />}
+      {storedMode !== null && current && !current.error && <Tour />}
       {toast && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
     </div>
   );

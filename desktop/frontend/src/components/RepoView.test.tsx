@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { ChangeSet, FileDiff, OpProgress, Repo, RepoChanged } from "@/api/desktop";
+import { setMode } from "@/lib/mode";
 import { renderWithProviders } from "@/test/render";
 import type { Intent } from "@/components/tabs";
 
@@ -785,6 +786,49 @@ describe("history, branches and pending operations", () => {
     await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 7));
     rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 8, seq: 2 }} />);
     await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 8));
+  });
+
+  it("shows a tab that simple mode hides while an intent asks for it", async () => {
+    setMode("simple");
+    try {
+      api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+      api.mergeRequest.mockRejectedValue(new Error("nope"));
+      renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 7, seq: 1 }} />);
+      await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 7));
+      const mrs = screen.getByRole("tab", { name: /Merge requests/ });
+      expect(mrs).toHaveAttribute("aria-selected", "true");
+      await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
+      expect(screen.queryByRole("tab", { name: /Merge requests/ })).toBeNull();
+    } finally {
+      setMode("full");
+    }
+  });
+
+  it("drops a tab pinned by an intent when simple mode is switched off or the view moves on", async () => {
+    setMode("simple");
+    try {
+      api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+      api.mergeRequest.mockRejectedValue(new Error("nope"));
+      renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 7, seq: 1 }} />);
+      expect(await screen.findByRole("tab", { name: /Merge requests/ })).toBeInTheDocument();
+      act(() => setMode("full"));
+      await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
+      act(() => setMode("simple"));
+      expect(screen.queryByRole("tab", { name: /Merge requests/ })).toBeNull();
+    } finally {
+      setMode("full");
+    }
+  });
+
+  it("does not pin a tab in full mode", async () => {
+    api.branches.mockResolvedValue([]);
+    api.tags.mockResolvedValue([]);
+    renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "branches", seq: 1 }} />);
+    expect(await screen.findByRole("tab", { name: /Branches/ })).toHaveAttribute("aria-selected", "true");
+    act(() => setMode("simple"));
+    expect(screen.queryByRole("tab", { name: /Branches/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute("aria-selected", "true");
+    act(() => setMode("full"));
   });
 
   it("shows the project activity and opens what a row points at", async () => {

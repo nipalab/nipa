@@ -14,7 +14,7 @@ import { ActivityView } from "@/components/activity/ActivityView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
-import { hasOpenConflicts, tabs, visibleTabs, type Intent, type TabId } from "@/components/tabs";
+import { hasOpenConflicts, tabs, visibleTabs, simpleTabIds, type Intent, type TabId } from "@/components/tabs";
 import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { RepoNavContext, type RepoNav } from "@/hooks/useTextTools";
 import { shortId } from "@/lib/history";
+import { labels, useSimple } from "@/lib/mode";
 import { repoSetting } from "@/lib/settings";
 import { shortcutHint } from "@/lib/shortcuts";
 import { normalizeSelection } from "@/lib/sparse";
@@ -49,12 +50,20 @@ type RepoViewProps = {
 
 export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading, onSearch }: RepoViewProps) {
   const queryClient = useQueryClient();
+  const simple = useSimple();
   const [tab, setTab] = usePersistedState<TabId>(repoSetting(repo.root, "tab"), "changes", { valid: isTab });
+  const [pinned, setPinned] = useState<TabId>();
   const [updated, setUpdated] = useState(false);
   useEffect(() => setUpdated(false), [activity]);
   useEffect(() => {
-    if (intent && tabs.some((t) => t.id === intent.tab)) setTab(intent.tab as TabId);
+    if (intent && tabs.some((t) => t.id === intent.tab)) {
+      setTab(intent.tab as TabId);
+      setPinned(simple && !simpleTabIds.includes(intent.tab as TabId) ? (intent.tab as TabId) : undefined);
+    }
   }, [intent]);
+  useEffect(() => {
+    if (pinned && (!simple || tab !== pinned)) setPinned(undefined);
+  }, [pinned, simple, tab]);
   const intentMr = intent?.tab === "mrs" && intent.number ? intent.number : 0;
   const [openNumber, setOpenNumber] = useState<{ number: number; seq: number }>();
   useEffect(() => {
@@ -194,8 +203,10 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   };
   const hasConflicts = hasOpenConflicts(changes.data);
   const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
-  const shownTabs = visibleTabs(hasConflicts);
-  const current = tab === "conflicts" && !hasConflicts ? "changes" : tab;
+  const baseTabs = visibleTabs(hasConflicts, simple);
+  const extraTab = simple && pinned && !baseTabs.some((t) => t.id === pinned) ? tabs.find((t) => t.id === pinned) : undefined;
+  const shownTabs = extraTab ? [...baseTabs, extraTab] : baseTabs;
+  const current = shownTabs.some((t) => t.id === tab) ? tab : "changes";
   const incoming = updated || detached ? 0 : (activity?.incoming ?? 0);
   const incomingLabel = incoming >= 100 ? "100+" : String(incoming);
 
@@ -305,12 +316,13 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
             ) : (
               <Button
                 size="sm"
+                data-tour="update"
                 onClick={startUpdate}
                 disabled={!!op || !!detached || syncGuard.checking}
                 title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
               >
                 <ArrowDownToLine />
-                Update
+                {labels(simple).update}
                 {incoming > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-foreground">{incomingLabel}</span>}
               </Button>
             ))}
@@ -351,6 +363,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                   key={id}
                   type="button"
                   role="tab"
+                  data-tour={`tab-${id}`}
                   aria-selected={current === id}
                   onClick={() => setTab(id)}
                   title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}

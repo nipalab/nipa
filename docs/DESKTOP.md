@@ -770,6 +770,7 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 12. History, branches, tags, revert. **(done)**
 13. Merge requests with asset viewers. **(done)**
 14. Conflict resolution. **(done)**
+15. Simple mode and first-run tour: `lib/mode.ts` keeps `nipa.mode` (`simple|full`) and `nipa.tour` in the `ui` settings map; the first-run `ModePrompt` asks once; simple mode shows Files, Changes, History and Locks (plus Conflicts when open), reads "Get latest"/"Submit", and hides branch, tag, revert and merge request entry points; Settings > Interface switches back and replays the four-step `Tour`, started after the first clone. **(done)**
 15. Tray, notifications, deep links, settings. **(done)**
 16. Packaging and auto-update. **(done)**
 17. Pre-push checks (budgets, broken references) above the Push button. **(done)**

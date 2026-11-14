@@ -176,6 +176,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   updated branches × 30 commits, open and merged merge requests and the
   current locks, merged and ordered by `mergeFeed`, with range, person and
   kind filters and rows that open History, a merge request or Locks),
+  simple mode and the first-run tour (`lib/mode.ts`: `nipa.mode`/`nipa.tour`
+  in the `ui` map; `tour/ModePrompt.tsx` asks once, `visibleTabs(conflicts,
+  simple)` keeps Files/Changes/History/Locks, `labels()` renames Update/Push to
+  Get latest/Submit, `tour/Tour.tsx` coach marks start after the first clone and
+  replay from Settings > Interface),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
