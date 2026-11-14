@@ -52,10 +52,14 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const queryClient = useQueryClient();
   const simple = useSimple();
   const [tab, setTab] = usePersistedState<TabId>(repoSetting(repo.root, "tab"), "changes", { valid: isTab });
+  const [pinned, setPinned] = useState<TabId>();
   const [updated, setUpdated] = useState(false);
   useEffect(() => setUpdated(false), [activity]);
   useEffect(() => {
-    if (intent && tabs.some((t) => t.id === intent.tab)) setTab(intent.tab as TabId);
+    if (intent && tabs.some((t) => t.id === intent.tab)) {
+      setTab(intent.tab as TabId);
+      setPinned(intent.tab as TabId);
+    }
   }, [intent]);
   const intentMr = intent?.tab === "mrs" && intent.number ? intent.number : 0;
   const [openNumber, setOpenNumber] = useState<{ number: number; seq: number }>();
@@ -196,7 +200,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   };
   const hasConflicts = hasOpenConflicts(changes.data);
   const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
-  const shownTabs = visibleTabs(hasConflicts, simple);
+  const baseTabs = visibleTabs(hasConflicts, simple);
+  const extraTab = simple && pinned && !baseTabs.some((t) => t.id === pinned) ? tabs.find((t) => t.id === pinned) : undefined;
+  const shownTabs = extraTab ? [...baseTabs, extraTab] : baseTabs;
   const current = shownTabs.some((t) => t.id === tab) ? tab : "changes";
   const incoming = updated || detached ? 0 : (activity?.incoming ?? 0);
   const incomingLabel = incoming >= 100 ? "100+" : String(incoming);
@@ -356,7 +362,10 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                   role="tab"
                   data-tour={`tab-${id}`}
                   aria-selected={current === id}
-                  onClick={() => setTab(id)}
+                  onClick={() => {
+                    setTab(id);
+                    setPinned(undefined);
+                  }}
                   title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}
                   className={cn(
                     "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",
