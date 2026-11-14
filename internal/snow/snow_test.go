@@ -246,3 +246,19 @@ func TestFloorAt(t *testing.T) {
 	assert.LessOrEqual(t, FloorAt(before), id)
 	assert.Less(t, id, FloorAt(after))
 }
+
+func TestNewServerNode_RefusesReservedCLINode(t *testing.T) {
+	_, err := NewServerNode(ReservedCLINode)
+	if err == nil {
+		t.Fatal("expected the reserved node to be refused")
+	}
+	if _, err := NewServerNode(254); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := NewServerNode(-1); err != ErrInvalidNode {
+		t.Fatalf("expected ErrInvalidNode, got %v", err)
+	}
+	if _, err := NewNode(ReservedCLINode); err != nil {
+		t.Fatalf("the command line itself uses the reserved node: %v", err)
+	}
+}

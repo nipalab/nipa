@@ -152,6 +152,9 @@ with the standard Go/process/build-info collectors and:
 | `nipa_mail_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |
 | `nipa_db_pool_open_connections` / `_idle` / `_in_use` | gauge | `db` | `Metrics.RegisterDB` (custom collector reading `sql.DBStats`) |
 | `nipa_db_pool_wait_count_total` / `_wait_seconds_total` | counter (func) | `db` | same |
+| `nipa_maintenance_server_mode` | gauge | `mode=off\|read_only\|full\|frozen` | 1 for the effective server maintenance mode, 0 for the others; set on every published snapshot (`serverapp.NewMaintenance`) |
+| `nipa_maintenance_windows` | gauge | `scope=org\|project`, `mode=read_only\|full` | active org and project maintenance windows; same hook |
+| `nipa_maintenance_poll_errors_total` | counter | — | failed maintenance reloads (`maintenance.Poller.WithErrorHook`) |
 
 Cardinality rules: `route` is the go-restful route template
 (`/orgs/{org}/projects/{project}/...`), never the raw URL; `code` is the HTTP

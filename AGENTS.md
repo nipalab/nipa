@@ -1536,8 +1536,9 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 `auditedWrite`. The JWT interceptors also attach `RequestMeta` for the public
 login RPCs.
 
-Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; only the
-core and storage exist so far, nothing reads or enforces them yet): windows
+Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; core,
+storage, admin API and the server subcommand exist, nothing enforces the
+windows yet): windows
 have three scopes (server, org, project). The pure `internal/maintenance` (no
 repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
 `Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
@@ -1564,6 +1565,47 @@ live orgs), `RecipientsOrg` (owners plus root admin rules on any live project
 of the org, org-wide and group rules included) and `RecipientsProject`.
 `sqlite|postgres.NewMaintenanceRepository` (`dbtx`-aware) is wired as
 `usecase.Repositories.Maintenance` in both mains and both e2e harnesses.
+`usecase.Maintenance` (`maintenance.go`, gomock-tested): `Status` (public
+server window + `source`), `AdminStatus` (super admin: server, org and project
+windows), `OrgStatus` (org members via `Org.IsOrgMember`; owners also get the
+org's project windows), `ProjectStatus` (project read), `SetServer`/`SetOrg`/
+`SetProject` and `EndServer`/`EndOrg`/`EndProject` (server: super admin; org
+and project: `IsOrgOwner` or super admin; no project admins). Validation runs
+before the write: mode, `frozen` only for the server, message <= 500 runes,
+`ends_at > starts_at`, `starts_at` <= now + 90 days, a missing `starts_at`
+keeps an existing window's start, else now; a server write while the snapshot
+`source` is `file` is a 409 `maintenance is controlled by MAINTENANCE_FILE`;
+ending a missing window is a 404. Writes run in `auditedWrite`
+(`maintenance.scheduled|updated|ended`, target `maintenance_window`, metadata
+`scope`, `org_id`, `project_id`, `mode`, `starts_at`, `ends_at`, `notify`)
+together with the optional `MaintenanceMailer.Announce(notice, window,
+recipients)` seam (`WithMailer`, nil = `notified: false`, no implementation
+yet); after the commit `apply` rebuilds the snapshot from `List` (keeping a
+current file override) through `Service.Apply`. `WithSystemActor()` is the
+CLI variant: no permission checks, `created_by` 0, actor `system`, `via: cli`.
+REST (`internal/http/api/maintenance.go`, handlers/DTOs in
+`handler|model/maintenance.go`): `GET /api/maintenance` on its own WebService
+(no bearer, exempt from the rate limit like `/version`),
+`GET|PUT|DELETE /api/v1/admin/maintenance`, `.../orgs/{org}/maintenance` and
+`.../orgs/{org}/projects/{project}/maintenance` (PUT body `{mode, message,
+starts_at?, ends_at?, notify}`, answer the stored window with `notified`;
+DELETE 204). Config `MAINTENANCE_FILE` / `MAINTENANCE_POLL_SECONDS` (default
+5, min 1; `Config.MaintenanceFilePath`/`MaintenancePollInterval`).
+`serverapp.NewMaintenance(cfg, repo, metrics)` builds the `Service` (its
+`OnPublish` hook sets `nipa_maintenance_server_mode{mode}` and
+`nipa_maintenance_windows{scope,mode}`) and the `Poller` (`WithErrorHook` →
+`nipa_maintenance_poll_errors_total`); both mains pass the service as
+`UsecaseDeps.Maintenance` and `serverapp.WithMaintenance(svc, poller)`, which
+polls once before serving and registers the poller as a dispatcher (the e2e
+harnesses poll once). `serverapp.RunMaintenanceCommand` (`maintenance_cmd.go`)
+runs right after `version.Flag` in both mains: `maintenance status`, `set
+<read_only|full|frozen> [--org <slug> | --project <org/project>] [-m]
+[--start] [--end] [--notify]`, `end [--org|--project]`; it loads the config,
+opens the database through the main's `MaintenanceOpener` (sqlite or the ee
+postgres opener, never migrating; a missing table is `schema too old, start
+the server once`), reads the override file and uses `snow.ReservedCLINode`
+(255): `ee/nodelease` leases 0..254 only and `snow.NewServerNode` (both mains'
+static `SNOWFLAKE_NODE_ID`) refuses 255.
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

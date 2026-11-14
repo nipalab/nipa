@@ -20,6 +20,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
 	"github.com/nipalab/nipa/internal/mail"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
@@ -53,6 +54,7 @@ type testRegistry struct {
 	serviceToken  *usecase.ServiceToken
 	emailDelivery *usecase.EmailDelivery
 	audit         *usecase.Audit
+	maintenance   *usecase.Maintenance
 }
 
 func (r *testRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceToken }
@@ -87,6 +89,7 @@ func (r *testRegistry) Webhook() *usecase.Webhook { return r.webhook }
 func (r *testRegistry) OrgInvitation() *usecase.OrgInvitation { return r.orgInvitation }
 func (r *testRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 func (r *testRegistry) Audit() *usecase.Audit                 { return r.audit }
+func (r *testRegistry) Maintenance() *usecase.Maintenance     { return r.maintenance }
 
 type stubPasswordHasher struct{}
 
@@ -174,6 +177,9 @@ func TestAPIRoutes(t *testing.T) {
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	mfaUc := usecase.NewMFA(sqlite.NewMFARepository(dbConn), userRepo, stubPasswordHasher{}, nil, dbtx.NewTransactor(dbConn))
+	maintSvc := maintenance.NewService()
+	maintUc := usecase.NewMaintenance(sqlite.NewMaintenanceRepository(dbConn),
+		usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), orgUc, permissionUc, maintSvc, node).WithAudit(auditUc)
 	reg := &testRegistry{
 		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)).WithAudit(auditUc).WithMFA(mfaUc),
 		mfa:           mfaUc,
@@ -197,6 +203,7 @@ func TestAPIRoutes(t *testing.T) {
 			usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), node).WithAudit(auditUc),
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 		audit:         auditUc,
+		maintenance:   maintUc,
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -2223,6 +2230,134 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, status(http.MethodDelete, base+"/service-tokens/"+created.ID, "", aliceLogin.AccessToken))
 		require.Equal(t, http.StatusBadRequest, status(http.MethodDelete, base+"/service-tokens/!!", "", aliceLogin.AccessToken))
 		require.Equal(t, http.StatusNotFound, status(http.MethodGet, server.URL+"/api/v1/orgs/default/projects/missing/service-tokens", "", aliceLogin.AccessToken))
+	})
+
+	t.Run("maintenance windows", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+		superTok := superLogin.AccessToken
+		newUser := func(t *testing.T, name string) (model.UserResponse, string) {
+			t.Helper()
+			created := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+				`{"name":"`+name+`","email":"`+name+`@example.com","password":"password123"}`, superTok)
+			require.Equal(t, http.StatusOK, created.StatusCode)
+			user := decodeBody[model.UserResponse](t, created)
+			tok, _ := loginAs(t, name+"@example.com")
+			return user, tok.AccessToken
+		}
+		expect := func(t *testing.T, method, url, body, tok string, code int) {
+			t.Helper()
+			resp := doMethod(t, method, url, body, tok)
+			_ = resp.Body.Close()
+			require.Equal(t, code, resp.StatusCode, method+" "+url)
+		}
+		_, ownerTok := newUser(t, "mt-owner")
+		_, memberTok := newUser(t, "mt-member")
+		padmin, padminTok := newUser(t, "mt-padmin")
+		_, strangerTok := newUser(t, "mt-stranger")
+
+		v1 := server.URL + "/api/v1"
+		orgURL := v1 + "/orgs/maint-co"
+		projectURL := orgURL + "/projects/game"
+		expect(t, http.MethodPost, v1+"/orgs", `{"name":"Maint Co","slug":"maint-co"}`, ownerTok, http.StatusOK)
+		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"Game","slug":"game"}`, ownerTok, http.StatusOK)
+		expect(t, http.MethodPost, orgURL+"/members", `{"email":"mt-member@example.com","role":"member"}`, superTok, http.StatusOK)
+		expect(t, http.MethodPost, orgURL+"/members", `{"email":"mt-padmin@example.com","role":"member"}`, superTok, http.StatusOK)
+		expect(t, http.MethodPost, projectURL+"/permissions/rules",
+			`{"user_id":"`+padmin.ID+`","path_prefix":"","permission":`+strconv.FormatUint(uint64(domain.PermissionAll), 10)+`}`, ownerTok, http.StatusOK)
+
+		public := decodeBody[model.MaintenanceStatusResponse](t, doGet(t, server.URL+"/api/maintenance", ""))
+		require.Nil(t, public.Server)
+		require.Equal(t, "db", public.Source)
+
+		admin := v1 + "/admin/maintenance"
+		expect(t, http.MethodGet, admin, "", "", http.StatusUnauthorized)
+		expect(t, http.MethodGet, admin, "", ownerTok, http.StatusForbidden)
+		expect(t, http.MethodPut, admin, `{"mode":"full"}`, ownerTok, http.StatusForbidden)
+		expect(t, http.MethodPut, admin, `{"mode":"closed"}`, superTok, http.StatusBadRequest)
+		expect(t, http.MethodPut, admin, `{"mode":`, superTok, http.StatusBadRequest)
+
+		set := doMethod(t, http.MethodPut, admin, `{"mode":"read_only","message":"disk swap","ends_at":"2999-01-01T00:00:00Z","notify":true}`, superTok)
+		require.Equal(t, http.StatusOK, set.StatusCode)
+		stored := decodeBody[model.MaintenanceWindowResponse](t, set)
+		require.Equal(t, "read_only", stored.Mode)
+		require.True(t, stored.Active)
+		require.Equal(t, "disk swap", stored.Message)
+		require.NotNil(t, stored.EndsAt)
+		require.NotNil(t, stored.Notified)
+		require.False(t, *stored.Notified)
+
+		public = decodeBody[model.MaintenanceStatusResponse](t, doGet(t, server.URL+"/api/maintenance", ""))
+		require.Equal(t, "read_only", public.Server.Mode)
+		require.True(t, public.Server.Active)
+
+		org := decodeBody[model.OrgMaintenanceResponse](t, doGet(t, orgURL+"/maintenance", memberTok))
+		require.Equal(t, "read_only", org.Server.Mode)
+		require.Nil(t, org.Org)
+		expect(t, http.MethodGet, orgURL+"/maintenance", "", strangerTok, http.StatusForbidden)
+		expect(t, http.MethodGet, v1+"/orgs/missing/maintenance", "", superTok, http.StatusNotFound)
+
+		expect(t, http.MethodPut, orgURL+"/maintenance", `{"mode":"full"}`, memberTok, http.StatusForbidden)
+		expect(t, http.MethodPut, orgURL+"/maintenance", `{"mode":"full"}`, padminTok, http.StatusForbidden)
+		expect(t, http.MethodPut, orgURL+"/maintenance", `{"mode":"frozen"}`, ownerTok, http.StatusBadRequest)
+		start := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+		orgSet := doMethod(t, http.MethodPut, orgURL+"/maintenance", `{"mode":"full","message":"move","starts_at":"`+start+`"}`, ownerTok)
+		require.Equal(t, http.StatusOK, orgSet.StatusCode)
+		orgWindow := decodeBody[model.MaintenanceWindowResponse](t, orgSet)
+		require.False(t, orgWindow.Active)
+		require.Equal(t, "maint-co", orgWindow.Org)
+
+		expect(t, http.MethodPut, projectURL+"/maintenance", `{"mode":"read_only"}`, padminTok, http.StatusForbidden)
+		projectSet := doMethod(t, http.MethodPut, projectURL+"/maintenance", `{"mode":"read_only","message":"lfs repair"}`, ownerTok)
+		require.Equal(t, http.StatusOK, projectSet.StatusCode)
+		require.Equal(t, "maint-co/game", decodeBody[model.MaintenanceWindowResponse](t, projectSet).Project)
+
+		project := decodeBody[model.ProjectMaintenanceResponse](t, doGet(t, projectURL+"/maintenance", padminTok))
+		require.Equal(t, "read_only", project.Server.Mode)
+		require.Equal(t, "full", project.Org.Mode)
+		require.Equal(t, "lfs repair", project.Project.Message)
+		expect(t, http.MethodGet, projectURL+"/maintenance", "", strangerTok, http.StatusForbidden)
+
+		require.Len(t, decodeBody[model.OrgMaintenanceResponse](t, doGet(t, orgURL+"/maintenance", ownerTok)).Projects, 1)
+		require.Empty(t, decodeBody[model.OrgMaintenanceResponse](t, doGet(t, orgURL+"/maintenance", memberTok)).Projects)
+
+		all := decodeBody[model.AdminMaintenanceResponse](t, doGet(t, admin, superTok))
+		require.Equal(t, "read_only", all.Server.Mode)
+		require.Equal(t, "db", all.Source)
+		require.Len(t, all.Orgs, 1)
+		require.Equal(t, "maint-co", all.Orgs[0].Org)
+		require.Len(t, all.Projects, 1)
+		require.Equal(t, "maint-co/game", all.Projects[0].Project)
+
+		dbSnap := maintSvc.Snapshot()
+		fileSnap := maintenance.NewSnapshot(dbSnap.Windows(), time.Now())
+		fileSnap.Server, fileSnap.Source = &maintenance.Window{Mode: maintenance.Full}, maintenance.SourceFile
+		require.NoError(t, maintSvc.Apply(context.Background(), fileSnap))
+		expect(t, http.MethodPut, admin, `{"mode":"full"}`, superTok, http.StatusConflict)
+		expect(t, http.MethodDelete, admin, "", superTok, http.StatusConflict)
+		public = decodeBody[model.MaintenanceStatusResponse](t, doGet(t, server.URL+"/api/maintenance", ""))
+		require.Equal(t, "file", public.Source)
+		require.Equal(t, "full", public.Server.Mode)
+		require.NoError(t, maintSvc.Apply(context.Background(), dbSnap))
+
+		expect(t, http.MethodDelete, projectURL+"/maintenance", "", padminTok, http.StatusForbidden)
+		expect(t, http.MethodDelete, projectURL+"/maintenance", "", ownerTok, http.StatusNoContent)
+		expect(t, http.MethodDelete, projectURL+"/maintenance", "", ownerTok, http.StatusNotFound)
+		expect(t, http.MethodDelete, orgURL+"/maintenance", "", memberTok, http.StatusForbidden)
+		expect(t, http.MethodDelete, orgURL+"/maintenance", "", ownerTok, http.StatusNoContent)
+		expect(t, http.MethodDelete, admin, "", ownerTok, http.StatusForbidden)
+		expect(t, http.MethodDelete, admin, "", superTok, http.StatusNoContent)
+		expect(t, http.MethodDelete, admin, "", superTok, http.StatusNotFound)
+
+		public = decodeBody[model.MaintenanceStatusResponse](t, doGet(t, server.URL+"/api/maintenance", ""))
+		require.Nil(t, public.Server)
+
+		page := decodeBody[model.AuditListResponse](t, doGet(t, v1+"/admin/audit?action=maintenance", superTok))
+		actions := map[string]int{}
+		for _, entry := range page.Entries {
+			actions[entry.Action]++
+		}
+		require.Equal(t, 3, actions[domain.AuditMaintenanceScheduled])
+		require.Equal(t, 3, actions[domain.AuditMaintenanceEnded])
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

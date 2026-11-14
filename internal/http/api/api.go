@@ -35,6 +35,7 @@ type usecaseContainer interface {
 	EmailDelivery() *usecase.EmailDelivery
 	OrgInvitation() *usecase.OrgInvitation
 	Audit() *usecase.Audit
+	Maintenance() *usecase.Maintenance
 }
 
 type API struct {
@@ -181,6 +182,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupServiceTokenRouter(apiWs, h)
 	setupEmailDeliveryRouter(apiWs, h)
 	setupAuditRouter(apiWs, h)
+	setupMaintenanceRouter(apiWs, h)
 	for _, register := range a.routes {
 		register(apiWs)
 	}
@@ -191,6 +193,8 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(sameOriginFilter)
 	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk()))
 	restful.Add(chunkWs)
+
+	restful.Add(newMaintenanceWebService(h))
 
 	for _, ws := range a.webServices {
 		restful.Add(ws)

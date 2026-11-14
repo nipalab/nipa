@@ -42,6 +42,13 @@ func main() {
 		fmt.Println("nipad-ee " + version.Resolve().String())
 		return
 	}
+	if handled, err := serverapp.RunMaintenanceCommand(os.Args[1:], openMaintenanceDB, os.Stdout); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "nipad-ee: maintenance: "+err.Error())
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -175,8 +182,11 @@ func main() {
 	}
 
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
+	maintenanceRepository := postgres.NewMaintenanceRepository(dbConn)
+	maintenanceService, maintenancePoller := serverapp.NewMaintenance(cfg, maintenanceRepository, metrics)
 	deps := serverapp.UsecaseDeps{
 		MFAEnabledByDefault: mfaEnabledByDefault,
+		Maintenance:         maintenanceService,
 		Config:              cfg,
 		DB:                  dbConn,
 		Snow:                snowUser,
@@ -216,7 +226,7 @@ func main() {
 		Email:              emailRepository,
 		Audit:              postgres.NewAuditRepository(dbConn),
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
-		Maintenance:        postgres.NewMaintenanceRepository(dbConn),
+		Maintenance:        maintenanceRepository,
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	if storageLedger != nil {
@@ -234,7 +244,7 @@ func main() {
 	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
 		dispatchers = append(dispatchers, newQuotaReconcileJob(reconciler))
 	}
-	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)}
+	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies), serverapp.WithMaintenance(maintenanceService, maintenancePoller)}
 	if storageLedger != nil {
 		storageRoutes := storageusage.RoutesConfig{
 			Ledger: storageLedger,
@@ -329,9 +339,25 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	return options
 }
 
+// openMaintenanceDB opens the database for `nipad-ee maintenance` without
+// migrating it.
+func openMaintenanceDB(cfg *config.Config) (usecase.Repositories, *sql.DB, error) {
+	conn, err := eedb.Open(cfg.DatabaseDSN)
+	if err != nil {
+		return usecase.Repositories{}, nil, err
+	}
+	return usecase.Repositories{
+		Org:         postgres.NewOrgRepository(conn),
+		Project:     postgres.NewProjectRepository(conn),
+		PBAC:        postgres.NewPBACRepository(conn),
+		Audit:       postgres.NewAuditRepository(conn),
+		Maintenance: postgres.NewMaintenanceRepository(conn),
+	}, conn, nil
+}
+
 func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodelease.Manager, error) {
 	if cfg.SnowflakeNodeIDSet {
-		node, err := snow.NewNode(cfg.SnowflakeNodeID)
+		node, err := snow.NewServerNode(cfg.SnowflakeNodeID)
 		if err != nil {
 			return nil, nil, err
 		}

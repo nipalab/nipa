@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 func TestSplitAllowlist(t *testing.T) {
@@ -328,7 +331,14 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 	}
 	signals := make(chan os.Signal, 1)
 	done := make(chan error, 1)
-	go func() { done <- run(cfg, NewRegistry(Usecases{}), nil, signals, WithMetrics(obs.NewMetrics())) }()
+	metrics := obs.NewMetrics()
+	var loads atomic.Int32
+	svc, poller := NewMaintenance(&config.Config{MaintenancePollSeconds: 60}, listerFunc(func(context.Context) ([]domain.MaintenanceWindow, error) {
+		loads.Add(1)
+		return []domain.MaintenanceWindow{{ID: 1, Mode: "read_only", Message: "upgrade"}}, nil
+	}), metrics)
+	reg := NewRegistry(Usecases{Maintenance: usecase.NewMaintenance(nil, nil, nil, nil, svc, nil)})
+	go func() { done <- run(cfg, reg, nil, signals, WithMetrics(metrics), WithMaintenance(svc, poller)) }()
 
 	mainURL := fmt.Sprintf("http://127.0.0.1:%d", mainPort)
 	metricsURL := fmt.Sprintf("http://127.0.0.1:%d", metricsPort)
@@ -348,6 +358,21 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 	require.Equal(t, http.StatusOK, get(metricsURL+"/metrics"))
 	require.Equal(t, http.StatusOK, get(metricsURL+"/debug/pprof/"))
 	require.Equal(t, http.StatusNotFound, get(metricsURL+"/healthz"))
+	require.GreaterOrEqual(t, loads.Load(), int32(1), "the first maintenance poll runs before serving")
+
+	maint, err := client.Get(mainURL + "/api/maintenance")
+	require.NoError(t, err)
+	body, err := io.ReadAll(maint.Body)
+	_ = maint.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, maint.StatusCode)
+	require.Contains(t, string(body), `"read_only"`)
+	scrape, err := client.Get(metricsURL + "/metrics")
+	require.NoError(t, err)
+	body, err = io.ReadAll(scrape.Body)
+	_ = scrape.Body.Close()
+	require.NoError(t, err)
+	require.Contains(t, string(body), `nipa_maintenance_server_mode{mode="read_only"} 1`)
 
 	req, err := http.NewRequest(http.MethodOptions, mainURL+"/api/v1/auth/login", nil)
 	require.NoError(t, err)

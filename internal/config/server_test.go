@@ -102,3 +102,26 @@ func TestCORSAllowedOrigins(t *testing.T) {
 		require.Equal(t, c.want, got, c.in)
 	}
 }
+
+func TestLoadConfig_Maintenance(t *testing.T) {
+	clearConfigEnv(t)
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\n")
+	t.Chdir(dir)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Empty(t, cfg.MaintenanceFilePath())
+	require.Equal(t, 5*time.Second, cfg.MaintenancePollInterval())
+
+	t.Setenv("MAINTENANCE_FILE", " /run/nipa/maintenance ")
+	t.Setenv("MAINTENANCE_POLL_SECONDS", "12")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, "/run/nipa/maintenance", cfg.MaintenanceFilePath())
+	require.Equal(t, 12*time.Second, cfg.MaintenancePollInterval())
+
+	for _, secs := range []int{0, -3} {
+		require.Equal(t, time.Second, (&Config{MaintenancePollSeconds: secs}).MaintenancePollInterval())
+	}
+}

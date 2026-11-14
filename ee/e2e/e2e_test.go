@@ -186,7 +186,11 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 
 	webhookRepo := postgres.NewWebhookRepository(dbConn)
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
+	maintenanceRepo := postgres.NewMaintenanceRepository(dbConn)
+	maintenanceSvc, maintenancePoller := serverapp.NewMaintenance(&config.Config{}, maintenanceRepo, nil)
+	require.NoError(t, maintenancePoller.Poll(context.Background()))
 	deps := serverapp.UsecaseDeps{
+		Maintenance:         maintenanceSvc,
 		MFAEnabledByDefault: true,
 		Config: &config.Config{
 			JWTKey:                 e2eJWTSecret,
@@ -226,7 +230,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		Email:              postgres.NewEmailRepository(dbConn),
 		Audit:              postgres.NewAuditRepository(dbConn),
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
-		Maintenance:        postgres.NewMaintenanceRepository(dbConn),
+		Maintenance:        maintenanceRepo,
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 

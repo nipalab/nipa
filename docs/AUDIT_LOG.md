@@ -64,6 +64,9 @@ Constants live in `internal/domain/audit_actions.go`.
 | `webhook.secret_rotated` | `Webhook.RotateSecret` | `url`, `events` (never the secret) |
 | `service_token.created` | `ServiceToken.Create` | `name`, `scopes`, `hint`, `expires_at` (never the token) |
 | `service_token.revoked` | `ServiceToken.Revoke` | `name`, `scopes`, `hint` |
+| `maintenance.scheduled` | `Maintenance.SetServer` / `SetOrg` / `SetProject` storing a new window | target = window; `scope` (`server`, `org`, `project`), `org_id`, `project_id`, `mode`, `starts_at`, `ends_at`, `notify`; `nipad maintenance` records actor `system` with `via: cli` |
+| `maintenance.updated` | the same calls on an existing window | same as `maintenance.scheduled` |
+| `maintenance.ended` | `Maintenance.EndServer` / `EndOrg` / `EndProject` | same, describing the removed window |
 
 ## Billing (enterprise)
 

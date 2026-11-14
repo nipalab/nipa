@@ -40,6 +40,8 @@ type Config struct {
 	MetricsOTLPEndpoint             string  `mapstructure:"METRICS_OTLP_ENDPOINT"`
 	MetricsOTLPProtocol             string  `mapstructure:"METRICS_OTLP_PROTOCOL"`
 	MetricsOTLPIntervalSeconds      int     `mapstructure:"METRICS_OTLP_INTERVAL_SECONDS"`
+	MaintenanceFile                 string  `mapstructure:"MAINTENANCE_FILE"`
+	MaintenancePollSeconds          int     `mapstructure:"MAINTENANCE_POLL_SECONDS"`
 	SnowflakeNodeID                 int64   `mapstructure:"SNOWFLAKE_NODE_ID"`
 	SnowflakeNodeIDSet              bool    `mapstructure:"-"`
 	SnowflakeLeaseTTLSecs           int     `mapstructure:"SNOWFLAKE_LEASE_TTL_SECONDS"`
@@ -150,6 +152,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("HTTP_IDLE_TIMEOUT_SECONDS", DefaultHTTPIdleTimeoutSeconds)
 	v.SetDefault("METRICS_ADDRESS", "")
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
+	v.SetDefault("MAINTENANCE_FILE", "")
+	v.SetDefault("MAINTENANCE_POLL_SECONDS", DefaultMaintenancePollSeconds)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
 	v.SetDefault("ALLOW_INSECURE_DEV_SECRETS", false)

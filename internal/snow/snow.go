@@ -38,6 +38,11 @@ type node struct {
 // attach methods onto the ID.
 type ID int64
 
+// ReservedCLINode is the node id of the server maintenance command line. No
+// server instance may use it, so ids the command mints never collide with a
+// running server's.
+const ReservedCLINode int64 = 255
+
 // ErrInvalidNode is returned when an invalid node number is provided.
 var ErrInvalidNode = fmt.Errorf("invalid node number")
 
@@ -53,6 +58,14 @@ func NewNode(nodeID int64) (Node, error) {
 	// add time.Duration to curTime to make sure we use the monotonic clock if available
 	n.epoch = curTime.Add(time.Unix(epoch/1000, (epoch%1000)*1000000).Sub(curTime))
 	return n, nil
+}
+
+// NewServerNode is NewNode for a server instance: ReservedCLINode is refused.
+func NewServerNode(nodeID int64) (Node, error) {
+	if nodeID == ReservedCLINode {
+		return nil, fmt.Errorf("snowflake node id %d is reserved for the maintenance command", ReservedCLINode)
+	}
+	return NewNode(nodeID)
 }
 
 // Generate creates and returns a unique snowflake ID

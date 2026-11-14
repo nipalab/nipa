@@ -9,6 +9,7 @@ import (
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
@@ -34,6 +35,9 @@ type UsecaseDeps struct {
 	StorageLedger     usecase.StorageLedger
 	SeatGate          usecase.SeatGate
 	RateLimiter       *ratelimit.Limiter
+	// Maintenance is the maintenance state the server enforces; nil builds a
+	// private one that only follows this process's own writes.
+	Maintenance *maintenance.Service
 	// MFAEnabledByDefault applies while MFA_ENABLED is unset: off for the free
 	// edition, on for the enterprise one.
 	MFAEnabledByDefault bool
@@ -101,6 +105,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase)
 
 	commonUsecase := usecase.NewCommon(repos.Org, repos.Project)
+	maintenanceUsecase := usecase.NewMaintenance(repos.Maintenance, commonUsecase, orgUsecase, permissionUsecase, deps.Maintenance, node).WithAudit(auditUsecase)
 	serviceTokenUsecase := usecase.NewServiceToken(repos.ServiceToken, permissionUsecase, repos.User, commonUsecase, node).WithAudit(auditUsecase)
 	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
@@ -148,6 +153,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		ServiceToken:       serviceTokenUsecase,
 		EmailDelivery:      emailDeliveryUsecase,
 		Audit:              auditUsecase,
+		Maintenance:        maintenanceUsecase,
 	}
 }
 

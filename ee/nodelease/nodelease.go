@@ -17,7 +17,9 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-const nodeIDCount = 256
+// nodeIDCount leases 0..254: snow.ReservedCLINode belongs to the maintenance
+// command line.
+const nodeIDCount = snow.ReservedCLINode
 
 var ErrNoNodeID = errors.New("no snowflake node id available")
 

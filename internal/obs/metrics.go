@@ -29,6 +29,9 @@ type Metrics struct {
 	webhookDeliveries   *prometheus.CounterVec
 	mailDeliveries      *prometheus.CounterVec
 	rateLimit           *prometheus.CounterVec
+	maintenanceMode     *prometheus.GaugeVec
+	maintenanceWindows  *prometheus.GaugeVec
+	maintenancePollErrs prometheus.Counter
 }
 
 // NewMetrics builds an isolated registry with the standard Go and process
@@ -104,6 +107,24 @@ func NewMetrics() *Metrics {
 			Name:      "total",
 			Help:      "Rate limit decisions by scope and result.",
 		}, []string{"scope", "result"}),
+		maintenanceMode: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "maintenance",
+			Name:      "server_mode",
+			Help:      "1 for the effective server maintenance mode (off included), 0 for the others.",
+		}, []string{"mode"}),
+		maintenanceWindows: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "maintenance",
+			Name:      "windows",
+			Help:      "Active org and project maintenance windows by scope and mode.",
+		}, []string{"scope", "mode"}),
+		maintenancePollErrs: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "maintenance",
+			Name:      "poll_errors_total",
+			Help:      "Failed maintenance state reloads.",
+		}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -119,6 +140,9 @@ func NewMetrics() *Metrics {
 		m.webhookDeliveries,
 		m.mailDeliveries,
 		m.rateLimit,
+		m.maintenanceMode,
+		m.maintenanceWindows,
+		m.maintenancePollErrs,
 	)
 	return m
 }
@@ -203,6 +227,30 @@ func (m *Metrics) ObserveRateLimit(scope, result string) {
 		return
 	}
 	m.rateLimit.WithLabelValues(scope, result).Inc()
+}
+
+// SetMaintenanceServerMode sets the server mode gauge of one mode.
+func (m *Metrics) SetMaintenanceServerMode(mode string, value float64) {
+	if m == nil {
+		return
+	}
+	m.maintenanceMode.WithLabelValues(mode).Set(value)
+}
+
+// SetMaintenanceWindows sets the number of active windows of a scope and mode.
+func (m *Metrics) SetMaintenanceWindows(scope, mode string, n int) {
+	if m == nil {
+		return
+	}
+	m.maintenanceWindows.WithLabelValues(scope, mode).Set(float64(n))
+}
+
+// ObserveMaintenancePollError counts one failed maintenance reload.
+func (m *Metrics) ObserveMaintenancePollError() {
+	if m == nil {
+		return
+	}
+	m.maintenancePollErrs.Inc()
 }
 
 // RegisterWebhookQueue exposes the webhook job queue depth.

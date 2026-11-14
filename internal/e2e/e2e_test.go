@@ -122,6 +122,9 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 	t.Cleanup(func() { _ = chunkStore.Close() })
 
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)
+	maintenanceRepo := sqlite.NewMaintenanceRepository(dbConn)
+	maintenanceSvc, maintenancePoller := serverapp.NewMaintenance(&config.Config{}, maintenanceRepo, nil)
+	require.NoError(t, maintenancePoller.Poll(context.Background()))
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
 		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
@@ -143,7 +146,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 		Email:              sqlite.NewEmailRepository(dbConn),
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
-		Maintenance:        sqlite.NewMaintenanceRepository(dbConn),
+		Maintenance:        maintenanceRepo,
 	}, serverapp.UsecaseDeps{
 		Config: &config.Config{
 			JWTKey:                 e2eJWTSecret,
@@ -156,6 +159,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 		Hasher:            passwordHasher,
 		ChunkStore:        chunkStore,
 		WebhookDispatcher: webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}),
+		Maintenance:       maintenanceSvc,
 	})
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk

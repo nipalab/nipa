@@ -55,7 +55,7 @@ func writeTooMany(w http.ResponseWriter, res ratelimit.Result) {
 
 func exemptFromRateLimit(path string) bool {
 	switch path {
-	case "/healthz", "/readyz", "/metrics", "/version":
+	case "/healthz", "/readyz", "/metrics", "/version", maintenancePath:
 		return true
 	}
 	return strings.HasPrefix(path, "/debug/pprof")

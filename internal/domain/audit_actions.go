@@ -55,6 +55,10 @@ const (
 	AuditServiceTokenCreated = "service_token.created"
 	AuditServiceTokenRevoked = "service_token.revoked"
 
+	AuditMaintenanceScheduled = "maintenance.scheduled"
+	AuditMaintenanceUpdated   = "maintenance.updated"
+	AuditMaintenanceEnded     = "maintenance.ended"
+
 	AuditBillingQuotaOverrideSet     = "billing.quota_override.set"
 	AuditBillingQuotaOverrideCleared = "billing.quota_override.cleared"
 	AuditBillingOwnerTransferred     = "billing.owner.transferred"
@@ -82,4 +86,5 @@ const (
 	AuditTargetServiceToken   = "service_token"
 	AuditTargetSubscription   = "subscription"
 	AuditTargetBillingEvent   = "billing_event"
+	AuditTargetMaintenance    = "maintenance_window"
 )
