@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -25,7 +26,7 @@ func ParseFile(data []byte) (Window, error) {
 	if err := dec.Decode(&body); err != nil {
 		return Window{}, fmt.Errorf("parse maintenance file: %w", err)
 	}
-	if dec.More() {
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		return Window{}, fmt.Errorf("parse maintenance file: trailing data")
 	}
 	mode := Full

@@ -93,7 +93,7 @@ func TestParseFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Frozen, w.Mode)
 
-	for _, bad := range []string{`{`, `{"mode":"off"}`, `{"mode":"later"}`, `{"mode":"full","extra":1}`, `{"mode":"full"} {}`, `{"ends_at":"tomorrow"}`} {
+	for _, bad := range []string{`{`, `{"mode":"off"}`, `{"mode":"later"}`, `{"mode":"full","extra":1}`, `{"mode":"full"} {}`, `{"mode":"full"}}`, `{"mode":"full"}]`, `{"ends_at":"tomorrow"}`} {
 		_, err := ParseFile([]byte(bad))
 		require.Error(t, err, bad)
 	}
