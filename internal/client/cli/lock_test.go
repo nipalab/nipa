@@ -117,12 +117,13 @@ func TestSetupLockListCmd_Rows(t *testing.T) {
 	mrNumber := int64(3)
 	client := &fakeLockClient{listResult: []*domain.FileLock{
 		{Path: "art/tex.png", Global: true, HeldByName: "bob", MergeRequestNumber: &mrNumber},
-		{Path: "audio/loop.wav", Branch: "feature", HeldByName: "alice"},
+		{Path: "audio/loop.wav", Branch: "feature", HeldByName: "alice", Requests: []domain.FileLockRequest{{RequesterName: "bob"}}},
 	}}
 	cli := newLockCli(t, client)
 
 	out, err := runCmdInDir(t, root, cli.setupLockCmd(), "list")
 	require.NoError(t, err)
+	require.Contains(t, out, "(1 release request(s))")
 	require.Contains(t, out, "art/tex.png")
 	require.Contains(t, out, "mainline")
 	require.Contains(t, out, "bob")
@@ -191,4 +192,35 @@ func TestSetupLockCmd_PrintsPinWarning(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "Locked a.bin (mainline).")
 	require.Contains(t, out, "warning: locked, but the old version of a.bin was not kept locally")
+}
+
+type requestLockClient struct {
+	*fakeLockClient
+	lockID  string
+	message string
+	err     error
+}
+
+func (r *requestLockClient) RequestFileLockRelease(_ context.Context, _, _, lockID, message string) (*domain.FileLockRequest, error) {
+	r.lockID, r.message = lockID, message
+	if r.err != nil {
+		return nil, r.err
+	}
+	return &domain.FileLockRequest{ID: "r1"}, nil
+}
+
+func TestSetupLockRequestCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &requestLockClient{fakeLockClient: &fakeLockClient{listResult: []*domain.FileLock{{ID: "l1", Path: "art/tex.png", Branch: "feature", HeldByName: "Bob"}}}}
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{token: signTestJWT(t)}, &fakeInput{})
+	cli := NewCli(&fakeUsecaseContainer{lock: usecase.NewFileLock(auth, client, localrepo.NewLocalRepo())}, &fakeConnector{})
+
+	out, err := runCmdInDir(t, root, cli.setupLockCmd(), "request", "art/tex.png", "-m", "need it")
+	require.NoError(t, err)
+	require.Contains(t, out, "Asked Bob to release art/tex.png.")
+	require.Equal(t, "l1", client.lockID)
+	require.Equal(t, "need it", client.message)
+
+	_, err = runCmdInDir(t, root, cli.setupLockCmd(), "request", "missing.png")
+	require.ErrorContains(t, err, "missing.png is not locked")
 }

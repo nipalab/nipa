@@ -575,6 +575,14 @@ export function Repos(): $CancellablePromise<$models.Repo[] | null> {
 }
 
 /**
+ * RequestRelease asks the holder of a lock to release it; the message is
+ * optional.
+ */
+export function RequestRelease(root: string, lockID: string, message: string): $CancellablePromise<void> {
+    return $Call.ByID(202246946, root, lockID, message);
+}
+
+/**
  * ResolveConflict settles one conflicted file and returns the refreshed
  * changes.
  */

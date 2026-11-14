@@ -5,6 +5,12 @@ export interface NotifySettings {
     "pushes": boolean;
     "locks": boolean;
     "reviews": boolean;
+
+    /**
+     * LockRequests tells the holder that someone asked for a lock; on unless
+     * a saved file says otherwise.
+     */
+    "lockRequests": boolean;
 }
 
 /**

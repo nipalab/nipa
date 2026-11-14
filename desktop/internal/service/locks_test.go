@@ -27,6 +27,13 @@ type lockDaemon struct {
 	locked    []*pb.LockFileRequest
 	unlocked  []*pb.UnlockFileRequest
 	unlockErr error
+	asked     []*pb.RequestFileLockReleaseRequest
+	askErr    error
+}
+
+func (d *lockDaemon) ProxyLockRequestRelease(_ context.Context, req *daemonpb.ProxyLockRequestReleaseRequest, _ ...grpc.CallOption) (*daemonpb.ProxyLockRequestReleaseResponse, error) {
+	d.asked = append(d.asked, req.GetRequest())
+	return &daemonpb.ProxyLockRequestReleaseResponse{}, d.askErr
 }
 
 func (d *lockDaemon) LockStatus(context.Context, *daemonpb.LockStatusRequest, ...grpc.CallOption) (*daemonpb.LockStatusResponse, error) {
@@ -61,7 +68,9 @@ func TestService_LockStatus(t *testing.T) {
 	d.status = &daemonpb.LockStatusResponse{
 		UserId: "me", Branch: "main", DefaultBranch: true, CanReleaseAny: true,
 		Locks: []*pb.FileLockDetail{
-			{Id: "l1", Path: "art/hero.psd", Global: true, HeldBy: "me", HeldByName: "Me", AcquiredAt: timestamppb.New(at)},
+			{Id: "l1", Path: "art/hero.psd", Global: true, HeldBy: "me", HeldByName: "Me", AcquiredAt: timestamppb.New(at), Requests: []*pb.FileLockRequestDetail{
+				{Id: "r1", RequesterId: "bob", RequesterName: "Bob", Message: "soon?", RequestedAt: timestamppb.New(at)},
+			}},
 			{Id: "l2", Path: "audio", Branch: "feature", HeldBy: "bob", HeldByName: "Bob", MergeRequestNumber: &mr},
 		},
 		Files: []*daemonpb.FileLockState{{Path: "art/hero.psd", State: "mine", LockPath: "art/hero.psd", HeldByName: "Me", Tracked: true}},
@@ -72,8 +81,9 @@ func TestService_LockStatus(t *testing.T) {
 	assert.True(t, out.DefaultBranch)
 	assert.True(t, out.CanReleaseAny)
 	assert.Equal(t, []FileLock{
-		{ID: "l1", Path: "art/hero.psd", Global: true, HeldBy: "me", HeldByName: "Me", Mine: true, AcquiredAt: "2026-11-04T09:30:00Z", InScope: true},
-		{ID: "l2", Path: "audio", Branch: "feature", HeldBy: "bob", HeldByName: "Bob", MergeRequest: 12},
+		{ID: "l1", Path: "art/hero.psd", Global: true, HeldBy: "me", HeldByName: "Me", Mine: true, AcquiredAt: "2026-11-04T09:30:00Z", InScope: true,
+			Requests: []LockRequest{{ID: "r1", RequesterID: "bob", RequesterName: "Bob", Message: "soon?", RequestedAt: "2026-11-04T09:30:00Z"}}},
+		{ID: "l2", Path: "audio", Branch: "feature", HeldBy: "bob", HeldByName: "Bob", MergeRequest: 12, Requests: []LockRequest{}},
 	}, out.Locks)
 	assert.Equal(t, []FileLockState{{Path: "art/hero.psd", State: "mine", LockPath: "art/hero.psd", HeldByName: "Me", Tracked: true}}, out.Files)
 
@@ -112,6 +122,15 @@ func TestService_LockAndUnlock(t *testing.T) {
 	assert.EqualError(t, svc.Unlock(ctx, "/work/game", "feature", "x"), "no permission")
 }
 
+func TestService_RequestRelease(t *testing.T) {
+	svc, d := newLocks(t)
+	require.NoError(t, svc.RequestRelease(ctx, "/work/game", "l2", "need it"))
+	assert.Equal(t, "l2", d.asked[0].GetLockId())
+	assert.Equal(t, "need it", d.asked[0].GetMessage())
+	d.askErr = status.Error(codes.InvalidArgument, "you hold this lock")
+	assert.EqualError(t, svc.RequestRelease(ctx, "/work/game", "l1", ""), "you hold this lock")
+}
+
 func TestService_LocksNeedTheDaemon(t *testing.T) {
 	svc := New(func(context.Context) (Session, error) { return nil, errors.New("no daemon") }, &memStore{}, nil)
 	_, err := svc.LockStatus(ctx, "/r")
@@ -119,6 +138,7 @@ func TestService_LocksNeedTheDaemon(t *testing.T) {
 	_, err = svc.Lock(ctx, "/r", "", []string{"a"})
 	assert.Error(t, err)
 	assert.Error(t, svc.Unlock(ctx, "/r", "", "a"))
+	assert.Error(t, svc.RequestRelease(ctx, "/r", "l", ""))
 }
 
 func TestService_PickAndOpenFile(t *testing.T) {

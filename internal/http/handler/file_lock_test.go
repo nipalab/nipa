@@ -125,3 +125,38 @@ func TestHandler_FileLockTTL(t *testing.T) {
 	env.handler.LockFile(appCtx)
 	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
 }
+
+func TestHandler_FileLockRequestRelease(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	holder := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	_, err := env.db.Exec(`INSERT INTO users (id, name, email, password) VALUES (900, 'bob', 'bob@example.com', 'x')`)
+	require.NoError(t, err)
+	asker := &domain.Claims{UserID: 900, IsAdmin: true}
+	params := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := &fakeAppContext{claims: holder, pathParameters: params, body: []byte(`{"path":"assets/orc.png","branch":"main"}`)}
+	env.handler.LockFile(appCtx)
+	lock := appCtx.response.(model.FileLockResponse)
+
+	appCtx = &fakeAppContext{claims: asker, pathParameters: map[string]string{"org": "default", "project": "default", "id": lock.ID}, body: []byte(`{"message":"need it"}`)}
+	env.handler.RequestFileLockRelease(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	request := appCtx.response.(model.FileLockRequestResponse)
+	require.Equal(t, "need it", request.Message)
+
+	appCtx = &fakeAppContext{claims: holder, pathParameters: params}
+	env.handler.ListFileLocks(appCtx)
+	locks := appCtx.response.([]model.FileLockResponse)
+	require.Len(t, locks[0].Requests, 1)
+	require.Equal(t, "bob", locks[0].Requests[0].RequesterName)
+
+	for name, ctx := range map[string]*fakeAppContext{
+		"bad id":     {claims: asker, pathParameters: map[string]string{"org": "default", "project": "default", "id": "!"}, body: []byte(`{}`)},
+		"bad body":   {claims: asker, pathParameters: map[string]string{"org": "default", "project": "default", "id": lock.ID}, body: []byte(`{`)},
+		"own lock":   {claims: holder, pathParameters: map[string]string{"org": "default", "project": "default", "id": lock.ID}, body: []byte(`{}`)},
+		"no project": {claims: asker, pathParameters: map[string]string{"org": "default", "project": "ghost", "id": lock.ID}, body: []byte(`{}`)},
+	} {
+		env.handler.RequestFileLockRelease(ctx)
+		require.GreaterOrEqual(t, ctx.statusCode, http.StatusBadRequest, name)
+	}
+}

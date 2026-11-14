@@ -5,6 +5,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -52,6 +53,32 @@ func (n *nipaServer) ListFileLocks(ctx context.Context, req *pb.ListFileLocksReq
 	return resp, nil
 }
 
+func (n *nipaServer) RequestFileLockRelease(ctx context.Context, req *pb.RequestFileLockReleaseRequest) (*pb.RequestFileLockReleaseResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	lockID, err := snow.ParseBase36(req.GetLockId())
+	if err != nil {
+		return nil, handleError(domain.NewErrorUser("invalid lock id"))
+	}
+	request, err := n.uc.FileLock().RequestRelease(ctx, project.ID, lockID, req.GetMessage())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.RequestFileLockReleaseResponse{Request: domainLockRequestToPB(request)}, nil
+}
+
+func domainLockRequestToPB(request *domain.FileLockRequest) *pb.FileLockRequestDetail {
+	return &pb.FileLockRequestDetail{
+		Id:            request.ID.Base36(),
+		RequesterId:   request.RequesterID.Base36(),
+		RequesterName: request.RequesterName,
+		Message:       request.Message,
+		RequestedAt:   timestamppb.New(request.CreatedAt),
+	}
+}
+
 func domainFileLockToPB(lock *domain.FileLock) *pb.FileLockDetail {
 	detail := &pb.FileLockDetail{
 		Id:         lock.ID.Base36(),
@@ -67,6 +94,9 @@ func domainFileLockToPB(lock *domain.FileLock) *pb.FileLockDetail {
 	}
 	if lock.ExpiresAt != nil {
 		detail.ExpiresAt = timestamppb.New(*lock.ExpiresAt)
+	}
+	for _, request := range lock.Requests {
+		detail.Requests = append(detail.Requests, domainLockRequestToPB(request))
 	}
 	return detail
 }

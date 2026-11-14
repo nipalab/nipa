@@ -12,6 +12,7 @@ import type {
   CreateServiceTokenInput,
   CommitResponse,
   CreateWebhookInput,
+  FileLockRequestResponse,
   FileLockResponse,
   GroupResponse,
   IdentityResponse,
@@ -689,6 +690,18 @@ export function unlockFile(org: string, project: string, path: string, branch: s
   return apiJson(`${projectBase(org, project)}/locks/release`, {
     method: 'POST',
     body: JSON.stringify({ path, branch }),
+  })
+}
+
+export function requestLockRelease(
+  org: string,
+  project: string,
+  lockId: string,
+  message: string,
+): Promise<FileLockRequestResponse> {
+  return apiJson(`${projectBase(org, project)}/locks/${encodeURIComponent(lockId)}/requests`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
   })
 }
 

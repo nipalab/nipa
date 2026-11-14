@@ -21,10 +21,11 @@ import { StateBadge } from '../StateBadge'
 import { Timestamp } from '../Timestamp'
 import { ErrorBanner, Mono } from '../ui'
 
-export const WEBHOOK_EVENTS: { value: string; label: string; group: 'Repository' | 'Merge requests'; short: string }[] = [
+export const WEBHOOK_EVENTS: { value: string; label: string; group: 'Repository' | 'Merge requests' | 'Locks'; short: string }[] = [
   { value: 'push', label: 'Push', group: 'Repository', short: 'Push' },
   { value: 'branch.created', label: 'Branch created', group: 'Repository', short: 'Branch created' },
   { value: 'branch.deleted', label: 'Branch deleted', group: 'Repository', short: 'Branch deleted' },
+  { value: 'lock.release_requested', label: 'Lock release requested', group: 'Locks', short: 'Release requested' },
   { value: 'mr.created', label: 'Merge request created', group: 'Merge requests', short: 'Created' },
   { value: 'mr.updated', label: 'Merge request updated', group: 'Merge requests', short: 'Updated' },
   { value: 'mr.synchronized', label: 'Merge request synchronized', group: 'Merge requests', short: 'New commits pushed' },
@@ -43,7 +44,7 @@ export const WEBHOOK_EVENTS: { value: string; label: string; group: 'Repository'
   { value: 'mr.comment_created', label: 'Merge request comment created', group: 'Merge requests', short: 'Comment created' },
 ]
 
-const EVENT_GROUPS = ['Repository', 'Merge requests'] as const
+const EVENT_GROUPS = ['Repository', 'Merge requests', 'Locks'] as const
 
 type EventMode = 'push' | 'all' | 'custom'
 

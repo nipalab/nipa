@@ -372,13 +372,13 @@ message WatchEventsRequest {
 
 // TeamEvent is something a teammate did on the server since the last poll.
 message TeamEvent {
-    string kind = 1; // pushed, lock_released, review_requested
-    string actor = 2; // pushed: newest author; lock_released: former holder
+    string kind = 1; // pushed, lock_released, lock_requested, review_requested
+    string actor = 2; // pushed: newest author; lock_released: former holder; lock_requested: who asked
     string branch = 3; // pushed: the clone's branch
     string commit_id = 4; // pushed: the new head (base36)
-    string message = 5; // pushed: first line of the newest commit; review_requested: request title
+    string message = 5; // pushed: first line of the newest commit; review_requested: request title; lock_requested: the requester's note
     int32 count = 6; // pushed: number of new commits
-    string path = 7; // lock_released: the released path
+    string path = 7; // lock_released: the released path; lock_requested: the held path
     int64 number = 8; // review_requested: merge request number
 }
 
@@ -730,6 +730,15 @@ message ProxyUnlockFileRequest {
 
 message ProxyUnlockFileResponse {
     greet.UnlockFileResponse response = 1;
+}
+
+message ProxyLockRequestReleaseRequest {
+    string root = 1;
+    greet.RequestFileLockReleaseRequest request = 2;
+}
+
+message ProxyLockRequestReleaseResponse {
+    greet.RequestFileLockReleaseResponse response = 1;
 }
 
 message ProxyListFileLocksRequest {
@@ -1256,6 +1265,7 @@ service NipaDaemon {
     rpc ProxyMergeRequestResolve(ProxyMergeRequestResolveRequest) returns (ProxyMergeRequestResolveResponse);
     rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
+    rpc ProxyLockRequestRelease(ProxyLockRequestReleaseRequest) returns (ProxyLockRequestReleaseResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
     rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
     rpc MetaWarnings(MetaWarningsRequest) returns (MetaWarningsResponse);

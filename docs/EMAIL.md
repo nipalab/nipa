@@ -158,6 +158,12 @@ backoff, and records `delivered`/`failed` state with the last error.
 
 ## Notifications
 
+A lock release request (`lock.release_requested`) emails only the lock holder
+(the same opt-out and address rules apply): subject `[project] Release
+requested: <path>`, the requester's message and a link to the project's locks
+page. Each message is its own thread, and a repeat request inside 24 hours
+sends nothing.
+
 Merge request events produce email to the participants: `mr.created`,
 `mr.ready_for_review`, `mr.review_requested`, `mr.review_submitted`,
 `mr.comment_created`, `mr.synchronized`, `mr.merged`, `mr.closed`,

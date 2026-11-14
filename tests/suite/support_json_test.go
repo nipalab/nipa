@@ -98,6 +98,10 @@ type locksJSON struct {
 		HeldBy             string `json:"held_by"`
 		HeldByName         string `json:"held_by_name"`
 		MergeRequestNumber *int64 `json:"merge_request_number"`
+		Requests           []struct {
+			Requester string `json:"requester"`
+			Message   string `json:"message"`
+		} `json:"requests"`
 	} `json:"locks"`
 }
 

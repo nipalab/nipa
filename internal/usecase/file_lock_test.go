@@ -203,6 +203,7 @@ func TestFileLock_List(t *testing.T) {
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil, nil)
+		repo.EXPECT().ListRequests(gomock.Any(), snow.ID(1)).Return(nil, nil)
 
 		locks, err := uc.List(permissionCtx(7), snow.ID(1))
 		require.NoError(t, err)
@@ -221,11 +222,28 @@ func TestFileLock_List(t *testing.T) {
 			{ID: 1, Path: "public/a.png"},
 			{ID: 2, Path: "secret/b.psd"},
 		}, nil)
+		repo.EXPECT().ListRequests(gomock.Any(), snow.ID(1)).Return([]*domain.FileLockRequest{
+			{ID: 5, LockID: 1, RequesterID: 8, RequesterName: "Bob"},
+			{ID: 6, LockID: 2, RequesterID: 8},
+		}, nil)
 
 		locks, err := uc.List(permissionCtx(7), snow.ID(1))
 		require.NoError(t, err)
 		require.Len(t, locks, 1)
 		require.Equal(t, "public/a.png", locks[0].Path)
+		require.Len(t, locks[0].Requests, 1)
+		require.Equal(t, "Bob", locks[0].Requests[0].RequesterName)
+	})
+
+	t.Run("requests error", func(t *testing.T) {
+		uc, repo, _, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil, nil)
+		repo.EXPECT().ListRequests(gomock.Any(), snow.ID(1)).Return(nil, errors.New("requests down"))
+
+		_, err := uc.List(permissionCtx(7), snow.ID(1))
+		require.EqualError(t, err, "requests down")
 	})
 
 	t.Run("filter compile error", func(t *testing.T) {

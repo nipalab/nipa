@@ -275,6 +275,22 @@ describe("App", () => {
     expect(screen.getByTitle("1 merge request waiting for your review")).toBeInTheDocument();
   });
 
+  it("refreshes the Locks tab when a lock is requested of me", async () => {
+    let push: ((a: unknown) => void) | undefined;
+    api.onRepoActivity.mockImplementation((fn: (a: unknown) => void) => {
+      push = fn;
+      return () => {};
+    });
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "dev", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    await userEvent.click(screen.getByRole("tab", { name: /Locks/ }));
+    await screen.findByText("Nothing is locked");
+    const before = api.lockStatus.mock.calls.length;
+    act(() => push?.({ root: "/work/game", name: "game", incoming: 0, reviewRequests: 0, error: "", events: [{ kind: "lock_requested" }] }));
+    await waitFor(() => expect(api.lockStatus.mock.calls.length).toBeGreaterThan(before));
+  });
+
   it("follows a navigation request to a clone and tab", async () => {
     api.takeNavigation.mockResolvedValueOnce({ root: "/work/tools", tab: "details", number: 0, commit: "", server: "", org: "", project: "" });
     renderWithProviders(<App />);

@@ -82,6 +82,7 @@ const (
 	NipaService_LockFile_FullMethodName                        = "/greet.NipaService/LockFile"
 	NipaService_UnlockFile_FullMethodName                      = "/greet.NipaService/UnlockFile"
 	NipaService_ListFileLocks_FullMethodName                   = "/greet.NipaService/ListFileLocks"
+	NipaService_RequestFileLockRelease_FullMethodName          = "/greet.NipaService/RequestFileLockRelease"
 	NipaService_GetMyPermissions_FullMethodName                = "/greet.NipaService/GetMyPermissions"
 	NipaService_CreatePBACRule_FullMethodName                  = "/greet.NipaService/CreatePBACRule"
 	NipaService_ListPBACRules_FullMethodName                   = "/greet.NipaService/ListPBACRules"
@@ -162,6 +163,7 @@ type NipaServiceClient interface {
 	LockFile(ctx context.Context, in *LockFileRequest, opts ...grpc.CallOption) (*LockFileResponse, error)
 	UnlockFile(ctx context.Context, in *UnlockFileRequest, opts ...grpc.CallOption) (*UnlockFileResponse, error)
 	ListFileLocks(ctx context.Context, in *ListFileLocksRequest, opts ...grpc.CallOption) (*ListFileLocksResponse, error)
+	RequestFileLockRelease(ctx context.Context, in *RequestFileLockReleaseRequest, opts ...grpc.CallOption) (*RequestFileLockReleaseResponse, error)
 	GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(ctx context.Context, in *CreatePBACRuleRequest, opts ...grpc.CallOption) (*CreatePBACRuleResponse, error)
 	ListPBACRules(ctx context.Context, in *ListPBACRulesRequest, opts ...grpc.CallOption) (*ListPBACRulesResponse, error)
@@ -813,6 +815,16 @@ func (c *nipaServiceClient) ListFileLocks(ctx context.Context, in *ListFileLocks
 	return out, nil
 }
 
+func (c *nipaServiceClient) RequestFileLockRelease(ctx context.Context, in *RequestFileLockReleaseRequest, opts ...grpc.CallOption) (*RequestFileLockReleaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestFileLockReleaseResponse)
+	err := c.cc.Invoke(ctx, NipaService_RequestFileLockRelease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMyPermissionsResponse)
@@ -990,6 +1002,7 @@ type NipaServiceServer interface {
 	LockFile(context.Context, *LockFileRequest) (*LockFileResponse, error)
 	UnlockFile(context.Context, *UnlockFileRequest) (*UnlockFileResponse, error)
 	ListFileLocks(context.Context, *ListFileLocksRequest) (*ListFileLocksResponse, error)
+	RequestFileLockRelease(context.Context, *RequestFileLockReleaseRequest) (*RequestFileLockReleaseResponse, error)
 	GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(context.Context, *CreatePBACRuleRequest) (*CreatePBACRuleResponse, error)
 	ListPBACRules(context.Context, *ListPBACRulesRequest) (*ListPBACRulesResponse, error)
@@ -1199,6 +1212,9 @@ func (UnimplementedNipaServiceServer) UnlockFile(context.Context, *UnlockFileReq
 }
 func (UnimplementedNipaServiceServer) ListFileLocks(context.Context, *ListFileLocksRequest) (*ListFileLocksResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListFileLocks not implemented")
+}
+func (UnimplementedNipaServiceServer) RequestFileLockRelease(context.Context, *RequestFileLockReleaseRequest) (*RequestFileLockReleaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestFileLockRelease not implemented")
 }
 func (UnimplementedNipaServiceServer) GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMyPermissions not implemented")
@@ -2388,6 +2404,24 @@ func _NipaService_ListFileLocks_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_RequestFileLockRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestFileLockReleaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).RequestFileLockRelease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_RequestFileLockRelease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).RequestFileLockRelease(ctx, req.(*RequestFileLockReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_GetMyPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMyPermissionsRequest)
 	if err := dec(in); err != nil {
@@ -2844,6 +2878,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListFileLocks",
 			Handler:    _NipaService_ListFileLocks_Handler,
+		},
+		{
+			MethodName: "RequestFileLockRelease",
+			Handler:    _NipaService_RequestFileLockRelease_Handler,
 		},
 		{
 			MethodName: "GetMyPermissions",

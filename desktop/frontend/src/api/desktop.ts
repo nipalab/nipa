@@ -248,13 +248,14 @@ export const desktop = {
   lockStatus: async (root: string): Promise<LockStatus> => {
     const s = await Service.LockStatus(root);
     if (!s) throw new Error("No lock information");
-    return { ...s, locks: s.locks ?? [], files: s.files ?? [] };
+    return { ...s, locks: (s.locks ?? []).map((l) => ({ ...l, requests: l.requests ?? [] })), files: s.files ?? [] };
   },
   lock: async (root: string, branch: string, paths: string[]): Promise<LockResult> => {
     const r = await Service.Lock(root, branch, paths);
     return { locked: r?.locked ?? [], failed: r?.failed ?? [] };
   },
   unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
+  requestRelease: (root: string, lockId: string, message: string): Promise<void> => Service.RequestRelease(root, lockId, message),
   lockWatches: async (root: string): Promise<LockWatch[]> => (await Service.LockWatches(root)) ?? [],
   watchLock: (root: string, branch: string, path: string): Promise<void> => Service.WatchLock(root, branch, path),
   unwatchLock: (root: string, branch: string, path: string): Promise<void> => Service.UnwatchLock(root, branch, path),

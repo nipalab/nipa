@@ -57,6 +57,7 @@ export type {
     ImageStats,
     LLMSettings,
     LockFailure,
+    LockRequest,
     LockResult,
     LockStatus,
     LockWatch,

@@ -38,3 +38,23 @@ DELETE FROM file_locks WHERE project_id = sqlc.arg(project_id) AND merge_request
 
 -- name: FileLockDeleteByBranch :execrows
 DELETE FROM file_locks WHERE project_id = sqlc.arg(project_id) AND branch_id = sqlc.arg(branch_id);
+
+-- name: FileLockRequestGet :one
+SELECT * FROM file_lock_requests WHERE lock_id = sqlc.arg(lock_id) AND requester_id = sqlc.arg(requester_id);
+
+-- name: FileLockRequestCreate :one
+INSERT INTO file_lock_requests (id, lock_id, requester_id, message, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(lock_id), sqlc.arg(requester_id), sqlc.arg(message), sqlc.arg(created_at)::timestamptz)
+RETURNING *;
+
+-- name: FileLockRequestUpdate :execrows
+UPDATE file_lock_requests SET message = sqlc.arg(message), created_at = sqlc.arg(created_at)::timestamptz
+WHERE id = sqlc.arg(id);
+
+-- name: FileLockRequestListProject :many
+SELECT r.id, r.lock_id, r.requester_id, r.message, r.created_at, u.name AS requester_name
+FROM file_lock_requests r
+JOIN file_locks fl ON fl.id = r.lock_id
+JOIN users u ON u.id = r.requester_id
+WHERE fl.project_id = sqlc.arg(project_id)
+ORDER BY r.created_at, r.id;

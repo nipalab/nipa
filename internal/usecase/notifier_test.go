@@ -526,3 +526,68 @@ func TestEmailNotifier_PastReviewersStayParticipants(t *testing.T) {
 		})
 	}
 }
+
+func testLockNotice() LockRequestNotice {
+	return LockRequestNotice{
+		ProjectID: 1,
+		Lock:      &domain.FileLock{ID: 9, Path: "art/<hero>.psd", HeldBy: 10},
+		Request:   &domain.FileLockRequest{RequesterID: 99, Message: "need it <now>"},
+		Envelope: webhook.Envelope{
+			Organization: webhook.Organization{Slug: "acme"},
+			Project:      webhook.Project{Slug: "game"},
+			Actor:        webhook.Actor{ID: snow.ID(99).Base36(), Username: "alice"},
+		},
+	}
+}
+
+func TestEmailNotifier_NotifyLockRequest(t *testing.T) {
+	deps := newNotifierDeps(t)
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).Return(testNotifierUser(10, "holder@example.com"), nil)
+	var captured []*domain.EmailDelivery
+	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, d []*domain.EmailDelivery) error {
+		captured = d
+		return nil
+	})
+
+	require.NoError(t, deps.notifier.NotifyLockRequest(context.Background(), testLockNotice()))
+	require.Len(t, captured, 1)
+	require.Equal(t, "holder@example.com", captured[0].Email)
+	require.Equal(t, domain.WebhookEventLockReleaseRequested, captured[0].Event)
+	require.Equal(t, "[game] Release requested: art/<hero>.psd", captured[0].Subject)
+	body := string(captured[0].Body)
+	require.Contains(t, body, "alice asked you to release your lock")
+	require.Contains(t, body, "https://nipa.example.com/acme/game/locks")
+	require.NotContains(t, body, "<hero>", "html is escaped")
+	require.Equal(t, 1, deps.kicker.kicks)
+}
+
+func TestEmailNotifier_NotifyLockRequestSkipsAndFails(t *testing.T) {
+	notice := testLockNotice()
+	notice.Request.Message = ""
+	notice.Envelope.Actor.Username = ""
+
+	deps := newNotifierDeps(t)
+	deps.notifier.baseURL = ""
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).Return(testNotifierUser(10, "holder@example.com"), nil)
+	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).Return(errors.New("outbox down"))
+	require.EqualError(t, deps.notifier.NotifyLockRequest(context.Background(), notice), "outbox down")
+
+	for name, user := range map[string]*domain.User{
+		"opted out": {ID: 10, Email: "h@example.com", NotifyEmail: false},
+		"deleted":   {ID: 10, Email: "h@example.com", NotifyEmail: true, Deleted: true},
+		"no email":  {ID: 10, NotifyEmail: true},
+		"nil":       nil,
+	} {
+		deps := newNotifierDeps(t)
+		deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).Return(user, nil)
+		require.NoError(t, deps.notifier.NotifyLockRequest(context.Background(), testLockNotice()), name)
+	}
+
+	deps = newNotifierDeps(t)
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).Return(nil, domain.NewErrorNotFound("user"))
+	require.NoError(t, deps.notifier.NotifyLockRequest(context.Background(), testLockNotice()))
+
+	deps = newNotifierDeps(t)
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).Return(nil, errors.New("db down"))
+	require.EqualError(t, deps.notifier.NotifyLockRequest(context.Background(), testLockNotice()), "db down")
+}

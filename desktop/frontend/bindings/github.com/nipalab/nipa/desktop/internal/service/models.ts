@@ -431,6 +431,11 @@ export interface FileLock {
      * applies to the clone's branch
      */
     "inScope": boolean;
+
+    /**
+     * Requests are the teammates who asked for this lock to be released.
+     */
+    "requests": LockRequest[] | null;
 }
 
 export interface FileLockState {
@@ -600,6 +605,18 @@ export interface LLMSettings {
 export interface LockFailure {
     "path": string;
     "message": string;
+}
+
+export interface LockRequest {
+    "id": string;
+    "requesterId": string;
+    "requesterName": string;
+    "message": string;
+
+    /**
+     * RFC 3339
+     */
+    "requestedAt": string;
 }
 
 export interface LockResult {

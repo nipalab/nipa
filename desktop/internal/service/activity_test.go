@@ -169,20 +169,28 @@ func TestService_ActivityIgnoredAfterCancel(t *testing.T) {
 }
 
 func TestNotificationFor(t *testing.T) {
-	n, ok := notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Actor: "A", Message: "m", Branch: "main", Count: 1, CommitID: "c"}, true, false, false)
+	n, ok := notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Actor: "A", Message: "m", Branch: "main", Count: 1, CommitID: "c"}, workspace.NotifySettings{Pushes: true})
 	require.True(t, ok)
 	require.Equal(t, "game: new commit on main", n.Title)
 	require.Equal(t, "A: m", n.Body)
 	require.Equal(t, "push:/r:c", n.ID)
 	require.Equal(t, Navigation{Root: "/r", Tab: "history"}, n.Target)
 
-	n, _ = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Branch: "main", Count: 4}, true, false, false)
+	n, _ = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Branch: "main", Count: 4}, workspace.NotifySettings{Pushes: true})
 	require.Equal(t, "game: 4 new commits on main", n.Title)
 
-	for _, kind := range []string{daemon.EventLockReleased, daemon.EventReviewRequested, "other"} {
-		_, ok := notificationFor("game", "/r", TeamEvent{Kind: kind}, true, false, false)
+	for _, kind := range []string{daemon.EventLockReleased, daemon.EventLockRequested, daemon.EventReviewRequested, "other"} {
+		_, ok := notificationFor("game", "/r", TeamEvent{Kind: kind}, workspace.NotifySettings{Pushes: true})
 		require.False(t, ok, kind)
 	}
+
+	n, ok = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd", Message: "need it"}, workspace.NotifySettings{LockRequests: true})
+	require.True(t, ok)
+	require.Equal(t, "game: release requested", n.Title)
+	require.Equal(t, "Bob asked you to release hero.psd: need it", n.Body)
+	require.Equal(t, Navigation{Root: "/r", Tab: "locks"}, n.Target)
+	n, _ = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd"}, workspace.NotifySettings{LockRequests: true})
+	require.Equal(t, "Bob asked you to release hero.psd", n.Body)
 }
 
 func TestNotificationData(t *testing.T) {

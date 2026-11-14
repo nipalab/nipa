@@ -27,6 +27,19 @@ type fakeFileLockServer struct {
 
 	listResp *pb.ListFileLocksResponse
 	listErr  error
+
+	requestReq *pb.RequestFileLockReleaseRequest
+	requestErr error
+}
+
+func (f *fakeFileLockServer) RequestFileLockRelease(_ context.Context, req *pb.RequestFileLockReleaseRequest) (*pb.RequestFileLockReleaseResponse, error) {
+	f.requestReq = req
+	if f.requestErr != nil {
+		return nil, f.requestErr
+	}
+	return &pb.RequestFileLockReleaseResponse{Request: &pb.FileLockRequestDetail{
+		Id: "r1", RequesterId: "u2", RequesterName: "alice", Message: req.GetMessage(), RequestedAt: timestamppb.New(time.Unix(200, 0)),
+	}}, nil
 }
 
 func (f *fakeFileLockServer) LockFile(_ context.Context, req *pb.LockFileRequest) (*pb.LockFileResponse, error) {
@@ -198,4 +211,42 @@ func TestClient_LockFile_TTL(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, fs.lockReq.TtlSeconds)
 	require.NotNil(t, got.ExpiresAt)
+}
+
+func TestClient_RequestFileLockRelease(t *testing.T) {
+	fs := &fakeFileLockServer{}
+	c := newFileLockTestClient(t, fs)
+
+	got, err := c.RequestFileLockRelease(context.Background(), "default", "sample", "l1", "please")
+	require.NoError(t, err)
+	require.Equal(t, "default", fs.requestReq.GetContext().GetOrg())
+	require.Equal(t, "l1", fs.requestReq.GetLockId())
+	require.Equal(t, "please", fs.requestReq.GetMessage())
+	require.Equal(t, clientDomain.FileLockRequest{ID: "r1", RequesterID: "u2", RequesterName: "alice", Message: "please", RequestedAt: time.Unix(200, 0).UTC()}, clientDomainUTC(*got))
+
+	addr := startTestServer(t, &fakeFileLockServer{requestErr: status.Error(codes.InvalidArgument, "you hold this lock")})
+	failing := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, failing.Connect(context.Background(), addr))
+	_, err = failing.RequestFileLockRelease(context.Background(), "default", "sample", "l1", "")
+	var domErr *clientDomain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+
+	_, err = NewClient(NewTransport(), &stubSession{accessToken: "tok"}).RequestFileLockRelease(context.Background(), "o", "p", "l", "")
+	require.EqualError(t, err, "not connected to a nipa server")
+}
+
+func TestClient_ListFileLocksCarriesRequests(t *testing.T) {
+	detail := fileLockDetail()
+	detail.Requests = []*pb.FileLockRequestDetail{{Id: "r1", RequesterName: "alice", Message: "hi", RequestedAt: timestamppb.New(time.Unix(300, 0))}}
+	c := newFileLockTestClient(t, &fakeFileLockServer{listResp: &pb.ListFileLocksResponse{Locks: []*pb.FileLockDetail{detail}}})
+	locks, err := c.ListFileLocks(context.Background(), "default", "sample")
+	require.NoError(t, err)
+	require.Len(t, locks[0].Requests, 1)
+	require.Equal(t, "alice", locks[0].Requests[0].RequesterName)
+}
+
+func clientDomainUTC(r clientDomain.FileLockRequest) clientDomain.FileLockRequest {
+	r.RequestedAt = r.RequestedAt.UTC()
+	return r
 }

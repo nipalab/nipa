@@ -94,6 +94,7 @@ export function createService(scenario: string): typeof Real {
     LockStatus: () => ok(d.locks()),
     Lock: (_root, _branch, paths) => ok({ locked: paths ?? [], failed: [] }),
     Unlock: () => ok(undefined),
+    RequestRelease: () => ok(undefined),
     LockWatches: () => ok([...lockWatches.values()]),
     WatchLock: (_root, branch, path) => {
       lockWatches.set(`${branch}\0${path}`, { branch: String(branch), path: String(path) });
@@ -258,7 +259,7 @@ export function createService(scenario: string): typeof Real {
           events: [{ kind: "pushed", actor: "Mina Okafor", branch: "main", commitId: "c11", message: "Add dash ability to player movement", count: 3, path: "", number: 0 }],
         },
       ]),
-    Settings: () => ok({ keepInTray: true, startAtLogin: false, pollSeconds: 30, notify: { pushes: true, locks: true, reviews: true }, tools: [{ extension: ".psd", command: "/usr/bin/photopea" }, { extension: ".blend", command: "/usr/bin/blender" }], manualUpdates: false }),
+    Settings: () => ok({ keepInTray: true, startAtLogin: false, pollSeconds: 30, notify: { pushes: true, locks: true, reviews: true, lockRequests: true }, tools: [{ extension: ".psd", command: "/usr/bin/photopea" }, { extension: ".blend", command: "/usr/bin/blender" }], manualUpdates: false }),
     SaveSettings: (s) => ok(s),
     UIState: () => ok({}),
     SaveUIState: () => ok(undefined),

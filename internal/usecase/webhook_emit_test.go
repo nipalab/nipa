@@ -452,3 +452,55 @@ func TestHookEmitter_EmitMergeRequestCheckCarriesCheck(t *testing.T) {
 	require.Equal(t, "build", notifier.events[0].Check.Name)
 	require.Equal(t, domain.MergeRequestCheckFailed, notifier.events[0].Check.State)
 }
+
+type stubLockMailer struct {
+	notices []LockRequestNotice
+	err     error
+}
+
+func (s *stubLockMailer) Wants(string) bool { return false }
+func (s *stubLockMailer) Notify(context.Context, NotifyEvent) error {
+	return nil
+}
+func (s *stubLockMailer) NotifyLockRequest(_ context.Context, n LockRequestNotice) error {
+	s.notices = append(s.notices, n)
+	return s.err
+}
+
+func TestHookEmitter_EmitLockReleaseRequested(t *testing.T) {
+	lock := &domain.FileLock{ID: 9, Path: "art/a.psd", Branch: "feature", HeldBy: 3, HeldByName: "bob"}
+	request := &domain.FileLockRequest{RequesterID: 7, Message: "please"}
+
+	deps := newHookEmitDeps(t)
+	mailer := &stubLockMailer{}
+	deps.emitter.WithNotifier(mailer)
+	hook := testHook(1001, []string{domain.WebhookEventLockReleaseRequested}, "")
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return([]*domain.Webhook{hook}, nil)
+	deps.expectPayloadContext(snow.ID(1))
+	var payload webhook.LockPayload
+	deps.sender.EXPECT().Enqueue(gomock.Any(), gomock.Any(), domain.WebhookEventLockReleaseRequested, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ domain.Webhook, _ string, body []byte) (*domain.WebhookDelivery, error) {
+			require.NoError(t, json.Unmarshal(body, &payload))
+			return &domain.WebhookDelivery{}, nil
+		})
+
+	require.NoError(t, deps.emitter.EmitLockReleaseRequested(context.Background(), 1, lock, request, 7))
+	require.Equal(t, "art/a.psd", payload.Lock.Path)
+	require.Equal(t, "feature", payload.Lock.Branch)
+	require.Equal(t, snow.ID(3).Base36(), payload.Lock.HeldBy)
+	require.Equal(t, "alice", payload.Lock.RequesterName)
+	require.Equal(t, "please", payload.Lock.Message)
+	require.Len(t, mailer.notices, 1)
+	require.Equal(t, "acme", mailer.notices[0].Envelope.Organization.Slug)
+
+	deps = newHookEmitDeps(t)
+	failing := &stubLockMailer{err: errors.New("mail down")}
+	deps.emitter.WithNotifier(failing)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.expectPayloadContext(snow.ID(1))
+	require.ErrorContains(t, deps.emitter.EmitLockReleaseRequested(context.Background(), 1, lock, request, 7), "mail down")
+
+	deps = newHookEmitDeps(t)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	require.NoError(t, deps.emitter.EmitLockReleaseRequested(context.Background(), 1, lock, request, 7), "no hook and no mail does nothing")
+}

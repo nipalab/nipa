@@ -46,6 +46,7 @@ const lock = (over: Partial<FileLock>): FileLock => ({
   mergeRequest: 0,
   acquiredAt: "",
   inScope: true,
+  requests: [],
   ...over,
 });
 

@@ -27,6 +27,7 @@ const (
 const (
 	EventPushed          = "pushed"
 	EventLockReleased    = "lock_released"
+	EventLockRequested   = "lock_requested"
 	EventReviewRequested = "review_requested"
 )
 
@@ -141,6 +142,8 @@ type teamWatch struct {
 	primed   bool
 	head     string
 	locks    map[string]*pb.FileLockDetail
+	asked    map[string]bool
+	nextAsk  map[string]bool
 	reviews  map[int64]bool
 	incoming int32
 	requests int32
@@ -178,6 +181,7 @@ func (w *teamWatch) poll(ctx context.Context, client pb.NipaServiceClient, proje
 	}
 	changed := !w.primed || len(act.Events) > 0 || w.err != "" || act.Incoming != w.incoming || act.ReviewRequests != w.requests
 	w.primed, w.head, w.locks, w.reviews, w.err = true, head, locks, reviews, ""
+	w.asked = w.nextAsk
 	w.incoming, w.requests = act.Incoming, act.ReviewRequests
 	if !changed {
 		return nil, nil
@@ -223,9 +227,18 @@ func (w *teamWatch) pollLocks(ctx context.Context, client pb.NipaServiceClient, 
 		return nil, err
 	}
 	current := map[string]*pb.FileLockDetail{}
+	w.nextAsk = map[string]bool{}
 	for _, l := range res.GetLocks() {
 		if l.GetHeldBy() != in.user {
 			current[l.GetId()] = l
+			continue
+		}
+		for _, r := range l.GetRequests() {
+			key := r.GetId() + "@" + r.GetRequestedAt().AsTime().String()
+			w.nextAsk[key] = true
+			if w.primed && !w.asked[key] {
+				act.Events = append(act.Events, &daemonpb.TeamEvent{Kind: EventLockRequested, Actor: r.GetRequesterName(), Path: l.GetPath(), Branch: l.GetBranch(), Message: r.GetMessage()})
+			}
 		}
 	}
 	if !w.primed {

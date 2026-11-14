@@ -257,6 +257,10 @@ func (emptyService) UnlockFile(context.Context, *pb.UnlockFileRequest, ...grpc.C
 	return &pb.UnlockFileResponse{}, nil
 }
 
+func (emptyService) RequestFileLockRelease(context.Context, *pb.RequestFileLockReleaseRequest, ...grpc.CallOption) (*pb.RequestFileLockReleaseResponse, error) {
+	return &pb.RequestFileLockReleaseResponse{}, nil
+}
+
 func (emptyService) ListFileLocks(context.Context, *pb.ListFileLocksRequest, ...grpc.CallOption) (*pb.ListFileLocksResponse, error) {
 	return &pb.ListFileLocksResponse{}, nil
 }
@@ -392,6 +396,10 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 		}},
 		{"UnlockFile", func() error {
 			_, err := srv.ProxyUnlockFile(ctx, &daemonpb.ProxyUnlockFileRequest{Root: root})
+			return err
+		}},
+		{"LockRequestRelease", func() error {
+			_, err := srv.ProxyLockRequestRelease(ctx, &daemonpb.ProxyLockRequestReleaseRequest{Root: root})
 			return err
 		}},
 		{"ListFileLocks", func() error {

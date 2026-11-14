@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 type lockClient interface {
@@ -94,6 +95,63 @@ func (f *FileLock) Unlock(ctx context.Context, root, path, branch string) error 
 		}
 	}
 	return nil
+}
+
+// lockRequester is implemented by the gRPC client; it is optional so older
+// stubs keep satisfying lockClient.
+type lockRequester interface {
+	RequestFileLockRelease(ctx context.Context, org, project, lockID, message string) (*domain.FileLockRequest, error)
+}
+
+// RequestRelease asks the holder of the lock covering path to release it. An
+// empty branch means the clone's branch; a lock of that branch wins over the
+// project-global one.
+func (f *FileLock) RequestRelease(ctx context.Context, root, path, branch, message string) (*domain.FileLock, *domain.FileLockRequest, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, nil, domain.NewUserError("a path is required")
+	}
+	requester, ok := f.client.(lockRequester)
+	if !ok {
+		return nil, nil, domain.NewUserError("asking for a release is not supported by this client")
+	}
+	url, cfg, err := f.connect(ctx, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		branch = cfg.Branch
+	}
+	locks, err := f.client.ListFileLocks(ctx, url.Org, url.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	lock := coveringLock(locks, path, branch)
+	if lock == nil {
+		return nil, nil, domain.NewUserError(fmt.Sprintf("%s is not locked", path))
+	}
+	request, err := requester.RequestFileLockRelease(ctx, url.Org, url.Project, lock.ID, strings.TrimSpace(message))
+	if err != nil {
+		return nil, nil, err
+	}
+	return lock, request, nil
+}
+
+func coveringLock(locks []*domain.FileLock, path, branch string) *domain.FileLock {
+	var global *domain.FileLock
+	for _, lock := range locks {
+		if lock == nil || !serverDomain.PrefixCovers(lock.Path, path) {
+			continue
+		}
+		if !lock.Global && lock.Branch == branch {
+			return lock
+		}
+		if lock.Global && global == nil {
+			global = lock
+		}
+	}
+	return global
 }
 
 func (f *FileLock) pins() *LockPins {

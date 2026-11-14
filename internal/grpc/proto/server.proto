@@ -1005,6 +1005,25 @@ message FileLockDetail {
     optional int64 merge_request_number = 7;
     google.protobuf.Timestamp acquired_at = 8;
     google.protobuf.Timestamp expires_at = 9; // unset for locks that never expire
+    repeated FileLockRequestDetail requests = 10; // release requests, oldest first
+}
+
+message FileLockRequestDetail {
+    string id = 1; // base36 snow ID
+    string requester_id = 2; // base36 snow ID
+    string requester_name = 3;
+    string message = 4;
+    google.protobuf.Timestamp requested_at = 5; // last time the holder was notified
+}
+
+message RequestFileLockReleaseRequest {
+    ProjectContext context = 1;
+    string lock_id = 2; // base36 snow ID of the lock
+    string message = 3; // optional, up to 500 characters
+}
+
+message RequestFileLockReleaseResponse {
+    FileLockRequestDetail request = 1;
 }
 
 message LockFileRequest {
@@ -1146,6 +1165,7 @@ service NipaService {
     rpc LockFile(LockFileRequest) returns (LockFileResponse);
     rpc UnlockFile(UnlockFileRequest) returns (UnlockFileResponse);
     rpc ListFileLocks(ListFileLocksRequest) returns (ListFileLocksResponse);
+    rpc RequestFileLockRelease(RequestFileLockReleaseRequest) returns (RequestFileLockReleaseResponse);
 
     rpc GetMyPermissions(GetMyPermissionsRequest) returns (GetMyPermissionsResponse);
     rpc CreatePBACRule(CreatePBACRuleRequest) returns (CreatePBACRuleResponse);

@@ -58,6 +58,21 @@ func (mr *MockfileLockRepositoryMockRecorder) Create(ctx, lock any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockfileLockRepository)(nil).Create), ctx, lock)
 }
 
+// CreateRequest mocks base method.
+func (m *MockfileLockRepository) CreateRequest(ctx context.Context, request domain.FileLockRequest) (*domain.FileLockRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRequest", ctx, request)
+	ret0, _ := ret[0].(*domain.FileLockRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateRequest indicates an expected call of CreateRequest.
+func (mr *MockfileLockRepositoryMockRecorder) CreateRequest(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRequest", reflect.TypeOf((*MockfileLockRepository)(nil).CreateRequest), ctx, request)
+}
+
 // Delete mocks base method.
 func (m *MockfileLockRepository) Delete(ctx context.Context, id snow.ID) error {
 	m.ctrl.T.Helper()
@@ -129,6 +144,21 @@ func (mr *MockfileLockRepositoryMockRecorder) Get(ctx, projectID, path, branchID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockfileLockRepository)(nil).Get), ctx, projectID, path, branchID, now)
 }
 
+// GetRequest mocks base method.
+func (m *MockfileLockRepository) GetRequest(ctx context.Context, lockID, requesterID snow.ID) (*domain.FileLockRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRequest", ctx, lockID, requesterID)
+	ret0, _ := ret[0].(*domain.FileLockRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRequest indicates an expected call of GetRequest.
+func (mr *MockfileLockRepositoryMockRecorder) GetRequest(ctx, lockID, requesterID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRequest", reflect.TypeOf((*MockfileLockRepository)(nil).GetRequest), ctx, lockID, requesterID)
+}
+
 // ListProject mocks base method.
 func (m *MockfileLockRepository) ListProject(ctx context.Context, projectID snow.ID, now time.Time) ([]*domain.FileLock, error) {
 	m.ctrl.T.Helper()
@@ -144,6 +174,21 @@ func (mr *MockfileLockRepositoryMockRecorder) ListProject(ctx, projectID, now an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProject", reflect.TypeOf((*MockfileLockRepository)(nil).ListProject), ctx, projectID, now)
 }
 
+// ListRequests mocks base method.
+func (m *MockfileLockRepository) ListRequests(ctx context.Context, projectID snow.ID) ([]*domain.FileLockRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRequests", ctx, projectID)
+	ret0, _ := ret[0].([]*domain.FileLockRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRequests indicates an expected call of ListRequests.
+func (mr *MockfileLockRepositoryMockRecorder) ListRequests(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRequests", reflect.TypeOf((*MockfileLockRepository)(nil).ListRequests), ctx, projectID)
+}
+
 // SetExpiry mocks base method.
 func (m *MockfileLockRepository) SetExpiry(ctx context.Context, id, holder snow.ID, expiresAt time.Time) error {
 	m.ctrl.T.Helper()
@@ -156,6 +201,20 @@ func (m *MockfileLockRepository) SetExpiry(ctx context.Context, id, holder snow.
 func (mr *MockfileLockRepositoryMockRecorder) SetExpiry(ctx, id, holder, expiresAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExpiry", reflect.TypeOf((*MockfileLockRepository)(nil).SetExpiry), ctx, id, holder, expiresAt)
+}
+
+// UpdateRequest mocks base method.
+func (m *MockfileLockRepository) UpdateRequest(ctx context.Context, id snow.ID, message string, createdAt time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateRequest", ctx, id, message, createdAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateRequest indicates an expected call of UpdateRequest.
+func (mr *MockfileLockRepositoryMockRecorder) UpdateRequest(ctx, id, message, createdAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRequest", reflect.TypeOf((*MockfileLockRepository)(nil).UpdateRequest), ctx, id, message, createdAt)
 }
 
 // MockfileLockGate is a mock of fileLockGate interface.

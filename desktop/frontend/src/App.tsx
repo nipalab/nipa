@@ -24,6 +24,7 @@ const SIDEBAR_HIDDEN_KEY = "nipa.layout.sidebar-hidden";
 const refreshOn: Record<string, string[]> = {
   pushed: ["history", "branches"],
   lock_released: ["locks", "lock-watches"],
+  lock_requested: ["locks"],
   review_requested: ["mrs"],
 };
 

@@ -115,6 +115,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
 
+	fileLockUsecase.WithHooks(hookEmitter)
 	branchUsecase = branchUsecase.WithHooks(hookEmitter)
 	tagUsecase = tagUsecase.WithHooks(hookEmitter)
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)

@@ -362,6 +362,15 @@ export interface FileLockResponse {
   merge_request_number?: number
   acquired_at: string
   expires_at?: string
+  requests?: FileLockRequestResponse[]
+}
+
+export interface FileLockRequestResponse {
+  id: string
+  requester_id: string
+  requester_name: string
+  message: string
+  requested_at: string
 }
 
 export interface GroupMemberResponse {

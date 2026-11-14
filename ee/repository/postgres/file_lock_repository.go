@@ -159,3 +159,67 @@ func utcNullTime(t *time.Time) sql.NullTime {
 	}
 	return sql.NullTime{Time: t.UTC(), Valid: true}
 }
+
+func (r *FileLockRepository) GetRequest(ctx context.Context, lockID, requesterID snow.ID) (*domain.FileLockRequest, error) {
+	row, err := r.queries.FileLockRequestGet(ctx, sqlcPostgres.FileLockRequestGetParams{LockID: lockID.Int64(), RequesterID: requesterID.Int64()})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.FileLockRequest{
+		ID:          snow.ID(row.ID),
+		LockID:      snow.ID(row.LockID),
+		RequesterID: snow.ID(row.RequesterID),
+		Message:     row.Message,
+		CreatedAt:   row.CreatedAt,
+	}, nil
+}
+
+func (r *FileLockRepository) CreateRequest(ctx context.Context, request domain.FileLockRequest) (*domain.FileLockRequest, error) {
+	row, err := r.queries.FileLockRequestCreate(ctx, sqlcPostgres.FileLockRequestCreateParams{
+		ID:          request.ID.Int64(),
+		LockID:      request.LockID.Int64(),
+		RequesterID: request.RequesterID.Int64(),
+		Message:     request.Message,
+		CreatedAt:   request.CreatedAt.UTC(),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.FileLockRequest{
+		ID:          snow.ID(row.ID),
+		LockID:      snow.ID(row.LockID),
+		RequesterID: snow.ID(row.RequesterID),
+		Message:     row.Message,
+		CreatedAt:   row.CreatedAt,
+	}, nil
+}
+
+func (r *FileLockRepository) UpdateRequest(ctx context.Context, id snow.ID, message string, createdAt time.Time) error {
+	rows, err := r.queries.FileLockRequestUpdate(ctx, sqlcPostgres.FileLockRequestUpdateParams{ID: id.Int64(), Message: message, CreatedAt: createdAt.UTC()})
+	if err != nil {
+		return handleError(err)
+	}
+	if rows == 0 {
+		return domain.NewErrorRecordNotFound()
+	}
+	return nil
+}
+
+func (r *FileLockRepository) ListRequests(ctx context.Context, projectID snow.ID) ([]*domain.FileLockRequest, error) {
+	rows, err := r.queries.FileLockRequestListProject(ctx, projectID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	out := make([]*domain.FileLockRequest, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, &domain.FileLockRequest{
+			ID:            snow.ID(row.ID),
+			LockID:        snow.ID(row.LockID),
+			RequesterID:   snow.ID(row.RequesterID),
+			RequesterName: row.RequesterName,
+			Message:       row.Message,
+			CreatedAt:     row.CreatedAt,
+		})
+	}
+	return out, nil
+}

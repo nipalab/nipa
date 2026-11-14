@@ -38,6 +38,19 @@ type NotifySettings struct {
 	Pushes  bool `json:"pushes"`
 	Locks   bool `json:"locks"`
 	Reviews bool `json:"reviews"`
+	// LockRequests tells the holder that someone asked for a lock; on unless
+	// a saved file says otherwise.
+	LockRequests bool `json:"lockRequests"`
+}
+
+func (n *NotifySettings) UnmarshalJSON(data []byte) error {
+	type plain NotifySettings
+	in := plain{LockRequests: true}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*n = NotifySettings(in)
+	return nil
 }
 
 // Tool opens files with one extension (".blend") in a program instead of the
@@ -57,7 +70,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		KeepInTray:  true,
 		PollSeconds: DefaultPollSeconds,
-		Notify:      NotifySettings{Pushes: true, Locks: true, Reviews: true},
+		Notify:      NotifySettings{Pushes: true, Locks: true, Reviews: true, LockRequests: true},
 		Tools:       []Tool{},
 	}
 }

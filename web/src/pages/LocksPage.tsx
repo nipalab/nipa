@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Button, FormControl, Label, Link as PrimerLink, Text, TextInput } from '@primer/react'
+import { Button, FormControl, Label, Link as PrimerLink, Text, Textarea, TextInput } from '@primer/react'
 import { FileDirectoryIcon, FileIcon, GitBranchIcon, GitPullRequestIcon, LockIcon, SearchIcon, UnlockIcon } from '@primer/octicons-react'
 import { Link, useParams } from 'react-router-dom'
-import { listFileLocks, lockFile, unlockFile } from '../api/endpoints'
+import { listFileLocks, lockFile, requestLockRelease, unlockFile } from '../api/endpoints'
 import type { BranchResponse, FileLockResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
@@ -78,6 +78,41 @@ function LockFileDialog({
   )
 }
 
+function AskReleaseDialog({
+  org,
+  project,
+  lock,
+  onClose,
+  onAsked,
+}: {
+  org: string
+  project: string
+  lock: FileLockResponse
+  onClose: () => void
+  onAsked: () => void
+}) {
+  const [message, setMessage] = useState('')
+  return (
+    <FormDialog
+      title="Ask to release"
+      submitLabel="Send request"
+      onClose={onClose}
+      onSubmit={async () => {
+        await requestLockRelease(org, project, lock.id, message.trim())
+        onAsked()
+      }}
+    >
+      <Text as="p" style={{ margin: 0, color: 'var(--fgColor-muted)' }}>
+        {lock.held_by_name || 'The holder'} holds {lock.path}. They get a notification and an email.
+      </Text>
+      <FormControl>
+        <FormControl.Label>Message (optional)</FormControl.Label>
+        <Textarea block rows={3} maxLength={500} value={message} onChange={(event) => setMessage(event.target.value)} />
+      </FormControl>
+    </FormDialog>
+  )
+}
+
 export default function LocksPage() {
   const { org = '', project = '' } = useParams()
   const confirm = useConfirmAction()
@@ -86,6 +121,7 @@ export default function LocksPage() {
   const { data: locks, error, loading, reload } = useAsync(() => listFileLocks(org, project), [org, project])
   const { run, error: actionError, clearError } = useAction(reload)
   const [locking, setLocking] = useState(false)
+  const [asking, setAsking] = useState<FileLockResponse | null>(null)
   const [filter, setFilter] = useState<LockFilter>('all')
   const [query, setQuery] = useState('')
 
@@ -192,6 +228,14 @@ export default function LocksPage() {
                       <GitBranchIcon size={12} /> {lock.branch}
                     </Label>
                   )}
+                  {(lock.requests ?? []).length > 0 && (
+                    <Label
+                      variant="attention"
+                      title={(lock.requests ?? []).map((r) => `${r.requester_name || r.requester_id}${r.message ? `: ${r.message}` : ''}`).join('\n')}
+                    >
+                      {lock.requests?.length === 1 ? '1 release request' : `${lock.requests?.length} release requests`}
+                    </Label>
+                  )}
                   {lock.merge_request_number != null && (
                     <PrimerLink as={Link} to={`${repoUrl(org, project)}/merges/${lock.merge_request_number}`}>
                       <Label variant="accent">
@@ -217,6 +261,15 @@ export default function LocksPage() {
                   Unlock
                 </Button>
               )}
+              {!own && (
+                <Button
+                  size="small"
+                  title={(lock.requests ?? []).some((r) => r.requester_id === me?.id) ? 'You already asked; ask again' : undefined}
+                  onClick={() => setAsking(lock)}
+                >
+                  Ask to release
+                </Button>
+              )}
               {!own && canAdmin && (
                 <Button size="small" variant="danger" leadingVisual={UnlockIcon} onClick={() => void handleUnlock(lock, true)}>
                   Force unlock
@@ -226,6 +279,7 @@ export default function LocksPage() {
           )
         })}
       </div>
+      {asking && <AskReleaseDialog org={org} project={project} lock={asking} onClose={() => setAsking(null)} onAsked={reload} />}
       {locking && (
         <LockFileDialog
           org={org}

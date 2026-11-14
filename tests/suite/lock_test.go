@@ -249,3 +249,54 @@ var _ = Describe("nipa lock", func() {
 		Expect(out.Locks).To(BeEmpty())
 	})
 })
+
+var _ = Describe("nipa lock request", func() {
+	It("asks the holder to release, emails them once and clears with the lock", func() {
+		project := newProject("lock-request")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		holder := newIdentity("lock-req-holder").promote()
+		asker := newIdentity("lock-req-asker").promote()
+
+		holderDir := cloneRepoAs(holder, workspace(), url, "holder")
+		Expect(runNipaAs(holder, holderDir, "lock", "assets/hero.png").ExitCode).To(Equal(0))
+		askerDir := cloneRepoAs(asker, workspace(), url, "asker")
+
+		res := runNipaAs(asker, askerDir, "lock", "request", "assets/hero.png", "-m", "need it for the trailer")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("to release assets/hero.png"))
+
+		mail := email.waitForSubject(holder.email, "Release requested")
+		Expect(mail.Subject).To(ContainSubstring("assets/hero.png"))
+		Expect(mail.Text).To(ContainSubstring("asked you to release your lock on assets/hero.png"))
+		Expect(mail.Text).To(ContainSubstring("need it for the trailer"))
+
+		var out locksJSON
+		runJSONInto(holderDir, &out, "lock", "list", "--json")
+		Expect(out.Locks).To(HaveLen(1))
+		Expect(out.Locks[0].Requests).To(HaveLen(1))
+		Expect(out.Locks[0].Requests[0].Message).To(Equal("need it for the trailer"))
+
+		again := runNipaAs(asker, askerDir, "lock", "request", "assets/hero.png", "-m", "still need it")
+		Expect(again.ExitCode).To(Equal(0), again.Output())
+		var updated locksJSON
+		runJSONInto(holderDir, &updated, "lock", "list", "--json")
+		Expect(updated.Locks[0].Requests).To(HaveLen(1), "one request per asker")
+		Expect(updated.Locks[0].Requests[0].Message).To(Equal("still need it"))
+		Consistently(func() int { return email.countFor(holder.email) }, "2s", "100ms").Should(Equal(1), "a repeat inside the cooldown does not email again")
+
+		own := runNipaAs(holder, holderDir, "lock", "request", "assets/hero.png")
+		Expect(own.ExitCode).NotTo(Equal(0))
+		Expect(own.Output()).To(ContainSubstring("you hold this lock"))
+		missing := runNipaAs(asker, askerDir, "lock", "request", "nothing/here.png")
+		Expect(missing.ExitCode).NotTo(Equal(0))
+		Expect(missing.Output()).To(ContainSubstring("is not locked"))
+
+		Expect(runNipaAs(holder, holderDir, "unlock", "assets/hero.png").ExitCode).To(Equal(0))
+		Expect(runNipaAs(holder, holderDir, "lock", "assets/hero.png").ExitCode).To(Equal(0))
+		var relocked locksJSON
+		runJSONInto(holderDir, &relocked, "lock", "list", "--json")
+		Expect(relocked.Locks).To(HaveLen(1))
+		Expect(relocked.Locks[0].Requests).To(BeEmpty(), "requests are removed with the lock")
+	})
+})

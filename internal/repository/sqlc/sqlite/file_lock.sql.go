@@ -218,6 +218,128 @@ func (q *Queries) FileLockListProject(ctx context.Context, arg FileLockListProje
 	return items, nil
 }
 
+const fileLockRequestCreate = `-- name: FileLockRequestCreate :one
+INSERT INTO file_lock_requests (id, lock_id, requester_id, message, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5)
+RETURNING id, lock_id, requester_id, message, created_at
+`
+
+type FileLockRequestCreateParams struct {
+	ID          int64     `json:"id"`
+	LockID      int64     `json:"lock_id"`
+	RequesterID int64     `json:"requester_id"`
+	Message     string    `json:"message"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) FileLockRequestCreate(ctx context.Context, arg FileLockRequestCreateParams) (FileLockRequest, error) {
+	row := q.db.QueryRowContext(ctx, fileLockRequestCreate,
+		arg.ID,
+		arg.LockID,
+		arg.RequesterID,
+		arg.Message,
+		arg.CreatedAt,
+	)
+	var i FileLockRequest
+	err := row.Scan(
+		&i.ID,
+		&i.LockID,
+		&i.RequesterID,
+		&i.Message,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const fileLockRequestGet = `-- name: FileLockRequestGet :one
+SELECT id, lock_id, requester_id, message, created_at FROM file_lock_requests WHERE lock_id = ?1 AND requester_id = ?2
+`
+
+type FileLockRequestGetParams struct {
+	LockID      int64 `json:"lock_id"`
+	RequesterID int64 `json:"requester_id"`
+}
+
+func (q *Queries) FileLockRequestGet(ctx context.Context, arg FileLockRequestGetParams) (FileLockRequest, error) {
+	row := q.db.QueryRowContext(ctx, fileLockRequestGet, arg.LockID, arg.RequesterID)
+	var i FileLockRequest
+	err := row.Scan(
+		&i.ID,
+		&i.LockID,
+		&i.RequesterID,
+		&i.Message,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const fileLockRequestListProject = `-- name: FileLockRequestListProject :many
+SELECT r.id, r.lock_id, r.requester_id, r.message, r.created_at, u.name AS requester_name
+FROM file_lock_requests r
+JOIN file_locks fl ON fl.id = r.lock_id
+JOIN users u ON u.id = r.requester_id
+WHERE fl.project_id = ?1
+ORDER BY r.created_at, r.id
+`
+
+type FileLockRequestListProjectRow struct {
+	ID            int64     `json:"id"`
+	LockID        int64     `json:"lock_id"`
+	RequesterID   int64     `json:"requester_id"`
+	Message       string    `json:"message"`
+	CreatedAt     time.Time `json:"created_at"`
+	RequesterName string    `json:"requester_name"`
+}
+
+func (q *Queries) FileLockRequestListProject(ctx context.Context, projectID int64) ([]FileLockRequestListProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileLockRequestListProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileLockRequestListProjectRow
+	for rows.Next() {
+		var i FileLockRequestListProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LockID,
+			&i.RequesterID,
+			&i.Message,
+			&i.CreatedAt,
+			&i.RequesterName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const fileLockRequestUpdate = `-- name: FileLockRequestUpdate :execrows
+UPDATE file_lock_requests SET message = ?1, created_at = ?2
+WHERE id = ?3
+`
+
+type FileLockRequestUpdateParams struct {
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+	ID        int64     `json:"id"`
+}
+
+func (q *Queries) FileLockRequestUpdate(ctx context.Context, arg FileLockRequestUpdateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, fileLockRequestUpdate, arg.Message, arg.CreatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const fileLockSetExpiry = `-- name: FileLockSetExpiry :execrows
 UPDATE file_locks SET expires_at = ?1
 WHERE id = ?2 AND held_by = ?3

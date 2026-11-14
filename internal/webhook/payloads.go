@@ -81,3 +81,20 @@ type TagInfo struct {
 	Message   string `json:"message,omitempty"`
 	CreatedBy string `json:"created_by"`
 }
+
+// LockPayload is the body of a lock.* event.
+type LockPayload struct {
+	Envelope
+	Lock LockInfo `json:"lock"`
+}
+
+type LockInfo struct {
+	ID            string `json:"id"`
+	Path          string `json:"path"`
+	Branch        string `json:"branch,omitempty"`
+	HeldBy        string `json:"held_by"`
+	HeldByName    string `json:"held_by_name,omitempty"`
+	RequesterID   string `json:"requester_id"`
+	RequesterName string `json:"requester_name,omitempty"`
+	Message       string `json:"message,omitempty"`
+}

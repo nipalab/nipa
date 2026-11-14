@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/desktop/internal/workspace"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 )
@@ -179,16 +180,16 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 			}
 			continue
 		}
-		if n, ok := notificationFor(act.Name, root, e, prefs.Notify.Pushes, prefs.Notify.Locks, prefs.Notify.Reviews); ok {
+		if n, ok := notificationFor(act.Name, root, e, prefs.Notify); ok {
 			_ = s.Notifier(n)
 		}
 	}
 }
 
-func notificationFor(name, root string, e TeamEvent, pushes, locks, reviews bool) (Notification, bool) {
+func notificationFor(name, root string, e TeamEvent, prefs workspace.NotifySettings) (Notification, bool) {
 	switch e.Kind {
 	case daemon.EventPushed:
-		if !pushes {
+		if !prefs.Pushes {
 			return Notification{}, false
 		}
 		title := fmt.Sprintf("%s: new commit on %s", name, e.Branch)
@@ -202,7 +203,7 @@ func notificationFor(name, root string, e TeamEvent, pushes, locks, reviews bool
 			Target: Navigation{Root: root, Tab: "history"},
 		}, true
 	case daemon.EventLockReleased:
-		if !locks {
+		if !prefs.Locks {
 			return Notification{}, false
 		}
 		return Notification{
@@ -211,8 +212,22 @@ func notificationFor(name, root string, e TeamEvent, pushes, locks, reviews bool
 			Body:   fmt.Sprintf("%s released %s", e.Actor, e.Path),
 			Target: Navigation{Root: root, Tab: "locks"},
 		}, true
+	case daemon.EventLockRequested:
+		if !prefs.LockRequests {
+			return Notification{}, false
+		}
+		body := fmt.Sprintf("%s asked you to release %s", e.Actor, e.Path)
+		if e.Message != "" {
+			body += ": " + e.Message
+		}
+		return Notification{
+			ID:     fmt.Sprintf("lockreq:%s:%s:%s", root, e.Path, e.Actor),
+			Title:  name + ": release requested",
+			Body:   body,
+			Target: Navigation{Root: root, Tab: "locks"},
+		}, true
 	case daemon.EventReviewRequested:
-		if !reviews {
+		if !prefs.Reviews {
 			return Notification{}, false
 		}
 		return Notification{

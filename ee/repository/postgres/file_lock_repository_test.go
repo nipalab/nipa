@@ -258,3 +258,43 @@ func (s *FileLockRepositorySuite) TestExpiry() {
 	_, err = repo.Create(ctx, domain.FileLock{ID: 3, ProjectID: projectID, Path: "a.png", HeldBy: userID})
 	s.Require().NoError(err)
 }
+
+func (s *FileLockRepositorySuite) TestRequests() {
+	ctx := context.Background()
+	repo := NewFileLockRepository(s.db)
+
+	projectID := seedProject(s.T(), s.q, 1, "game")
+	holder := seedPBACUser(s.T(), s.db, 42)
+	asker := seedPBACUser(s.T(), s.db, 43)
+	lock, err := repo.Create(ctx, domain.FileLock{ID: 1001, ProjectID: projectID, Path: "assets", HeldBy: holder})
+	s.Require().NoError(err)
+
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	_, err = repo.GetRequest(ctx, lock.ID, asker)
+	s.Require().Error(err)
+	s.True(domain.IsErrorNotFound(err))
+
+	created, err := repo.CreateRequest(ctx, domain.FileLockRequest{ID: 7, LockID: lock.ID, RequesterID: asker, Message: "please", CreatedAt: at})
+	s.Require().NoError(err)
+	s.Equal("please", created.Message)
+	_, err = repo.CreateRequest(ctx, domain.FileLockRequest{ID: 8, LockID: lock.ID, RequesterID: asker, CreatedAt: at})
+	s.Require().Error(err, "one request per lock and requester")
+
+	got, err := repo.GetRequest(ctx, lock.ID, asker)
+	s.Require().NoError(err)
+	s.Equal(snow.ID(7), got.ID)
+
+	s.Require().NoError(repo.UpdateRequest(ctx, 7, "now", at.Add(time.Hour)))
+	s.True(domain.IsErrorNotFound(repo.UpdateRequest(ctx, 99, "x", at)))
+
+	list, err := repo.ListRequests(ctx, projectID)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Equal("now", list[0].Message)
+	s.NotEmpty(list[0].RequesterName)
+
+	s.Require().NoError(repo.Delete(ctx, lock.ID))
+	list, err = repo.ListRequests(ctx, projectID)
+	s.Require().NoError(err)
+	s.Empty(list, "requests go with the lock")
+}
