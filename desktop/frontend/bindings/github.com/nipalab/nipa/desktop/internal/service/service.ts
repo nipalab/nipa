@@ -558,6 +558,14 @@ export function PushChecks(root: string): $CancellablePromise<$models.PushChecks
 }
 
 /**
+ * ReleaseMedia tells the store a viewer no longer shows these files, so they
+ * may be removed.
+ */
+export function ReleaseMedia(tokens: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2837398315, tokens);
+}
+
+/**
  * RemoteBranches lists a project's branches.
  */
 export function RemoteBranches(server: string, org: string, project: string): $CancellablePromise<$models.RemoteBranch[] | null> {

@@ -59,7 +59,7 @@ Sonar never compile it.
   `RestoreRevision`, `RevealFile`, `FileLink`, `AssetRefs`, `Provenance`,
   `SetProvenance`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `VideoDiff`,
-  `OpenMedia`, `HasMedia`, `FontDiff`, `TableDiff`, `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
+  `OpenMedia`, `HasMedia`, `ReleaseMedia`, `FontDiff`, `TableDiff`, `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
   `Shelves`, `Shelve`, `ApplyShelf`, `AbortShelfApply`, `DropShelf`, `ShelfFiles`, `SyncPlan`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
@@ -146,18 +146,21 @@ Sonar never compile it.
   sample peak, RMS and integrated loudness (LUFS) and flags clipping,
   truncated analysis and shortened playback.
 - Video viewer (`VideoDiff.tsx`): `VideoDiff` in the service streams each
-  side (up to 4 GiB) into a private temp folder (`media.go`, the last 8
-  files kept, removed on shutdown) and probes the container in Go with
+  side (up to 4 GiB) into a private temp folder (`media.go`, removed on
+  shutdown) and probes the container in Go with
   `preview.ProbeVideo`. The webview plays it from
   `/nipa-media/<token>/<name>`, served by `service.MediaMiddleware` on the
   Wails asset server with `http.ServeContent` (range requests, never a data
   URL). Both versions sit side by side with one Play/Pause, a shared seek
   bar, previous/next frame (from the frame rate, 30 fps otherwise) and A/B
   audio (the other side is muted); the follower is re-synced when it drifts.
-  The video answer is not cached past the viewer's lifetime, and files that
-  are being served are evicted last; on a playback error the viewer asks
-  `HasMedia(token)` and, when the file was evicted, reloads the comparison
-  once instead of blaming the format.
+  A file is held from the moment `VideoDiff` returns it until the viewer
+  closes and calls `ReleaseMedia(tokens)` (streaming a released file holds
+  it again); only released files are evicted, least recently used first,
+  beyond 4, and 32 unreleased files bound requests that outlived their view.
+  The video answer is not cached past the viewer's lifetime. As a backstop,
+  a playback error asks `HasMedia(token)` and reloads the comparison once
+  when the file is gone instead of blaming the format.
   A video the webview cannot decode (codec, AVI, too large) keeps its stats
   and offers "Open externally" (`OpenMedia(token)`, the default player on
   the temp copy). The panel diffs container, duration, resolution, codecs,

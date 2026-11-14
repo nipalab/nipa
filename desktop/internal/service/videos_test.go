@@ -95,12 +95,13 @@ func TestService_MediaStoreEvictsAndOpens(t *testing.T) {
 		return nil
 	}
 	var first *VideoSide
-	for i := 0; i <= maxMediaFiles; i++ {
+	for i := 0; i <= maxReleasedMedia; i++ {
 		out, err := svc.VideoDiff(ctx, "/r", nil, &ImageRef{Source: "working", Path: "a.mp4"})
 		require.NoError(t, err)
 		if first == nil {
 			first = out.New
 		}
+		svc.ReleaseMedia([]string{out.New.Media})
 	}
 	require.False(t, svc.HasMedia(first.Media))
 	require.Error(t, svc.OpenMedia(first.Media))
@@ -119,26 +120,66 @@ func TestService_MediaStoreEvictsAndOpens(t *testing.T) {
 	require.NoError(t, svc.media.close())
 }
 
-func TestMediaStoreKeepsRecentlyServedFiles(t *testing.T) {
+func addMedia(t *testing.T, m *mediaStore) string {
+	t.Helper()
+	f, err := m.create("a.mp4")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return m.commit(f, "a.mp4")
+}
+
+func TestMediaStoreNeverEvictsHeldFiles(t *testing.T) {
 	var m mediaStore
 	defer func() { _ = m.close() }()
-	add := func() string {
-		f, err := m.create("a.mp4")
+	open := []string{addMedia(t, &m), addMedia(t, &m)}
+	var closed []string
+	for i := 0; i < 3*maxReleasedMedia; i++ {
+		token := addMedia(t, &m)
+		closed = append(closed, token)
+		m.release([]string{token, "unknown"})
+	}
+	for _, token := range open {
+		f, ok := m.lookup(token, false)
+		require.True(t, ok, "a file an open viewer holds is never evicted")
+		_, err := os.Stat(f.path)
 		require.NoError(t, err)
-		require.NoError(t, f.Close())
-		return m.commit(f, "a.mp4")
 	}
-	first := add()
-	for i := 1; i < maxMediaFiles; i++ {
-		add()
-	}
-	_, ok := m.lookup(first)
-	require.True(t, ok)
-	second := m.order[0]
-	add()
-	_, ok = m.lookup(first)
-	require.True(t, ok, "a file served recently survives eviction")
-	_, ok = m.lookup(second)
+	_, ok := m.lookup(closed[0], false)
 	require.False(t, ok)
-	require.Len(t, m.order, maxMediaFiles)
+	_, ok = m.lookup(closed[len(closed)-1], false)
+	require.True(t, ok, "recently released files linger for external players")
+	require.Len(t, m.files, len(open)+maxReleasedMedia)
+	require.Len(t, m.order, len(m.files))
+}
+
+func TestMediaStoreServingHoldsAgainAndUsesLRU(t *testing.T) {
+	var m mediaStore
+	defer func() { _ = m.close() }()
+	var tokens []string
+	for i := 0; i < maxReleasedMedia; i++ {
+		tokens = append(tokens, addMedia(t, &m))
+	}
+	m.release(tokens)
+	_, ok := m.lookup(tokens[0], false)
+	require.True(t, ok)
+	_, ok = m.lookup(tokens[1], true)
+	require.True(t, ok)
+	m.release([]string{addMedia(t, &m), addMedia(t, &m)})
+	_, ok = m.lookup(tokens[2], false)
+	require.False(t, ok, "the least recently used released file goes first")
+	_, ok = m.lookup(tokens[0], false)
+	require.True(t, ok, "a recently looked-up file survives")
+	require.True(t, m.files[tokens[1]].held, "a file served to the webview is held again")
+}
+
+func TestMediaStoreCapsUnreleasedFiles(t *testing.T) {
+	var m mediaStore
+	defer func() { _ = m.close() }()
+	first := addMedia(t, &m)
+	for i := 0; i < maxHeldMedia; i++ {
+		addMedia(t, &m)
+	}
+	_, ok := m.lookup(first, false)
+	require.False(t, ok)
+	require.Len(t, m.files, maxHeldMedia)
 }

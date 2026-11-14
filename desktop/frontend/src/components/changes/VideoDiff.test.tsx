@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileDiff, VideoSide, VideoStats } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ videoDiff: vi.fn(), openMedia: vi.fn(), hasMedia: vi.fn() }));
+const api = vi.hoisted(() => ({ videoDiff: vi.fn(), openMedia: vi.fn(), hasMedia: vi.fn(), releaseMedia: vi.fn(() => Promise.resolve()) }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { DiffViewer, viewerFor } from "./DiffViewer";
@@ -178,9 +178,21 @@ describe("VideoDiff", () => {
     await waitFor(() => expect(screen.getByLabelText("Added video")).toHaveAttribute("src", "/nipa-media/fresh/intro.mp4"));
     expect(screen.queryByText(/can't play in the app/)).not.toBeInTheDocument();
 
+    expect(api.releaseMedia).toHaveBeenCalledWith(["gone"]);
+
     fireEvent.error(screen.getByLabelText("Added video"));
     expect(await screen.findByText(/can't play in the app/)).toBeInTheDocument();
     expect(api.videoDiff).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases its files when the viewer closes", async () => {
+    api.videoDiff.mockResolvedValue({ old: side({ media: "a" }), new: side({ media: "b" }) });
+    api.releaseMedia.mockRejectedValueOnce(new Error("daemon gone"));
+    const { unmount } = show();
+    await screen.findByLabelText("After video");
+    expect(api.releaseMedia).not.toHaveBeenCalled();
+    unmount();
+    expect(api.releaseMedia).toHaveBeenCalledWith(["a", "b"]);
   });
 
   it("reports a format problem without reloading when the file is still there", async () => {

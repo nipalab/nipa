@@ -88,6 +88,7 @@ export function createService(scenario: string): typeof Real {
     FontDiff: (_root, old, next) => ok({ old: old ? clone(d.font.old) : null, new: next ? clone(d.font.new) : null, changes: old && next ? clone(d.font.changes) : null }),
     OpenMedia: () => ok(undefined),
     HasMedia: () => ok(true),
+    ReleaseMedia: () => ok(undefined),
     TableDiff: (_root, old, next, sheet) => ok(/\.xlsx$/i.test((next ?? old)?.path ?? "") ? d.workbook(sheet) : clone(d.table)),
     SceneDiff: () => ok(clone(d.scene)),
     MetaWarnings: () => ok([{ path: d.ICON, kind: "missing", related: `${d.ICON}.meta`, message: "Missing .meta file: Unity will generate a new GUID" }]),

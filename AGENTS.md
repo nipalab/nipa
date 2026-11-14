@@ -72,7 +72,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `/nipa-media/<token>/<name>` by `service.MediaMiddleware` on the Wails
   asset server with range requests; `preview.ProbeVideo` container stats;
   `VideoDiff.tsx` synced side-by-side playback, frame step, A/B audio,
-  "Open externally" through `OpenMedia`), font compare via `FontDiff`
+  "Open externally" through `OpenMedia`; files are held until the viewer
+  calls `ReleaseMedia` on close and only released ones are evicted, a
+  playback error checks `HasMedia` and reloads once), font compare via `FontDiff`
   (`preview.DecodeFont`/`RenderFontSheet`/`CompareFonts`; `FontDiff.tsx`
   glyph sheets, metrics, added/removed code points), embedded `.blend`/
   `.uasset`/`.umap` thumbnails in `ImageDiff` and the Files grid

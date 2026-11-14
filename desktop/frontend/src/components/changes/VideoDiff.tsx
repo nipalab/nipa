@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Loader2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { desktop, type FileDiff, type VideoCompare, type VideoSide, type VideoStats } from "@/api/desktop";
@@ -53,13 +53,21 @@ type CompareProps = {
   compare: VideoCompare;
   onOpen?: (token: string) => Promise<void>;
   hasMedia?: (token: string) => Promise<boolean>;
+  release?: (tokens: string[]) => Promise<void>;
   // onExpired reloads the comparison when a prepared file was evicted; it
   // returns false when a reload was already tried.
   onExpired?: () => boolean;
 };
 
-export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia = desktop.hasMedia, onExpired }: CompareProps) {
+export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia = desktop.hasMedia, release = desktop.releaseMedia, onExpired }: CompareProps) {
   const { old, new: next } = compare;
+  const tokens = [old?.media, next?.media].filter((t): t is string => !!t).join(" ");
+  useEffect(() => {
+    if (!tokens) return;
+    return () => {
+      release(tokens.split(" ")).catch(() => undefined);
+    };
+  }, [tokens, release]);
   const refs: Record<Side, RefObject<HTMLVideoElement>> = { old: useRef<HTMLVideoElement>(null), new: useRef<HTMLVideoElement>(null) };
   const [failed, setFailed] = useState<Record<Side, boolean>>({ old: false, new: false });
   const [playing, setPlaying] = useState(false);
