@@ -103,6 +103,14 @@ type Querier interface {
 	MFARecoveryCodeDeleteByUser(ctx context.Context, userID int64) error
 	MFARecoveryCodeInsert(ctx context.Context, arg MFARecoveryCodeInsertParams) error
 	MFARecoveryCodeUse(ctx context.Context, arg MFARecoveryCodeUseParams) (int64, error)
+	MaintenanceDelete(ctx context.Context, id int64) (int64, error)
+	MaintenanceGetProject(ctx context.Context, projectID sql.NullInt64) (MaintenanceGetProjectRow, error)
+	MaintenanceGetServer(ctx context.Context) (MaintenanceWindow, error)
+	MaintenanceList(ctx context.Context) ([]MaintenanceListRow, error)
+	MaintenanceRecipientsProject(ctx context.Context, projectID int64) ([]MaintenanceRecipientsProjectRow, error)
+	MaintenanceRecipientsServer(ctx context.Context) ([]MaintenanceRecipientsServerRow, error)
+	MaintenanceUpsertProject(ctx context.Context, arg MaintenanceUpsertProjectParams) (MaintenanceWindow, error)
+	MaintenanceUpsertServer(ctx context.Context, arg MaintenanceUpsertServerParams) (MaintenanceWindow, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error)

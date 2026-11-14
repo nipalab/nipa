@@ -1517,6 +1517,29 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 `auditedWrite`. The JWT interceptors also attach `RequestMeta` for the public
 login RPCs.
 
+Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; only the
+core and storage exist so far, nothing reads or enforces them yet): the pure
+`internal/maintenance` (no repo/usecase imports) holds `Mode`
+(`off|read_only|full|frozen`, `Stricter`), `Class` and the rule table
+(`Allowed`/`AllowedMethod`: control stays open in `frozen` for GET/HEAD only),
+`Window`/`Status`, `ParseFile` (override file: empty = `full`, else JSON
+`{mode, message, ends_at}`), `Service` (an `atomic.Pointer[Snapshot]`; `For(org,
+project)` = the stricter active server/project window and its scope, `Frozen`,
+`Apply` runs the `OnResume` hooks before publishing a snapshot that leaves
+`frozen` and keeps the frozen one if a hook fails), `Poller` (a
+`serverapp.Dispatcher`: reloads windows + file, a failed load keeps the stored
+windows, an invalid file publishes `full` with `Snapshot.FileError`) and the
+shared rejection `Info`/`Error`. Storage: `maintenance_windows` (sqlite
+`000024`, postgres `000009`; snow id, nullable `project_id`, CHECK no `frozen`
+for projects, one server window and one per project through partial unique
+indexes, upserts keep `id`/`created_by`), cleaned by triggers on project/org
+soft delete (`maintenance_windows_project_cleanup`/`_org_cleanup`, sqlite also
+`_project_delete`); queries in `maintenance.sql` of both dialects skip deleted
+projects/orgs; `RecipientsServer` (verified owners of live orgs) and
+`RecipientsProject` (org owners plus root admin rules, groups expanded).
+`sqlite|postgres.NewMaintenanceRepository` (`dbtx`-aware) is wired as
+`usecase.Repositories.Maintenance` in both mains and both e2e harnesses.
+
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
 the W3C propagator only when enabled — otherwise every path stays on the OTel

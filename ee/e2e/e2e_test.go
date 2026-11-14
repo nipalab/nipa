@@ -226,6 +226,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		Email:              postgres.NewEmailRepository(dbConn),
 		Audit:              postgres.NewAuditRepository(dbConn),
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
+		Maintenance:        postgres.NewMaintenanceRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 

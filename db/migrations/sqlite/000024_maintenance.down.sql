@@ -1,0 +1,4 @@
+DROP TRIGGER maintenance_windows_org_cleanup;
+DROP TRIGGER maintenance_windows_project_delete;
+DROP TRIGGER maintenance_windows_project_cleanup;
+DROP TABLE maintenance_windows;

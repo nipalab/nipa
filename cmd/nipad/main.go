@@ -181,6 +181,7 @@ func main() {
 		Email:              emailRepository,
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
+		Maintenance:        sqlite.NewMaintenanceRepository(dbConn),
 	}, serverapp.UsecaseDeps{
 		Config:              cfg,
 		DB:                  dbConn,

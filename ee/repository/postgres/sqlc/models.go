@@ -183,6 +183,18 @@ type GroupMember struct {
 	UserID  int64 `json:"user_id"`
 }
 
+type MaintenanceWindow struct {
+	ID        int64         `json:"id"`
+	ProjectID sql.NullInt64 `json:"project_id"`
+	Mode      string        `json:"mode"`
+	Message   string        `json:"message"`
+	StartsAt  time.Time     `json:"starts_at"`
+	EndsAt    sql.NullTime  `json:"ends_at"`
+	Notify    bool          `json:"notify"`
+	CreatedBy int64         `json:"created_by"`
+	UpdatedAt time.Time     `json:"updated_at"`
+}
+
 type MergeRequest struct {
 	ID                   int64         `json:"id"`
 	Number               int64         `json:"number"`
