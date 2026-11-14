@@ -83,14 +83,15 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
       staleTime: 10_000,
     })),
   });
-  const wantsRefs = !!root && (mode === "switch" || (mode === "all" && q !== ""));
+  const wantsRefs = !!root && !simple && (mode === "switch" || (mode === "all" && q !== ""));
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root), enabled: wantsRefs });
   const tagList = useQuery({ queryKey: ["tags", root], queryFn: () => desktop.tags(root), enabled: wantsRefs && mode === "all" });
   const searching = mode === "all" && !!root && dq !== "";
+  const searchingMrs = searching && !simple;
   const mrs = useQuery({
     queryKey: ["mrs", root, "palette", dq],
     queryFn: () => desktop.mergeRequests(root, { status: "", search: dq }),
-    enabled: searching && mrNumber(dq) === null,
+    enabled: searchingMrs && mrNumber(dq) === null,
     staleTime: 10_000,
   });
   const branch = current?.branch ?? "";
@@ -208,7 +209,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     }
 
     if (root) {
-      const refs = [
+      const refs = simple ? [] : [
         ...(branches.data ?? []).map((b) => ({ kind: "branch" as const, name: b.name })),
         ...(tagList.data ?? []).map((t) => ({ kind: "tag" as const, name: t.name })),
       ];
@@ -227,11 +228,11 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
         });
       }
 
-      const number = mrNumber(q);
+      const number = simple ? null : mrNumber(q);
       if (number !== null) {
         out.push({ key: `mr:${number}`, section: "Merge requests", icon: icon(GitPullRequest), title: `Open merge request #${number}`, run: () => go(root, { tab: "mrs", number }) });
       } else {
-        for (const mr of (mrs.data?.items ?? []).slice(0, 5)) {
+        for (const mr of simple ? [] : (mrs.data?.items ?? []).slice(0, 5)) {
           out.push({
             key: `mr:${mr.number}`,
             section: "Merge requests",

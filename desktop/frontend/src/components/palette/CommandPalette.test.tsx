@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Commit, FileHit, MergeRequest, Repo } from "@/api/desktop";
+import { setMode } from "@/lib/mode";
 import { renderWithProviders } from "@/test/render";
 
 const api = vi.hoisted(() => ({ changes: vi.fn(), searchFiles: vi.fn(), branches: vi.fn(), tags: vi.fn(), mergeRequests: vi.fn(), history: vi.fn() }));
@@ -145,6 +146,24 @@ describe("CommandPalette", () => {
     expect(onGo).toHaveBeenLastCalledWith("/game", { tab: "mrs", number: 4 });
     await userEvent.click(found);
     expect(onGo).toHaveBeenLastCalledWith("/game", { tab: "history", commit: "c1" });
+  });
+
+  it("leaves branches, tags and merge requests out in simple mode", async () => {
+    setMode("simple");
+    try {
+      open();
+      await userEvent.type(input(), "hero");
+      expect(await screen.findByRole("option", { name: /Rework hero armor/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /hero-rework/ })).toBeNull();
+      expect(screen.queryByRole("option", { name: /hero-v1/ })).toBeNull();
+      expect(screen.queryByRole("option", { name: /Hero armor textures/ })).toBeNull();
+      expect(api.mergeRequests).not.toHaveBeenCalled();
+      await userEvent.clear(input());
+      await userEvent.type(input(), "#12");
+      expect(screen.queryByRole("option", { name: "Open merge request #12" })).toBeNull();
+    } finally {
+      setMode("full");
+    }
   });
 
   it("opens the current branch's tab instead of switching to it", async () => {
