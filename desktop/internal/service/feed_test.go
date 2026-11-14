@@ -24,6 +24,9 @@ type feedDaemon struct {
 	members  []*pb.ProjectMember
 	failLog  map[string]bool
 	failMRs  bool
+	pageSize int
+	listed   map[string]int
+	failPage int
 	failLock bool
 	failMem  bool
 }
@@ -44,11 +47,32 @@ func (d *feedDaemon) ProxyMergeRequestList(_ context.Context, req *daemonpb.Prox
 	if d.failMRs {
 		return nil, errors.New("down")
 	}
+	status := req.GetRequest().GetStatus()
+	if d.listed == nil {
+		d.listed = map[string]int{}
+	}
+	d.listed[status]++
+	if d.failPage > 0 && d.listed[status] == d.failPage {
+		return nil, errors.New("page failed")
+	}
 	list := d.open
-	if req.GetRequest().GetStatus() == "merged" {
+	if status == "merged" {
 		list = d.merged
 	}
-	return &daemonpb.ProxyMergeRequestListResponse{Response: &pb.ListMergeRequestsResponse{MergeRequests: list}}, nil
+	var page []*pb.MergeRequestDetail
+	for _, mr := range list {
+		if req.GetRequest().AfterNumber != nil && mr.GetNumber() >= req.GetRequest().GetAfterNumber() {
+			continue
+		}
+		page = append(page, mr)
+	}
+	res := &pb.ListMergeRequestsResponse{}
+	if d.pageSize > 0 && len(page) > d.pageSize {
+		page = page[:d.pageSize]
+		res.NextCursor = ptr(page[len(page)-1].GetNumber())
+	}
+	res.MergeRequests = page
+	return &daemonpb.ProxyMergeRequestListResponse{Response: res}, nil
 }
 
 func (d *feedDaemon) LockStatus(context.Context, *daemonpb.LockStatusRequest, ...grpc.CallOption) (*daemonpb.LockStatusResponse, error) {
@@ -200,4 +224,86 @@ func TestFeedHelpers(t *testing.T) {
 	require.Equal(t, feedNoOneYet, orSomeone(""))
 	require.False(t, within("", time.Time{}))
 	require.False(t, within("garbage", time.Time{}))
+}
+
+func manyMerged(count int, startNumber int64, updated *timestamppb.Timestamp) []*pb.MergeRequestDetail {
+	var out []*pb.MergeRequestDetail
+	for i := 0; i < count; i++ {
+		out = append(out, &pb.MergeRequestDetail{Number: startNumber - int64(i), Title: "old", CreatedBy: "u1", CreatedAt: updated, UpdatedAt: updated})
+	}
+	return out
+}
+
+func TestService_ProjectActivity_FindsAnOldNumberMergedRecently(t *testing.T) {
+	d := newFeedDaemon()
+	d.pageSize = 3
+	d.merged = append(manyMerged(5, 200, at(1, 1)), &pb.MergeRequestDetail{Number: 12, Title: "Late merge", CreatedBy: "u1", CreatedAt: at(1, 1), UpdatedAt: at(12, 11)})
+	svc := newFeed(t, d)
+
+	feed, err := svc.ProjectActivity(context.Background(), "/r", feedFrom)
+
+	require.NoError(t, err)
+	require.False(t, feed.Truncated)
+	require.False(t, feed.Partial)
+	var found *FeedEvent
+	for i := range feed.Events {
+		if feed.Events[i].ID == "mr:12:mr_merged" {
+			found = &feed.Events[i]
+		}
+	}
+	require.NotNil(t, found)
+	require.Equal(t, "Late merge", found.Title)
+	require.Equal(t, 2, d.listed["merged"])
+}
+
+func TestService_ProjectActivity_MarksTruncatedWhenThePageCapIsReached(t *testing.T) {
+	d := newFeedDaemon()
+	d.pageSize = 2
+	d.merged = manyMerged(feedRequestPages*2+4, 500, at(1, 1))
+	svc := newFeed(t, d)
+
+	feed, err := svc.ProjectActivity(context.Background(), "/r", feedFrom)
+
+	require.NoError(t, err)
+	require.True(t, feed.Truncated)
+	require.Equal(t, feedRequestPages, d.listed["merged"])
+}
+
+func TestService_ProjectActivity_StopsReadingOpenRequestsOnceBeforeTheWindow(t *testing.T) {
+	d := newFeedDaemon()
+	d.pageSize = 2
+	d.open = []*pb.MergeRequestDetail{
+		{Number: 9, Title: "new", CreatedBy: "u1", CreatedAt: at(12, 9), UpdatedAt: at(12, 9)},
+		{Number: 8, Title: "older", CreatedBy: "u1", CreatedAt: at(1, 9), UpdatedAt: at(1, 9)},
+		{Number: 7, Title: "oldest", CreatedBy: "u1", CreatedAt: at(1, 8), UpdatedAt: at(1, 8)},
+	}
+	svc := newFeed(t, d)
+
+	feed, err := svc.ProjectActivity(context.Background(), "/r", feedFrom)
+
+	require.NoError(t, err)
+	require.False(t, feed.Truncated)
+	require.Equal(t, 1, d.listed["open"])
+}
+
+func TestService_ProjectActivity_KeepsWhatWasReadWhenALaterPageFails(t *testing.T) {
+	d := newFeedDaemon()
+	d.pageSize = 1
+	d.failPage = 2
+	d.merged = []*pb.MergeRequestDetail{
+		{Number: 9, Title: "kept", CreatedBy: "u1", CreatedAt: at(1, 1), UpdatedAt: at(12, 9)},
+		{Number: 8, Title: "lost", CreatedBy: "u1", CreatedAt: at(1, 1), UpdatedAt: at(12, 8)},
+	}
+	svc := newFeed(t, d)
+
+	feed, err := svc.ProjectActivity(context.Background(), "/r", feedFrom)
+
+	require.NoError(t, err)
+	require.True(t, feed.Partial)
+	var ids []string
+	for _, e := range feed.Events {
+		ids = append(ids, e.ID)
+	}
+	require.Contains(t, ids, "mr:9:mr_merged")
+	require.NotContains(t, ids, "mr:8:mr_merged")
 }

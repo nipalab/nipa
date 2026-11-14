@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	feedBranches    = 10
-	feedCommits     = 30
-	feedRequests    = 30
-	feedMemberNames = 200
-	feedDefaultDays = 7
+	feedBranches     = 10
+	feedCommits      = 30
+	feedRequestPages = 4
+	feedMemberNames  = 200
+	feedDefaultDays  = 7
 )
 
 const (
@@ -85,26 +85,11 @@ func (s *Service) ProjectActivity(ctx context.Context, root, since string) (*Fee
 
 	var requests []FeedEvent
 	for _, status := range []string{"open", "merged"} {
-		page, err := s.MergeRequests(ctx, root, MergeRequestFilter{Status: status})
+		events, err := s.requestEvents(ctx, root, status, from, names, feed)
 		if err != nil {
 			feed.Partial = true
-			continue
 		}
-		inside := 0
-		for _, mr := range page.Items {
-			at, kind := mr.CreatedAt, FeedOpened
-			if status == "merged" {
-				at, kind = mr.UpdatedAt, FeedMerged
-			}
-			if !within(at, from) {
-				continue
-			}
-			inside++
-			requests = append(requests, FeedEvent{ID: "mr:" + strconv.FormatInt(mr.Number, 10) + ":" + kind, Kind: kind, Time: at, Actor: nameOf(names, mr.AuthorID), Title: mr.Title, Branch: mr.Source, Number: mr.Number})
-		}
-		if inside >= feedRequests {
-			feed.Truncated = true
-		}
+		requests = append(requests, events...)
 	}
 
 	var locks []FeedEvent
@@ -121,6 +106,42 @@ func (s *Service) ProjectActivity(ctx context.Context, root, since string) (*Fee
 
 	feed.Events = mergeFeed(commits, requests, locks)
 	return feed, nil
+}
+
+// requestEvents pages through the requests of one status, which the server
+// orders by number. An open request was created in number order, so its list
+// stops at the first page that reaches back before the window; a merged one
+// may have been merged at any time, so that list is read up to feedRequestPages
+// pages and the feed is marked truncated when more remain.
+func (s *Service) requestEvents(ctx context.Context, root, status string, from time.Time, names map[string]string, feed *Feed) ([]FeedEvent, error) {
+	var out []FeedEvent
+	after := int64(0)
+	for pages := 0; ; pages++ {
+		if pages == feedRequestPages {
+			feed.Truncated = true
+			return out, nil
+		}
+		page, err := s.MergeRequests(ctx, root, MergeRequestFilter{Status: status, After: after})
+		if err != nil {
+			return out, err
+		}
+		reachedBack := false
+		for _, mr := range page.Items {
+			at, kind := mr.CreatedAt, FeedOpened
+			if status == "merged" {
+				at, kind = mr.UpdatedAt, FeedMerged
+			}
+			if !within(at, from) {
+				reachedBack = reachedBack || status == "open"
+				continue
+			}
+			out = append(out, FeedEvent{ID: "mr:" + strconv.FormatInt(mr.Number, 10) + ":" + kind, Kind: kind, Time: at, Actor: nameOf(names, mr.AuthorID), Title: mr.Title, Branch: mr.Source, Number: mr.Number})
+		}
+		if page.Next == 0 || reachedBack {
+			return out, nil
+		}
+		after = page.Next
+	}
 }
 
 // recentBranches returns the branches updated inside the window, newest
