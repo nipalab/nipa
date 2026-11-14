@@ -24,6 +24,18 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(
+		ws.GET("/orgs/{org}/projects/{project}/members").
+			To(Wrap(h.ListProjectMembers)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.QueryParameter("q", "case-insensitive name match")).
+			Param(ws.QueryParameter("limit", "maximum users (default 50, max 200)")).
+			Doc("List users who can read the project, for reviewer and assignee pickers (project reader)").
+			Returns(http.StatusOK, "members", []model.ProjectMemberResponse{}).
+			Operation("listProjectMembers").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/permissions/rules").
 			To(Wrap(h.ListProjectRules)).
 			Param(ws.PathParameter("org", "organization slug")).

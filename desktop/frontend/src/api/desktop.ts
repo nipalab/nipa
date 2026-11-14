@@ -48,6 +48,8 @@ import type {
   DiffHunk,
   DiffLine,
   Draft,
+  Feed as RawFeed,
+  FeedEvent,
   FileChange,
   FileDetails,
   FileDiff,
@@ -139,12 +141,13 @@ export type { FileDetails, FileEntry, FileHit };
 export type FileSearch = { hits: FileHit[]; truncated: boolean };
 export type FileListing = Omit<RawFileListing, "entries"> & { entries: FileEntry[] };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
-export type { Check, Comment, CommentInput, MergeRequestFilter, Mergeability, NewMergeRequest, Person, Review, TimelineEvent };
+export type { FeedEvent, Check, Comment, CommentInput, MergeRequestFilter, Mergeability, NewMergeRequest, Person, Review, TimelineEvent };
 export type MergeRequest = Omit<RawMergeRequest, "assignees"> & { assignees: Person[] };
 export type MergeRequestDetail = { request: MergeRequest; mergeability: Mergeability; outstanding: string[] };
 export type Thread = Omit<RawThread, "comments"> & { comments: Comment[] };
 export type Activity = { reviews: Review[]; threads: Thread[]; timeline: TimelineEvent[]; checks: Check[] };
 export type MergeRequestPage = { items: MergeRequest[]; next: number };
+export type Feed = { events: FeedEvent[]; truncated: boolean; partial: boolean };
 
 const mergeRequest = (m: RawMergeRequest): MergeRequest => ({ ...m, assignees: m.assignees ?? [] });
 const thread = (t: RawThread): Thread => ({ ...t, comments: t.comments ?? [] });
@@ -347,6 +350,13 @@ export const desktop = {
   mergeRequests: async (root: string, f: Partial<MergeRequestFilter>): Promise<MergeRequestPage> => {
     const page = await Service.MergeRequests(root, { status: "", search: "", author: "", after: 0, ...f });
     return { next: page?.next ?? 0, items: (page?.items ?? []).map(mergeRequest) };
+  },
+  members: async (root: string, query = ""): Promise<Person[]> => (await Service.Members(root, query)) ?? [],
+  assignMergeRequest: async (root: string, number: number, userIds: string[]): Promise<MergeRequest> => mergeRequest(required(await Service.AssignMergeRequest(root, number, userIds), "merge request")),
+  requestReview: (root: string, number: number, userId: string): Promise<void> => Service.RequestReview(root, number, userId),
+  projectActivity: async (root: string, since: string): Promise<Feed> => {
+    const f: RawFeed | null = await Service.ProjectActivity(root, since);
+    return { events: f?.events ?? [], truncated: !!f?.truncated, partial: !!f?.partial };
   },
   mergeRequest: async (root: string, number: number): Promise<MergeRequestDetail> => detail(await Service.MergeRequest(root, number)),
   mergeRequestActivity: async (root: string, number: number): Promise<Activity> => {

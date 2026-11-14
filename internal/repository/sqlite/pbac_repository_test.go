@@ -320,3 +320,64 @@ func TestPBACRepositorySQLite_PathPermissions(t *testing.T) {
 	require.Len(t, perms, 1)
 	require.Equal(t, "", perms[0].PathPrefix)
 }
+
+func TestPBACRepositorySQLite_ListMemberCandidates(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewPBACRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	otherProjectID := seedProject(t, q, 1, "other")
+	direct := seedPBACUser(t, db, 42)
+	seedPBACUser(t, db, 43)
+	member := seedPBACUser(t, db, 44)
+	elsewhere := seedPBACUser(t, db, 45)
+	gone := seedPBACUser(t, db, 46)
+	orgWide := seedPBACUser(t, db, 47)
+	groupID := seedPBACGroup(t, db, 5001, 1, "artists", 43)
+
+	_, err := db.ExecContext(ctx, `INSERT INTO org_members (org_id, user_id, role) VALUES (1, ?, 'member')`, member.Int64())
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE users SET deleted = 1 WHERE id = ?`, gone.Int64())
+	require.NoError(t, err)
+
+	for _, rule := range []domain.PBACRule{
+		{UserID: pbacIDPtr(direct), OrgID: 1, ProjectID: pbacIDPtr(projectID), Permission: domain.PermissionRead},
+		{GroupID: pbacIDPtr(groupID), OrgID: 1, ProjectID: pbacIDPtr(projectID), Permission: domain.PermissionRead},
+		{UserID: pbacIDPtr(elsewhere), OrgID: 1, ProjectID: pbacIDPtr(otherProjectID), Permission: domain.PermissionRead},
+		{UserID: pbacIDPtr(gone), OrgID: 1, ProjectID: pbacIDPtr(projectID), Permission: domain.PermissionRead},
+		{UserID: pbacIDPtr(orgWide), OrgID: 1, Permission: domain.PermissionRead},
+	} {
+		_, err := repo.CreateRule(ctx, rule)
+		require.NoError(t, err)
+	}
+
+	names := func(members []*domain.ProjectMember) []string {
+		out := make([]string, 0, len(members))
+		for _, m := range members {
+			out = append(out, m.Name)
+		}
+		return out
+	}
+
+	all, err := repo.ListMemberCandidates(ctx, projectID, "", 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"Super Admin", "user42", "user43", "user44", "user47"}, names(all))
+	require.Equal(t, direct, all[1].ID)
+
+	found, err := repo.ListMemberCandidates(ctx, projectID, "USER4", 100)
+	require.NoError(t, err)
+	require.Len(t, found, 4)
+
+	one, err := repo.ListMemberCandidates(ctx, projectID, "user43", 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"user43"}, names(one))
+
+	capped, err := repo.ListMemberCandidates(ctx, projectID, "", 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"Super Admin", "user42"}, names(capped))
+
+	none, err := repo.ListMemberCandidates(ctx, projectID, "nobody", 10)
+	require.NoError(t, err)
+	require.Empty(t, none)
+}

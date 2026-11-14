@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,11 +13,18 @@ import (
 
 const permissionCacheTTL = 30 * time.Second
 
+const (
+	defaultProjectMemberLimit = 50
+	maxProjectMemberLimit     = 200
+	projectMemberScan         = 500
+)
+
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=permission_mock_test.go -package=usecase
 type pbacRepository interface {
 	ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error)
 	ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error)
 	ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error)
+	ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int) ([]*domain.ProjectMember, error)
 	CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error)
 	GetRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) (*domain.PBACRule, error)
 	DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error
@@ -606,4 +614,34 @@ func ruleAudit(action string, rule *domain.PBACRule) *domain.AuditEntry {
 		entry.ProjectID = domain.IDPtr(*rule.ProjectID)
 	}
 	return entry
+}
+
+// ListProjectMembers lists the users who can read the project and so can be
+// asked to review or be assigned: org members and rule subjects whose access
+// still resolves to read, matched on name, ordered by name. Readers only.
+func (p *Permission) ListProjectMembers(ctx context.Context, projectID snow.ID, query string, limit int) ([]*domain.ProjectMember, error) {
+	if !p.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if limit <= 0 {
+		limit = defaultProjectMemberLimit
+	}
+	if limit > maxProjectMemberLimit {
+		limit = maxProjectMemberLimit
+	}
+	candidates, err := p.repo.ListMemberCandidates(ctx, projectID, strings.TrimSpace(query), projectMemberScan)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]*domain.ProjectMember, 0, limit)
+	for _, candidate := range candidates {
+		if !p.UserHasProjectAccess(ctx, projectID, candidate.ID, domain.PermissionRead) {
+			continue
+		}
+		members = append(members, candidate)
+		if len(members) == limit {
+			break
+		}
+	}
+	return members, nil
 }

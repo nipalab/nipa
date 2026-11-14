@@ -25,6 +25,9 @@ const api = vi.hoisted(() => ({
   imageDiff: vi.fn(),
   llmSettings: vi.fn(),
   generateMergeRequest: vi.fn(),
+  members: vi.fn(),
+  assignMergeRequest: vi.fn(),
+  requestReview: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -121,6 +124,11 @@ beforeEach(() => {
     { name: "art", commitId: "s2", default: false, protected: false },
   ]);
   api.imageDiff.mockResolvedValue({ old: null, new: null, stats: null, unsupported: "no preview" });
+  api.members.mockResolvedValue([
+    { id: "u1", name: "Ana Torres" },
+    { id: "u2", name: "Bo Lind" },
+    { id: "u3", name: "Cy Moreau" },
+  ]);
   api.llmSettings.mockResolvedValue({ endpoint: "", model: "", keySaved: false, configured: false });
 });
 
@@ -181,10 +189,13 @@ describe("MergeRequestsView list", () => {
     await userEvent.click(submit);
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not open the merge request: already open"));
     expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true, reviewers: [], assignees: [] });
-    await userEvent.type(within(dialog).getByRole("textbox", { name: "Reviewers" }), "u2, u3 u2");
-    await userEvent.type(within(dialog).getByRole("textbox", { name: "Assignees" }), "u4");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Reviewers" }));
+    await userEvent.click(await screen.findByRole("option", { name: /Bo Lind/ }));
+    await userEvent.click(screen.getByRole("option", { name: /Cy Moreau/ }));
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Assignees" }));
+    await userEvent.click(await screen.findByRole("option", { name: /Ana Torres/ }));
     await userEvent.click(submit);
-    expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true, reviewers: ["u2", "u3"], assignees: ["u4"] });
+    expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true, reviewers: ["u2", "u3"], assignees: ["u1"] });
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Opened !13", "success"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Drafts" })).toHaveAttribute("aria-pressed", "true");
@@ -514,5 +525,54 @@ describe("MergeRequestDetail", () => {
     await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 11));
     rerender(<MergeRequestsView root="/work/game" branch="art" notify={notify} open={{ number: 12, seq: 2 }} />);
     await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 12));
+  });
+});
+
+describe("MergeRequestsView people", () => {
+  const people = () => screen.findByRole("combobox", { name: "Assignees" });
+
+  it("assigns people to an open request", async () => {
+    api.mergeRequest.mockResolvedValue({ ...detail({ assignees: [{ id: "u1", name: "Ana Torres" }] }), outstanding: [] });
+    api.assignMergeRequest.mockResolvedValue(mr());
+    view();
+
+    await userEvent.click(await people());
+    await userEvent.click(await screen.findByRole("option", { name: /Bo Lind/ }));
+
+    await waitFor(() => expect(api.assignMergeRequest).toHaveBeenCalledWith("/work/game", 12, ["u1", "u2"]));
+    expect(screen.getByRole("button", { name: "Remove Bo Lind" })).toBeInTheDocument();
+  });
+
+  it("asks someone else to review and names who is already asked", async () => {
+    api.mergeRequest.mockResolvedValue({ ...detail(), outstanding: ["u2"] });
+    api.requestReview.mockResolvedValue(undefined);
+    view();
+
+    const asked = (await screen.findByText("Review requested from")).parentElement!;
+    expect(await within(asked).findByText("Bo Lind")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("combobox", { name: "Request review" }));
+    expect(await screen.findByRole("option", { name: /Cy Moreau/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Ana Torres/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Bo Lind/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: /Cy Moreau/ }));
+
+    await waitFor(() => expect(api.requestReview).toHaveBeenCalledWith("/work/game", 12, "u3"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Asked Cy Moreau to review", "success"));
+  });
+
+  it("reports a failed assignment and is read-only once the request is closed", async () => {
+    api.mergeRequest.mockResolvedValue({ ...detail({ assignees: [{ id: "u1", name: "Ana Torres" }] }), outstanding: [] });
+    api.assignMergeRequest.mockRejectedValue(new Error("not allowed"));
+    const first = view();
+    await userEvent.click(await people());
+    await userEvent.click(await screen.findByRole("option", { name: /Cy Moreau/ }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not assign: not allowed"));
+    first.unmount();
+
+    api.mergeRequest.mockResolvedValue({ ...detail({ status: "closed", assignees: [{ id: "u1", name: "Ana Torres" }] }), outstanding: [] });
+    view();
+    expect(await screen.findByText("Ana Torres")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Assignees" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Request review" })).not.toBeInTheDocument();
   });
 });

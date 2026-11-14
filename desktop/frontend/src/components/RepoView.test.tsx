@@ -43,6 +43,10 @@ const api = vi.hoisted(() => ({
   conflictDiff: vi.fn(),
   resolveConflict: vi.fn(),
   mergeRequests: vi.fn(),
+  mergeRequest: vi.fn(),
+  mergeRequestActivity: vi.fn(),
+  projectActivity: vi.fn(),
+  members: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
   files: vi.fn(),
@@ -772,6 +776,43 @@ describe("history, branches and pending operations", () => {
     await userEvent.click(await screen.findByRole("tab", { name: /Merge requests/ }));
     expect(await screen.findByText("No merge requests here yet")).toBeInTheDocument();
     expect(api.mergeRequests).toHaveBeenCalledWith("/work/game", { status: "open", search: "", after: 0 });
+  });
+
+  it("opens a merge request an intent names, again for the next one", async () => {
+    api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+    api.mergeRequest.mockRejectedValue(new Error("nope"));
+    const { rerender } = renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 7, seq: 1 }} />);
+    await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 7));
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 8, seq: 2 }} />);
+    await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 8));
+  });
+
+  it("shows the project activity and opens what a row points at", async () => {
+    const event = (over: object) => ({ id: "x", kind: "commit", time: new Date().toISOString(), actor: "Ana", title: "t", branch: "main", commitId: "", number: 0, path: "", ...over });
+    api.projectActivity.mockResolvedValue({
+      events: [event({ id: "commit:c9", title: "Fix door", commitId: "c9" }), event({ id: "mr:5:mr_opened", kind: "mr_opened", title: "Walls", number: 5 }), event({ id: "lock:l1", kind: "lock", title: "art/door.psd", path: "art/door.psd" })],
+      truncated: false,
+      partial: false,
+    });
+    api.history.mockResolvedValue({ commits: [], next: "" });
+    api.commitFiles.mockResolvedValue([]);
+    api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+    api.mergeRequest.mockRejectedValue(new Error("nope"));
+    view();
+
+    await userEvent.click(await screen.findByRole("tab", { name: /Activity/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Fix door/ }));
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.history).toHaveBeenCalledWith("/work/game", expect.objectContaining({ start: "c9" })));
+
+    await userEvent.click(screen.getByRole("tab", { name: /Activity/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Walls/ }));
+    expect(screen.getByRole("tab", { name: /Merge requests/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 5));
+
+    await userEvent.click(screen.getByRole("tab", { name: /Activity/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /art\/door.psd/ }));
+    expect(screen.getByRole("tab", { name: /Locks/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("resolves a waiting merge, then finishes it", async () => {

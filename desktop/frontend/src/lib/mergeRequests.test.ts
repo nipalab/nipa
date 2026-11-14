@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Thread } from "@/api/desktop";
-import { blockedReason, conversation, eventText, fileThreads, mergeabilityText, threadAt, threadSnippet } from "./mergeRequests";
+import { blockedReason, conversation, eventText, fileThreads, mergeabilityText, personNames, threadAt, threadSnippet } from "./mergeRequests";
 
 const thread = (over: Partial<Thread>): Thread => ({ id: "t", path: "", oldLine: 0, newLine: 0, outdated: false, resolved: false, resolvedBy: "", createdAt: "", comments: [], ...over });
 
@@ -64,5 +64,26 @@ describe("merge request helpers", () => {
     expect(mergeabilityText("odd")).toBe("odd");
     expect(eventText("pushed")).toBe("pushed new commits");
     expect(eventText("new_kind")).toBe("new kind");
+  });
+});
+
+describe("personNames", () => {
+  it("collects names from the timeline, reviews and the project's people", () => {
+    const none = { id: "", name: "" };
+    const names = personNames(
+      {
+        timeline: [{ id: "e1", kind: "review_requested", actor: { id: "u1", name: "Ana" }, subject: { id: "u2", name: "Bo" }, body: "", commitId: "", createdAt: "" }, { id: "e2", kind: "pushed", actor: { id: "u1", name: "Ana" }, subject: none, body: "", commitId: "", createdAt: "" }],
+        reviews: [{ id: "r1", reviewer: { id: "u3", name: "Cy" }, state: "approved", body: "", stale: false, dismissed: false, createdAt: "" }],
+        threads: [],
+        checks: [],
+      },
+      [{ id: "u4", name: "Di" }],
+    );
+    expect(names).toEqual({ u1: "Ana", u2: "Bo", u3: "Cy", u4: "Di" });
+  });
+
+  it("copes with no activity yet", () => {
+    expect(personNames()).toEqual({});
+    expect(personNames(undefined, [{ id: "u1", name: "" }])).toEqual({});
   });
 });

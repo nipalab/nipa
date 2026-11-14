@@ -43,3 +43,23 @@ func (h *Handler) MyProjectPermissions(appCtx http.AppContext) {
 	}
 	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
+
+func (h *Handler) ListProjectMembers(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	members, err := h.useCase.Permission().ListProjectMembers(
+		appCtx.Context(), project.ID, appCtx.QueryParameter("q"), queryInt(appCtx.QueryParameter("limit"), 0),
+	)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.ProjectMemberResponse, 0, len(members))
+	for _, member := range members {
+		resp = append(resp, model.ProjectMemberResponse{ID: member.ID.Base36(), Name: member.Name, PhotoUrl: member.PhotoUrl})
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
+}

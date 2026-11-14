@@ -67,3 +67,38 @@ RETURNING *;
 
 -- name: ProjectPathPermissionDelete :exec
 DELETE FROM project_paths_permissions WHERE project_id = sqlc.arg(project_id) AND path_prefix = sqlc.arg(path_prefix);
+
+-- name: ProjectMemberCandidates :many
+SELECT u.id, u.name, u.photo_url
+FROM users u
+WHERE u.deleted = false
+  AND (
+      u.id IN (
+          SELECT om.user_id FROM org_members om
+          WHERE om.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
+      )
+      OR u.id IN (
+          SELECT r.user_id FROM pbac_rules r
+          WHERE r.user_id IS NOT NULL
+            AND (
+                r.project_id = sqlc.arg(project_id)
+                OR (
+                    r.project_id IS NULL
+                    AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
+                )
+            )
+      )
+      OR u.id IN (
+          SELECT gm.user_id FROM group_members gm
+          JOIN pbac_rules r ON r.group_id = gm.group_id
+          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id AND g.deleted = false
+          WHERE r.project_id = sqlc.arg(project_id)
+             OR (
+                 r.project_id IS NULL
+                 AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
+             )
+      )
+  )
+  AND (sqlc.arg(search)::text = '' OR u.name ILIKE '%' || sqlc.arg(search)::text || '%')
+ORDER BY u.name, u.id
+LIMIT sqlc.arg(max_rows)::bigint;

@@ -65,6 +65,13 @@ export function AssetRefs(root: string, path: string): $CancellablePromise<$mode
 }
 
 /**
+ * AssignMergeRequest replaces the assignees of a request.
+ */
+export function AssignMergeRequest(root: string, $number: number, userIDs: string[] | null): $CancellablePromise<$models.MergeRequest | null> {
+    return $Call.ByID(391917396, root, $number, userIDs);
+}
+
+/**
  * AudioDiff decodes the old and/or new version of an audio file into
  * waveforms, spectrograms, loudness stats and playable WAV copies.
  */
@@ -403,6 +410,14 @@ export function LockWatches(root: string): $CancellablePromise<$models.LockWatch
 }
 
 /**
+ * Members lists the users who can read the clone's project, matched on name,
+ * for reviewer and assignee pickers.
+ */
+export function Members(root: string, query: string): $CancellablePromise<$models.Person[] | null> {
+    return $Call.ByID(3645996371, root, query);
+}
+
+/**
  * Merge merges a branch into the clone's branch. Conflicts stop the merge and
  * leave it waiting for ResolveConflict and a push, or AbortMerge.
  */
@@ -535,6 +550,15 @@ export function PickRepo(): $CancellablePromise<$models.Repo | null> {
 }
 
 /**
+ * ProjectActivity composes what happened since the given RFC 3339 time (the
+ * last week when empty) from the recently updated branches' commits, open
+ * and merged merge requests and the current locks.
+ */
+export function ProjectActivity(root: string, since: string): $CancellablePromise<$models.Feed | null> {
+    return $Call.ByID(287138348, root, since);
+}
+
+/**
  * Provenance reports the origin of the given files.
  */
 export function Provenance(root: string, paths: string[] | null): $CancellablePromise<$models.Provenance> {
@@ -613,6 +637,13 @@ export function Repos(): $CancellablePromise<$models.Repo[] | null> {
  */
 export function RequestRelease(root: string, lockID: string, message: string): $CancellablePromise<void> {
     return $Call.ByID(202246946, root, lockID, message);
+}
+
+/**
+ * RequestReview asks one more person to review a request.
+ */
+export function RequestReview(root: string, $number: number, userID: string): $CancellablePromise<void> {
+    return $Call.ByID(1958617469, root, $number, userID);
 }
 
 /**

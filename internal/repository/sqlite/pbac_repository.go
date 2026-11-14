@@ -181,3 +181,19 @@ func snowIDPtr(id sql.NullInt64) *snow.ID {
 	value := snow.ID(id.Int64)
 	return &value
 }
+
+func (p *PBAC) ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int) ([]*domain.ProjectMember, error) {
+	rows, err := p.queries.ProjectMemberCandidates(ctx, sqlcSqlite.ProjectMemberCandidatesParams{
+		ProjectID: projectID.Int64(),
+		Search:    search,
+		MaxRows:   int64(limit),
+	})
+	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	members := make([]*domain.ProjectMember, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, &domain.ProjectMember{ID: snow.ID(row.ID), Name: row.Name, PhotoUrl: row.PhotoUrl.String})
+	}
+	return members, nil
+}

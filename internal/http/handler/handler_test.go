@@ -645,6 +645,55 @@ func TestHandler_MyProjectPermissions_NoClaims(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, appCtx.statusCode)
 }
 
+func TestHandler_ListProjectMembers(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	ctx := context.Background()
+	projectID := snow.ID(1)
+	userID := env.userID
+
+	_, err := env.pbacRepo.CreateRule(ctx, domain.PBACRule{
+		UserID: &userID, OrgID: 1, ProjectID: &projectID, Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+
+	appCtx := &fakeAppContext{
+		claims:          &domain.Claims{UserID: userID},
+		pathParameters:  map[string]string{"org": "default", "project": "default"},
+		queryParameters: map[string]string{"q": "alice", "limit": "5"},
+	}
+	env.handler.ListProjectMembers(appCtx)
+
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	resp, ok := appCtx.response.([]model.ProjectMemberResponse)
+	require.True(t, ok)
+	require.Len(t, resp, 1)
+	require.Equal(t, userID.Base36(), resp[0].ID)
+	require.Equal(t, "alice", resp[0].Name)
+
+	appCtx.queryParameters = map[string]string{"q": "nobody"}
+	env.handler.ListProjectMembers(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	require.Empty(t, appCtx.response)
+}
+
+func TestHandler_ListProjectMembers_Errors(t *testing.T) {
+	h, _, userID := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{
+		claims:         &domain.Claims{UserID: userID},
+		pathParameters: map[string]string{"org": "default", "project": "missing"},
+	}
+	h.ListProjectMembers(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{
+		claims:         &domain.Claims{UserID: userID},
+		pathParameters: map[string]string{"org": "default", "project": "default"},
+	}
+	h.ListProjectMembers(appCtx)
+	require.Equal(t, http.StatusForbidden, appCtx.statusCode)
+}
+
 var _ httpApp.AppContext = (*fakeAppContext)(nil)
 
 func parseHandlerAccessToken(t *testing.T, token string, secret string) *domain.Claims {

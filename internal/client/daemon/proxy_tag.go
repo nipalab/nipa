@@ -63,3 +63,22 @@ func (s *Server) ProxyTagDelete(ctx context.Context, req *daemonpb.ProxyTagDelet
 	}
 	return &daemonpb.ProxyTagDeleteResponse{Response: res}, nil
 }
+
+// ProxyProjectMembers lists the users who can read the project, for pickers.
+func (s *Server) ProxyProjectMembers(ctx context.Context, req *daemonpb.ProxyProjectMembersRequest) (*daemonpb.ProxyProjectMembersResponse, error) {
+	var res *pb.ListProjectMembersResponse
+	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+		request := req.GetRequest()
+		if request == nil {
+			request = &pb.ListProjectMembersRequest{}
+		}
+		request.Context = project
+		var err error
+		res, err = client.ListProjectMembers(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &daemonpb.ProxyProjectMembersResponse{Response: res}, nil
+}

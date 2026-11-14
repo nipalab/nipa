@@ -162,6 +162,19 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   clone in `desktop.json` `lockWatches`; a `lock_released` event that covers
   one raises a "free" notification instead of the generic one and clicking
   it locks the file through `Navigation.Action`),
+  member pickers and the project activity feed (`Members`/`AssignMergeRequest`/
+  `RequestReview`/`ProjectActivity`; daemon `ProxyProjectMembers` over the
+  server `ListProjectMembers` RPC and `GET .../projects/{p}/members`, backed by
+  `Permission.ListProjectMembers`: name-matched org members and rule subjects
+  whose read access still resolves, capped scan of 500, name and id only;
+  `ProxyMergeRequestAssign`/`ProxyMergeRequestRequestReview`;
+  `people/MemberPicker.tsx` replaces the raw user-id inputs in the New merge
+  request dialog and `mr/PeopleBar.tsx` edits assignees and review requests in
+  the request header; the Activity tab `activity/ActivityView.tsx` shows
+  `service.ProjectActivity`, composed client-side from the 10 most recently
+  updated branches × 30 commits, open and merged merge requests and the
+  current locks, merged and ordered by `mergeFeed`, with range, person and
+  kind filters and rows that open History, a merge request or Locks),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -1902,7 +1915,8 @@ and `nipa mcp` stay silent.
   `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
   RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; browsing RPCs
   `ListMyProjects` (readable projects of the caller's orgs) and
-  `ListDirectory` (one directory of a branch or commit, via `Branch.TreeAt`);
+  `ListDirectory` (one directory of a branch or commit, via `Branch.TreeAt`),
+  `ListProjectMembers` (reviewer/assignee candidates who can read the project);
   PBAC
   RPCs `GetMyPermissions`, `CreatePBACRule`, `ListPBACRules`, `DeletePBACRule`,
   `ListProjectPathPermissions`, `SetProjectPathPermission`,

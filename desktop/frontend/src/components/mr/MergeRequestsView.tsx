@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, CheckCircle2, GitPullRequest, Loader2, Plus, RefreshCw, Search, Sparkles, XCircle } from "lucide-react";
-import { desktop, type MergeRequest } from "@/api/desktop";
+import { desktop, type MergeRequest, type Person } from "@/api/desktop";
 import { MergeRequestDetail, MergeRequestStatus } from "@/components/mr/MergeRequestDetail";
+import { MemberPicker } from "@/components/people/MemberPicker";
 import { Button } from "@/components/ui/button";
 import type { Notify } from "@/hooks/useLocks";
 import { useDraft, useLLMSettings } from "@/hooks/useGenerate";
@@ -183,8 +184,8 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState(false);
-  const [reviewers, setReviewers] = useState("");
-  const [assignees, setAssignees] = useState("");
+  const [reviewers, setReviewers] = useState<Person[]>([]);
+  const [assignees, setAssignees] = useState<Person[]>([]);
   const into = target || (defaultTarget !== source ? defaultTarget : "");
   const llm = useLLMSettings();
   const generated = useDraft(description, (d) => {
@@ -194,7 +195,7 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
 
   const create = useMutation({
     mutationFn: () =>
-      desktop.createMergeRequest(root, { source, target: into, title, description: generated.finalize(description), draft, reviewers: userIds(reviewers), assignees: userIds(assignees) }),
+      desktop.createMergeRequest(root, { source, target: into, title, description: generated.finalize(description), draft, reviewers: reviewers.map((p) => p.id), assignees: assignees.map((p) => p.id) }),
     onSuccess: (mr) => {
       void queryClient.invalidateQueries({ queryKey: ["mrs", root] });
       notify(`Opened !${mr.number}`, "success");
@@ -267,14 +268,14 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Description" rows={4} className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
         </label>
         <div className="flex gap-2">
-          <label className="flex-1 space-y-1">
+          <div className="flex-1 space-y-1">
             <span className="text-muted-foreground">Reviewers</span>
-            <input value={reviewers} onChange={(e) => setReviewers(e.target.value)} aria-label="Reviewers" placeholder="user ids" className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono outline-none focus:border-accent" />
-          </label>
-          <label className="flex-1 space-y-1">
+            <MemberPicker root={root} label="Reviewers" selected={reviewers} onChange={setReviewers} />
+          </div>
+          <div className="flex-1 space-y-1">
             <span className="text-muted-foreground">Assignees</span>
-            <input value={assignees} onChange={(e) => setAssignees(e.target.value)} aria-label="Assignees" placeholder="user ids" className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono outline-none focus:border-accent" />
-          </label>
+            <MemberPicker root={root} label="Assignees" selected={assignees} onChange={setAssignees} />
+          </div>
         </div>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} />
@@ -293,10 +294,6 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
       </form>
     </div>
   );
-}
-
-function userIds(text: string): string[] {
-  return [...new Set(text.split(/[\s,]+/).filter(Boolean))];
 }
 
 function Centered({ children }: { children: ReactNode }) {

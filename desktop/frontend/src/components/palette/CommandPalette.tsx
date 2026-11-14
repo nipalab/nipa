@@ -20,6 +20,7 @@ import {
 import { desktop, type Repo } from "@/api/desktop";
 import { FileIcon } from "@/components/changes/FileIcon";
 import { hasOpenConflicts, visibleTabs, type Intent } from "@/components/tabs";
+import { useDebounced } from "@/hooks/useDebounced";
 import { fuzzyMatch, rank, segments } from "@/lib/fuzzy";
 import { commitTitle, shortId } from "@/lib/history";
 import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "@/lib/palette";
@@ -59,15 +60,6 @@ type PaletteProps = {
   onSettings: () => void;
   onShortcuts: () => void;
 };
-
-function useDebounced(value: string, ms: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
 
 export function CommandPalette({ repos, current, initialMode = "all", onClose, onGo, onSettings, onShortcuts }: PaletteProps) {
   const [mode, setMode] = useState<PaletteMode>(current ? initialMode : "all");

@@ -19,88 +19,91 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NipaDaemon_Ping_FullMethodName                          = "/nipadaemon.NipaDaemon/Ping"
-	NipaDaemon_Shutdown_FullMethodName                      = "/nipadaemon.NipaDaemon/Shutdown"
-	NipaDaemon_Login_FullMethodName                         = "/nipadaemon.NipaDaemon/Login"
-	NipaDaemon_WatchRepo_FullMethodName                     = "/nipadaemon.NipaDaemon/WatchRepo"
-	NipaDaemon_UnwatchRepo_FullMethodName                   = "/nipadaemon.NipaDaemon/UnwatchRepo"
-	NipaDaemon_ListRepos_FullMethodName                     = "/nipadaemon.NipaDaemon/ListRepos"
-	NipaDaemon_Status_FullMethodName                        = "/nipadaemon.NipaDaemon/Status"
-	NipaDaemon_Stage_FullMethodName                         = "/nipadaemon.NipaDaemon/Stage"
-	NipaDaemon_Restore_FullMethodName                       = "/nipadaemon.NipaDaemon/Restore"
-	NipaDaemon_Update_FullMethodName                        = "/nipadaemon.NipaDaemon/Update"
-	NipaDaemon_Switch_FullMethodName                        = "/nipadaemon.NipaDaemon/Switch"
-	NipaDaemon_Push_FullMethodName                          = "/nipadaemon.NipaDaemon/Push"
-	NipaDaemon_Merge_FullMethodName                         = "/nipadaemon.NipaDaemon/Merge"
-	NipaDaemon_Revert_FullMethodName                        = "/nipadaemon.NipaDaemon/Revert"
-	NipaDaemon_Conflicts_FullMethodName                     = "/nipadaemon.NipaDaemon/Conflicts"
-	NipaDaemon_ResolveConflict_FullMethodName               = "/nipadaemon.NipaDaemon/ResolveConflict"
-	NipaDaemon_MergeGodotResource_FullMethodName            = "/nipadaemon.NipaDaemon/MergeGodotResource"
-	NipaDaemon_Diff_FullMethodName                          = "/nipadaemon.NipaDaemon/Diff"
-	NipaDaemon_DiffFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/DiffFiles"
-	NipaDaemon_ReadBlob_FullMethodName                      = "/nipadaemon.NipaDaemon/ReadBlob"
-	NipaDaemon_Preview_FullMethodName                       = "/nipadaemon.NipaDaemon/Preview"
-	NipaDaemon_WatchChanges_FullMethodName                  = "/nipadaemon.NipaDaemon/WatchChanges"
-	NipaDaemon_WatchEvents_FullMethodName                   = "/nipadaemon.NipaDaemon/WatchEvents"
-	NipaDaemon_ProxyBranchList_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyBranchList"
-	NipaDaemon_ProxyBranchCreate_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchCreate"
-	NipaDaemon_ProxyBranchDelete_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchDelete"
-	NipaDaemon_ProxyTagList_FullMethodName                  = "/nipadaemon.NipaDaemon/ProxyTagList"
-	NipaDaemon_ProxyTagCreate_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyTagCreate"
-	NipaDaemon_ProxyTagDelete_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyTagDelete"
-	NipaDaemon_ProxyTreeManifest_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyTreeManifest"
-	NipaDaemon_ProxyCommitLog_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyCommitLog"
-	NipaDaemon_ProxyCommitGet_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyCommitGet"
-	NipaDaemon_ProxyCommitWalk_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyCommitWalk"
-	NipaDaemon_ProxyMergeBase_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyMergeBase"
-	NipaDaemon_ProxyMergeRequestList_FullMethodName         = "/nipadaemon.NipaDaemon/ProxyMergeRequestList"
-	NipaDaemon_ProxyMergeRequestCreate_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestCreate"
-	NipaDaemon_ProxyMergeRequestMerge_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestMerge"
-	NipaDaemon_ProxyMergeRequestClose_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestClose"
-	NipaDaemon_ProxyMergeRequestReviews_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestReviews"
-	NipaDaemon_ProxyMergeRequestReviewState_FullMethodName  = "/nipadaemon.NipaDaemon/ProxyMergeRequestReviewState"
-	NipaDaemon_ProxyMergeRequestThreads_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestThreads"
-	NipaDaemon_ProxyMergeRequestGet_FullMethodName          = "/nipadaemon.NipaDaemon/ProxyMergeRequestGet"
-	NipaDaemon_ProxyMergeRequestCheck_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestCheck"
-	NipaDaemon_ProxyMergeRequestReopen_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestReopen"
-	NipaDaemon_ProxyMergeRequestSubmitReview_FullMethodName = "/nipadaemon.NipaDaemon/ProxyMergeRequestSubmitReview"
-	NipaDaemon_ProxyMergeRequestUpdate_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestUpdate"
-	NipaDaemon_ProxyMergeRequestCommits_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestCommits"
-	NipaDaemon_ProxyMergeRequestChecks_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestChecks"
-	NipaDaemon_ProxyMergeRequestTimeline_FullMethodName     = "/nipadaemon.NipaDaemon/ProxyMergeRequestTimeline"
-	NipaDaemon_ProxyMergeRequestAddComment_FullMethodName   = "/nipadaemon.NipaDaemon/ProxyMergeRequestAddComment"
-	NipaDaemon_ProxyMergeRequestReply_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestReply"
-	NipaDaemon_ProxyMergeRequestResolve_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestResolve"
-	NipaDaemon_ProxyLockFile_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyLockFile"
-	NipaDaemon_ProxyUnlockFile_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
-	NipaDaemon_ProxyLockRequestRelease_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyLockRequestRelease"
-	NipaDaemon_ProxyListFileLocks_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
-	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
-	NipaDaemon_MetaWarnings_FullMethodName                  = "/nipadaemon.NipaDaemon/MetaWarnings"
-	NipaDaemon_PushPlan_FullMethodName                      = "/nipadaemon.NipaDaemon/PushPlan"
-	NipaDaemon_Generate_FullMethodName                      = "/nipadaemon.NipaDaemon/Generate"
-	NipaDaemon_DiskUsage_FullMethodName                     = "/nipadaemon.NipaDaemon/DiskUsage"
-	NipaDaemon_GC_FullMethodName                            = "/nipadaemon.NipaDaemon/GC"
-	NipaDaemon_AccountStatus_FullMethodName                 = "/nipadaemon.NipaDaemon/AccountStatus"
-	NipaDaemon_LoginSSH_FullMethodName                      = "/nipadaemon.NipaDaemon/LoginSSH"
-	NipaDaemon_ListProjects_FullMethodName                  = "/nipadaemon.NipaDaemon/ListProjects"
-	NipaDaemon_RemoteBranches_FullMethodName                = "/nipadaemon.NipaDaemon/RemoteBranches"
-	NipaDaemon_RemoteTree_FullMethodName                    = "/nipadaemon.NipaDaemon/RemoteTree"
-	NipaDaemon_Clone_FullMethodName                         = "/nipadaemon.NipaDaemon/Clone"
-	NipaDaemon_SetSparse_FullMethodName                     = "/nipadaemon.NipaDaemon/SetSparse"
-	NipaDaemon_ListFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/ListFiles"
-	NipaDaemon_RestoreRevision_FullMethodName               = "/nipadaemon.NipaDaemon/RestoreRevision"
-	NipaDaemon_SearchFiles_FullMethodName                   = "/nipadaemon.NipaDaemon/SearchFiles"
-	NipaDaemon_AssetRefs_FullMethodName                     = "/nipadaemon.NipaDaemon/AssetRefs"
-	NipaDaemon_Provenance_FullMethodName                    = "/nipadaemon.NipaDaemon/Provenance"
-	NipaDaemon_SetProvenance_FullMethodName                 = "/nipadaemon.NipaDaemon/SetProvenance"
-	NipaDaemon_Blame_FullMethodName                         = "/nipadaemon.NipaDaemon/Blame"
-	NipaDaemon_ShelveCreate_FullMethodName                  = "/nipadaemon.NipaDaemon/ShelveCreate"
-	NipaDaemon_ShelveApply_FullMethodName                   = "/nipadaemon.NipaDaemon/ShelveApply"
-	NipaDaemon_ShelveList_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveList"
-	NipaDaemon_ShelveDrop_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveDrop"
-	NipaDaemon_ShelveFiles_FullMethodName                   = "/nipadaemon.NipaDaemon/ShelveFiles"
-	NipaDaemon_SyncPlan_FullMethodName                      = "/nipadaemon.NipaDaemon/SyncPlan"
+	NipaDaemon_Ping_FullMethodName                           = "/nipadaemon.NipaDaemon/Ping"
+	NipaDaemon_Shutdown_FullMethodName                       = "/nipadaemon.NipaDaemon/Shutdown"
+	NipaDaemon_Login_FullMethodName                          = "/nipadaemon.NipaDaemon/Login"
+	NipaDaemon_WatchRepo_FullMethodName                      = "/nipadaemon.NipaDaemon/WatchRepo"
+	NipaDaemon_UnwatchRepo_FullMethodName                    = "/nipadaemon.NipaDaemon/UnwatchRepo"
+	NipaDaemon_ListRepos_FullMethodName                      = "/nipadaemon.NipaDaemon/ListRepos"
+	NipaDaemon_Status_FullMethodName                         = "/nipadaemon.NipaDaemon/Status"
+	NipaDaemon_Stage_FullMethodName                          = "/nipadaemon.NipaDaemon/Stage"
+	NipaDaemon_Restore_FullMethodName                        = "/nipadaemon.NipaDaemon/Restore"
+	NipaDaemon_Update_FullMethodName                         = "/nipadaemon.NipaDaemon/Update"
+	NipaDaemon_Switch_FullMethodName                         = "/nipadaemon.NipaDaemon/Switch"
+	NipaDaemon_Push_FullMethodName                           = "/nipadaemon.NipaDaemon/Push"
+	NipaDaemon_Merge_FullMethodName                          = "/nipadaemon.NipaDaemon/Merge"
+	NipaDaemon_Revert_FullMethodName                         = "/nipadaemon.NipaDaemon/Revert"
+	NipaDaemon_Conflicts_FullMethodName                      = "/nipadaemon.NipaDaemon/Conflicts"
+	NipaDaemon_ResolveConflict_FullMethodName                = "/nipadaemon.NipaDaemon/ResolveConflict"
+	NipaDaemon_MergeGodotResource_FullMethodName             = "/nipadaemon.NipaDaemon/MergeGodotResource"
+	NipaDaemon_Diff_FullMethodName                           = "/nipadaemon.NipaDaemon/Diff"
+	NipaDaemon_DiffFiles_FullMethodName                      = "/nipadaemon.NipaDaemon/DiffFiles"
+	NipaDaemon_ReadBlob_FullMethodName                       = "/nipadaemon.NipaDaemon/ReadBlob"
+	NipaDaemon_Preview_FullMethodName                        = "/nipadaemon.NipaDaemon/Preview"
+	NipaDaemon_WatchChanges_FullMethodName                   = "/nipadaemon.NipaDaemon/WatchChanges"
+	NipaDaemon_WatchEvents_FullMethodName                    = "/nipadaemon.NipaDaemon/WatchEvents"
+	NipaDaemon_ProxyBranchList_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyBranchList"
+	NipaDaemon_ProxyBranchCreate_FullMethodName              = "/nipadaemon.NipaDaemon/ProxyBranchCreate"
+	NipaDaemon_ProxyBranchDelete_FullMethodName              = "/nipadaemon.NipaDaemon/ProxyBranchDelete"
+	NipaDaemon_ProxyTagList_FullMethodName                   = "/nipadaemon.NipaDaemon/ProxyTagList"
+	NipaDaemon_ProxyProjectMembers_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyProjectMembers"
+	NipaDaemon_ProxyTagCreate_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyTagCreate"
+	NipaDaemon_ProxyTagDelete_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyTagDelete"
+	NipaDaemon_ProxyTreeManifest_FullMethodName              = "/nipadaemon.NipaDaemon/ProxyTreeManifest"
+	NipaDaemon_ProxyCommitLog_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyCommitLog"
+	NipaDaemon_ProxyCommitGet_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyCommitGet"
+	NipaDaemon_ProxyCommitWalk_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyCommitWalk"
+	NipaDaemon_ProxyMergeBase_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyMergeBase"
+	NipaDaemon_ProxyMergeRequestList_FullMethodName          = "/nipadaemon.NipaDaemon/ProxyMergeRequestList"
+	NipaDaemon_ProxyMergeRequestCreate_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestCreate"
+	NipaDaemon_ProxyMergeRequestMerge_FullMethodName         = "/nipadaemon.NipaDaemon/ProxyMergeRequestMerge"
+	NipaDaemon_ProxyMergeRequestClose_FullMethodName         = "/nipadaemon.NipaDaemon/ProxyMergeRequestClose"
+	NipaDaemon_ProxyMergeRequestReviews_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestReviews"
+	NipaDaemon_ProxyMergeRequestReviewState_FullMethodName   = "/nipadaemon.NipaDaemon/ProxyMergeRequestReviewState"
+	NipaDaemon_ProxyMergeRequestThreads_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestThreads"
+	NipaDaemon_ProxyMergeRequestGet_FullMethodName           = "/nipadaemon.NipaDaemon/ProxyMergeRequestGet"
+	NipaDaemon_ProxyMergeRequestCheck_FullMethodName         = "/nipadaemon.NipaDaemon/ProxyMergeRequestCheck"
+	NipaDaemon_ProxyMergeRequestReopen_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestReopen"
+	NipaDaemon_ProxyMergeRequestSubmitReview_FullMethodName  = "/nipadaemon.NipaDaemon/ProxyMergeRequestSubmitReview"
+	NipaDaemon_ProxyMergeRequestUpdate_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestUpdate"
+	NipaDaemon_ProxyMergeRequestCommits_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestCommits"
+	NipaDaemon_ProxyMergeRequestChecks_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestChecks"
+	NipaDaemon_ProxyMergeRequestTimeline_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestTimeline"
+	NipaDaemon_ProxyMergeRequestAddComment_FullMethodName    = "/nipadaemon.NipaDaemon/ProxyMergeRequestAddComment"
+	NipaDaemon_ProxyMergeRequestReply_FullMethodName         = "/nipadaemon.NipaDaemon/ProxyMergeRequestReply"
+	NipaDaemon_ProxyMergeRequestResolve_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyMergeRequestResolve"
+	NipaDaemon_ProxyMergeRequestAssign_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyMergeRequestAssign"
+	NipaDaemon_ProxyMergeRequestRequestReview_FullMethodName = "/nipadaemon.NipaDaemon/ProxyMergeRequestRequestReview"
+	NipaDaemon_ProxyLockFile_FullMethodName                  = "/nipadaemon.NipaDaemon/ProxyLockFile"
+	NipaDaemon_ProxyUnlockFile_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
+	NipaDaemon_ProxyLockRequestRelease_FullMethodName        = "/nipadaemon.NipaDaemon/ProxyLockRequestRelease"
+	NipaDaemon_ProxyListFileLocks_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
+	NipaDaemon_LockStatus_FullMethodName                     = "/nipadaemon.NipaDaemon/LockStatus"
+	NipaDaemon_MetaWarnings_FullMethodName                   = "/nipadaemon.NipaDaemon/MetaWarnings"
+	NipaDaemon_PushPlan_FullMethodName                       = "/nipadaemon.NipaDaemon/PushPlan"
+	NipaDaemon_Generate_FullMethodName                       = "/nipadaemon.NipaDaemon/Generate"
+	NipaDaemon_DiskUsage_FullMethodName                      = "/nipadaemon.NipaDaemon/DiskUsage"
+	NipaDaemon_GC_FullMethodName                             = "/nipadaemon.NipaDaemon/GC"
+	NipaDaemon_AccountStatus_FullMethodName                  = "/nipadaemon.NipaDaemon/AccountStatus"
+	NipaDaemon_LoginSSH_FullMethodName                       = "/nipadaemon.NipaDaemon/LoginSSH"
+	NipaDaemon_ListProjects_FullMethodName                   = "/nipadaemon.NipaDaemon/ListProjects"
+	NipaDaemon_RemoteBranches_FullMethodName                 = "/nipadaemon.NipaDaemon/RemoteBranches"
+	NipaDaemon_RemoteTree_FullMethodName                     = "/nipadaemon.NipaDaemon/RemoteTree"
+	NipaDaemon_Clone_FullMethodName                          = "/nipadaemon.NipaDaemon/Clone"
+	NipaDaemon_SetSparse_FullMethodName                      = "/nipadaemon.NipaDaemon/SetSparse"
+	NipaDaemon_ListFiles_FullMethodName                      = "/nipadaemon.NipaDaemon/ListFiles"
+	NipaDaemon_RestoreRevision_FullMethodName                = "/nipadaemon.NipaDaemon/RestoreRevision"
+	NipaDaemon_SearchFiles_FullMethodName                    = "/nipadaemon.NipaDaemon/SearchFiles"
+	NipaDaemon_AssetRefs_FullMethodName                      = "/nipadaemon.NipaDaemon/AssetRefs"
+	NipaDaemon_Provenance_FullMethodName                     = "/nipadaemon.NipaDaemon/Provenance"
+	NipaDaemon_SetProvenance_FullMethodName                  = "/nipadaemon.NipaDaemon/SetProvenance"
+	NipaDaemon_Blame_FullMethodName                          = "/nipadaemon.NipaDaemon/Blame"
+	NipaDaemon_ShelveCreate_FullMethodName                   = "/nipadaemon.NipaDaemon/ShelveCreate"
+	NipaDaemon_ShelveApply_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveApply"
+	NipaDaemon_ShelveList_FullMethodName                     = "/nipadaemon.NipaDaemon/ShelveList"
+	NipaDaemon_ShelveDrop_FullMethodName                     = "/nipadaemon.NipaDaemon/ShelveDrop"
+	NipaDaemon_ShelveFiles_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveFiles"
+	NipaDaemon_SyncPlan_FullMethodName                       = "/nipadaemon.NipaDaemon/SyncPlan"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -134,6 +137,7 @@ type NipaDaemonClient interface {
 	ProxyBranchCreate(ctx context.Context, in *ProxyBranchCreateRequest, opts ...grpc.CallOption) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(ctx context.Context, in *ProxyBranchDeleteRequest, opts ...grpc.CallOption) (*ProxyBranchDeleteResponse, error)
 	ProxyTagList(ctx context.Context, in *ProxyTagListRequest, opts ...grpc.CallOption) (*ProxyTagListResponse, error)
+	ProxyProjectMembers(ctx context.Context, in *ProxyProjectMembersRequest, opts ...grpc.CallOption) (*ProxyProjectMembersResponse, error)
 	ProxyTagCreate(ctx context.Context, in *ProxyTagCreateRequest, opts ...grpc.CallOption) (*ProxyTagCreateResponse, error)
 	ProxyTagDelete(ctx context.Context, in *ProxyTagDeleteRequest, opts ...grpc.CallOption) (*ProxyTagDeleteResponse, error)
 	ProxyTreeManifest(ctx context.Context, in *ProxyTreeManifestRequest, opts ...grpc.CallOption) (*ProxyTreeManifestResponse, error)
@@ -159,6 +163,8 @@ type NipaDaemonClient interface {
 	ProxyMergeRequestAddComment(ctx context.Context, in *ProxyMergeRequestAddCommentRequest, opts ...grpc.CallOption) (*ProxyMergeRequestAddCommentResponse, error)
 	ProxyMergeRequestReply(ctx context.Context, in *ProxyMergeRequestReplyRequest, opts ...grpc.CallOption) (*ProxyMergeRequestReplyResponse, error)
 	ProxyMergeRequestResolve(ctx context.Context, in *ProxyMergeRequestResolveRequest, opts ...grpc.CallOption) (*ProxyMergeRequestResolveResponse, error)
+	ProxyMergeRequestAssign(ctx context.Context, in *ProxyMergeRequestAssignRequest, opts ...grpc.CallOption) (*ProxyMergeRequestAssignResponse, error)
+	ProxyMergeRequestRequestReview(ctx context.Context, in *ProxyMergeRequestRequestReviewRequest, opts ...grpc.CallOption) (*ProxyMergeRequestRequestReviewResponse, error)
 	ProxyLockFile(ctx context.Context, in *ProxyLockFileRequest, opts ...grpc.CallOption) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(ctx context.Context, in *ProxyUnlockFileRequest, opts ...grpc.CallOption) (*ProxyUnlockFileResponse, error)
 	ProxyLockRequestRelease(ctx context.Context, in *ProxyLockRequestReleaseRequest, opts ...grpc.CallOption) (*ProxyLockRequestReleaseResponse, error)
@@ -568,6 +574,16 @@ func (c *nipaDaemonClient) ProxyTagList(ctx context.Context, in *ProxyTagListReq
 	return out, nil
 }
 
+func (c *nipaDaemonClient) ProxyProjectMembers(ctx context.Context, in *ProxyProjectMembersRequest, opts ...grpc.CallOption) (*ProxyProjectMembersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyProjectMembersResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyProjectMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) ProxyTagCreate(ctx context.Context, in *ProxyTagCreateRequest, opts ...grpc.CallOption) (*ProxyTagCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyTagCreateResponse)
@@ -812,6 +828,26 @@ func (c *nipaDaemonClient) ProxyMergeRequestResolve(ctx context.Context, in *Pro
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyMergeRequestResolveResponse)
 	err := c.cc.Invoke(ctx, NipaDaemon_ProxyMergeRequestResolve_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ProxyMergeRequestAssign(ctx context.Context, in *ProxyMergeRequestAssignRequest, opts ...grpc.CallOption) (*ProxyMergeRequestAssignResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyMergeRequestAssignResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyMergeRequestAssign_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ProxyMergeRequestRequestReview(ctx context.Context, in *ProxyMergeRequestRequestReviewRequest, opts ...grpc.CallOption) (*ProxyMergeRequestRequestReviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyMergeRequestRequestReviewResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyMergeRequestRequestReview_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1203,6 +1239,7 @@ type NipaDaemonServer interface {
 	ProxyBranchCreate(context.Context, *ProxyBranchCreateRequest) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(context.Context, *ProxyBranchDeleteRequest) (*ProxyBranchDeleteResponse, error)
 	ProxyTagList(context.Context, *ProxyTagListRequest) (*ProxyTagListResponse, error)
+	ProxyProjectMembers(context.Context, *ProxyProjectMembersRequest) (*ProxyProjectMembersResponse, error)
 	ProxyTagCreate(context.Context, *ProxyTagCreateRequest) (*ProxyTagCreateResponse, error)
 	ProxyTagDelete(context.Context, *ProxyTagDeleteRequest) (*ProxyTagDeleteResponse, error)
 	ProxyTreeManifest(context.Context, *ProxyTreeManifestRequest) (*ProxyTreeManifestResponse, error)
@@ -1228,6 +1265,8 @@ type NipaDaemonServer interface {
 	ProxyMergeRequestAddComment(context.Context, *ProxyMergeRequestAddCommentRequest) (*ProxyMergeRequestAddCommentResponse, error)
 	ProxyMergeRequestReply(context.Context, *ProxyMergeRequestReplyRequest) (*ProxyMergeRequestReplyResponse, error)
 	ProxyMergeRequestResolve(context.Context, *ProxyMergeRequestResolveRequest) (*ProxyMergeRequestResolveResponse, error)
+	ProxyMergeRequestAssign(context.Context, *ProxyMergeRequestAssignRequest) (*ProxyMergeRequestAssignResponse, error)
+	ProxyMergeRequestRequestReview(context.Context, *ProxyMergeRequestRequestReviewRequest) (*ProxyMergeRequestRequestReviewResponse, error)
 	ProxyLockFile(context.Context, *ProxyLockFileRequest) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error)
 	ProxyLockRequestRelease(context.Context, *ProxyLockRequestReleaseRequest) (*ProxyLockRequestReleaseResponse, error)
@@ -1349,6 +1388,9 @@ func (UnimplementedNipaDaemonServer) ProxyBranchDelete(context.Context, *ProxyBr
 func (UnimplementedNipaDaemonServer) ProxyTagList(context.Context, *ProxyTagListRequest) (*ProxyTagListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyTagList not implemented")
 }
+func (UnimplementedNipaDaemonServer) ProxyProjectMembers(context.Context, *ProxyProjectMembersRequest) (*ProxyProjectMembersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyProjectMembers not implemented")
+}
 func (UnimplementedNipaDaemonServer) ProxyTagCreate(context.Context, *ProxyTagCreateRequest) (*ProxyTagCreateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyTagCreate not implemented")
 }
@@ -1423,6 +1465,12 @@ func (UnimplementedNipaDaemonServer) ProxyMergeRequestReply(context.Context, *Pr
 }
 func (UnimplementedNipaDaemonServer) ProxyMergeRequestResolve(context.Context, *ProxyMergeRequestResolveRequest) (*ProxyMergeRequestResolveResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyMergeRequestResolve not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyMergeRequestAssign(context.Context, *ProxyMergeRequestAssignRequest) (*ProxyMergeRequestAssignResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyMergeRequestAssign not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyMergeRequestRequestReview(context.Context, *ProxyMergeRequestRequestReviewRequest) (*ProxyMergeRequestRequestReviewResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyMergeRequestRequestReview not implemented")
 }
 func (UnimplementedNipaDaemonServer) ProxyLockFile(context.Context, *ProxyLockFileRequest) (*ProxyLockFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyLockFile not implemented")
@@ -1944,6 +1992,24 @@ func _NipaDaemon_ProxyTagList_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_ProxyProjectMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyProjectMembersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyProjectMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyProjectMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyProjectMembers(ctx, req.(*ProxyProjectMembersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaDaemon_ProxyTagCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyTagCreateRequest)
 	if err := dec(in); err != nil {
@@ -2390,6 +2456,42 @@ func _NipaDaemon_ProxyMergeRequestResolve_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaDaemonServer).ProxyMergeRequestResolve(ctx, req.(*ProxyMergeRequestResolveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ProxyMergeRequestAssign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyMergeRequestAssignRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyMergeRequestAssign(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyMergeRequestAssign_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyMergeRequestAssign(ctx, req.(*ProxyMergeRequestAssignRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ProxyMergeRequestRequestReview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyMergeRequestRequestReviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyMergeRequestRequestReview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyMergeRequestRequestReview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyMergeRequestRequestReview(ctx, req.(*ProxyMergeRequestRequestReviewRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2964,6 +3066,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaDaemon_ProxyTagList_Handler,
 		},
 		{
+			MethodName: "ProxyProjectMembers",
+			Handler:    _NipaDaemon_ProxyProjectMembers_Handler,
+		},
+		{
 			MethodName: "ProxyTagCreate",
 			Handler:    _NipaDaemon_ProxyTagCreate_Handler,
 		},
@@ -3062,6 +3168,14 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProxyMergeRequestResolve",
 			Handler:    _NipaDaemon_ProxyMergeRequestResolve_Handler,
+		},
+		{
+			MethodName: "ProxyMergeRequestAssign",
+			Handler:    _NipaDaemon_ProxyMergeRequestAssign_Handler,
+		},
+		{
+			MethodName: "ProxyMergeRequestRequestReview",
+			Handler:    _NipaDaemon_ProxyMergeRequestRequestReview_Handler,
 		},
 		{
 			MethodName: "ProxyLockFile",

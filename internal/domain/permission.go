@@ -55,3 +55,11 @@ type ProjectPathPermission struct {
 	Permission Permission `json:"permission"`
 	CreatedAt  time.Time  `json:"created_at"`
 }
+
+// ProjectMember is a user who may be asked to review or assigned to work on a
+// project: an org member or the subject of an access rule. Name and id only.
+type ProjectMember struct {
+	ID       snow.ID `json:"id"`
+	Name     string  `json:"name"`
+	PhotoUrl string  `json:"photo_url,omitempty"`
+}
