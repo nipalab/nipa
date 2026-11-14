@@ -11,7 +11,7 @@ type Props = {
   outstanding: string[];
   activity?: Activity;
   busy: boolean;
-  onAssign: (ids: string[]) => void;
+  onAssign: (ids: string[]) => Promise<unknown>;
   onRequestReview: (person: Person) => void;
 };
 
@@ -39,7 +39,7 @@ export function PeopleBar({ root, request, outstanding, activity, busy, onAssign
             disabled={busy}
             onChange={(next) => {
               setAssignees(next);
-              onAssign(next.map((p) => p.id));
+              onAssign(next.map((p) => p.id)).catch(() => setAssignees(request.assignees));
             }}
           />
         ) : (

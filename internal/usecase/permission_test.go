@@ -764,62 +764,62 @@ func TestPermission_CreateRule_SeatGate(t *testing.T) {
 	})
 }
 
-func newMemberPermission(t *testing.T, readers map[snow.ID]bool) (*Permission, *MockpbacRepository) {
+func newMemberPermission(t *testing.T, defaults []*domain.ProjectPathPermission) (*Permission, *MockpbacRepository) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
-	repo.EXPECT().ProjectOrgID(gomock.Any(), gomock.Any()).Return(snow.ID(1), nil).AnyTimes()
-	repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
-	repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ snow.ID, userID snow.ID) ([]*domain.PBACRule, error) {
-			if !readers[userID] {
-				return nil, nil
-			}
-			return []*domain.PBACRule{{Permission: domain.PermissionRead}}, nil
-		}).AnyTimes()
-	users := NewMockuserLookup(ctrl)
-	users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.User{}, nil).AnyTimes()
-	orgs := NewMockorgAuthorizer(ctrl)
-	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
-	return NewPermission(repo, users, NewMockgroupLookup(ctrl), orgs), repo
+	repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(defaults, nil).AnyTimes()
+	return NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), NewMockorgAuthorizer(ctrl)), repo
 }
 
-func TestPermission_ListProjectMembers_KeepsReadersInOrder(t *testing.T) {
-	candidates := []*domain.ProjectMember{{ID: 1, Name: "Ada"}, {ID: 2, Name: "Bo"}, {ID: 3, Name: "Cy"}}
-	perm, repo := newMemberPermission(t, map[snow.ID]bool{1: true, 3: true})
-	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(7), "a", projectMemberScan).Return(candidates, nil).Times(1)
+func TestPermission_ListProjectMembers_ReturnsTheRepositoryReaders(t *testing.T) {
+	perm, repo := newMemberPermission(t, nil)
+	want := []*domain.ProjectMember{{ID: 1, Name: "Ada"}, {ID: 3, Name: "Cy"}}
+	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(7), "a", 10, false).Return(want, nil).Times(1)
 
 	members, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, " a ", 10)
 
 	require.NoError(t, err)
-	require.Equal(t, []*domain.ProjectMember{candidates[0], candidates[2]}, members)
+	require.Equal(t, want, members)
 }
 
-func TestPermission_ListProjectMembers_StopsAtLimit(t *testing.T) {
-	candidates := []*domain.ProjectMember{{ID: 1, Name: "Ada"}, {ID: 2, Name: "Bo"}, {ID: 3, Name: "Cy"}}
-	perm, repo := newMemberPermission(t, map[snow.ID]bool{1: true, 2: true, 3: true})
-	repo.EXPECT().ListMemberCandidates(gomock.Any(), gomock.Any(), "", projectMemberScan).Return(candidates, nil).Times(1)
+func TestPermission_ListProjectMembers_DefaultThatGrantsReadReachesEveryone(t *testing.T) {
+	cases := map[string]struct {
+		defaults []*domain.ProjectPathPermission
+		everyone bool
+	}{
+		"read default": {[]*domain.ProjectPathPermission{{PathPrefix: "", Permission: domain.PermissionRead}}, true},
+		"write only":   {[]*domain.ProjectPathPermission{{PathPrefix: "", Permission: domain.PermissionWrite}}, false},
+		"no defaults":  {nil, false},
+		"nested read":  {[]*domain.ProjectPathPermission{{PathPrefix: "a", Permission: domain.PermissionWrite}, {PathPrefix: "b", Permission: domain.PermissionRead | domain.PermissionWrite}}, true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			perm, repo := newMemberPermission(t, tc.defaults)
+			repo.EXPECT().ListMemberCandidates(gomock.Any(), gomock.Any(), "", defaultProjectMemberLimit, tc.everyone).Return(nil, nil).Times(1)
 
-	members, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "", 2)
+			_, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "", 0)
 
-	require.NoError(t, err)
-	require.Len(t, members, 2)
-	require.Equal(t, snow.ID(2), members[1].ID)
+			require.NoError(t, err)
+		})
+	}
 }
 
-func TestPermission_ListProjectMembers_ClampsLimitAndTrimsQuery(t *testing.T) {
+func TestPermission_ListProjectMembers_ClampsTheLimit(t *testing.T) {
 	perm, repo := newMemberPermission(t, nil)
-	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(7), "bo", projectMemberScan).Return(nil, nil).Times(2)
+	repo.EXPECT().ListMemberCandidates(gomock.Any(), gomock.Any(), "bo", maxProjectMemberLimit, false).Return(nil, nil).Times(1)
 
-	_, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "  bo ", 0)
-	require.NoError(t, err)
-	_, err = perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "bo", 100000)
+	_, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "bo", 100000)
+
 	require.NoError(t, err)
 }
 
 func TestPermission_ListProjectMembers_RequiresRead(t *testing.T) {
-	perm, _ := newMemberPermission(t, nil)
+	perm, repo := newMemberPermission(t, nil)
+	repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ProjectOrgID(gomock.Any(), gomock.Any()).Return(snow.ID(1), nil).AnyTimes()
+	perm.orgs.(*MockorgAuthorizer).EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 
 	_, err := perm.ListProjectMembers(permissionCtx(9), 7, "", 10)
 	require.True(t, domain.IsErrorNoPermission(err))
@@ -828,11 +828,17 @@ func TestPermission_ListProjectMembers_RequiresRead(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
-func TestPermission_ListProjectMembers_RepoError(t *testing.T) {
-	perm, repo := newMemberPermission(t, nil)
+func TestPermission_ListProjectMembers_Errors(t *testing.T) {
 	boom := errors.New("boom")
-	repo.EXPECT().ListMemberCandidates(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, boom).Times(1)
-
+	perm, repo := newMemberPermission(t, nil)
+	repo.EXPECT().ListMemberCandidates(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, boom).Times(1)
 	_, err := perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "", 10)
+	require.ErrorIs(t, err, boom)
+
+	ctrl := gomock.NewController(t)
+	failing := NewMockpbacRepository(ctrl)
+	failing.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(nil, boom).Times(1)
+	perm = NewPermission(failing, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), NewMockorgAuthorizer(ctrl))
+	_, err = perm.ListProjectMembers(permissionCtx(9, withAdmin()), 7, "", 10)
 	require.ErrorIs(t, err, boom)
 }

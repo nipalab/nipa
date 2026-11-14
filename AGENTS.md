@@ -165,8 +165,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   member pickers and the project activity feed (`Members`/`AssignMergeRequest`/
   `RequestReview`/`ProjectActivity`; daemon `ProxyProjectMembers` over the
   server `ListProjectMembers` RPC and `GET .../projects/{p}/members`, backed by
-  `Permission.ListProjectMembers`: name-matched org members and rule subjects
-  whose read access still resolves, capped scan of 500, name and id only;
+  `Permission.ListProjectMembers`: name-matched org owners and subjects of
+  rules that grant read in one SQL query (every org member and rule subject
+  when a project default grants read), name and id only;
   `ProxyMergeRequestAssign`/`ProxyMergeRequestRequestReview`;
   `people/MemberPicker.tsx` replaces the raw user-id inputs in the New merge
   request dialog and `mr/PeopleBar.tsx` edits assignees and review requests in

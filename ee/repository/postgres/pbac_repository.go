@@ -174,11 +174,13 @@ func toDomainProjectPathPermission(row sqlcPostgres.ProjectPathsPermission) *dom
 	}
 }
 
-func (p *PBAC) ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int) ([]*domain.ProjectMember, error) {
+func (p *PBAC) ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int, everyone bool) ([]*domain.ProjectMember, error) {
 	rows, err := p.queries.ProjectMemberCandidates(ctx, sqlcPostgres.ProjectMemberCandidatesParams{
 		ProjectID: projectID.Int64(),
 		Search:    search,
 		MaxRows:   int64(limit),
+		ReadMask:  int64(domain.PermissionRead),
+		Everyone:  everyone,
 	})
 	if err != nil {
 		return nil, domain.NewErrorDatabase(err.Error())

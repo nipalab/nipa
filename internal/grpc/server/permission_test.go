@@ -332,11 +332,8 @@ func strPtr(value string) *string {
 
 func TestNipaServer_ListProjectMembers(t *testing.T) {
 	srv, repo := newTestPermissionHandler(t)
-	candidates := []*domain.ProjectMember{{ID: 5, Name: "Ada", PhotoUrl: "a.png"}, {ID: 6, Name: "Bo"}}
-	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(42), "a", gomock.Any()).Return(candidates, nil)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), snow.ID(42)).Return(nil, nil).AnyTimes()
-	repo.EXPECT().ListEffectiveRules(gomock.Any(), snow.ID(42), snow.ID(5)).Return([]*domain.PBACRule{{Permission: domain.PermissionRead}}, nil)
-	repo.EXPECT().ListEffectiveRules(gomock.Any(), snow.ID(42), snow.ID(6)).Return(nil, nil)
+	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(42), "a", 10, false).Return([]*domain.ProjectMember{{ID: 5, Name: "Ada", PhotoUrl: "a.png"}}, nil)
 
 	resp, err := srv.ListProjectMembers(superAdminClaimCtx(1), &pb.ListProjectMembersRequest{Context: projectContext(), Query: "a", Limit: 10})
 

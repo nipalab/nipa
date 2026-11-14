@@ -76,10 +76,12 @@ WHERE u.deleted = false
       u.id IN (
           SELECT om.user_id FROM org_members om
           WHERE om.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
+            AND (om.role = 'owner' OR sqlc.arg(everyone))
       )
       OR u.id IN (
           SELECT r.user_id FROM pbac_rules r
           WHERE r.user_id IS NOT NULL
+            AND (r.permission & sqlc.arg(read_mask) <> 0 OR sqlc.arg(everyone))
             AND (
                 r.project_id = sqlc.arg(project_id)
                 OR (
@@ -91,12 +93,15 @@ WHERE u.deleted = false
       OR u.id IN (
           SELECT gm.user_id FROM group_members gm
           JOIN pbac_rules r ON r.group_id = gm.group_id
-          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id AND g.deleted = false
-          WHERE r.project_id = sqlc.arg(project_id)
-             OR (
-                 r.project_id IS NULL
-                 AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
-             )
+          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id
+          WHERE (r.permission & sqlc.arg(read_mask) <> 0 OR sqlc.arg(everyone))
+            AND (
+                r.project_id = sqlc.arg(project_id)
+                OR (
+                    r.project_id IS NULL
+                    AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = sqlc.arg(project_id))
+                )
+            )
       )
   )
   AND (sqlc.arg(search) = '' OR u.name LIKE '%' || sqlc.arg(search) || '%')

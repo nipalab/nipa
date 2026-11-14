@@ -2,23 +2,23 @@
 
 Each phase is a self-contained brief for a separate agent and one PR. Every agent reads **Shared context** first, then only its own phase. Phases are ordered by value per effort; the dependency column says what must land first, everything else can be reordered.
 
-| # | Phase | Size | Touches | Depends on |
-|---|---|---|---|---|
-| 1 | Pre-push checks (budgets, broken references) | S | daemon, desktop | — |
-| 2 | Generate push message and MR description | M | client, daemon, desktop | — |
-| 3 | Storage and cleanup | S | daemon, desktop | — |
-| 4 | Files tab (project browser) | L | daemon, desktop | — |
-| 5 | Where used and provenance | M | daemon, desktop | 4 |
-| 6 | Search, command palette, shortcuts | M | daemon, desktop | 4 |
-| 7 | Lock watch and release requests | M | server, daemon, desktop, web | — |
-| 8 | Shelves | XL | client, CLI, daemon, desktop | — |
-| 9 | Member pickers and project activity feed | M | server, daemon, desktop | — |
-| 10 | Table filters and `.xlsx` diff | M | preview, desktop | — |
-| 11 | Blame, open at line, Godot scene merge | M | client, daemon, desktop | — |
-| 12 | Video, font and embedded-thumbnail viewers | L | preview, daemon, desktop | — |
-| 13 | Simple mode and first-run tour | M | desktop | 4 |
-| 14 | Localization | L | desktop | after 1–13 |
-| 15 | Review comments on image regions and audio ranges (deferred) | XL | server, web, daemon, desktop | owner decision |
+| # | Phase | Size | Touches | Depends on | Status |
+|---|---|---|---|---|---|
+| 1 | Pre-push checks (budgets, broken references) | S | daemon, desktop | — | Done |
+| 2 | Generate push message and MR description | M | client, daemon, desktop | — | Done |
+| 3 | Storage and cleanup | S | daemon, desktop | — | Done |
+| 4 | Files tab (project browser) | L | daemon, desktop | — | Done |
+| 5 | Where used and provenance | M | daemon, desktop | 4 | Done |
+| 6 | Search, command palette, shortcuts | M | daemon, desktop | 4 | Done |
+| 7 | Lock watch and release requests | M | server, daemon, desktop, web | — | Done |
+| 8 | Shelves | XL | client, CLI, daemon, desktop | — | Done |
+| 9 | Member pickers and project activity feed | M | server, daemon, desktop | — | Done |
+| 10 | Table filters and `.xlsx` diff | M | preview, desktop | — | Done |
+| 11 | Blame, open at line, Godot scene merge | M | client, daemon, desktop | — | Done |
+| 12 | Video, font and embedded-thumbnail viewers | L | preview, daemon, desktop | — | Done |
+| 13 | Simple mode and first-run tour | M | desktop | 4 | To do |
+| 14 | Localization | L | desktop | after 1–13 | To do (after 13) |
+| 15 | Review comments on image regions and audio ranges (deferred) | XL | server, web, daemon, desktop | owner decision | Deferred |
 
 ---
 

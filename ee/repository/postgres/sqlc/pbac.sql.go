@@ -239,10 +239,12 @@ WHERE u.deleted = false
       u.id IN (
           SELECT om.user_id FROM org_members om
           WHERE om.org_id = (SELECT p.org_id FROM projects p WHERE p.id = $1)
+            AND (om.role = 'owner' OR $2::boolean)
       )
       OR u.id IN (
           SELECT r.user_id FROM pbac_rules r
           WHERE r.user_id IS NOT NULL
+            AND (r.permission & $3::bigint <> 0 OR $2::boolean)
             AND (
                 r.project_id = $1
                 OR (
@@ -254,21 +256,26 @@ WHERE u.deleted = false
       OR u.id IN (
           SELECT gm.user_id FROM group_members gm
           JOIN pbac_rules r ON r.group_id = gm.group_id
-          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id AND g.deleted = false
-          WHERE r.project_id = $1
-             OR (
-                 r.project_id IS NULL
-                 AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = $1)
-             )
+          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id
+          WHERE (r.permission & $3::bigint <> 0 OR $2::boolean)
+            AND (
+                r.project_id = $1
+                OR (
+                    r.project_id IS NULL
+                    AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = $1)
+                )
+            )
       )
   )
-  AND ($2::text = '' OR u.name ILIKE '%' || $2::text || '%')
+  AND ($4::text = '' OR u.name ILIKE '%' || $4::text || '%')
 ORDER BY u.name, u.id
-LIMIT $3::bigint
+LIMIT $5::bigint
 `
 
 type ProjectMemberCandidatesParams struct {
 	ProjectID int64  `json:"project_id"`
+	Everyone  bool   `json:"everyone"`
+	ReadMask  int64  `json:"read_mask"`
 	Search    string `json:"search"`
 	MaxRows   int64  `json:"max_rows"`
 }
@@ -280,7 +287,13 @@ type ProjectMemberCandidatesRow struct {
 }
 
 func (q *Queries) ProjectMemberCandidates(ctx context.Context, arg ProjectMemberCandidatesParams) ([]ProjectMemberCandidatesRow, error) {
-	rows, err := q.db.QueryContext(ctx, projectMemberCandidates, arg.ProjectID, arg.Search, arg.MaxRows)
+	rows, err := q.db.QueryContext(ctx, projectMemberCandidates,
+		arg.ProjectID,
+		arg.Everyone,
+		arg.ReadMask,
+		arg.Search,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}

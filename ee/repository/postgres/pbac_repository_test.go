@@ -297,9 +297,11 @@ func (s *PBACRepositorySuite) TestListMemberCandidates() {
 	elsewhere := seedPBACUser(s.T(), s.db, 45)
 	gone := seedPBACUser(s.T(), s.db, 46)
 	orgWide := seedPBACUser(s.T(), s.db, 47)
+	writeOnly := seedPBACUser(s.T(), s.db, 48)
+	owner := seedPBACUser(s.T(), s.db, 49)
 	groupID := seedPBACGroup(s.T(), s.db, 5001, 1, "artists", 43)
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO org_members (org_id, user_id, role) VALUES (1, $1, 'member')`, member.Int64())
+	_, err := s.db.ExecContext(ctx, `INSERT INTO org_members (org_id, user_id, role) VALUES (1, $1, 'member'), (1, $2, 'owner')`, member.Int64(), owner.Int64())
 	s.Require().NoError(err)
 	_, err = s.db.ExecContext(ctx, `UPDATE users SET deleted = true WHERE id = $1`, gone.Int64())
 	s.Require().NoError(err)
@@ -310,6 +312,7 @@ func (s *PBACRepositorySuite) TestListMemberCandidates() {
 		{UserID: pbacIDPtr(elsewhere), OrgID: 1, ProjectID: pbacIDPtr(otherProjectID), Permission: domain.PermissionRead},
 		{UserID: pbacIDPtr(gone), OrgID: 1, ProjectID: pbacIDPtr(projectID), Permission: domain.PermissionRead},
 		{UserID: pbacIDPtr(orgWide), OrgID: 1, Permission: domain.PermissionRead},
+		{UserID: pbacIDPtr(writeOnly), OrgID: 1, ProjectID: pbacIDPtr(projectID), Permission: domain.PermissionWrite},
 	} {
 		_, err := repo.CreateRule(ctx, rule)
 		s.Require().NoError(err)
@@ -323,24 +326,32 @@ func (s *PBACRepositorySuite) TestListMemberCandidates() {
 		return out
 	}
 
-	all, err := repo.ListMemberCandidates(ctx, projectID, "", 100)
+	readers, err := repo.ListMemberCandidates(ctx, projectID, "", 100, false)
 	s.Require().NoError(err)
-	s.Contains(names(all), "user42")
-	s.Contains(names(all), "user43")
-	s.Contains(names(all), "user44")
-	s.Contains(names(all), "user47")
-	s.NotContains(names(all), "user45")
-	s.NotContains(names(all), "user46")
+	for _, name := range []string{"user42", "user43", "user47", "user49"} {
+		s.Contains(names(readers), name)
+	}
+	for _, name := range []string{"user44", "user45", "user46", "user48"} {
+		s.NotContains(names(readers), name)
+	}
 
-	one, err := repo.ListMemberCandidates(ctx, projectID, "USER43", 100)
+	everyone, err := repo.ListMemberCandidates(ctx, projectID, "", 100, true)
+	s.Require().NoError(err)
+	for _, name := range []string{"user42", "user43", "user44", "user47", "user48", "user49"} {
+		s.Contains(names(everyone), name)
+	}
+	s.NotContains(names(everyone), "user45")
+	s.NotContains(names(everyone), "user46")
+
+	one, err := repo.ListMemberCandidates(ctx, projectID, "USER43", 100, false)
 	s.Require().NoError(err)
 	s.Equal([]string{"user43"}, names(one))
 
-	capped, err := repo.ListMemberCandidates(ctx, projectID, "", 2)
+	capped, err := repo.ListMemberCandidates(ctx, projectID, "", 2, false)
 	s.Require().NoError(err)
 	s.Len(capped, 2)
 
-	none, err := repo.ListMemberCandidates(ctx, projectID, "nobody", 10)
+	none, err := repo.ListMemberCandidates(ctx, projectID, "nobody", 10, false)
 	s.Require().NoError(err)
 	s.Empty(none)
 }

@@ -567,6 +567,8 @@ describe("MergeRequestsView people", () => {
     await userEvent.click(await people());
     await userEvent.click(await screen.findByRole("option", { name: /Cy Moreau/ }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not assign: not allowed"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove Cy Moreau" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Remove Ana Torres" })).toBeInTheDocument();
     first.unmount();
 
     api.mergeRequest.mockResolvedValue({ ...detail({ status: "closed", assignees: [{ id: "u1", name: "Ana Torres" }] }), outstanding: [] });
