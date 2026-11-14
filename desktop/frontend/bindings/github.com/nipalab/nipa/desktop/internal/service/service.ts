@@ -326,6 +326,15 @@ export function GenerateMergeRequest(root: string, source: string, target: strin
 }
 
 /**
+ * HasMedia reports whether a prepared media file is still available; the
+ * viewer asks after a playback error to tell an evicted file from a format
+ * the webview cannot decode.
+ */
+export function HasMedia(token: string): $CancellablePromise<boolean> {
+    return $Call.ByID(4191817772, token);
+}
+
+/**
  * History lists commits newest first.
  */
 export function History(root: string, q: $models.HistoryQuery): $CancellablePromise<$models.HistoryPage | null> {

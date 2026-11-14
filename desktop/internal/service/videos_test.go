@@ -102,11 +102,11 @@ func TestService_MediaStoreEvictsAndOpens(t *testing.T) {
 			first = out.New
 		}
 	}
-	_, ok := svc.media.lookup(first.Media)
-	require.False(t, ok)
+	require.False(t, svc.HasMedia(first.Media))
 	require.Error(t, svc.OpenMedia(first.Media))
 
 	last := svc.media.order[len(svc.media.order)-1]
+	require.True(t, svc.HasMedia(last))
 	require.NoError(t, svc.OpenMedia(last))
 	require.Len(t, opened, 1)
 	svc.OpenFunc = nil

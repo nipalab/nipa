@@ -21,6 +21,7 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
+  const reloaded = useRef<string | null>(null);
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -30,7 +31,14 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
   }
   if (query.isError) return <MetaDiff diff={diff} detail={`The video could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
   if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail="There is no preview for this video." />;
-  return <VideoCompareView compare={query.data} />;
+  const data = query.data;
+  const reload = () => {
+    if (reloaded.current === diff.path) return false;
+    reloaded.current = diff.path;
+    void query.refetch();
+    return true;
+  };
+  return <VideoCompareView key={`${data.old?.media ?? ""}:${data.new?.media ?? ""}`} compare={data} onExpired={reload} />;
 }
 
 const safePlay = async (v: HTMLVideoElement) => {
@@ -41,7 +49,16 @@ const safePlay = async (v: HTMLVideoElement) => {
   }
 };
 
-export function VideoCompareView({ compare, onOpen = desktop.openMedia }: { compare: VideoCompare; onOpen?: (token: string) => Promise<void> }) {
+type CompareProps = {
+  compare: VideoCompare;
+  onOpen?: (token: string) => Promise<void>;
+  hasMedia?: (token: string) => Promise<boolean>;
+  // onExpired reloads the comparison when a prepared file was evicted; it
+  // returns false when a reload was already tried.
+  onExpired?: () => boolean;
+};
+
+export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia = desktop.hasMedia, onExpired }: CompareProps) {
   const { old, new: next } = compare;
   const refs: Record<Side, RefObject<HTMLVideoElement>> = { old: useRef<HTMLVideoElement>(null), new: useRef<HTMLVideoElement>(null) };
   const [failed, setFailed] = useState<Record<Side, boolean>>({ old: false, new: false });
@@ -96,6 +113,16 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia }: { comp
     if (side !== master) return;
     for (const v of elements()) v.pause();
     setPlaying(false);
+  };
+  const playbackFailed = (which: Side, token: string) => {
+    const markFailed = () => setFailed((f) => ({ ...f, [which]: true }));
+    if (!onExpired || !token) return markFailed();
+    hasMedia(token).then(
+      (alive) => {
+        if (alive || !onExpired()) markFailed();
+      },
+      markFailed,
+    );
   };
   const open = (token: string) => {
     setOpenError(null);
@@ -158,7 +185,7 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia }: { comp
               videoRef={refs[which]}
               failed={failed[which]}
               muted={both ? listen !== which : false}
-              onFail={() => setFailed((f) => ({ ...f, [which]: true }))}
+              onFail={() => playbackFailed(which, side.media)}
               onMetadata={(d) => setLoaded((l) => ({ ...l, [which]: Number.isFinite(d) ? d : 0 }))}
               onTime={() => follow(which)}
               onEnded={() => ended(which)}

@@ -1,10 +1,10 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileDiff, VideoSide, VideoStats } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ videoDiff: vi.fn(), openMedia: vi.fn() }));
+const api = vi.hoisted(() => ({ videoDiff: vi.fn(), openMedia: vi.fn(), hasMedia: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { DiffViewer, viewerFor } from "./DiffViewer";
@@ -165,6 +165,39 @@ describe("VideoDiff", () => {
     expect(screen.getByText("Preparing video…")).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "Video details" })).toBeInTheDocument();
     expect(api.videoDiff).toHaveBeenCalledWith("/work/game", { source: "snapshot", path: "cut/intro.mp4" }, { source: "working", path: "cut/intro.mp4" });
+  });
+
+  it("reloads once when a prepared file was evicted", async () => {
+    api.videoDiff.mockResolvedValueOnce({ old: null, new: side({ media: "gone", url: "/nipa-media/gone/intro.mp4" }) });
+    api.videoDiff.mockResolvedValue({ old: null, new: side({ media: "fresh", url: "/nipa-media/fresh/intro.mp4" }) });
+    api.hasMedia.mockResolvedValue(false);
+    show();
+    fireEvent.error(await screen.findByLabelText("Added video"));
+    await waitFor(() => expect(api.videoDiff).toHaveBeenCalledTimes(2));
+    expect(api.hasMedia).toHaveBeenCalledWith("gone");
+    await waitFor(() => expect(screen.getByLabelText("Added video")).toHaveAttribute("src", "/nipa-media/fresh/intro.mp4"));
+    expect(screen.queryByText(/can't play in the app/)).not.toBeInTheDocument();
+
+    fireEvent.error(screen.getByLabelText("Added video"));
+    expect(await screen.findByText(/can't play in the app/)).toBeInTheDocument();
+    expect(api.videoDiff).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a format problem without reloading when the file is still there", async () => {
+    api.videoDiff.mockResolvedValue({ old: null, new: side() });
+    api.hasMedia.mockResolvedValue(true);
+    show();
+    fireEvent.error(await screen.findByLabelText("Added video"));
+    expect(await screen.findByText(/can't play in the app/)).toBeInTheDocument();
+    expect(api.videoDiff).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a failed availability check as a playback failure", async () => {
+    api.videoDiff.mockResolvedValue({ old: null, new: side() });
+    api.hasMedia.mockRejectedValue(new Error("daemon gone"));
+    show();
+    fireEvent.error(await screen.findByLabelText("Added video"));
+    expect(await screen.findByText(/can't play in the app/)).toBeInTheDocument();
   });
 
   it("falls back to metadata on errors and empty results", async () => {

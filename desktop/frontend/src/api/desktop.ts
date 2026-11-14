@@ -237,6 +237,7 @@ export const desktop = {
   videoDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<VideoCompare | null> => Service.VideoDiff(root, old, next),
   fontDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<FontCompare | null> => Service.FontDiff(root, old, next),
   openMedia: (token: string): Promise<void> => Service.OpenMedia(token),
+  hasMedia: (token: string): Promise<boolean> => Service.HasMedia(token),
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null, sheet = ""): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next, sheet),
   sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],

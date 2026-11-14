@@ -140,6 +140,14 @@ func MediaMiddleware(s *Service) func(http.Handler) http.Handler {
 	}
 }
 
+// HasMedia reports whether a prepared media file is still available; the
+// viewer asks after a playback error to tell an evicted file from a format
+// the webview cannot decode.
+func (s *Service) HasMedia(token string) bool {
+	_, ok := s.media.lookup(token)
+	return ok
+}
+
 // OpenMedia opens a file the viewer prepared in the system's default
 // application.
 func (s *Service) OpenMedia(token string) error {

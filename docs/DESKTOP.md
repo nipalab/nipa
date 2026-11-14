@@ -59,7 +59,7 @@ Sonar never compile it.
   `RestoreRevision`, `RevealFile`, `FileLink`, `AssetRefs`, `Provenance`,
   `SetProvenance`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `VideoDiff`,
-  `OpenMedia`, `FontDiff`, `TableDiff`, `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
+  `OpenMedia`, `HasMedia`, `FontDiff`, `TableDiff`, `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
   `Shelves`, `Shelve`, `ApplyShelf`, `AbortShelfApply`, `DropShelf`, `ShelfFiles`, `SyncPlan`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
@@ -154,6 +154,10 @@ Sonar never compile it.
   URL). Both versions sit side by side with one Play/Pause, a shared seek
   bar, previous/next frame (from the frame rate, 30 fps otherwise) and A/B
   audio (the other side is muted); the follower is re-synced when it drifts.
+  The video answer is not cached past the viewer's lifetime, and files that
+  are being served are evicted last; on a playback error the viewer asks
+  `HasMedia(token)` and, when the file was evicted, reloads the comparison
+  once instead of blaming the format.
   A video the webview cannot decode (codec, AVI, too large) keeps its stats
   and offers "Open externally" (`OpenMedia(token)`, the default player on
   the temp copy). The panel diffs container, duration, resolution, codecs,
