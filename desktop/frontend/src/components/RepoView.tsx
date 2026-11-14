@@ -14,7 +14,7 @@ import { ActivityView } from "@/components/activity/ActivityView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
-import { hasOpenConflicts, tabs, visibleTabs, type Intent, type TabId } from "@/components/tabs";
+import { hasOpenConflicts, tabs, visibleTabs, simpleTabIds, type Intent, type TabId } from "@/components/tabs";
 import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,9 +58,12 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   useEffect(() => {
     if (intent && tabs.some((t) => t.id === intent.tab)) {
       setTab(intent.tab as TabId);
-      setPinned(intent.tab as TabId);
+      setPinned(simple && !simpleTabIds.includes(intent.tab as TabId) ? (intent.tab as TabId) : undefined);
     }
   }, [intent]);
+  useEffect(() => {
+    if (pinned && (!simple || tab !== pinned)) setPinned(undefined);
+  }, [pinned, simple, tab]);
   const intentMr = intent?.tab === "mrs" && intent.number ? intent.number : 0;
   const [openNumber, setOpenNumber] = useState<{ number: number; seq: number }>();
   useEffect(() => {
@@ -362,10 +365,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                   role="tab"
                   data-tour={`tab-${id}`}
                   aria-selected={current === id}
-                  onClick={() => {
-                    setTab(id);
-                    setPinned(undefined);
-                  }}
+                  onClick={() => setTab(id)}
                   title={i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined}
                   className={cn(
                     "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",

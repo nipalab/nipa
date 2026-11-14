@@ -804,6 +804,33 @@ describe("history, branches and pending operations", () => {
     }
   });
 
+  it("drops a tab pinned by an intent when simple mode is switched off or the view moves on", async () => {
+    setMode("simple");
+    try {
+      api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+      api.mergeRequest.mockRejectedValue(new Error("nope"));
+      renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "mrs", number: 7, seq: 1 }} />);
+      expect(await screen.findByRole("tab", { name: /Merge requests/ })).toBeInTheDocument();
+      act(() => setMode("full"));
+      await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
+      act(() => setMode("simple"));
+      expect(screen.queryByRole("tab", { name: /Merge requests/ })).toBeNull();
+    } finally {
+      setMode("full");
+    }
+  });
+
+  it("does not pin a tab in full mode", async () => {
+    api.branches.mockResolvedValue([]);
+    api.tags.mockResolvedValue([]);
+    renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "branches", seq: 1 }} />);
+    expect(await screen.findByRole("tab", { name: /Branches/ })).toHaveAttribute("aria-selected", "true");
+    act(() => setMode("simple"));
+    expect(screen.queryByRole("tab", { name: /Branches/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute("aria-selected", "true");
+    act(() => setMode("full"));
+  });
+
   it("shows the project activity and opens what a row points at", async () => {
     const event = (over: object) => ({ id: "x", kind: "commit", time: new Date().toISOString(), actor: "Ana", title: "t", branch: "main", commitId: "", number: 0, path: "", ...over });
     api.projectActivity.mockResolvedValue({
