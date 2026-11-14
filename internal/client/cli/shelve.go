@@ -57,7 +57,7 @@ func (c *Cli) setupShelveCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&name, "message", "m", "", "shelf name")
 	cmd.Flags().BoolVarP(&untracked, "include-untracked", "u", false, "also shelve untracked files")
-	cmd.AddCommand(c.setupShelveListCmd(), c.setupShelveShowCmd(), c.setupShelveApplyCmd(), c.setupShelveDropCmd())
+	cmd.AddCommand(c.setupShelveListCmd(), c.setupShelveShowCmd(), c.setupShelveApplyCmd(), c.setupShelveResolveCmd(), c.setupShelveDropCmd())
 	return cmd
 }
 
@@ -169,7 +169,7 @@ func (c *Cli) setupShelveApplyCmd() *cobra.Command {
 		Short: "Bring a shelf back onto the working copy",
 		Long: "Merge a shelf into the working copy: files changed since they were shelved are merged line by line. " +
 			"Files with local changes are refused. Conflicts leave the apply waiting: edit the files and run " +
-			"nipa shelve apply --continue, or put everything back with --abort. The shelf is deleted after a clean apply unless --keep.",
+			"nipa shelve apply --continue, or settle a file with nipa shelve resolve; put everything back with --abort. The shelf is deleted after a clean apply unless --keep.",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -226,6 +226,43 @@ func (c *Cli) setupShelveApplyCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&keep, "keep", false, "keep the shelf after applying it")
 	cmd.Flags().BoolVar(&abort, "abort", false, "stop a waiting apply and put the files back")
 	cmd.Flags().BoolVar(&cont, "continue", false, "finish a waiting apply once the conflicts are edited")
+	return cmd
+}
+
+func (c *Cli) setupShelveResolveCmd() *cobra.Command {
+	var ours, theirs bool
+	cmd := &cobra.Command{
+		Use:   "resolve <path> [--ours | --theirs]",
+		Short: "Settle one conflict of a waiting shelf apply",
+		Long: "Pick the synced version (--ours) or the shelved one (--theirs) for a conflicted file, or with neither " +
+			"keep the file as it is on disk (text must be free of conflict markers). Resolving the last conflict finishes the apply.",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if ours && theirs {
+				return errors.New("--ours and --theirs are mutually exclusive")
+			}
+			side := usecase.ShelfKeepWorking
+			if ours {
+				side = usecase.ShelfTakeOurs
+			} else if theirs {
+				side = usecase.ShelfTakeTheirs
+			}
+			sh, cleanup, err := c.openShelve()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			if err := sh.Resolve(cmd.Context(), args[0], side); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "resolved %s\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&ours, "ours", false, "take the synced version")
+	cmd.Flags().BoolVar(&theirs, "theirs", false, "take the shelved version")
 	return cmd
 }
 

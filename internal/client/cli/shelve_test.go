@@ -124,3 +124,40 @@ func TestShelveHelpers(t *testing.T) {
 	require.Equal(t, "1 file", fileCount(1))
 	require.Equal(t, "tag v1", shelfWhere(domain.Shelf{Head: &domain.HeadRef{Name: "v1"}}))
 }
+
+func TestShelveCmd_Resolve(t *testing.T) {
+	root := setupRepoWithStoredTree(t, "main", map[string]string{"a.txt": "base\n"})
+	writeFile(t, root, "a.txt", "mine\n")
+	out, err := shelveCmd(t, root, "a.txt")
+	require.NoError(t, err)
+	id := shelfIDOut.FindStringSubmatch(out)[1]
+
+	_, err = shelveCmd(t, root, "resolve", "a.txt", "--ours", "--theirs")
+	require.ErrorContains(t, err, "mutually exclusive")
+	_, err = shelveCmd(t, root, "resolve", "a.txt")
+	require.ErrorContains(t, err, "no shelf apply is waiting")
+
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveShelfState(&domain.ShelfState{ShelfID: id, ShelfName: "x", Conflicts: []string{"a.txt"}, ConflictKinds: map[string]string{"a.txt": domain.ConflictBinary}, ConflictBinary: []string{"a.txt"}}))
+	require.NoError(t, lr.Close())
+	_, err = shelveCmd(t, root, "apply", "--continue")
+	require.ErrorContains(t, err, "a.txt is still unresolved")
+
+	out, err = shelveCmd(t, root, "resolve", "a.txt", "--theirs")
+	require.NoError(t, err)
+	require.Equal(t, "resolved a.txt\n", out)
+	data, err := os.ReadFile(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "mine\n", string(data))
+
+	lr = localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveShelfState(&domain.ShelfState{ShelfID: id, ShelfName: "x", Keep: true, Conflicts: []string{"a.txt"}, ConflictBinary: []string{"a.txt"}}))
+	require.NoError(t, lr.Close())
+	_, err = shelveCmd(t, root, "resolve", "a.txt", "--ours")
+	require.NoError(t, err)
+	data, err = os.ReadFile(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "base\n", string(data))
+}

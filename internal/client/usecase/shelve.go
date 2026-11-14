@@ -32,6 +32,8 @@ type ShelveRepo interface {
 	LoadShelfState() (*domain.ShelfState, error)
 	SaveShelfState(state *domain.ShelfState) error
 	ClearShelfState() error
+	SaveMergeState(state *domain.MergeState) error
+	SaveRevertState(state *domain.RevertState) error
 }
 
 // Shelve parks local changes in .nipa/shelves and brings them back later
@@ -640,9 +642,15 @@ func (s *Shelve) Continue() (*domain.ShelfState, error) {
 		return nil, domain.NewUserError("no shelf apply is waiting")
 	}
 	binary := toSet(state.ConflictBinary)
+	resolved := toSet(state.Resolved)
 	for _, p := range state.Conflicts {
-		if binary[p] {
+		if resolved[p] {
 			continue
+		}
+		kind := state.ConflictKinds[p]
+		if binary[p] || (kind != "" && kind != domain.ConflictText) {
+			return nil, domain.NewUserError(fmt.Sprintf("%s is still unresolved; pick a side first", p)).
+				WithHint("keep the synced version or take the shelved one", "nipa shelve resolve "+p+" --theirs")
 		}
 		if err := checkWorkingMarkers(filepath.Join(s.root, filepath.FromSlash(p)), p); err != nil {
 			return nil, err
@@ -657,6 +665,86 @@ func (s *Shelve) Continue() (*domain.ShelfState, error) {
 		}
 	}
 	return state, nil
+}
+
+type ShelfSide string
+
+const (
+	ShelfKeepWorking ShelfSide = ""
+	ShelfTakeOurs    ShelfSide = "ours"
+	ShelfTakeTheirs  ShelfSide = "theirs"
+)
+
+// Resolve settles one conflict of the waiting apply: ours takes the synced
+// version, theirs the shelved one (a side without the file deletes it) and
+// ShelfKeepWorking keeps the file on disk (text must be free of markers).
+// Everything is read locally; the last resolution finishes the apply.
+func (s *Shelve) Resolve(ctx context.Context, path string, side ShelfSide) error {
+	unlock, err := lockShared(s.repo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	state, err := s.repo.LoadShelfState()
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return domain.NewUserError("no shelf apply is waiting")
+	}
+	p, err := cleanBlobPath(path)
+	if err != nil {
+		return err
+	}
+	res, err := s.resolution(ctx, state.ShelfID, p, side)
+	if err != nil {
+		return err
+	}
+	return NewConflicts(s.repo, s.wc, s.root).Resolve(ctx, p, res)
+}
+
+func (s *Shelve) resolution(ctx context.Context, id, p string, side ShelfSide) (Resolution, error) {
+	switch side {
+	case ShelfKeepWorking:
+		return Resolution{}, nil
+	case ShelfTakeTheirs:
+		entry, load, _, err := ShelfEntryBlob(s.repo, id, p, false)
+		if errors.Is(err, ErrFileMissing) {
+			return Resolution{Delete: true}, nil
+		}
+		if err != nil {
+			return Resolution{}, err
+		}
+		return Resolution{Content: &blobReader{load: load, entry: entry}, AllowMarkers: true, Mode: entry.Mode}, nil
+	case ShelfTakeOurs:
+		f, ok, err := s.snapshotFile(p)
+		if err != nil {
+			return Resolution{}, err
+		}
+		if !ok {
+			return Resolution{Delete: true}, nil
+		}
+		if err := s.wc.pristine().ensureSnapshotContent(ctx, []domain.SnapshotFile{f}); err != nil {
+			return Resolution{}, err
+		}
+		entry := diff.Entry{Path: p, Mode: f.Mode, Encoding: storedEncoding(f.Encoding), ChunkHashes: f.Chunks}
+		return Resolution{Content: &blobReader{load: s.repo.LoadChunk, entry: entry}, AllowMarkers: true, Mode: f.Mode}, nil
+	default:
+		return Resolution{}, domain.NewUserError(fmt.Sprintf("unknown side %q: use ours or theirs", side))
+	}
+}
+
+func (s *Shelve) snapshotFile(p string) (domain.SnapshotFile, bool, error) {
+	snapshot, err := s.repo.Snapshot()
+	if err != nil {
+		return domain.SnapshotFile{}, false, err
+	}
+	for _, f := range snapshot.Files {
+		if f.Path == p {
+			return f, true, nil
+		}
+	}
+	return domain.SnapshotFile{}, false, nil
 }
 
 // Show returns a shelf's changes against the version they were shelved

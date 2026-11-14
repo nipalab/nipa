@@ -272,11 +272,16 @@ var _ = Describe("nipa shelve selection and edge cases", func() {
 		Expect(drop.ExitCode).NotTo(Equal(0))
 		Expect(drop.Output()).To(ContainSubstring("being applied"))
 
-		writeBytes(dir, "art/hero.png", mine)
 		res = runNipa(dir, "shelve", "apply", "--continue")
-		Expect(res.ExitCode).To(Equal(0), res.Output())
-		Expect(res.Output()).NotTo(ContainSubstring("dropped the shelf"), "--keep keeps it")
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Output()).To(ContainSubstring("art/hero.png is still unresolved"))
 		Expect(runNipa(dir, "shelve", "list").Output()).To(ContainSubstring(id))
+
+		res = runNipa(dir, "shelve", "resolve", "art/hero.png", "--theirs")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(readBytes(dir, "art/hero.png")).To(Equal(mine))
+		Expect(runNipa(dir, "status").Output()).NotTo(ContainSubstring("conflict"))
+		Expect(runNipa(dir, "shelve", "list").Output()).To(ContainSubstring(id), "--keep keeps it")
 		Expect(runNipa(dir, "status").Output()).To(ContainSubstring("art/hero.png"))
 	})
 

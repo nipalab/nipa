@@ -1252,7 +1252,7 @@ they point at, `truncated`). `LoginSSH` takes an optional `key_path` +
 `Update.TargetTree` (`UpdateRunner.TargetTree`) and a fresh status.
 
 Flow for `nipa shelve [-m name] [-u] [-- paths]`, `nipa shelve list|show [-p]|
-apply <id> [--keep]|apply --continue|apply --abort|drop` (local only;
+apply <id> [--keep]|apply --continue|apply --abort|resolve <path> [--ours|--theirs]|drop` (local only;
 `usecase/shelve.go`): a shelf is `.nipa/shelves/<id>/` (`manifest.json` =
 `domain.Shelf`, entries with the shelved `ShelfFile` and the `Base` version,
 `staged`/`untracked`/`locked` flags, `base_stored` when the base text chunks
@@ -1275,7 +1275,9 @@ conflicts, kinds, keep). While it is pending, status reports
 `pending: shelf`, `Conflicts.List` answers op `shelf` (`ConflictSides`:
 base `shelf_base`, ours snapshot, theirs `shelf`), `Resolve` does not stage
 and the last resolution clears the state and drops the shelf unless kept;
-`Continue` (text free of markers) and `Abort` (applied paths back to the
+`Resolve` (one file from the snapshot or the shelf, offline),
+`Continue` (text free of markers; binary and delete/modify conflicts must be
+resolved with a side first) and `Abort` (applied paths back to the
 snapshot, shelf kept) end it; push, merge, revert, shelve and apply refuse
 (`refuseShelfPending`) and the cache GC skips. `Diff.ReadBlob` serves
 `BlobShelf`/`BlobShelfBase` (base from the shelf when stored, else from the
