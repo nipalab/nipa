@@ -59,7 +59,8 @@ Sonar never compile it.
   `RestoreRevision`, `RevealFile`, `FileLink`, `AssetRefs`, `Provenance`,
   `SetProvenance`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
+  `Shelves`, `Shelve`, `ApplyShelf`, `AbortShelfApply`, `DropShelf`, `ShelfFiles`, `SyncPlan`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
@@ -293,6 +294,27 @@ Sonar never compile it.
   query `["blame", root, path, revision, ...]`, refreshed with the other
   repository queries after an operation); lines older than the history the
   daemon could read show "Older". Text files only, up to 2 MiB.
+- Shelves (local only, `.nipa/shelves/<id>/`): "Shelve…" above the changed
+  files and the per-row shelve icon open `ShelveDialog`, a checklist of every
+  change (untracked files included, all checked or only the row's file) with
+  an optional name; the checked files are stored and go back to the synced
+  version (`Shelve`, daemon `ShelveCreate`). The collapsible "Shelves" section
+  under the file list (`ShelvesPanel`, open state in `localStorage`
+  `nipa.shelves.open`) lists shelves newest first with Apply, Apply and keep
+  and Delete; clicking a shelved file previews it in the diff pane through the
+  usual viewers (`ShelfFiles`: `FileDiff.oldSource`/`newSource` are
+  `shelf_base`/`shelf` with the shelf id as revision, `imageRefs` passes them
+  on). An apply that conflicts waits like a merge: the banner reads "Applying
+  shelf …" with Resolve conflicts and Abort (`AbortShelfApply`), the
+  Conflicts tab compares the synced version (ours) with the shelf (theirs),
+  resolving does not stage, and the last resolution finishes the apply. Files
+  with local changes are refused. Before Update, a branch switch or a tag
+  checkout with local changes, `useSyncGuard` asks the daemon `SyncPlan`
+  which of them the operation would replace; when there are some the
+  "Your changes would be replaced" dialog offers Shelve and continue (shelves
+  exactly those files as "Before updating"/"Before switching to …", then
+  runs the operation), Continue anyway and Cancel. A failed check never
+  blocks.
 - Open at line: external tools in Settings may be command templates with
   `{file}` and `{line}` (`code --goto {file}:{line}`; words are split on
   spaces outside quotes, so quote program paths with spaces; a command
@@ -386,7 +408,7 @@ Sonar never compile it.
   `mergesScene`): a clean merge resolves the file with the merged content
   in one click; otherwise the sections and keys it could not decide are
   listed and the line-by-line editor below stays the way to resolve it.
-- Conflicts tab (shown while a merge or revert waits with conflicts, with
+- Conflicts tab (shown while a merge, revert or shelf apply waits with conflicts, with
   the open count): the conflicted files with their kind (both changed, both
   added, deleted on one side) and resolved state; the merge banner reads
   "Merging <source> into <branch>" with Resolve conflicts, Finish merge (a
@@ -699,3 +721,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 22. Table filters (text, column, changed columns, jump to change, sticky key column, per-column counts) and `.xlsx` diff with sheet tabs. **(done)**
 23. Search, command palette and keyboard shortcuts (daemon `SearchFiles`, `lib/shortcuts.ts`, "Keyboard shortcuts" sheet). **(done)**
 24. Blame gutter (daemon `Blame`, `nipa blame`), open at line through `{file}`/`{line}` tool templates, "Merge scene" for Godot conflicts. **(done)**
+25. Shelves (`nipa shelve`, daemon `ShelveCreate`/`ShelveApply`/`ShelveList`/`ShelveDrop`/`ShelveFiles`), the Shelves section and dialog in the Changes screen, shelf conflicts in the Conflicts tab, "Shelve and continue" before update/switch/tag checkout (daemon `SyncPlan`). **(done)**

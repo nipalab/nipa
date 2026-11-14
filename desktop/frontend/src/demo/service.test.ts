@@ -201,6 +201,30 @@ describe("demo service", () => {
   });
 });
 
+describe("demo shelves", () => {
+  it("shelves, previews, applies and drops", async () => {
+    const s = createService("default");
+    const before = await s.Shelves(ROOT);
+    expect(before!.shelves!.length).toBeGreaterThan(0);
+    const files = await s.ShelfFiles(ROOT, before!.shelves![0].id);
+    expect(files![0].newSource).toBe("shelf");
+    const changes = await s.Changes(ROOT);
+    const path = changes.unstaged![0].path;
+    const made = await s.Shelve(ROOT, { name: "", paths: [path], includeUntracked: false });
+    expect(made.shelf!.entries).toHaveLength(1);
+    expect((await s.Changes(ROOT)).unstaged!.some((f) => f.path === path)).toBe(false);
+    const applied = await s.ApplyShelf(ROOT, made.shelf!.id, false);
+    expect(applied.shelfApply!.dropped).toBe(true);
+    expect((await s.Changes(ROOT)).unstaged!.some((f) => f.path === path)).toBe(true);
+    expect(await s.ApplyShelf(ROOT, "nope", false)).toEqual({});
+    expect((await s.AbortShelfApply(ROOT)).shelfApply!.aborted).toBe(true);
+    await s.DropShelf(ROOT, before!.shelves![0].id);
+    expect((await s.Shelves(ROOT))!.shelves).toHaveLength(before!.shelves!.length - 1);
+    expect(await s.ShelfFiles(ROOT, "nope")).toEqual([]);
+    expect((await s.SyncPlan(ROOT, "", ""))!.overwritten).toEqual([]);
+  });
+});
+
 describe("demo media", () => {
   it("generates deterministic assets", () => {
     expect(textureSvg(["#000", "#111", "#222"], "#fff")).toMatch(/^data:image\/svg\+xml;base64,/);

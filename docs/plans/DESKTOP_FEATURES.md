@@ -278,3 +278,6 @@ Runs after every other planned phase so they are not slowed down; anything landi
 2. Phase 8: shelves are local only. Shared server-side shelves are not planned.
 3. Phase 15 (anchored comments on binaries): deferred, decided after the other phases.
 4. Phase 14: English, Indonesian, Japanese, Simplified Chinese, Korean.
+5. Phase 8: applying a shelf refuses files that have local changes (ours is always the synced snapshot, so the conflict editor reads every side offline and an abort restores the exact previous state).
+6. Phase 8: the user picks which changed files go into a shelf (the desktop dialog lists every change, untracked included); the CLI takes tracked and staged changes by default, untracked files when named or with `-u`.
+7. Phase 8: "Shelve and continue" is driven by a precise check (daemon `SyncPlan`) of the local changes an update, switch or tag checkout would replace; only those files are shelved.

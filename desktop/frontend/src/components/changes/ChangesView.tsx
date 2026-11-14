@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileDiff as FileDiffIcon, Loader2, Tag } from "lucide-react";
-import { desktop, type ChangeSet, type FileChange, type FileLockState, type MetaWarning } from "@/api/desktop";
+import { AlertTriangle, Archive, CheckCircle2, ChevronDown, ChevronRight, FileDiff as FileDiffIcon, Loader2, Tag, X } from "lucide-react";
+import { desktop, type ChangeSet, type FileChange, type FileDiff, type FileLockState, type MetaWarning, type Shelf, type ShelveInput } from "@/api/desktop";
 import { CommitBox, type LockIssue } from "@/components/changes/CommitBox";
 import { DiffViewer } from "@/components/changes/DiffViewer";
 import { buildRows, FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ReferrerNote, useStageGuard } from "@/components/changes/DeleteSafety";
+import { ShelveDialog } from "@/components/changes/ShelveDialog";
+import { ShelvesPanel, type ShelfPick } from "@/components/changes/ShelvesPanel";
+import { Button } from "@/components/ui/button";
 import { InsightPanel } from "@/components/files/AssetInsight";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
@@ -29,6 +32,8 @@ type ChangesViewProps = {
   message: string;
   onMessage: (message: string) => void;
   onPush: (message: string) => void;
+  onShelve?: (input: Partial<ShelveInput>) => void;
+  onApplyShelf?: (shelf: Shelf, keep: boolean) => void;
   onCancelOp: () => void;
   onError: (message: string) => void;
   notify: Notify;
@@ -53,11 +58,17 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
   return other.some((f) => f.path === sel.path) ? { path: sel.path, staged: !sel.staged } : null;
 }
 
-export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
+export function ChangesView({ root, op, message, onMessage, onPush, onShelve, onApplyShelf, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
   const [picked, setPicked] = usePersistedState<Selection | null>(repoSetting(root, "changes.selected"), null, { valid: isSelection });
   const [discarding, setDiscarding] = useState<FileChange | null>(null);
+  const [shelving, setShelving] = useState<string[] | null>(null);
+  const [shelfPick, setShelfPick] = useState<ShelfPick | null>(null);
+  const pickFile = (sel: Selection) => {
+    setShelfPick(null);
+    setPicked(sel);
+  };
   const [layout, setLayoutState] = useState<DiffLayout>(() => (readSetting(LAYOUT_KEY) === "split" ? "split" : "unified"));
 
   const changes = useQuery({ queryKey: ["changes", root], queryFn: () => desktop.changes(root), refetchInterval: POLL_MS });
@@ -115,7 +126,12 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const diff = useQuery({
     queryKey: ["diff", root, selected?.path],
     queryFn: () => desktop.fileDiff(root, selected!.path),
-    enabled: !!selected,
+    enabled: !!selected && !shelfPick,
+  });
+  const shelfFiles = useQuery({
+    queryKey: ["shelf-files", root, shelfPick?.id],
+    queryFn: () => desktop.shelfFiles(root, shelfPick!.id),
+    enabled: !!shelfPick,
   });
 
   const working = stage.isPending || unstage.isPending || discard.isPending || !!op;
@@ -124,7 +140,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
     const files = buildRows(data).flatMap((r) => (r.type === "file" ? [{ path: r.file.path, staged: r.staged }] : []));
     if (files.length === 0) return;
     const at = files.findIndex((f) => f.path === selected?.path && f.staged === selected?.staged);
-    setPicked(files[Math.max(0, Math.min(files.length - 1, at < 0 ? 0 : at + by))]);
+    pickFile(files[Math.max(0, Math.min(files.length - 1, at < 0 ? 0 : at + by))]);
   };
   const toggle = (sel: Selection) => (sel.staged ? unstage.mutate([sel.path]) : stageGuard.request([sel.path]));
   useShortcuts({
@@ -154,7 +170,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const selectFirst = (paths: string[]) => {
     for (const path of paths) {
       const staged = c.staged.some((f) => f.path === path);
-      if (staged || c.unstaged.some((f) => f.path === path)) return setPicked({ path, staged });
+      if (staged || c.unstaged.some((f) => f.path === path)) return pickFile({ path, staged });
     }
   };
 
@@ -176,6 +192,14 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             onSelect={(w) => selectFirst([w.path, w.related])}
           />
         )}
+        {!empty && onShelve && (
+          <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1">
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setShelving([])} title="Put changes aside and restore the files">
+              <Archive />
+              Shelve…
+            </Button>
+          </div>
+        )}
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <CheckCircle2 className="size-6 text-success" />
@@ -187,7 +211,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             changes={c}
             selected={selected}
             busy={busy}
-            onSelect={setPicked}
+            onSelect={pickFile}
             onToggle={toggle}
             onStage={stageGuard.request}
             onUnstage={(paths) => unstage.mutate(paths)}
@@ -195,8 +219,10 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             warnings={warnings}
             locks={lockStates}
             onLock={lockStatus.data ? (path) => lockPaths([path]) : undefined}
+            onShelve={onShelve ? (path) => setShelving([path]) : undefined}
           />
         )}
+        {onApplyShelf && <ShelvesPanel root={root} busy={busy} picked={shelfPick} onPick={setShelfPick} onApply={onApplyShelf} onError={onError} />}
         <CommitBox
           stagedCount={c.staged.length}
           blockedReason={blocked}
@@ -217,7 +243,9 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1">
-          {!selected ? (
+          {shelfPick ? (
+            <ShelfPreview root={root} pick={shelfPick} files={shelfFiles} layout={layout} onLayout={setLayout} onClose={() => setShelfPick(null)} />
+          ) : !selected ? (
             <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="Select a changed file to see what changed." />
           ) : diff.isPending ? (
             <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading diff…" />
@@ -229,7 +257,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             <Centered icon={<CheckCircle2 className="size-6 text-success" />} title="No changes" detail="This file matches the last synced version." />
           )}
         </div>
-        {selected && <InsightPanel key={selected.path} root={root} path={selected.path} onOpenFile={onOpenFile} />}
+        {selected && !shelfPick && <InsightPanel key={selected.path} root={root} path={selected.path} onOpenFile={onOpenFile} />}
       </div>
 
       {discarding && (
@@ -247,6 +275,55 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
         </ConfirmDialog>
       )}
       {stageGuard.dialog}
+      {shelving && onShelve && (
+        <ShelveDialog
+          changes={c}
+          initial={shelving}
+          busy={busy}
+          onCancel={() => setShelving(null)}
+          onConfirm={(input) => {
+            setShelving(null);
+            onShelve(input);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+type ShelfPreviewProps = {
+  root: string;
+  pick: ShelfPick;
+  files: { isPending: boolean; isError: boolean; error: unknown; data?: FileDiff[] };
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+  onClose: () => void;
+};
+
+function ShelfPreview({ root, pick, files, layout, onLayout, onClose }: ShelfPreviewProps) {
+  const diff = files.data?.find((f) => f.path === pick.path);
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-[11px]">
+        <Archive className="size-3.5 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate">
+          Shelved version of <span className="font-mono">{pick.path}</span>
+        </span>
+        <button type="button" onClick={onClose} aria-label="Close shelf preview" className="text-muted-foreground hover:text-foreground">
+          <X className="size-3.5" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {files.isPending ? (
+          <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading shelf…" />
+        ) : files.isError ? (
+          <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not read the shelf" detail={errorMessage(files.error)} />
+        ) : diff ? (
+          <DiffViewer root={root} diff={diff} layout={layout} onLayout={onLayout} />
+        ) : (
+          <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="This file is not in the shelf any more." />
+        )}
+      </div>
     </div>
   );
 }

@@ -292,6 +292,17 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 		st.Resolved = append(st.Resolved, revertState.Resolved...)
 		st.Pending, st.PendingRemaining = "revert", len(revertState.Targets)
 	}
+	if l, ok := w.localRepo.(shelfStateLoader); ok {
+		shelfState, err := l.LoadShelfState()
+		if err != nil {
+			return nil, err
+		}
+		if shelfState != nil {
+			st.Conflicts = append(st.Conflicts, shelfState.Conflicts...)
+			st.Resolved = append(st.Resolved, shelfState.Resolved...)
+			st.Pending = "shelf"
+		}
+	}
 
 	observedAt := time.Now().UnixNano()
 	var jobs []statusHashJob

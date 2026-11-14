@@ -61,9 +61,10 @@ func mergeGodotResource(ctx context.Context, rp *repo, p string) (*daemonpb.Merg
 		return nil, status.Error(codes.FailedPrecondition, "diff is not configured")
 	}
 	var refs [3]*assetdiff.Ref
-	for i, rev := range []string{set.Base.ID, set.Ours.ID, set.Theirs.ID} {
-		if rev != "" {
-			refs[i] = &assetdiff.Ref{Source: string(usecase.BlobRevision), Revision: rev, Path: p}
+	base, ours, theirs := usecase.ConflictSides(set, p)
+	for i, side := range []*usecase.BlobRequest{base, ours, theirs} {
+		if side != nil {
+			refs[i] = &assetdiff.Ref{Source: string(side.Source), Revision: side.Revision, Path: p}
 		}
 	}
 	m, err := assetdiff.MergeGodot(ctx, blobLoader(rp), refs[0], refs[1], refs[2])

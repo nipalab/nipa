@@ -183,6 +183,9 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 }
 
 func (r *Revert) checkNoPendingOperations() error {
+	if err := refuseShelfPending(r.localRepo); err != nil {
+		return err
+	}
 	mergeState, err := r.localRepo.LoadMergeState()
 	if err != nil {
 		return err

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Lock, LockOpen, TriangleAlert, Undo2 } from "lucide-react";
+import { Archive, Lock, LockOpen, TriangleAlert, Undo2 } from "lucide-react";
 import type { ChangeSet, FileChange, FileLockState } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ type FileListProps = {
   warnings?: Map<string, string>;
   locks?: Map<string, FileLockState>;
   onLock?: (path: string) => void;
+  onShelve?: (path: string) => void;
 };
 
 export function buildRows(changes: ChangeSet): Row[] {
@@ -42,7 +43,7 @@ export function buildRows(changes: ChangeSet): Row[] {
   return rows;
 }
 
-export function FileList({ changes, selected, busy, onSelect, onToggle, onStage, onUnstage, onDiscard, warnings, locks, onLock }: FileListProps) {
+export function FileList({ changes, selected, busy, onSelect, onToggle, onStage, onUnstage, onDiscard, warnings, locks, onLock, onShelve }: FileListProps) {
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -106,6 +107,7 @@ export function FileList({ changes, selected, busy, onSelect, onToggle, onStage,
                   onSelect={() => onSelect({ path: row.file.path, staged: row.staged })}
                   onToggle={() => (row.staged ? onUnstage([row.file.path]) : onStage([row.file.path]))}
                   onDiscard={() => onDiscard(row.file)}
+                  onShelve={onShelve ? () => onShelve(row.file.path) : undefined}
                 />
               )}
             </div>
@@ -140,9 +142,10 @@ type FileRowProps = {
   onSelect: () => void;
   onToggle: () => void;
   onDiscard: () => void;
+  onShelve?: () => void;
 };
 
-function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, onToggle, onDiscard }: FileRowProps) {
+function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, onToggle, onDiscard, onShelve }: FileRowProps) {
   const { dir, name } = splitPath(file.path);
   const discardable = !staged && file.status !== "untracked";
   return (
@@ -169,6 +172,22 @@ function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, 
       </span>
       {warning && <TriangleAlert className="size-3 shrink-0 text-warning" aria-label={warning} />}
       {lock && <LockBadge lock={lock} busy={busy} onLock={onLock} />}
+      {onShelve && (
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={busy}
+          className="size-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [&_svg]:size-3"
+          aria-label={`Shelve ${file.path}`}
+          title="Shelve this file"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShelve();
+          }}
+        >
+          <Archive />
+        </Button>
+      )}
       {discardable && (
         <Button
           variant="ghost"

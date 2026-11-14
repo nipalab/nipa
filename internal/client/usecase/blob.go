@@ -22,6 +22,10 @@ const (
 	BlobWorking  BlobSource = "working"
 	BlobSnapshot BlobSource = "snapshot"
 	BlobRevision BlobSource = "revision"
+	// BlobShelf reads a shelved file (Revision is the shelf id) and
+	// BlobShelfBase the version it was shelved from.
+	BlobShelf     BlobSource = "shelf"
+	BlobShelfBase BlobSource = "shelf_base"
 )
 
 // BlobRequest names one file version: the working copy, the last synced
@@ -69,6 +73,8 @@ func (d *Diff) ReadBlob(ctx context.Context, root string, req BlobRequest, fn fu
 		return fn(entry, &blobReader{load: d.localRepo.LoadChunk, entry: entry})
 	case BlobRevision:
 		return d.readRevisionBlob(ctx, req.Revision, p, fn)
+	case BlobShelf, BlobShelfBase:
+		return d.readShelfBlob(ctx, req, p, fn)
 	default:
 		return clientDomain.NewUserError(fmt.Sprintf("unknown blob source %q", req.Source))
 	}
@@ -106,6 +112,28 @@ func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(di
 		return err
 	}
 	return fn(entry, &blobReader{load: d.localRepo.LoadChunk, entry: entry})
+}
+
+func (d *Diff) readShelfBlob(ctx context.Context, req BlobRequest, p string, fn func(diff.Entry, io.Reader) error) error {
+	shelves, ok := d.localRepo.(ShelfReader)
+	if !ok {
+		return clientDomain.NewUserError("shelves are not supported here")
+	}
+	entry, load, stored, err := ShelfEntryBlob(shelves, req.Revision, p, req.Source == BlobShelfBase)
+	if err != nil {
+		return err
+	}
+	if stored {
+		return fn(entry, &blobReader{load: load, entry: entry})
+	}
+	shelf, err := shelves.LoadShelf(req.Revision)
+	if err != nil {
+		return err
+	}
+	if shelf.BaseCommitID == "" {
+		return missingFile(fmt.Sprintf("%s has no recorded base version", p))
+	}
+	return d.readRevisionBlob(ctx, shelf.BaseCommitID, p, fn)
 }
 
 func missingFile(msg string) error {

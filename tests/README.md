@@ -5,7 +5,7 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (about 310 specs, counted as the `It(`/`PIt(` calls in the
+Coverage (about 325 specs, counted as the `It(`/`PIt(` calls in the
 non-support spec files): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection, username binding, deleted keys, default
@@ -14,7 +14,8 @@ unregistered-key rejection, username binding, deleted keys, default
 `--tag` detach), `merge`, `revert` (single, range, conflicts, `--mainline`),
 `log`,
 `diff` (all output modes and revision shapes), `sparse-checkout`, `tag`,
-`lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group` — plus the
+`lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group`, `shelve`
+(create, list, show, apply with merge/conflicts/continue/abort, drop) — plus the
 runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
 and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
 filters, ping, retries/redelivery), multi-user permission/lock scenarios
@@ -136,6 +137,10 @@ tests/
     restore_test.go       nipa restore (discard modifications/deletions)
     update_test.go        nipa update
     switch_test.go        nipa switch (branches, detached tags)
+    shelve_test.go        nipa shelve (untracked selection, binary/text
+                          conflicts, continue/abort, tag and sparse clones,
+                          refusals while an apply waits) and the daemon
+                          shelf RPCs, SyncPlan and JSON bridge
     merge_test.go         nipa merge
     revert_test.go        nipa revert (ranges, conflicts, mainline)
     status_test.go        nipa status/add/remove staging (--no-cache, dirs)

@@ -19,6 +19,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 type stubUpdateRunner struct {
@@ -26,6 +27,14 @@ type stubUpdateRunner struct {
 	switchFn    func(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
 	switchTagFn func(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
 	sparseFn    func(root string, paths []string) error
+	targetFn    func(ctx context.Context, root string, target usecase.SyncTarget) (*serverDomain.TreeNode, error)
+}
+
+func (s *stubUpdateRunner) TargetTree(ctx context.Context, root string, target usecase.SyncTarget) (*serverDomain.TreeNode, error) {
+	if s.targetFn != nil {
+		return s.targetFn(ctx, root, target)
+	}
+	return &serverDomain.TreeNode{}, nil
 }
 
 func (s *stubUpdateRunner) SetSparse(root string, paths []string) error {

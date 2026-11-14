@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const service = vi.hoisted(() => ({
   Connect: vi.fn(),
+  Shelves: vi.fn(),
+  Shelve: vi.fn(),
+  ApplyShelf: vi.fn(),
+  AbortShelfApply: vi.fn(),
+  DropShelf: vi.fn(),
+  ShelfFiles: vi.fn(),
+  SyncPlan: vi.fn(),
   Repos: vi.fn(),
   PickRepo: vi.fn(),
   AddRepo: vi.fn(),
@@ -561,5 +568,28 @@ describe("desktop api", () => {
     expect(events.On.mock.calls[0][0]).toBe("update:state");
     events.On.mock.calls[0][1]({ data: { phase: "ready", current: "1.0.0" } });
     expect(fn).toHaveBeenCalledWith({ ...empty, phase: "ready", current: "1.0.0" });
+  });
+
+  it("wraps shelves", async () => {
+    service.Shelves.mockResolvedValueOnce(null).mockResolvedValueOnce({ applying: "s1", shelves: [{ id: "s1", entries: null }] });
+    expect(await desktop.shelves("/a")).toEqual({ applying: "", shelves: [] });
+    expect(await desktop.shelves("/a")).toEqual({ applying: "s1", shelves: [{ id: "s1", entries: [] }] });
+    service.Shelve.mockResolvedValue({});
+    await desktop.shelve("/a", { paths: ["x"] });
+    expect(service.Shelve).toHaveBeenCalledWith("/a", { name: "", paths: ["x"], includeUntracked: false });
+    await desktop.applyShelf("/a", "s1", true);
+    expect(service.ApplyShelf).toHaveBeenCalledWith("/a", "s1", true);
+    await desktop.abortShelfApply("/a");
+    expect(service.AbortShelfApply).toHaveBeenCalledWith("/a");
+    await desktop.dropShelf("/a", "s1");
+    expect(service.DropShelf).toHaveBeenCalledWith("/a", "s1");
+    service.ShelfFiles.mockResolvedValueOnce(null);
+    expect(await desktop.shelfFiles("/a", "s1")).toEqual([]);
+    service.SyncPlan.mockResolvedValueOnce(null).mockResolvedValueOnce({ overwritten: ["x"] });
+    expect(await desktop.syncPlan("/a")).toEqual([]);
+    expect(await desktop.syncPlan("/a", { tag: "v1" })).toEqual(["x"]);
+    expect(service.SyncPlan).toHaveBeenLastCalledWith("/a", "", "v1");
+    service.Changes.mockResolvedValue({ branch: "main", pending: "shelf", staged: null, unstaged: null, conflicts: null });
+    expect((await desktop.changes("/a")).pending).toBe("shelf");
   });
 });

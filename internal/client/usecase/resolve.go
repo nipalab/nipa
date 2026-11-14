@@ -70,8 +70,11 @@ func (c *Conflicts) List() (*domain.ConflictSet, error) {
 		return set, nil
 	}
 	revert, err := c.localRepo.LoadRevertState()
-	if err != nil || revert == nil {
+	if err != nil {
 		return nil, err
+	}
+	if revert == nil {
+		return c.shelfConflicts(cfg)
 	}
 	set := &domain.ConflictSet{
 		Op:     "revert",
@@ -84,6 +87,35 @@ func (c *Conflicts) List() (*domain.ConflictSet, error) {
 		set.Theirs.Label = "before " + revertLabel(target)
 	}
 	set.Files = conflictFiles(revert.Conflicts, revert.ConflictKinds, revert.ConflictBinary, revert.Resolved)
+	return set, nil
+}
+
+type shelfStateRepo interface {
+	LoadShelfState() (*domain.ShelfState, error)
+	SaveShelfState(state *domain.ShelfState) error
+	ClearShelfState() error
+	DropShelf(id string) error
+}
+
+// shelfConflicts describes a waiting shelf apply: ours is the synced
+// snapshot, theirs the shelf (its id) and base the version it was shelved
+// from.
+func (c *Conflicts) shelfConflicts(cfg *domain.Config) (*domain.ConflictSet, error) {
+	repo, ok := c.localRepo.(shelfStateRepo)
+	if !ok {
+		return nil, nil
+	}
+	state, err := repo.LoadShelfState()
+	if err != nil || state == nil {
+		return nil, err
+	}
+	set := &domain.ConflictSet{
+		Op:     "shelf",
+		Base:   domain.ConflictRevision{ID: state.BaseCommitID, Label: "shelved from"},
+		Ours:   domain.ConflictRevision{ID: state.OursCommitID, Label: cfg.Branch},
+		Theirs: domain.ConflictRevision{ID: state.ShelfID, Label: "shelf " + state.ShelfName},
+	}
+	set.Files = conflictFiles(state.Conflicts, state.ConflictKinds, state.ConflictBinary, state.Resolved)
 	return set, nil
 }
 
@@ -141,8 +173,10 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 			return err
 		}
 	}
-	if err := c.stage(ctx, p, abs); err != nil {
-		return err
+	if set.Op != "shelf" {
+		if err := c.stage(ctx, p, abs); err != nil {
+			return err
+		}
 	}
 	return c.markResolved(p)
 }
@@ -245,8 +279,64 @@ func (c *Conflicts) markResolved(p string) error {
 	if err != nil {
 		return err
 	}
+	if revert == nil {
+		return c.markShelfResolved(p)
+	}
 	if !slices.Contains(revert.Resolved, p) {
 		revert.Resolved = append(revert.Resolved, p)
 	}
 	return c.localRepo.SaveRevertState(revert)
+}
+
+// markShelfResolved records p; once every conflict is settled the apply is
+// finished and the shelf dropped unless it was applied with keep.
+func (c *Conflicts) markShelfResolved(p string) error {
+	repo, ok := c.localRepo.(shelfStateRepo)
+	if !ok {
+		return nil
+	}
+	state, err := repo.LoadShelfState()
+	if err != nil || state == nil {
+		return err
+	}
+	if !slices.Contains(state.Resolved, p) {
+		state.Resolved = append(state.Resolved, p)
+	}
+	for _, conflict := range state.Conflicts {
+		if !slices.Contains(state.Resolved, conflict) {
+			return repo.SaveShelfState(state)
+		}
+	}
+	if err := repo.ClearShelfState(); err != nil {
+		return err
+	}
+	if state.Keep {
+		return nil
+	}
+	return dropFinishedShelf(repo, state.ShelfID)
+}
+
+func dropFinishedShelf(repo interface{ DropShelf(id string) error }, id string) error {
+	if err := repo.DropShelf(id); err != nil && !isNotFoundError(err) {
+		return err
+	}
+	return nil
+}
+
+// ConflictSides names where each version of a conflicted file is read from:
+// commits for a merge or revert; for a shelf apply the shelf's base, the
+// synced snapshot and the shelf. A nil side has no version.
+func ConflictSides(set *domain.ConflictSet, p string) (base, ours, theirs *BlobRequest) {
+	if set.Op == "shelf" {
+		return &BlobRequest{Source: BlobShelfBase, Revision: set.Theirs.ID, Path: p},
+			&BlobRequest{Source: BlobSnapshot, Path: p},
+			&BlobRequest{Source: BlobShelf, Revision: set.Theirs.ID, Path: p}
+	}
+	rev := func(id string) *BlobRequest {
+		if id == "" {
+			return nil
+		}
+		return &BlobRequest{Source: BlobRevision, Revision: id, Path: p}
+	}
+	return rev(set.Base.ID), rev(set.Ours.ID), rev(set.Theirs.ID)
 }

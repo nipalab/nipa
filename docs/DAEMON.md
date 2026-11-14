@@ -170,6 +170,10 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `Provenance` | unary | origin record, status and `required` flag per path; see below |
 | `SetProvenance` | unary | records a file's origin by hand like `nipa provenance set` and stages `.nipaprovenance.yml`; see below |
 | `Blame` | **server-streaming** | which commit last changed each line of a text file (`nipa blame`); progress, then the result; see below |
+| `ShelveCreate` | **server-streaming** | stores the given changes (all when `paths` is empty) in a new local shelf and puts those files back, under the exclusive slot; see below |
+| `ShelveApply` | **server-streaming** | merges a shelf into the working copy (`keep` keeps it), or with `abort` stops an apply waiting on conflicts; see below |
+| `ShelveList` / `ShelveDrop` / `ShelveFiles` | unary | the clone's shelves (and the one being applied), delete one, a shelf's changes as `DiffFile`s |
+| `SyncPlan` | unary | local changes an update, branch switch or tag checkout would replace; see below |
 | `Login` | unary | (host, user, password, otp?, mfa_challenge?) → `securestorage`, or `mfa_required` + challenge; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -480,6 +484,38 @@ the path is not tracked any more). It refuses a pending merge or revert, a
 path outside the sparse checkout, a folder, a commit that does not exist
 (`revision "<id>" not found`) and a path the commit does not have (`<path>
 does not exist in <id>`, 404).
+
+`ShelveCreate(root, name, paths, include_untracked)` runs `usecase.Shelve`
+(`.nipa/shelves/<id>/`: `manifest.json` plus the chunks in the shelf's own
+`objects/`, written in a `.tmp-<id>` folder, fsynced and renamed, so the
+cache GC never sees them and dropping a shelf removes a folder). The working
+copy is touched only after the shelf is on disk: staged entries are
+unstaged, tracked files restored from the snapshot (their content is made
+available first, so an offline failure happens before anything is written)
+and new files removed. Untracked files are taken when named exactly or with
+`include_untracked`. Entries record the base version, whether the base text
+was copied into the shelf, the staged/untracked flags and whether a lock pin
+covered the path (display only). The result is `OpResult.shelve`.
+`ShelveApply(root, id, keep)` refuses paths with local changes or outside the
+sparse set, then runs the three-way core (`applyThreeWay`: base = the
+shelved base, ours = the synced snapshot, theirs = the shelf, chunks read
+from the shelf through an overlay), restores the staged flags and, on
+conflicts, saves `shelf_state` (status `pending: shelf`; `Conflicts`
+answers `op: shelf` with `theirs.id` = the shelf id; `ResolveConflict` reads
+ours from the snapshot and theirs from the shelf, does not stage, and the
+last resolution clears the state and drops the shelf unless `keep`).
+`abort` puts every path the apply wrote back to the snapshot and keeps the
+shelf. Merge, revert, push, shelve and apply refuse while `shelf_state` is
+pending and the cache GC skips. `ReadBlob` takes `source` `shelf` (the
+shelved file) and `shelf_base` (its base, from the shelf for text, else from
+the base commit) with the shelf id as `revision`.
+
+`SyncPlan(root, branch, tag)` fetches the manifest the operation would
+materialize (`Update.TargetTree`: the tag's commit, the branch, or with both
+empty the clone's branch or pinned tag commit) and returns
+`usecase.OverwrittenPaths`: edited, deleted, new or staged files whose path
+the target writes with a version other than the synced one; for a switch or
+tag checkout every staged path too, since those refuse to run with them.
 
 `Blame(root, path, revision)` (shared slot, serialized per root) streams
 `BlameEvent`s: `progress {done, total}` per file version read, then one

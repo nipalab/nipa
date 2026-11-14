@@ -97,6 +97,10 @@ import type {
   TeamEvent,
   Release,
   UpdateState as RawUpdateState,
+  Shelf as RawShelf,
+  ShelfApplyOutcome,
+  ShelfEntry,
+  ShelveInput,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import type { NotifySettings, Settings as RawSettings, Tool } from "../../bindings/github.com/nipalab/nipa/desktop/internal/workspace/models";
 
@@ -145,7 +149,11 @@ const required = <T>(v: T | null, what: string): T => {
   return v;
 };
 export type { ConflictFile, ConflictRevision, ConflictText, ConflictTexts, MergeOutcome, ResolveInput };
-export type ConflictSet = Omit<RawConflictSet, "files" | "op"> & { op: "merge" | "revert" | ""; files: ConflictFile[] };
+export type ConflictSet = Omit<RawConflictSet, "files" | "op"> & { op: PendingOp | ""; files: ConflictFile[] };
+export type PendingOp = "merge" | "revert" | "shelf";
+export type { ShelfApplyOutcome, ShelfEntry, ShelveInput };
+export type Shelf = Omit<RawShelf, "entries"> & { entries: ShelfEntry[] };
+export type ShelfList = { shelves: Shelf[]; applying: string };
 export type ResolveChoice = "ours" | "theirs" | "content" | "working" | "delete";
 export type Commit = Omit<RawCommit, "parents"> & { parents: string[] };
 export type HistoryPage = { commits: Commit[]; next: string };
@@ -176,7 +184,7 @@ export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, Im
 export type ChangeSet = {
   branch: string;
   detached?: string;
-  pending?: "merge" | "revert";
+  pending?: PendingOp;
   pendingRemaining?: number;
   staged: FileChange[];
   unstaged: FileChange[];
@@ -188,10 +196,12 @@ export type ChangeSet = {
 // context, which stops the daemon operation.
 export type Cancellable<T> = Promise<T> & { cancel?: () => void };
 
+const pendingOp = (op: string | undefined): PendingOp | "" => (op === "merge" || op === "revert" || op === "shelf" ? op : "");
+
 const changeSet = (c: Changes): ChangeSet => ({
   branch: c.branch,
   detached: c.detached || undefined,
-  pending: c.pending === "merge" || c.pending === "revert" ? c.pending : undefined,
+  pending: pendingOp(c.pending) || undefined,
   pendingRemaining: c.pendingRemaining ?? 0,
   staged: c.staged ?? [],
   unstaged: c.unstaged ?? [],
@@ -345,10 +355,21 @@ export const desktop = {
   abortMerge: (root: string): Cancellable<OpOutcome> => Service.AbortMerge(root),
   conflicts: async (root: string): Promise<ConflictSet> => {
     const set = await Service.Conflicts(root);
-    const op = set?.op === "merge" || set?.op === "revert" ? set.op : "";
+    const op = pendingOp(set?.op);
     const none = { id: "", label: "" };
     return { base: set?.base ?? none, ours: set?.ours ?? none, theirs: set?.theirs ?? none, op, files: set?.files ?? [] };
   },
+  shelves: async (root: string): Promise<ShelfList> => {
+    const l = await Service.Shelves(root);
+    return { applying: l?.applying ?? "", shelves: (l?.shelves ?? []).map((sh) => ({ ...sh, entries: sh.entries ?? [] })) };
+  },
+  shelve: (root: string, input: Partial<ShelveInput>): Cancellable<OpOutcome> => Service.Shelve(root, { name: "", paths: [], includeUntracked: false, ...input }),
+  applyShelf: (root: string, id: string, keep: boolean): Cancellable<OpOutcome> => Service.ApplyShelf(root, id, keep),
+  abortShelfApply: (root: string): Cancellable<OpOutcome> => Service.AbortShelfApply(root),
+  dropShelf: (root: string, id: string): Promise<void> => Service.DropShelf(root, id),
+  shelfFiles: async (root: string, id: string): Promise<FileDiff[]> => (await Service.ShelfFiles(root, id)) ?? [],
+  syncPlan: async (root: string, target: { branch?: string; tag?: string } = {}): Promise<string[]> =>
+    (await Service.SyncPlan(root, target.branch ?? "", target.tag ?? ""))?.overwritten ?? [],
   conflictTexts: async (root: string, path: string): Promise<ConflictTexts> => required(await Service.ConflictTexts(root, path), "file versions"),
   conflictDiff: (root: string, path: string): Promise<FileDiff | null> => Service.ConflictDiff(root, path),
   mergeScene: async (root: string, path: string): Promise<SceneMerge> => {

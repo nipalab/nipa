@@ -14,6 +14,7 @@ export const scenarioFrom = (search: string): string => new URLSearchParams(sear
 export function createService(scenario: string): typeof Real {
   let state = clone(d.changes(scenario));
   let llm = clone(d.llmSettings);
+  let shelves = clone(d.shelves);
   const provenance = demoProvenance();
   const take = (list: FileChange[], paths: string[] | null) => list.filter((f) => (paths ?? []).includes(f.path));
   const without = (list: FileChange[], paths: string[] | null) => list.filter((f) => !(paths ?? []).includes(f.path));
@@ -192,6 +193,38 @@ export function createService(scenario: string): typeof Real {
       }),
     Reply: (_root, _n, _t, body) => ok({ id: "k-reply", author: d.people.me, body, createdAt: d.ago(0), edited: false }),
     ResolveThread: () => ok(undefined),
+
+    Shelves: () => ok({ shelves: clone(shelves), applying: "" }),
+    Shelve: (_root, input) => {
+      const picked = [...state.staged, ...state.unstaged].filter((f) => input.paths?.includes(f.path));
+      const entries = picked.map((f) => ({ path: f.path, status: f.status === "untracked" ? "added" : f.status, staged: state.staged.includes(f), untracked: f.status === "untracked", locked: false, size: 0, binary: f.kind !== "text", kind: f.kind }));
+      const shelf = { id: `demo${shelves.length}`, name: input.name || `${entries.length} files on ${state.branch}`, createdAt: d.ago(0), branch: state.branch, size: 0, entries };
+      shelves = [shelf, ...shelves];
+      state = { ...state, staged: without(state.staged, input.paths), unstaged: without(state.unstaged, input.paths) };
+      return ok({ shelf });
+    },
+    ApplyShelf: (_root, id, keep) => {
+      const shelf = shelves.find((s) => s.id === id);
+      if (!shelf) return ok({});
+      const back = (shelf.entries ?? []).map((e) => ({ path: e.path, status: e.status, kind: e.kind }));
+      state = { ...state, unstaged: [...without(state.unstaged, back.map((f) => f.path)), ...back] };
+      if (!keep) shelves = shelves.filter((s) => s.id !== id);
+      return ok({ shelfApply: { shelfId: id, name: shelf.name, conflicts: [], dropped: !keep, aborted: false } });
+    },
+    AbortShelfApply: () => ok({ shelfApply: { shelfId: "", name: "", conflicts: [], dropped: false, aborted: true } }),
+    DropShelf: (_root, id) => {
+      shelves = shelves.filter((s) => s.id !== id);
+      return ok(undefined);
+    },
+    ShelfFiles: (_root, id) => {
+      const shelf = shelves.find((s) => s.id === id);
+      const files = (shelf?.entries ?? []).flatMap((e) => {
+        const diff = diffFor(e.path);
+        return diff ? [{ ...clone(diff), oldSource: "shelf_base", newSource: "shelf", oldRevision: id, newRevision: id }] : [];
+      });
+      return ok(files);
+    },
+    SyncPlan: () => ok({ overwritten: [] }),
 
     Conflicts: () => ok(scenario === "conflicts" ? clone(d.conflictSet) : { op: "", base: { id: "", label: "" }, ours: { id: "", label: "" }, theirs: { id: "", label: "" }, files: [] }),
     ConflictTexts: () => ok(clone(d.conflictTexts)),

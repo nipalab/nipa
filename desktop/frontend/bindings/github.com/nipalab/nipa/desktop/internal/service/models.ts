@@ -355,6 +355,13 @@ export interface FileDiff {
      */
     "oldRevision"?: string;
     "newRevision"?: string;
+
+    /**
+     * OldSource and NewSource name a blob source other than revision for
+     * the sides (shelf_base and shelf, with the shelf id as revision).
+     */
+    "oldSource"?: string;
+    "newSource"?: string;
 }
 
 export interface FileEntry {
@@ -558,7 +565,7 @@ export interface ImageOptions {
  */
 export interface ImageRef {
     /**
-     * working, snapshot, revision
+     * working, snapshot, revision, shelf, shelf_base
      */
     "source": string;
     "revision"?: string;
@@ -786,6 +793,8 @@ export interface OpOutcome {
     "commitHash"?: string;
     "revert"?: RevertOutcome | null;
     "merge"?: MergeOutcome | null;
+    "shelf"?: Shelf | null;
+    "shelfApply"?: ShelfApplyOutcome | null;
 }
 
 /**
@@ -1048,6 +1057,55 @@ export interface SceneObject {
     "parent": string;
 }
 
+export interface Shelf {
+    "id": string;
+    "name": string;
+    "createdAt": string;
+    "branch": string;
+    "tag"?: string;
+    "baseCommitId"?: string;
+    "size": number;
+    "entries": ShelfEntry[] | null;
+}
+
+export interface ShelfApplyOutcome {
+    "shelfId": string;
+    "name": string;
+    "conflicts": string[] | null;
+    "dropped": boolean;
+    "aborted": boolean;
+}
+
+export interface ShelfEntry {
+    "path": string;
+
+    /**
+     * modified, added, deleted
+     */
+    "status": string;
+    "staged": boolean;
+    "untracked": boolean;
+    "locked": boolean;
+    "size": number;
+    "binary": boolean;
+    "kind": string;
+}
+
+/**
+ * ShelfList is a clone's shelves, newest first. Applying names the shelf
+ * whose apply waits on conflicts.
+ */
+export interface ShelfList {
+    "shelves": Shelf[] | null;
+    "applying"?: string;
+}
+
+export interface ShelveInput {
+    "name": string;
+    "paths": string[] | null;
+    "includeUntracked": boolean;
+}
+
 /**
  * SignInResult tells the dialog whether the account still needs a two-factor
  * code for Challenge before the session exists.
@@ -1056,6 +1114,14 @@ export interface SignInResult {
     "mfaRequired": boolean;
     "challenge": string;
     "expiresIn": number;
+}
+
+/**
+ * SyncPlan lists the local changes an update, switch or tag checkout would
+ * replace.
+ */
+export interface SyncPlan {
+    "overwritten": string[] | null;
 }
 
 export interface TableColumn {

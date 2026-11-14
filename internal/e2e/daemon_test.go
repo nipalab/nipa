@@ -32,12 +32,14 @@ func startDaemon(t *testing.T, auth *clientusecase.Auth, client *clientgrpc.Clie
 		Runners: daemon.Runners{New: func(string) daemon.RepoOps {
 			push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
 			return daemon.RepoOps{
-				Update: clientusecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
-				Push:   push,
-				Merge:  clientusecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
-				Revert: clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
-				Diff:   daemon.SerialDiff(clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
-				Proxy:  client,
+				Update:     clientusecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
+				Push:       push,
+				Merge:      clientusecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
+				Revert:     clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
+				Diff:       daemon.SerialDiff(clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
+				Proxy:      client,
+				Auth:       auth,
+				Downloader: client,
 			}
 		}},
 	})
