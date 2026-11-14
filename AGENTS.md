@@ -162,7 +162,13 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   in `desktop.json` (`Settings`/`SaveSettings`: keep in tray, start at login
   via `internal/autostart`, notification kinds, poll interval, external
   tools per extension used by `OpenFile`; `SetUploadWorkers` writes the
-  shared client config, `RestartDaemon`; `IgnoreRules`/`SaveIgnoreRules`),
+  shared client config, `RestartDaemon`; `IgnoreRules`/`SaveIgnoreRules`;
+  the window size and maximised state (`workspace.Window`, saved on close,
+  tray quit and `ShouldQuit`) and the interface state (`ui` map through
+  `UIState`/`SaveUIState`: `lib/settings.ts` loads it before the first render
+  and backs `readSetting`/`writeSetting`, since the webview's localStorage is
+  not kept on every platform; per-clone tab and view selections through
+  `usePersistedState` + `repoSetting`, dropped when the clone is removed)),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),

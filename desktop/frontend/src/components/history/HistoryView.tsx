@@ -12,6 +12,8 @@ import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { usePersistedState } from "@/hooks/usePersistedState";
+import { repoSetting } from "@/lib/settings";
 
 type HistoryViewProps = {
   root: string;
@@ -27,13 +29,18 @@ type HistoryViewProps = {
 
 type Dialog = { kind: "revert" | "tag" | "branch"; commit: Commit } | null;
 
-export function HistoryView({ root, branch, detached, busy, notify, onRevert, onSwitch, path: initialPath = "", open }: HistoryViewProps) {
+const isString = (v: unknown): v is string => typeof v === "string";
+
+export function HistoryView({ root, branch, detached, busy, notify, onRevert, onSwitch, path: navPath, open }: HistoryViewProps) {
   const listSize = useResizableWidth("history", { initial: 340, min: 240, max: 720 });
   const queryClient = useQueryClient();
-  const [path, setPath] = useState(initialPath);
-  const [pathInput, setPathInput] = useState(initialPath);
+  const [path, setPath] = usePersistedState(repoSetting(root, "history.path"), "", { valid: isString, prefer: navPath });
+  const [pathInput, setPathInput] = useState(path);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(open?.id ?? null);
+  const [selectedId, setSelectedId] = usePersistedState<string | null>(repoSetting(root, "history.selected"), null, {
+    valid: (v): v is string | null => v === null || isString(v),
+    prefer: open ? open.id : navPath !== undefined ? null : undefined,
+  });
   useEffect(() => {
     if (open) setSelectedId(open.id);
   }, [open?.id, open?.seq]);

@@ -4,11 +4,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, CloudDownload, Folder, Lock } from "lucide-react";
 import { desktop, type FileLock } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
+import { ColumnResizer } from "@/components/ui/resize-handle";
+import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { formatBytes } from "@/lib/diff";
 import { canPreview, kindName, lockFor, lockState, thumbKey, type Row, type Sort, type SortKey } from "@/lib/files";
 import { cn } from "@/lib/utils";
 
 const ROW_HEIGHT = 28;
+const HEADER_HEIGHT = 32;
 const CELL_WIDTH = 132;
 const CELL_HEIGHT = 150;
 
@@ -22,13 +25,15 @@ type TableProps = {
   onMenu: (row: Row, x: number, y: number) => void;
 };
 
-const columns: { key: SortKey; label: string; className: string }[] = [
-  { key: "name", label: "Name", className: "min-w-0 flex-1" },
-  { key: "kind", label: "Kind", className: "w-24" },
-  { key: "size", label: "Size", className: "w-20 justify-end" },
-  { key: "status", label: "Status", className: "w-16 justify-center" },
-  { key: "lock", label: "Lock", className: "w-28" },
+const columns: { key: SortKey; label: string; width: number; className: string }[] = [
+  { key: "name", label: "Name", width: 280, className: "" },
+  { key: "kind", label: "Kind", width: 96, className: "" },
+  { key: "size", label: "Size", width: 80, className: "justify-end" },
+  { key: "status", label: "Status", width: 64, className: "justify-center" },
+  { key: "lock", label: "Lock", width: 112, className: "" },
 ];
+const COLUMN_DEFAULTS = Object.fromEntries(columns.map((c) => [c.key, c.width]));
+const ROW_PADDING = 24;
 
 function menuHandler(row: Row, onSelect: (r: Row) => void, onMenu: TableProps["onMenu"]) {
   return (e: MouseEvent) => {
@@ -52,26 +57,38 @@ function LockCell({ lock }: { lock?: FileLock }) {
 
 export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort, onSort }: TableProps & { sort: Sort; onSort: (key: SortKey) => void }) {
   const parent = useRef<HTMLDivElement>(null);
+  const sizes = useColumnWidths("files", COLUMN_DEFAULTS, 48);
+  const w = (key: SortKey) => ({ width: sizes.width(key), flex: "none" as const });
+  const total = columns.reduce((sum, c) => sum + sizes.width(c.key), ROW_PADDING);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parent.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 20,
+    scrollMargin: HEADER_HEIGHT,
     initialRect: { width: 800, height: 800 },
   });
   return (
-    <div className="flex h-full min-h-0 flex-col" role="table" aria-label="Files" aria-rowcount={rows.length}>
-      <div role="row" className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-[11px] text-muted-foreground">
-        {columns.map((c) => (
-          <span key={c.key} role="columnheader" aria-sort={sort.key === c.key ? (sort.desc ? "descending" : "ascending") : "none"} className={cn("flex", c.className)}>
-            <button type="button" onClick={() => onSort(c.key)} className="flex items-center gap-0.5 hover:text-foreground">
-              {c.label}
-              {sort.key === c.key && (sort.desc ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />)}
-            </button>
-          </span>
-        ))}
-      </div>
-      <div ref={parent} className="min-h-0 flex-1 overflow-y-auto">
+    <div ref={parent} className="h-full min-h-0 overflow-auto" role="table" aria-label="Files" aria-rowcount={rows.length}>
+      <div style={{ minWidth: total }}>
+        <div role="row" className="sticky top-0 z-10 flex h-8 items-center border-b border-border bg-background px-3 text-[11px] text-muted-foreground">
+          {columns.map((c) => (
+            <span
+              key={c.key}
+              role="columnheader"
+              aria-label={c.label}
+              aria-sort={sort.key === c.key ? (sort.desc ? "descending" : "ascending") : "none"}
+              className={cn("relative flex h-full items-center pr-2", c.className)}
+              style={w(c.key)}
+            >
+              <button type="button" onClick={() => onSort(c.key)} className="flex min-w-0 items-center gap-0.5 truncate hover:text-foreground">
+                {c.label}
+                {sort.key === c.key && (sort.desc ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />)}
+              </button>
+              <ColumnResizer sizes={sizes} id={c.key} label={c.label} />
+            </span>
+          ))}
+        </div>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index];
@@ -89,13 +106,13 @@ export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort
                 onContextMenu={menuHandler(row, onSelect, onMenu)}
                 title={row.remote ? `${row.path} is not in this clone's checkout` : row.path}
                 className={cn(
-                  "absolute left-0 right-0 flex cursor-default items-center gap-2 px-3 text-[12px] outline-none hover:bg-muted focus-visible:bg-muted",
+                  "absolute left-0 right-0 flex cursor-default items-center px-3 text-[12px] outline-none hover:bg-muted focus-visible:bg-muted",
                   row.path === selected && "bg-muted font-medium",
                   row.remote && "text-muted-foreground/70",
                 )}
-                style={{ top: 0, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+                style={{ top: 0, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)` }}
               >
-                <span role="cell" className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span role="cell" className="flex min-w-0 items-center gap-1.5 pr-2" style={w("name")}>
                   {row.remote ? (
                     <CloudDownload className="size-3.5 shrink-0" aria-hidden />
                   ) : row.isDir ? (
@@ -106,16 +123,16 @@ export function FileList({ rows, locks, selected, onSelect, onOpen, onMenu, sort
                   <span className="truncate">{row.name}</span>
                   {row.childrenChanged && <span className="size-1.5 shrink-0 rounded-full bg-warning" title="Something inside changed" aria-label="Changes inside" />}
                 </span>
-                <span role="cell" className="w-24 truncate text-muted-foreground">
+                <span role="cell" className="truncate pr-2 text-muted-foreground" style={w("kind")}>
                   {row.remote ? "Not downloaded" : kindName(row)}
                 </span>
-                <span role="cell" className="w-20 text-right font-mono text-[11px] text-muted-foreground">
+                <span role="cell" className="truncate pr-2 text-right font-mono text-[11px] text-muted-foreground" style={w("size")}>
                   {row.isDir ? "" : formatBytes(row.size)}
                 </span>
-                <span role="cell" className="flex w-16 justify-center">
+                <span role="cell" className="flex justify-center pr-2" style={w("status")}>
                   {row.status && <StatusLetter status={row.status} />}
                 </span>
-                <span role="cell" className="w-28 min-w-0 text-[11px]">
+                <span role="cell" className="min-w-0 pr-2 text-[11px]" style={w("lock")}>
                   <LockCell lock={lock} />
                 </span>
               </div>

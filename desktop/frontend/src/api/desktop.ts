@@ -360,6 +360,12 @@ export const desktop = {
 
   activity: async (): Promise<RepoActivity[]> => ((await Service.Activity()) ?? []).map(activity),
   settings: async (): Promise<Settings> => settings(await Service.Settings()),
+  uiState: async (): Promise<Record<string, string>> => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries((await Service.UIState()) ?? {})) if (typeof v === "string") out[k] = v;
+    return out;
+  },
+  saveUIState: (state: Record<string, string>): Promise<void> => Service.SaveUIState(state),
   saveSettings: async (s: Settings): Promise<Settings> => settings(await Service.SaveSettings(s)),
   uploadWorkers: (): Promise<number> => Service.UploadWorkers(),
   setUploadWorkers: (n: number): Promise<void> => Service.SetUploadWorkers(n),

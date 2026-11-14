@@ -18,14 +18,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { locksKey, useLockActions } from "@/hooks/useLocks";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { RepoNavContext, type RepoNav } from "@/hooks/useTextTools";
 import { shortId } from "@/lib/history";
+import { repoSetting } from "@/lib/settings";
 import { shortcutHint } from "@/lib/shortcuts";
 import { normalizeSelection } from "@/lib/sparse";
 import { cn, errorMessage } from "@/lib/utils";
 
 const REPO_POLL_MS = 30_000;
+
+const isTab = (v: unknown): v is TabId => tabs.some((t) => t.id === v);
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 export type { Intent, TabId };
@@ -43,7 +47,7 @@ type RepoViewProps = {
 
 export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading, onSearch }: RepoViewProps) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<TabId>("changes");
+  const [tab, setTab] = usePersistedState<TabId>(repoSetting(repo.root, "tab"), "changes", { valid: isTab });
   const [updated, setUpdated] = useState(false);
   useEffect(() => setUpdated(false), [activity]);
   useEffect(() => {
