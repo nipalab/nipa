@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -187,4 +188,13 @@ func TestStore_LockWatches(t *testing.T) {
 	_, err = s.LockWatches("/w")
 	require.Error(t, err)
 	require.Error(t, s.SetLockWatch("/w", "a", true))
+}
+
+func TestNotifySettings_LockRequestsDefaultOn(t *testing.T) {
+	var n NotifySettings
+	require.NoError(t, json.Unmarshal([]byte(`{"pushes":true,"locks":false,"reviews":true}`), &n))
+	require.True(t, n.LockRequests, "an older settings file keeps the new notice on")
+	require.NoError(t, json.Unmarshal([]byte(`{"lockRequests":false}`), &n))
+	require.False(t, n.LockRequests)
+	require.Error(t, json.Unmarshal([]byte(`{"pushes":1}`), &n))
 }

@@ -82,6 +82,10 @@ type Querier interface {
 	FileLockDeleteExpired(ctx context.Context, arg FileLockDeleteExpiredParams) (int64, error)
 	FileLockGet(ctx context.Context, arg FileLockGetParams) (FileLock, error)
 	FileLockListProject(ctx context.Context, arg FileLockListProjectParams) ([]FileLockListProjectRow, error)
+	FileLockRequestCreate(ctx context.Context, arg FileLockRequestCreateParams) (FileLockRequest, error)
+	FileLockRequestGet(ctx context.Context, arg FileLockRequestGetParams) (FileLockRequest, error)
+	FileLockRequestListProject(ctx context.Context, projectID int64) ([]FileLockRequestListProjectRow, error)
+	FileLockRequestUpdate(ctx context.Context, arg FileLockRequestUpdateParams) (int64, error)
 	FileLockSetExpiry(ctx context.Context, arg FileLockSetExpiryParams) (int64, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetActiveUserID(ctx context.Context, id int64) (int64, error)

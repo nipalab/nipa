@@ -43,4 +43,14 @@ func setupFileLockRouter(ws *restful.WebService, h *handler.Handler) {
 			Returns(http.StatusOK, "released", nil).
 			Operation("unlockFile").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(project(
+		ws.POST("/orgs/{org}/projects/{project}/locks/{id}/requests").
+			To(Wrap(h.RequestFileLockRelease)).
+			Param(ws.PathParameter("id", "lock id")).
+			Reads(model.RequestLockReleaseRequest{}).
+			Doc("Ask the holder to release a lock (project read)").
+			Returns(http.StatusOK, "release request", model.FileLockRequestResponse{}).
+			Operation("requestFileLockRelease").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
 }

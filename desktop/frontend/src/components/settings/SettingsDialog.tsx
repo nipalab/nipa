@@ -153,6 +153,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: 
         <Section title="Notifications">
           <Check label="Teammates push to my branch" checked={draft.notify.pushes} onChange={(v) => set({ notify: { ...draft.notify, pushes: v } })} />
           <Check label="A lock is released" checked={draft.notify.locks} onChange={(v) => set({ notify: { ...draft.notify, locks: v } })} />
+          <Check label="Someone asks me to release a lock" checked={draft.notify.lockRequests} onChange={(v) => set({ notify: { ...draft.notify, lockRequests: v } })} />
           <Check label="Someone asks for my review" checked={draft.notify.reviews} onChange={(v) => set({ notify: { ...draft.notify, reviews: v } })} />
           <div className="flex items-center justify-between gap-3 pt-1">
             <label htmlFor={ids.poll}>Check the server every</label>

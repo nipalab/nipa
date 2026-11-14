@@ -172,3 +172,48 @@ func TestFileLockRepositorySQLite_Expiry(t *testing.T) {
 	_, err = repo.Create(ctx, domain.FileLock{ID: 3, ProjectID: projectID, Path: "a.png", HeldBy: userID})
 	require.NoError(t, err)
 }
+
+func TestFileLockRepositorySQLite_Requests(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewFileLockRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	holder := seedPBACUser(t, db, 42)
+	asker := seedPBACUser(t, db, 43)
+	lock, err := repo.Create(ctx, domain.FileLock{ID: 1001, ProjectID: projectID, Path: "assets", HeldBy: holder})
+	require.NoError(t, err)
+
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	_, err = repo.GetRequest(ctx, lock.ID, asker)
+	requireRecordNotFound(t, err)
+
+	created, err := repo.CreateRequest(ctx, domain.FileLockRequest{ID: 7, LockID: lock.ID, RequesterID: asker, Message: "please", CreatedAt: at})
+	require.NoError(t, err)
+	require.Equal(t, "please", created.Message)
+	_, err = repo.CreateRequest(ctx, domain.FileLockRequest{ID: 8, LockID: lock.ID, RequesterID: asker, CreatedAt: at})
+	require.Error(t, err, "one request per lock and requester")
+
+	got, err := repo.GetRequest(ctx, lock.ID, asker)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(7), got.ID)
+
+	later := at.Add(time.Hour)
+	require.NoError(t, repo.UpdateRequest(ctx, 7, "now", later))
+	requireRecordNotFound(t, repo.UpdateRequest(ctx, 99, "x", later))
+
+	list, err := repo.ListRequests(ctx, projectID)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "now", list[0].Message)
+	require.Equal(t, lock.ID, list[0].LockID)
+	require.NotEmpty(t, list[0].RequesterName)
+	other, err := repo.ListRequests(ctx, projectID+1)
+	require.NoError(t, err)
+	require.Empty(t, other)
+
+	require.NoError(t, repo.Delete(ctx, lock.ID))
+	list, err = repo.ListRequests(ctx, projectID)
+	require.NoError(t, err)
+	require.Empty(t, list, "releasing the lock drops its requests even without foreign keys")
+}

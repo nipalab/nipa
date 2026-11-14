@@ -185,7 +185,7 @@ describe("demo service", () => {
     expect((await s.EditMergeRequest(ROOT, 42, "N", "D"))!.title).toBe("N");
     expect((await s.SetDraft(ROOT, 42, true))!.draft).toBe(true);
     expect((await s.MergeMergeRequest(ROOT, 42, "ff", false))!.request.status).toBe("merged");
-    expect((await s.SaveSettings({ keepInTray: false, startAtLogin: false, pollSeconds: 5, notify: { pushes: true, locks: true, reviews: true }, tools: [], manualUpdates: false })).pollSeconds).toBe(5);
+    expect((await s.SaveSettings({ keepInTray: false, startAtLogin: false, pollSeconds: 5, notify: { pushes: true, locks: true, reviews: true, lockRequests: true }, tools: [], manualUpdates: false })).pollSeconds).toBe(5);
     expect((await s.AddRepo("/x/y")).name).toBe("y");
     expect(await s.TakeNavigation()).toBeNull();
   });

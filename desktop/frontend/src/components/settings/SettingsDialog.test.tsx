@@ -26,7 +26,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-const base: Settings = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: [], manualUpdates: false };
+const base: Settings = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true, lockRequests: true }, tools: [], manualUpdates: false };
 
 const idle: UpdateState = { current: "1.0.0", enabled: true, inPlace: true, phase: "idle", release: null, written: 0, total: 0, error: "", checkedAt: "" };
 
@@ -56,12 +56,13 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByLabelText("Keep Nipa running in the tray when the window is closed"));
     await userEvent.click(screen.getByLabelText("Teammates push to my branch"));
     await userEvent.click(screen.getByLabelText("A lock is released"));
+    await userEvent.click(screen.getByLabelText("Someone asks me to release a lock"));
     await userEvent.click(screen.getByLabelText("Someone asks for my review"));
     await userEvent.selectOptions(screen.getByLabelText("Check the server every"), "300");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(api.saveSettings).toHaveBeenCalledWith({ keepInTray: false, startAtLogin: true, pollSeconds: 300, notify: { pushes: false, locks: false, reviews: false }, tools: [], manualUpdates: false });
+    expect(api.saveSettings).toHaveBeenCalledWith({ keepInTray: false, startAtLogin: true, pollSeconds: 300, notify: { pushes: false, locks: false, reviews: false, lockRequests: false }, tools: [], manualUpdates: false });
     expect(api.setUploadWorkers).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith("Settings saved", "success");
   });

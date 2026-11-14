@@ -64,7 +64,7 @@ edition.
 | `/:org/:project/tags` | tags | list with "Load more" paging, create (name, target branch/commit, message) and delete (confirmed) for writers |
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
-| `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
+| `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
 | `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries |
 | `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups and Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |

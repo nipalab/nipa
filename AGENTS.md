@@ -936,6 +936,28 @@ via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
 acquire/release/list.
+Release requests (`file_lock_requests`: lock, requester, message, `created_at` = last
+time the holder was notified; sqlite `000023`, postgres `000008`, unique per
+(lock, requester); sqlite drops them through the `file_lock_requests_cleanup`
+trigger because the server connection runs without foreign keys, postgres
+through `ON DELETE CASCADE`): `FileLock.RequestRelease(projectID, lockID,
+message)` needs project read and read on the lock's path (otherwise 404),
+refuses the holder (400 `you hold this lock`) and messages over 500
+characters, creates the row or updates the message, and only emits when the
+row is new or the last notification is at least `LockRequestCooldown` (24 h)
+old. `HookEmitter.EmitLockReleaseRequested` queues the `lock.release_requested`
+webhook (`webhook.LockPayload`) and, through the optional
+`lockRequestNotifier` on the email notifier (`NotifyLockRequest`, honouring
+`notify_email`), emails the holder; failures only log. `FileLock.List` fills
+`Requests` for the visible locks, so every reader sees them. REST `POST
+.../locks/{id}/requests` (`api_user` rate limit like every route), gRPC
+`RequestFileLockRelease`, `FileLockDetail.requests`, `nipa lock request <path>
+[-m] [--branch]` (`FileLock.RequestRelease` picks the clone branch's lock over
+the global one, `lock list --json` carries `requests`), daemon
+`ProxyLockRequestRelease` and the `lock_requested` event (`WatchEvents` tracks
+`id@requested_at` of the caller's own locks), the desktop "Ask to release" and
+the SPA Locks page button.
+
 Locks may expire: `file_locks.expires_at` (NULL = permanent) is set from an
 optional TTL (`LockFileRequest.ttl_seconds`, REST `ttl_seconds`, `nipa lock
 --ttl 2h`, client `LockOptions{Branch, TTL}`, usecase `LockTTL`/

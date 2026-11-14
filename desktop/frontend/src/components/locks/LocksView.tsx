@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ExternalLink, FolderLock, GitPullRequest, Bell, BellOff, Loader2, Lock, LockOpen, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, ExternalLink, FolderLock, GitPullRequest, Bell, BellOff, HandHelping, Loader2, Lock, LockOpen, RefreshCw, Search } from "lucide-react";
 import { desktop, type FileLock } from "@/api/desktop";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { Dialog } from "@/components/ui/dialog";
 import { ColumnResizer } from "@/components/ui/resize-handle";
 import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -37,6 +38,16 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
   const [releasing, setReleasing] = useState<FileLock | null>(null);
   const [picking, setPicking] = useState(false);
   const watches = useLockWatches(root, notify);
+  const [asking, setAsking] = useState<FileLock | null>(null);
+  const ask = useMutation({
+    mutationFn: ({ lock: l, message }: { lock: FileLock; message: string }) => desktop.requestRelease(root, l.id, message),
+    onSuccess: (_, { lock: l }) => {
+      setAsking(null);
+      void refresh();
+      notify(`Asked ${l.heldByName || l.heldBy} to release ${l.path}`, "success");
+    },
+    onError: (err) => notify(errorMessage(err)),
+  });
 
   const data = status.data;
   const rows = useMemo(() => {
@@ -167,6 +178,12 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                     <span className="flex items-center gap-1.5" title={l.path}>
                       {isDirectory(l.path) ? <FolderLock className="size-3.5 shrink-0" aria-label="Folder lock" /> : <Lock className="size-3.5 shrink-0" />}
                       <span className="truncate font-mono text-[11px]">{l.path}</span>
+                      {l.mine && l.requests && l.requests.length > 0 && (
+                        <Badge title={l.requests.map((r) => `${r.requesterName || r.requesterId}${r.message ? `: ${r.message}` : ""}`).join("\n")}>
+                          <HandHelping />
+                          {l.requests.length === 1 ? "1 request" : `${l.requests.length} requests`}
+                        </Badge>
+                      )}
                       {l.mergeRequest > 0 && (
                         <Badge title={`Held for merge request !${l.mergeRequest}`}>
                           <GitPullRequest />!{l.mergeRequest}
@@ -183,6 +200,18 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                     {l.mine && !isDirectory(l.path) && (
                       <Button variant="ghost" size="sm" onClick={() => void open(l)} aria-label={`Open ${l.path}`} title="Open in its default app">
                         <ExternalLink />
+                      </Button>
+                    )}
+                    {!l.mine && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={ask.isPending}
+                        aria-label={`Ask to release ${l.path}`}
+                        title={askedBefore(l, data.userId) ? "You already asked; ask again" : "Ask the holder to release"}
+                        onClick={() => setAsking(l)}
+                      >
+                        <HandHelping />
                       </Button>
                     )}
                     {!l.mine && (
@@ -211,6 +240,14 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
           </table>
         </div>
       )}
+      {asking && (
+        <AskDialog
+          lock={asking}
+          busy={ask.isPending}
+          onCancel={() => setAsking(null)}
+          onConfirm={(message) => ask.mutate({ lock: asking, message })}
+        />
+      )}
       {releasing && (
         <ConfirmDialog
           title="Release someone else's lock?"
@@ -224,6 +261,47 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
         />
       )}
     </div>
+  );
+}
+
+const askedBefore = (l: FileLock, userId: string) => (l.requests ?? []).some((r) => r.requesterId === userId);
+
+function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
+  const [message, setMessage] = useState("");
+  const holder = lock.heldByName || lock.heldBy;
+  return (
+    <Dialog title="Ask to release" onClose={onCancel}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onConfirm(message.trim());
+        }}
+      >
+        <p className="break-words text-xs text-muted-foreground">
+          {holder} holds <span className="font-mono">{lock.path}</span>. They get a notification and an email.
+        </p>
+        <label className="block space-y-1 text-[12px]">
+          <span className="text-muted-foreground">Message (optional)</span>
+          <textarea
+            autoFocus
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={500}
+            rows={3}
+            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[12px] outline-none focus:border-accent"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" variant="primary" disabled={busy}>
+            Send request
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

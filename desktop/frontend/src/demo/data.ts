@@ -465,10 +465,10 @@ export const locks = (): LockStatus => ({
   defaultBranch: false,
   canReleaseAny: true,
   locks: [
-    { id: "l1", path: MUSIC, branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(50), inScope: true },
-    { id: "l2", path: "Assets/Characters/Hero/hero_rig.blend", branch: "", global: true, heldBy: people.jon.id, heldByName: people.jon.name, mine: false, mergeRequest: 0, acquiredAt: ago(240), inScope: true },
-    { id: "l3", path: "Assets/Levels/Cave/", branch: "", global: true, heldBy: people.sam.id, heldByName: people.sam.name, mine: false, mergeRequest: 41, acquiredAt: ago(1_500), inScope: true },
-    { id: "l4", path: "Assets/Textures/Environment/rock_albedo.png", branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(130), inScope: true },
+    { id: "l1", path: MUSIC, branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(50), inScope: true, requests: [{ id: "q1", requesterId: people.jon.id, requesterName: people.jon.name, message: "Need the track for the trailer cut", requestedAt: ago(20) }] },
+    { id: "l2", path: "Assets/Characters/Hero/hero_rig.blend", branch: "", global: true, heldBy: people.jon.id, heldByName: people.jon.name, mine: false, mergeRequest: 0, acquiredAt: ago(240), inScope: true, requests: [] },
+    { id: "l3", path: "Assets/Levels/Cave/", branch: "", global: true, heldBy: people.sam.id, heldByName: people.sam.name, mine: false, mergeRequest: 41, acquiredAt: ago(1_500), inScope: true, requests: [] },
+    { id: "l4", path: "Assets/Textures/Environment/rock_albedo.png", branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(130), inScope: true, requests: [] },
   ],
   files: [
     { path: HERO, state: "needed", lockPath: "", heldByName: "", tracked: true },

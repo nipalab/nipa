@@ -29,6 +29,8 @@ const (
 	WebhookEventMRCommentCreated    = "mr.comment_created"
 	WebhookEventMRCheckReported     = "mr.check_reported"
 
+	WebhookEventLockReleaseRequested = "lock.release_requested"
+
 	WebhookEventPing = "ping"
 )
 

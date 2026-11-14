@@ -82,5 +82,36 @@ func toClientFileLock(lock *pb.FileLockDetail) *clientDomain.FileLock {
 		expires := lock.GetExpiresAt().AsTime()
 		out.ExpiresAt = &expires
 	}
+	for _, r := range lock.GetRequests() {
+		out.Requests = append(out.Requests, toClientLockRequest(r))
+	}
 	return out
+}
+
+// RequestFileLockRelease asks the holder of the lock to release it.
+func (c *Client) RequestFileLockRelease(ctx context.Context, org, project, lockID, message string) (*clientDomain.FileLockRequest, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.RequestFileLockRelease(ctx, &pb.RequestFileLockReleaseRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		LockId:  lockID,
+		Message: message,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	request := toClientLockRequest(res.GetRequest())
+	return &request, nil
+}
+
+func toClientLockRequest(r *pb.FileLockRequestDetail) clientDomain.FileLockRequest {
+	return clientDomain.FileLockRequest{
+		ID:            r.GetId(),
+		RequesterID:   r.GetRequesterId(),
+		RequesterName: r.GetRequesterName(),
+		Message:       r.GetMessage(),
+		RequestedAt:   r.GetRequestedAt().AsTime(),
+	}
 }

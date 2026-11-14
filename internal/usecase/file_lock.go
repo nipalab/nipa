@@ -21,6 +21,10 @@ type fileLockRepository interface {
 	SetExpiry(ctx context.Context, id, holder snow.ID, expiresAt time.Time) error
 	DeleteByMergeRequest(ctx context.Context, projectID, mergeRequestID snow.ID) error
 	DeleteByBranch(ctx context.Context, projectID, branchID snow.ID) error
+	GetRequest(ctx context.Context, lockID, requesterID snow.ID) (*domain.FileLockRequest, error)
+	CreateRequest(ctx context.Context, request domain.FileLockRequest) (*domain.FileLockRequest, error)
+	UpdateRequest(ctx context.Context, id snow.ID, message string, createdAt time.Time) error
+	ListRequests(ctx context.Context, projectID snow.ID) ([]*domain.FileLockRequest, error)
 }
 
 // fileLockGate is the subset of the lock usecase used by the push, branch and
@@ -47,6 +51,7 @@ type FileLock struct {
 	perm       permissionUsecase
 	snowNode   snow.Node
 	audit      AuditRecorder
+	hooks      fileLockHooks
 	now        func() time.Time
 
 	// acquireMu serializes overlap check + insert. The unique indexes only
@@ -300,9 +305,18 @@ func (f *FileLock) List(ctx context.Context, projectID snow.ID) ([]*domain.FileL
 	if err != nil {
 		return nil, err
 	}
+	requests, err := f.repo.ListRequests(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	byLock := make(map[snow.ID][]*domain.FileLockRequest, len(requests))
+	for _, request := range requests {
+		byLock[request.LockID] = append(byLock[request.LockID], request)
+	}
 	visible := make([]*domain.FileLock, 0, len(locks))
 	for _, lock := range locks {
 		if filter.Allow(lock.Path) {
+			lock.Requests = byLock[lock.ID]
 			visible = append(visible, lock)
 		}
 	}

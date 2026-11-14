@@ -9,15 +9,22 @@ type Locks struct {
 }
 
 type Lock struct {
-	Path               string `json:"path"`
-	Scope              string `json:"scope"`
-	Branch             string `json:"branch,omitempty"`
-	HeldBy             string `json:"held_by"`
-	HeldByName         string `json:"held_by_name,omitempty"`
-	MergeRequestNumber *int64 `json:"merge_request_number,omitempty"`
-	AcquiredAt         string `json:"acquired_at"`
-	ExpiresAt          string `json:"expires_at,omitempty"`
-	Warning            string `json:"warning,omitempty"`
+	Path               string        `json:"path"`
+	Scope              string        `json:"scope"`
+	Branch             string        `json:"branch,omitempty"`
+	HeldBy             string        `json:"held_by"`
+	HeldByName         string        `json:"held_by_name,omitempty"`
+	MergeRequestNumber *int64        `json:"merge_request_number,omitempty"`
+	AcquiredAt         string        `json:"acquired_at"`
+	ExpiresAt          string        `json:"expires_at,omitempty"`
+	Warning            string        `json:"warning,omitempty"`
+	Requests           []LockRequest `json:"requests,omitempty"`
+}
+
+type LockRequest struct {
+	Requester string `json:"requester"`
+	Message   string `json:"message,omitempty"`
+	At        string `json:"at,omitempty"`
 }
 
 func NewLock(lock *clientDomain.FileLock) Lock {
@@ -40,6 +47,13 @@ func NewLock(lock *clientDomain.FileLock) Lock {
 	}
 	if lock.ExpiresAt != nil {
 		out.ExpiresAt = formatTime(*lock.ExpiresAt)
+	}
+	for _, r := range lock.Requests {
+		requester := r.RequesterName
+		if requester == "" {
+			requester = r.RequesterID
+		}
+		out.Requests = append(out.Requests, LockRequest{Requester: requester, Message: r.Message, At: formatTime(r.RequestedAt)})
 	}
 	return out
 }

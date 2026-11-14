@@ -120,6 +120,14 @@ type FileLock struct {
 	ExpiresAt      sql.NullTime  `json:"expires_at"`
 }
 
+type FileLockRequest struct {
+	ID          int64     `json:"id"`
+	LockID      int64     `json:"lock_id"`
+	RequesterID int64     `json:"requester_id"`
+	Message     string    `json:"message"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Group struct {
 	ID          int64          `json:"id"`
 	OrgID       int64          `json:"org_id"`

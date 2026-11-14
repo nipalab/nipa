@@ -172,10 +172,14 @@ func TestNewLocks(t *testing.T) {
 			AcquiredAt:         time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 			ExpiresAt:          &expires,
 		},
-		{Path: "audio/loop.wav", Branch: "feature", HeldBy: "u2"},
+		{Path: "audio/loop.wav", Branch: "feature", HeldBy: "u2", Requests: []clientDomain.FileLockRequest{
+			{RequesterName: "alice", Message: "soon?", RequestedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
+			{RequesterID: "u9"},
+		}},
 		nil,
 	})
 	require.Len(t, out.Locks, 2)
+	require.Equal(t, []LockRequest{{Requester: "alice", Message: "soon?", At: "2026-01-02T00:00:00Z"}, {Requester: "u9"}}, out.Locks[1].Requests)
 	require.Equal(t, "mainline", out.Locks[0].Scope)
 	require.Equal(t, int64(3), *out.Locks[0].MergeRequestNumber)
 	require.Equal(t, "2026-01-01T00:00:00Z", out.Locks[0].AcquiredAt)

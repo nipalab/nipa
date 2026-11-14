@@ -63,6 +63,16 @@ Every payload starts with:
 {"tag": {"id": "t1", "name": "v0.2", "commit_id": "c2", "message": "", "created_by": "u1"}}
 ```
 
+`lock.release_requested` (someone asked the holder of a file lock to release
+it; sent when a request is first made and again only after 24 hours, a repeat
+inside that window just updates the message):
+
+```json
+{"lock": {"id": "l1", "path": "art/hero.psd", "branch": "", "held_by": "u2",
+  "held_by_name": "bob", "requester_id": "u1", "requester_name": "alice",
+  "message": "need it for the trailer"}}
+```
+
 `mr.created`, `mr.updated` (title, description, draft or target changed),
 `mr.synchronized` (new commits on the source branch), `mr.merged`,
 `mr.closed`, `mr.reopened`, `mr.ready_for_review` and the review/check events

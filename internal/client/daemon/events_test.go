@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -390,4 +392,47 @@ func TestServer_WithMutationPublishesChange(t *testing.T) {
 	failure := errors.New("boom")
 	require.ErrorIs(t, srv.withMutation(context.Background(), root, func(pb.NipaServiceClient, *pb.ProjectContext) error { return failure }), failure)
 	require.Nil(t, sub.take())
+}
+
+func TestTeamWatch_ReportsReleaseRequestsOnMyLocks(t *testing.T) {
+	at := timestamppb.New(time.Unix(100, 0))
+	svc := &teamService{locks: []*pb.FileLockDetail{
+		{Id: "l1", Path: "mine.psd", HeldBy: "me", Requests: []*pb.FileLockRequestDetail{{Id: "r1", RequesterName: "Bob", RequestedAt: at}}},
+		{Id: "l2", Path: "theirs.psd", HeldBy: "bob", Requests: []*pb.FileLockRequestDetail{{Id: "r9", RequestedAt: at}}},
+	}}
+	in := pollInput{user: "me"}
+	project := &pb.ProjectContext{Org: "studio", Project: "game"}
+	w := &teamWatch{}
+	ctx := context.Background()
+
+	act, err := w.poll(ctx, svc, project, in)
+	require.NoError(t, err)
+	require.Empty(t, act.GetEvents(), "requests that exist at the first poll are the baseline")
+
+	act, err = w.poll(ctx, svc, project, in)
+	require.NoError(t, err)
+	require.Nil(t, act)
+
+	svc.set(func(s *teamService) {
+		s.locks[0].Requests = append(s.locks[0].Requests, &pb.FileLockRequestDetail{Id: "r2", RequesterName: "Carol", Message: "need it", RequestedAt: at})
+	})
+	act, err = w.poll(ctx, svc, project, in)
+	require.NoError(t, err)
+	require.Len(t, act.GetEvents(), 1)
+	ev := act.GetEvents()[0]
+	require.Equal(t, EventLockRequested, ev.GetKind())
+	require.Equal(t, "Carol", ev.GetActor())
+	require.Equal(t, "mine.psd", ev.GetPath())
+	require.Equal(t, "need it", ev.GetMessage())
+
+	svc.set(func(s *teamService) {
+		s.locks[0].Requests[1].RequestedAt = timestamppb.New(time.Unix(200, 0))
+	})
+	act, err = w.poll(ctx, svc, project, in)
+	require.NoError(t, err)
+	require.Len(t, act.GetEvents(), 1, "a request that notified the holder again is reported again")
+
+	act, err = w.poll(ctx, svc, project, in)
+	require.NoError(t, err)
+	require.Nil(t, act)
 }

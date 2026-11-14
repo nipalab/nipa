@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileLock, LockStatus } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ lockStatus: vi.fn(), lock: vi.fn(), unlock: vi.fn(), pickFile: vi.fn(), openFile: vi.fn(), lockWatches: vi.fn(), watchLock: vi.fn(), unwatchLock: vi.fn() }));
+const api = vi.hoisted(() => ({ lockStatus: vi.fn(), lock: vi.fn(), unlock: vi.fn(), pickFile: vi.fn(), openFile: vi.fn(), requestRelease: vi.fn(), lockWatches: vi.fn(), watchLock: vi.fn(), unwatchLock: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { LocksView } from "./LocksView";
@@ -20,6 +20,7 @@ const lock = (over: Partial<FileLock>): FileLock => ({
   mergeRequest: 0,
   acquiredAt: new Date(Date.now() - 5 * 60_000).toISOString(),
   inScope: true,
+  requests: [],
   ...over,
 });
 
@@ -47,6 +48,7 @@ beforeEach(() => {
   api.lockStatus.mockResolvedValue(status());
   api.unlock.mockResolvedValue(undefined);
   api.openFile.mockResolvedValue(undefined);
+  api.requestRelease.mockResolvedValue(undefined);
   api.lockWatches.mockResolvedValue([]);
   api.watchLock.mockResolvedValue(undefined);
   api.unwatchLock.mockResolvedValue(undefined);
@@ -201,5 +203,53 @@ describe("LocksView", () => {
     view();
     await userEvent.click(await screen.findByRole("button", { name: "Notify me when audio is free" }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("nope"));
+  });
+
+  it("asks a teammate to release a lock with a message", async () => {
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    expect(screen.queryByRole("button", { name: "Ask to release art/hero.psd" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask to release audio" }));
+    expect(screen.getByText(/Bob holds/)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: /Message/ }), "  need it today ");
+    await userEvent.click(screen.getByRole("button", { name: "Send request" }));
+    expect(api.requestRelease).toHaveBeenCalledWith("/work/game", "audio", "need it today");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Asked Bob to release audio", "success"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the dialog open and reports a failed request, and cancels with Escape", async () => {
+    api.requestRelease.mockRejectedValue(new Error("you hold this lock"));
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Ask to release audio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send request" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("you hold this lock"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask to release audio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows my lock's requests and says when I already asked", async () => {
+    api.lockStatus.mockResolvedValue(
+      status({
+        locks: [
+          lock({ path: "art/hero.psd", requests: [{ id: "q1", requesterId: "bob", requesterName: "Bob", message: "soon?", requestedAt: "" }, { id: "q2", requesterId: "ann", requesterName: "", message: "", requestedAt: "" }] }),
+          lock({ path: "audio", heldBy: "bob", heldByName: "Bob", mine: false, requests: [{ id: "q3", requesterId: "me", requesterName: "Me", message: "", requestedAt: "" }] }),
+        ],
+      }),
+    );
+    view();
+    const badge = await screen.findByText("2 requests");
+    expect(badge.closest("span[title]")).toHaveAttribute("title", "Bob: soon?\nann");
+    expect(screen.getByRole("button", { name: "Ask to release audio" })).toHaveAttribute("title", "You already asked; ask again");
+  });
+
+  it("labels a single request", async () => {
+    api.lockStatus.mockResolvedValue(status({ locks: [lock({ path: "a.psd", requests: [{ id: "q1", requesterId: "bob", requesterName: "Bob", message: "", requestedAt: "" }] })] }));
+    view();
+    expect(await screen.findByText("1 request")).toBeInTheDocument();
   });
 });

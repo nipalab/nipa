@@ -73,6 +73,7 @@ const (
 	NipaDaemon_ProxyMergeRequestResolve_FullMethodName      = "/nipadaemon.NipaDaemon/ProxyMergeRequestResolve"
 	NipaDaemon_ProxyLockFile_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyLockFile"
 	NipaDaemon_ProxyUnlockFile_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
+	NipaDaemon_ProxyLockRequestRelease_FullMethodName       = "/nipadaemon.NipaDaemon/ProxyLockRequestRelease"
 	NipaDaemon_ProxyListFileLocks_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
 	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
 	NipaDaemon_MetaWarnings_FullMethodName                  = "/nipadaemon.NipaDaemon/MetaWarnings"
@@ -160,6 +161,7 @@ type NipaDaemonClient interface {
 	ProxyMergeRequestResolve(ctx context.Context, in *ProxyMergeRequestResolveRequest, opts ...grpc.CallOption) (*ProxyMergeRequestResolveResponse, error)
 	ProxyLockFile(ctx context.Context, in *ProxyLockFileRequest, opts ...grpc.CallOption) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(ctx context.Context, in *ProxyUnlockFileRequest, opts ...grpc.CallOption) (*ProxyUnlockFileResponse, error)
+	ProxyLockRequestRelease(ctx context.Context, in *ProxyLockRequestReleaseRequest, opts ...grpc.CallOption) (*ProxyLockRequestReleaseResponse, error)
 	ProxyListFileLocks(ctx context.Context, in *ProxyListFileLocksRequest, opts ...grpc.CallOption) (*ProxyListFileLocksResponse, error)
 	LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error)
 	MetaWarnings(ctx context.Context, in *MetaWarningsRequest, opts ...grpc.CallOption) (*MetaWarningsResponse, error)
@@ -836,6 +838,16 @@ func (c *nipaDaemonClient) ProxyUnlockFile(ctx context.Context, in *ProxyUnlockF
 	return out, nil
 }
 
+func (c *nipaDaemonClient) ProxyLockRequestRelease(ctx context.Context, in *ProxyLockRequestReleaseRequest, opts ...grpc.CallOption) (*ProxyLockRequestReleaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyLockRequestReleaseResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyLockRequestRelease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) ProxyListFileLocks(ctx context.Context, in *ProxyListFileLocksRequest, opts ...grpc.CallOption) (*ProxyListFileLocksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyListFileLocksResponse)
@@ -1218,6 +1230,7 @@ type NipaDaemonServer interface {
 	ProxyMergeRequestResolve(context.Context, *ProxyMergeRequestResolveRequest) (*ProxyMergeRequestResolveResponse, error)
 	ProxyLockFile(context.Context, *ProxyLockFileRequest) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error)
+	ProxyLockRequestRelease(context.Context, *ProxyLockRequestReleaseRequest) (*ProxyLockRequestReleaseResponse, error)
 	ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error)
 	LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error)
 	MetaWarnings(context.Context, *MetaWarningsRequest) (*MetaWarningsResponse, error)
@@ -1416,6 +1429,9 @@ func (UnimplementedNipaDaemonServer) ProxyLockFile(context.Context, *ProxyLockFi
 }
 func (UnimplementedNipaDaemonServer) ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyUnlockFile not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyLockRequestRelease(context.Context, *ProxyLockRequestReleaseRequest) (*ProxyLockRequestReleaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyLockRequestRelease not implemented")
 }
 func (UnimplementedNipaDaemonServer) ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyListFileLocks not implemented")
@@ -2414,6 +2430,24 @@ func _NipaDaemon_ProxyUnlockFile_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_ProxyLockRequestRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyLockRequestReleaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyLockRequestRelease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyLockRequestRelease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyLockRequestRelease(ctx, req.(*ProxyLockRequestReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaDaemon_ProxyListFileLocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyListFileLocksRequest)
 	if err := dec(in); err != nil {
@@ -3036,6 +3070,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProxyUnlockFile",
 			Handler:    _NipaDaemon_ProxyUnlockFile_Handler,
+		},
+		{
+			MethodName: "ProxyLockRequestRelease",
+			Handler:    _NipaDaemon_ProxyLockRequestRelease_Handler,
 		},
 		{
 			MethodName: "ProxyListFileLocks",

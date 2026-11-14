@@ -498,7 +498,7 @@ describe("desktop api", () => {
   });
 
   it("forwards settings, activity and navigation calls", async () => {
-    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: null, manualUpdates: false };
+    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true, lockRequests: true }, tools: null, manualUpdates: false };
     service.Settings.mockResolvedValue(st);
     service.SaveSettings.mockResolvedValue({ ...st, tools: [{ extension: ".blend", command: "blender" }] });
     expect(await desktop.settings()).toEqual({ ...st, tools: [] });

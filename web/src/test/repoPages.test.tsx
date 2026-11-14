@@ -201,6 +201,45 @@ describe('LocksPage', () => {
     expect(buttonByText(container, 'Force unlock')).toBeNull()
   })
 
+  it('asks the holder to release a lock and shows the requests on the lock', async () => {
+    api.listFileLocks.mockResolvedValue([
+      lock({ requests: [{ id: 'q1', requester_id: '1', requester_name: 'Me', message: 'soon?', requested_at: '2026-01-02T00:00:00Z' }] }),
+      lock({
+        id: 'l2',
+        path: 'assets/hero.fbx',
+        requests: [
+          { id: 'q2', requester_id: '5', requester_name: '', message: '', requested_at: '2026-01-02T00:00:00Z' },
+          { id: 'q3', requester_id: '6', requester_name: 'Eve', message: 'please', requested_at: '2026-01-02T00:00:00Z' },
+        ],
+      }),
+      lock({ id: 'l3', path: 'docs/mine.psd', held_by: '1', held_by_name: 'Me' }),
+    ])
+    api.requestLockRelease.mockResolvedValueOnce({} as never).mockRejectedValueOnce(new Error('too long'))
+    const { container } = await renderRoute(pattern, url, <LocksPage />)
+    await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
+    expect(container.textContent).toContain('1 release request')
+    expect(container.textContent).toContain('2 release requests')
+    const titles = [...container.querySelectorAll('[title]')].map((el) => el.getAttribute('title'))
+    expect(titles).toContain('Me: soon?')
+    expect(titles).toContain('5\nEve: please')
+    expect(container.querySelectorAll('button[title="You already asked; ask again"]')).toHaveLength(1)
+    expect(
+      [...container.querySelectorAll('button')].filter((button) => button.textContent === 'Ask to release'),
+    ).toHaveLength(2)
+
+    await click(buttonByText(container, 'Ask to release'))
+    await waitFor(() => (document.body.textContent ?? '').includes('Dana holds assets/orc.png'))
+    await type(document.body.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea'), '  need it ')
+    await click(document.body.querySelector<HTMLButtonElement>('button[type="submit"]'))
+    await flush()
+    expect(api.requestLockRelease).toHaveBeenCalledWith('acme', 'game', 'l1', 'need it')
+
+    await click(buttonByText(container, 'Ask to release'))
+    await waitFor(() => document.body.querySelector('[role="dialog"] textarea') !== null)
+    await click(document.body.querySelector<HTMLButtonElement>('button[type="submit"]'))
+    await waitFor(() => (document.body.textContent ?? '').includes('too long'))
+  })
+
   it('shows a load error', async () => {
     api.listFileLocks.mockRejectedValue(new Error('server down'))
     const { container } = await renderRoute(pattern, url, <LocksPage />)

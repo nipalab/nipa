@@ -47,7 +47,7 @@ func (c *Cli) setupLockCmd() *cobra.Command {
 	}
 	cmd.Flags().String("branch", "", "Branch scope (defaults to the current branch; the default branch is project-global)")
 	cmd.Flags().String("ttl", "", "Release the lock automatically after this duration (1m to 168h, e.g. 2h); locking again renews it")
-	cmd.AddCommand(c.setupLockListCmd())
+	cmd.AddCommand(c.setupLockListCmd(), c.setupLockRequestCmd())
 	return cmd
 }
 
@@ -85,6 +85,9 @@ func (c *Cli) setupLockListCmd() *cobra.Command {
 				if lock.ExpiresAt != nil {
 					expires = "in " + formatLockRemaining(lock.ExpiresAt.Sub(now))
 				}
+				if n := len(lock.Requests); n > 0 {
+					via += fmt.Sprintf("  (%d release request(s))", n)
+				}
 				cmd.Printf("%-40s  %-24s  %-20s  %-20s  %s%s\n",
 					lock.Path, describeLockScope(lock), lockHolder(lock), lock.AcquiredAt.UTC().Format(time.RFC3339), expires, via)
 			}
@@ -92,6 +95,34 @@ func (c *Cli) setupLockListCmd() *cobra.Command {
 		},
 	}
 	addJSONFlag(cmd)
+	return cmd
+}
+
+func (c *Cli) setupLockRequestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "request <path>",
+		Short:         "Ask the holder of a lock to release it",
+		Long:          "Notifies the holder (webhook and email) that you need the file. Asking again within 24 hours only updates your message.",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			branch, _ := cmd.Flags().GetString("branch")
+			message, _ := cmd.Flags().GetString("message")
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			lock, _, err := c.useCase.Lock().RequestRelease(cmd.Context(), root, args[0], branch, message)
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Asked %s to release %s.\n", lockHolder(lock), lock.Path)
+			return nil
+		},
+	}
+	cmd.Flags().String("branch", "", "Branch scope (defaults to the current branch; the default branch is project-global)")
+	cmd.Flags().StringP("message", "m", "", "Optional note for the holder")
 	return cmd
 }
 

@@ -6,7 +6,7 @@ vi.mock('../api/client', async (importOriginal) => ({
   apiJson,
 }))
 
-const { clearOwnerQuota, getCommitDiff, getTag, listBranches, listCommits, listTags } = await import('../api/endpoints')
+const { clearOwnerQuota, getCommitDiff, getTag, listBranches, listCommits, listTags, requestLockRelease } = await import('../api/endpoints')
 
 afterEach(() => apiJson.mockClear())
 
@@ -52,5 +52,13 @@ describe('billing endpoint helpers', () => {
   it('clears an owner quota override with DELETE', async () => {
     await clearOwnerQuota('7 3')
     expect(apiJson).toHaveBeenLastCalledWith('/api/v1/admin/billing/owners/7%203/quota', { method: 'DELETE' })
+  })
+})
+
+describe('lock release requests', () => {
+  it('posts the message to the lock id', async () => {
+    await requestLockRelease('acme', 'game', 'l/1', 'soon?')
+    expect(lastPath()).toBe('/api/v1/orgs/acme/projects/game/locks/l%2F1/requests')
+    expect(apiJson.mock.calls[apiJson.mock.calls.length - 1]).toEqual([lastPath(), { method: 'POST', body: '{"message":"soon?"}' }])
   })
 })

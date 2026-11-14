@@ -271,6 +271,25 @@ func (s *Server) withPins(ctx context.Context, root string, fn func(*repo) error
 	})
 }
 
+// ProxyLockRequestRelease asks the holder of a lock to release it.
+func (s *Server) ProxyLockRequestRelease(ctx context.Context, req *daemonpb.ProxyLockRequestReleaseRequest) (*daemonpb.ProxyLockRequestReleaseResponse, error) {
+	var res *pb.RequestFileLockReleaseResponse
+	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+		request := req.GetRequest()
+		if request == nil {
+			request = &pb.RequestFileLockReleaseRequest{}
+		}
+		request.Context = project
+		var err error
+		res, err = client.RequestFileLockRelease(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &daemonpb.ProxyLockRequestReleaseResponse{Response: res}, nil
+}
+
 // ProxyListFileLocks lists the locks visible in the project.
 func (s *Server) ProxyListFileLocks(ctx context.Context, req *daemonpb.ProxyListFileLocksRequest) (*daemonpb.ProxyListFileLocksResponse, error) {
 	var res *pb.ListFileLocksResponse

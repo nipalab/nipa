@@ -160,3 +160,59 @@ func TestFileLockUsecase_Lock_PassesTTL(t *testing.T) {
 	require.Equal(t, 2*time.Hour, client.lockTTL)
 	require.Equal(t, "feature", client.lockBranch)
 }
+
+type stubRequestClient struct {
+	*stubLockClient
+	lockID  string
+	message string
+	err     error
+}
+
+func (s *stubRequestClient) RequestFileLockRelease(_ context.Context, _, _, lockID, message string) (*domain.FileLockRequest, error) {
+	s.lockID, s.message = lockID, message
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &domain.FileLockRequest{ID: "r1", Message: message}, nil
+}
+
+func TestFileLockUsecase_RequestRelease(t *testing.T) {
+	locks := []*domain.FileLock{
+		{ID: "g", Path: "art", Global: true, HeldByName: "bob"},
+		{ID: "f", Path: "art/a.psd", Branch: "feature"},
+		{ID: "o", Path: "art/a.psd", Branch: "other"},
+		nil,
+	}
+	client := &stubRequestClient{stubLockClient: &stubLockClient{listResult: locks}}
+	uc := newTestFileLockUsecase(t, lockTestLocalRepo(), client)
+
+	lock, request, err := uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", " please ")
+	require.NoError(t, err)
+	require.Equal(t, "f", lock.ID, "the clone's branch lock wins over the global one")
+	require.Equal(t, "f", client.lockID)
+	require.Equal(t, "please", request.Message)
+
+	lock, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/b.psd", "feature", "")
+	require.NoError(t, err)
+	require.Equal(t, "g", lock.ID, "a directory lock covers the path")
+
+	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "docs/x.md", "", "")
+	require.ErrorContains(t, err, "docs/x.md is not locked")
+	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), " ", "", "")
+	require.ErrorContains(t, err, "a path is required")
+
+	client.err = errors.New("boom")
+	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", "")
+	require.EqualError(t, err, "boom")
+
+	client.stubLockClient.listErr = errors.New("list down")
+	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", "")
+	require.EqualError(t, err, "list down")
+
+	client.connectErr = errors.New("offline")
+	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", "")
+	require.EqualError(t, err, "offline")
+
+	_, _, err = newTestFileLockUsecase(t, lockTestLocalRepo(), &stubLockClient{}).RequestRelease(context.Background(), t.TempDir(), "a", "", "")
+	require.ErrorContains(t, err, "not supported")
+}

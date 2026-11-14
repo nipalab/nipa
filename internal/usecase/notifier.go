@@ -367,3 +367,70 @@ func (n *EmailNotifier) messageID(event NotifyEvent, recipient, delivery snow.ID
 	return fmt.Sprintf("<nipa-%s-%s-mr%d-%s-%s@%s>", event.Envelope.Organization.Slug,
 		event.Envelope.Project.Slug, event.MR.Number, recipient.Base36(), delivery.Base36(), n.messageHost())
 }
+
+// NotifyLockRequest emails the holder of a lock that someone asked for it.
+// Holders without a deliverable address or who opted out are skipped.
+func (n *EmailNotifier) NotifyLockRequest(ctx context.Context, notice LockRequestNotice) error {
+	holder, err := n.users.GetByID(ctx, notice.Lock.HeldBy)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if holder == nil || holder.Deleted || !holder.NotifyEmail || !mail.ValidAddress(holder.Email) {
+		return nil
+	}
+	requester := strings.TrimSpace(notice.Envelope.Actor.Username)
+	if requester == "" {
+		requester = "someone"
+	}
+	org, project := notice.Envelope.Organization.Slug, notice.Envelope.Project.Slug
+	summary := fmt.Sprintf("%s asked you to release your lock on %s in %s/%s.", requester, notice.Lock.Path, org, project)
+	plain := summary + "\n"
+	if message := strings.TrimSpace(notice.Request.Message); message != "" {
+		plain += "\nThey wrote: " + message + "\n"
+	}
+	var htmlBody strings.Builder
+	fmt.Fprintf(&htmlBody, "<p>%s</p>", html.EscapeString(summary))
+	if message := strings.TrimSpace(notice.Request.Message); message != "" {
+		fmt.Fprintf(&htmlBody, "<p>They wrote: %s</p>", html.EscapeString(message))
+	}
+	if base := strings.TrimRight(strings.TrimSpace(n.baseURL), "/"); base != "" {
+		link := fmt.Sprintf("%s/%s/%s/locks", base, org, project)
+		plain += "\nOpen the locks: " + link + "\n"
+		fmt.Fprintf(&htmlBody, `<p><a href="%s">Open the locks</a></p>`, html.EscapeString(link))
+	}
+	subject := fmt.Sprintf("[%s] Release requested: %s", project, notice.Lock.Path)
+	deliveryID := n.node.Generate()
+	body, err := mail.EncodeMessage(mail.Message{
+		To:        []string{holder.Email},
+		Subject:   subject,
+		Text:      plain,
+		HTML:      htmlBody.String(),
+		MessageID: fmt.Sprintf("<nipa-%s-%s-lockreq-%s@%s>", org, project, deliveryID.Base36(), n.messageHost()),
+	})
+	if err != nil {
+		return err
+	}
+	now := n.now()
+	err = n.outbox.Enqueue(ctx, []*domain.EmailDelivery{{
+		ID:            deliveryID,
+		Event:         domain.WebhookEventLockReleaseRequested,
+		ProjectID:     notice.ProjectID,
+		UserID:        holder.ID,
+		Email:         holder.Email,
+		Subject:       subject,
+		ThreadKey:     fmt.Sprintf("%s/%s/lock%s", org, project, notice.Lock.ID.Base36()),
+		Body:          body,
+		State:         domain.EmailDeliveryPending,
+		NextAttemptAt: &now,
+	}})
+	if err != nil {
+		return err
+	}
+	if n.kick != nil {
+		n.kick.Kick()
+	}
+	return nil
+}

@@ -138,6 +138,42 @@ func (e *HookEmitter) EmitTag(ctx context.Context, event string, projectID snow.
 	}, nil)
 }
 
+// lockRequestNotifier is implemented by notifiers that email lock holders.
+type lockRequestNotifier interface {
+	NotifyLockRequest(ctx context.Context, notice LockRequestNotice) error
+}
+
+// LockRequestNotice carries a release request to the holder's email.
+type LockRequestNotice struct {
+	ProjectID snow.ID
+	Lock      *domain.FileLock
+	Request   *domain.FileLockRequest
+	Envelope  webhook.Envelope
+}
+
+// EmitLockReleaseRequested publishes lock.release_requested and emails the
+// holder when email is wired.
+func (e *HookEmitter) EmitLockReleaseRequested(ctx context.Context, projectID snow.ID, lock *domain.FileLock, request *domain.FileLockRequest, actor snow.ID) error {
+	var notify func(context.Context, webhook.Envelope) error
+	if mailer, ok := e.notifier.(lockRequestNotifier); ok && mailer != nil {
+		notify = func(ctx context.Context, env webhook.Envelope) error {
+			return mailer.NotifyLockRequest(ctx, LockRequestNotice{ProjectID: projectID, Lock: lock, Request: request, Envelope: env})
+		}
+	}
+	return e.emit(ctx, domain.WebhookEventLockReleaseRequested, projectID, actor, nil, func(env webhook.Envelope) any {
+		return webhook.LockPayload{Envelope: env, Lock: webhook.LockInfo{
+			ID:            lock.ID.Base36(),
+			Path:          lock.Path,
+			Branch:        lock.Branch,
+			HeldBy:        lock.HeldBy.Base36(),
+			HeldByName:    lock.HeldByName,
+			RequesterID:   request.RequesterID.Base36(),
+			RequesterName: env.Actor.Username,
+			Message:       request.Message,
+		}}
+	}, notify)
+}
+
 func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor snow.ID, paths []string, build func(webhook.Envelope) any, notify func(context.Context, webhook.Envelope) error) error {
 	hooks, err := e.hooks.ListActiveByProject(ctx, projectID)
 	if err != nil {

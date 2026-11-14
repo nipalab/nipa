@@ -29,6 +29,16 @@ type FileLock struct {
 	MergeRequest int64  `json:"mergeRequest"` // 0 when not held for a merge request
 	AcquiredAt   string `json:"acquiredAt"`   // RFC 3339, empty when unknown
 	InScope      bool   `json:"inScope"`      // applies to the clone's branch
+	// Requests are the teammates who asked for this lock to be released.
+	Requests []LockRequest `json:"requests"`
+}
+
+type LockRequest struct {
+	ID            string `json:"id"`
+	RequesterID   string `json:"requesterId"`
+	RequesterName string `json:"requesterName"`
+	Message       string `json:"message"`
+	RequestedAt   string `json:"requestedAt"` // RFC 3339
 }
 
 type FileLockState struct {
@@ -90,6 +100,13 @@ func toFileLock(l *pb.FileLockDetail, res *daemonpb.LockStatusResponse) FileLock
 		Mine: l.GetHeldBy() != "" && l.GetHeldBy() == res.GetUserId(), MergeRequest: l.GetMergeRequestNumber(),
 		InScope: res.GetDefaultBranch() && l.GetGlobal() || !res.GetDefaultBranch() && !l.GetGlobal() && l.GetBranch() == res.GetBranch(),
 	}
+	lock.Requests = make([]LockRequest, 0, len(l.GetRequests()))
+	for _, r := range l.GetRequests() {
+		lock.Requests = append(lock.Requests, LockRequest{
+			ID: r.GetId(), RequesterID: r.GetRequesterId(), RequesterName: r.GetRequesterName(), Message: r.GetMessage(),
+			RequestedAt: r.GetRequestedAt().AsTime().UTC().Format(time.RFC3339),
+		})
+	}
 	if l.GetAcquiredAt() != nil {
 		lock.AcquiredAt = l.GetAcquiredAt().AsTime().UTC().Format(time.RFC3339)
 	}
@@ -127,6 +144,21 @@ func (s *Service) Unlock(ctx context.Context, root, branch, path string) error {
 		return err
 	}
 	_, err = client.ProxyUnlockFile(ctx, &daemonpb.ProxyUnlockFileRequest{Root: root, Request: &pb.UnlockFileRequest{Path: path, Branch: branch}})
+	if err != nil {
+		s.dropIfDisconnected(err)
+		return cleanError(err)
+	}
+	return nil
+}
+
+// RequestRelease asks the holder of a lock to release it; the message is
+// optional.
+func (s *Service) RequestRelease(ctx context.Context, root, lockID, message string) error {
+	client, err := s.client(ctx, root)
+	if err != nil {
+		return err
+	}
+	_, err = client.ProxyLockRequestRelease(ctx, &daemonpb.ProxyLockRequestReleaseRequest{Root: root, Request: &pb.RequestFileLockReleaseRequest{LockId: lockID, Message: message}})
 	if err != nil {
 		s.dropIfDisconnected(err)
 		return cleanError(err)
