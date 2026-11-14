@@ -4,12 +4,15 @@ import type { FileDiff } from "@/api/desktop";
 import { AudioDiff } from "@/components/changes/AudioDiff";
 import { BlameToggle } from "@/components/changes/BlameToggle";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
+import { FontDiff } from "@/components/changes/FontDiff";
 import { ImageDiff } from "@/components/changes/ImageDiff";
 import { MetaDiff, Notice } from "@/components/changes/Notices";
 import { SceneDiff } from "@/components/changes/SceneDiff";
 import { TableDiff } from "@/components/changes/TableDiff";
 import { TextDiff, type DiffLayout, type LineComments, type LineTools } from "@/components/changes/TextDiff";
+import { VideoDiff } from "@/components/changes/VideoDiff";
 import { useTextTools } from "@/hooks/useTextTools";
+import { hasEmbeddedThumbnail } from "@/lib/files";
 import { cn } from "@/lib/utils";
 
 const ModelDiff = lazy(() => import("@/components/changes/ModelDiff").then((m) => ({ default: m.ModelDiff })));
@@ -18,13 +21,17 @@ type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout; comments?
 
 const isText = (d: FileDiff) => !d.old?.binary && !d.new?.binary;
 
-// viewerFor picks the viewer for a change: visual viewers for images, models,
-// audio, tables and scenes, the text diff, or metadata for anything else.
+// viewerFor picks the viewer for a change: visual viewers for images (and the
+// thumbnails .blend and Unreal files embed), models, audio, video, fonts,
+// tables and scenes, the text diff, or metadata for anything else.
 export function viewerFor(diff: FileDiff): ComponentType<ViewerProps> {
   if (diff.contentUnavailable) return Notice;
   if (diff.kind === "image" && (diff.old || diff.new)) return ImageDiff;
   if (diff.kind === "model" && (diff.old || diff.new)) return ModelDiff;
   if (diff.kind === "audio" && (diff.old || diff.new)) return AudioDiff;
+  if (diff.kind === "video" && (diff.old || diff.new)) return VideoDiff;
+  if (diff.kind === "font" && (diff.old || diff.new)) return FontDiff;
+  if (hasEmbeddedThumbnail(diff.path) && (diff.old || diff.new)) return ImageDiff;
   if (diff.kind === "table" && (diff.old?.size || diff.new?.size)) return TableDiff;
   if (diff.kind === "scene" && (diff.old?.size || diff.new?.size)) return SceneDiff;
   if (diff.hunksOmitted) return Notice;

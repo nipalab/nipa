@@ -192,38 +192,51 @@ func toModelStats(s *preview.ModelStats) *ModelStats {
 // readBlob reads one file version into memory, refusing more than limit
 // bytes.
 func (s *Service) readBlob(ctx context.Context, client daemonpb.NipaDaemonClient, root string, ref *daemonpb.BlobRef, limit int64) (*daemonpb.BlobInfo, []byte, error) {
+	var buf bytes.Buffer
+	info, err := s.copyBlob(ctx, client, root, ref, limit, &buf)
+	if err != nil {
+		return info, nil, err
+	}
+	return info, buf.Bytes(), nil
+}
+
+// copyBlob streams one file version into w, refusing more than limit bytes.
+func (s *Service) copyBlob(ctx context.Context, client daemonpb.NipaDaemonClient, root string, ref *daemonpb.BlobRef, limit int64, w io.Writer) (*daemonpb.BlobInfo, error) {
 	stream, err := client.ReadBlob(ctx, &daemonpb.ReadBlobRequest{Root: root, Blob: ref})
 	if err != nil {
 		s.dropIfDisconnected(err)
-		return nil, nil, cleanError(err)
+		return nil, cleanError(err)
 	}
 	var info *daemonpb.BlobInfo
-	var buf bytes.Buffer
+	var written int64
 	for {
 		ev, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return info, buf.Bytes(), nil
+			return info, nil
 		}
 		if err != nil {
 			s.dropIfDisconnected(err)
-			return nil, nil, cleanError(err)
+			return nil, cleanError(err)
 		}
 		switch {
 		case ev.GetFailure() != nil:
 			if ev.GetFailure().GetCode() == 404 {
-				return nil, nil, errBlobMissing
+				return nil, errBlobMissing
 			}
-			return nil, nil, errors.New(ev.GetFailure().GetMessage())
+			return nil, errors.New(ev.GetFailure().GetMessage())
 		case ev.GetInfo() != nil:
 			info = ev.GetInfo()
 			if info.GetSizeBytes() > limit {
-				return info, nil, errBlobTooLarge
+				return info, errBlobTooLarge
 			}
 		default:
-			if int64(buf.Len()+len(ev.GetData())) > limit {
-				return info, nil, errBlobTooLarge
+			written += int64(len(ev.GetData()))
+			if written > limit {
+				return info, errBlobTooLarge
 			}
-			buf.Write(ev.GetData())
+			if _, err := w.Write(ev.GetData()); err != nil {
+				return info, err
+			}
 		}
 	}
 }

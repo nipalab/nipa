@@ -22,6 +22,7 @@ const (
 	defaultPreviewSize     = 2048
 	maxPreviewSize         = 8192
 	maxPreviewInputBytes   = 512 << 20
+	maxThumbnailScanBytes  = 64 << 20
 	maxPreviewThreshold    = 255
 	previewUnsupportedCode = 415
 	previewSideOld         = "old"
@@ -92,9 +93,10 @@ func (s *Server) ReadBlob(req *daemonpb.ReadBlobRequest, stream daemonpb.NipaDae
 }
 
 type decodedSide struct {
-	side  string
-	entry diff.Entry
-	image *preview.Image
+	side      string
+	entry     diff.Entry
+	image     *preview.Image
+	thumbnail bool
 }
 
 // Preview decodes the requested image sides, sends a downscaled PNG for each
@@ -161,6 +163,9 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 	out := decodedSide{side: side}
 	err := runner.ReadBlob(ctx, root, blobRequest(ref), func(e diff.Entry, r io.Reader) error {
 		out.entry = e
+		if preview.HasEmbeddedThumbnail(e.Path) {
+			return decodeThumbnailSide(&out, e.Path, r)
+		}
 		if kind := preview.Classify(e.Path, true); kind != preview.KindImage {
 			return unsupportedPreview(fmt.Sprintf("no preview for %s files", kind))
 		}
@@ -184,6 +189,24 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 		return nil
 	})
 	return out, err
+}
+
+func decodeThumbnailSide(out *decodedSide, path string, r io.Reader) error {
+	data, err := io.ReadAll(io.LimitReader(r, maxThumbnailScanBytes))
+	if err != nil {
+		return err
+	}
+	img, err := preview.DecodeThumbnail(path, data)
+	switch {
+	case errors.Is(err, preview.ErrNoThumbnail):
+		return unsupportedPreview(fmt.Sprintf("%s has no embedded thumbnail", path))
+	case errors.Is(err, preview.ErrUnsupported):
+		return unsupportedPreview(fmt.Sprintf("%s: this file version has no readable thumbnail", path))
+	case err != nil:
+		return unsupportedPreview(fmt.Sprintf("%s: %s", path, strings.TrimPrefix(err.Error(), "preview: ")))
+	}
+	out.image, out.thumbnail = img, true
+	return nil
 }
 
 func unsupportedReason(err error) string {
@@ -226,6 +249,7 @@ func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide,
 		Face:          int32(img.Face),
 		Hdr:           img.HDR != nil,
 		Layers:        layersToPB(img.Layers),
+		Thumbnail:     side.thumbnail,
 	}
 	if err := stream.Send(&daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Image{Image: info}}); err != nil {
 		return err

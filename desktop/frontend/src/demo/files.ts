@@ -80,6 +80,7 @@ export const fileImages: Record<string, ImageInfo> = Object.fromEntries(
       face: 0,
       hdr: false,
       layers: null,
+      thumbnail: false,
     },
   ]),
 );

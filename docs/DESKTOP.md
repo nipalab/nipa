@@ -58,8 +58,8 @@ Sonar never compile it.
   `AddRepo`, `RemoveRepo`; Files: `Files`, `FileInfo`, `FileView`,
   `RestoreRevision`, `RevealFile`, `FileLink`, `AssetRefs`, `Provenance`,
   `SetProvenance`; Changes screen: `Changes`, `Stage`, `Unstage`,
-  `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
+  `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `VideoDiff`,
+  `OpenMedia`, `HasMedia`, `ReleaseMedia`, `FontDiff`, `TableDiff`, `SceneDiff`, `MetaWarnings`, `PushChecks`, `GenerateCommitMessage`, `Push`, `Update`,
   `Shelves`, `Shelve`, `ApplyShelf`, `AbortShelfApply`, `DropShelf`, `ShelfFiles`, `SyncPlan`; Details: `DiskUsage`, `CleanUp`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
@@ -145,6 +145,40 @@ Sonar never compile it.
   loses the position. The panel diffs duration, rate, channels, encoding,
   sample peak, RMS and integrated loudness (LUFS) and flags clipping,
   truncated analysis and shortened playback.
+- Video viewer (`VideoDiff.tsx`): `VideoDiff` in the service streams each
+  side (up to 4 GiB) into a private temp folder (`media.go`, removed on
+  shutdown) and probes the container in Go with
+  `preview.ProbeVideo`. The webview plays it from
+  `/nipa-media/<token>/<name>`, served by `service.MediaMiddleware` on the
+  Wails asset server with `http.ServeContent` (range requests, never a data
+  URL). Both versions sit side by side with one Play/Pause, a shared seek
+  bar, previous/next frame (from the frame rate, 30 fps otherwise) and A/B
+  audio (the other side is muted); the follower is re-synced when it drifts.
+  A file is held from the moment `VideoDiff` returns it until the viewer
+  closes and calls `ReleaseMedia(tokens)` (streaming a released file holds
+  it again); only released files are evicted, least recently used first,
+  beyond 4, and 32 unreleased files bound requests that outlived their view.
+  The video answer is not cached past the viewer's lifetime. As a backstop,
+  a playback error asks `HasMedia(token)` and reloads the comparison once
+  when the file is gone instead of blaming the format.
+  A video the webview cannot decode (codec, AVI, too large) keeps its stats
+  and offers "Open externally" (`OpenMedia(token)`, the default player on
+  the temp copy). The panel diffs container, duration, resolution, codecs,
+  frame rate, audio and bitrate.
+- Font viewer (`FontDiff.tsx`): `FontDiff` decodes each side (32 MiB) with
+  `preview.DecodeFont` and renders `preview.RenderFontSheet` (sample line +
+  the first 256 covered glyphs, black on transparent, inverted in dark
+  mode) as a PNG data URL. With both sides it lists added and removed code
+  point ranges (`preview.CompareFonts`, sample characters per range, 400
+  ranges at most) and the names/metrics that changed; the details table
+  shows family, style, version, glyphs, characters, units per em, ascent,
+  descent, line gap, cap height and x-height, plus coverage per script.
+- Embedded thumbnails: `.blend`, `.uasset` and `.umap` go through the image
+  viewer (`viewerFor` with `lib/files.ts` `hasEmbeddedThumbnail`, also used
+  by the Files grid). The daemon `Preview` extracts the thumbnail
+  (`preview.DecodeThumbnail`, first 64 MiB of the file) and marks the side
+  `thumbnail`, which the viewer states with a "Thumbnail only" note; files
+  without one fall back to the metadata view with the reason.
 - Table viewer (`TableDiff.tsx`): `TableDiff` in the service parses both
   sides with `preview.ParseTable` (16 MiB each) and returns
   `preview.DiffTables`: columns matched by header name, rows matched by the
@@ -514,7 +548,9 @@ Linux/macOS/Windows build matrix with a bindings freshness check).
 | v1 | WAV OGG FLAC MP3 | waveform + spectrogram, synced A/B playback |
 | v1 | CSV/TSV, `.xlsx` | cell-level table diff, filters, sheet tabs |
 | v1 | Unity `.meta` | lint: missing/orphan sidecars, GUID change |
-| v2 | video, fonts, `.blend`/`.uasset` thumbnails | playback, glyph sheet, embedded thumbnail |
+| v2 | MP4/MOV WebM/MKV (AVI stats-less) | synced side-by-side playback, frame step, container stats, "Open externally" |
+| v2 | TTF OTF WOFF (not WOFF2/TTC) | glyph sheet, metrics, coverage, added/removed code points |
+| v2 | `.blend`, `.uasset`/`.umap` | embedded thumbnail in the image viewer ("Thumbnail only") |
 | always | anything else | size/hash stats + external diff tool |
 
 ## `internal/preview`
@@ -612,6 +648,27 @@ Pure package (no client imports), shared by the daemon and later the server.
   sub_resources, connections and `editable` entries are their own objects,
   and any other section (`project.godot`, `.import`) is one object per
   section. Binary resources (`RSRC`) are refused with `ErrUnsupported`.
+- `ProbeVideo(name, r io.ReaderAt, size)` reads container headers only:
+  ISO BMFF (MP4/MOV: `mvhd`/`tkhd`/`mdhd`/`hdlr`/`stsd`/`stts`, 64-bit
+  boxes, `moov` anywhere) and Matroska/WebM (EBML `Info`, `Tracks`,
+  unknown-size segments, stops at the first `Cluster`) into duration,
+  resolution, codec names, frame rate, audio rate/channels, overall bitrate
+  and track count. Box/element count and depth are capped; other containers
+  are `ErrUnsupported`.
+- `DecodeFont(name, data)` parses TTF/OTF through
+  `golang.org/x/image/font/sfnt` (WOFF 1.0 is unwrapped first; WOFF2 and
+  collections are `ErrUnsupported`, `MaxFontBytes` 32 MiB): names, glyph
+  count, metrics in font units, mapped code points as ranges (controls
+  skipped) and counts per Unicode script. `RenderFontSheet` draws it with
+  `font/opentype`; `CompareFonts` subtracts the coverage both ways and
+  lists changed names/metrics.
+- `DecodeThumbnail(name, data)` extracts embedded previews: Blender `TEST`
+  blocks (classic 32/64-bit headers in either byte order and the 5.0
+  `BLENDER17-01` large headers; gzip and zstd files decompressed with a
+  64 MiB scan cap; bottom-up rows flipped) and Unreal package thumbnails
+  (best effort: a PNG, or a JPEG with negative height, preceded by its
+  width/height/size triple that matches the image header). No thumbnail is
+  `ErrNoThumbnail`; `HasEmbeddedThumbnail(path)` names the formats.
 - Float sources keep linear samples in `Image.HDR` (`FloatImage`) while
   `Pixels` is their clamped sRGB rendering, used for `CompareImages`.
   `DownscaleFloat` box-filters them and `PackHDR` packs them into an opaque
@@ -623,8 +680,10 @@ Pure package (no client imports), shared by the daemon and later the server.
   fully transparent pixels compare equal.
 - Decoders are fuzzed (`FuzzDecodeTGA`, `FuzzDecodeImage`, `FuzzDecodeDDS`,
   `FuzzDecodeKTX2`, `FuzzDecodeEXR`, `FuzzDecodeHDR`, `FuzzDecodePSD`,
-  `FuzzDecodeModel`, `FuzzDecodeAudio`, `FuzzParseTable`); encoded audio
-  fixtures come from `testdata/gen/audio.sh` (GStreamer);
+  `FuzzDecodeModel`, `FuzzDecodeAudio`, `FuzzParseTable`, `FuzzProbeVideo`,
+  `FuzzDecodeFont`, `FuzzDecodeThumbnail`); encoded audio fixtures come from
+  `testdata/gen/audio.sh` (GStreamer), the video/thumbnail/WOFF fixtures in
+  `testdata/media` from `go run ./internal/preview/testdata/gen/media`;
   crashers found by the fuzzer are kept as seeds in `testdata/fuzz`.
 
 ## Packaging and updates
@@ -724,3 +783,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 25. Shelves (`nipa shelve`, daemon `ShelveCreate`/`ShelveApply`/`ShelveList`/`ShelveDrop`/`ShelveFiles`), the Shelves section and dialog in the Changes screen, shelf conflicts in the Conflicts tab, "Shelve and continue" before update/switch/tag checkout (daemon `SyncPlan`). **(done)**
 26. Lock watch (part A of the lock-watch phase, client only): the bell on a teammate's lock in the Locks tab stores the path per clone in `desktop.json` (`lockWatches`); when a `lock_released` event covers it, a "<path> is free" notification replaces the generic one, drops the watch and, on click, locks the file (`Navigation.Action` = `lock`). Release requests (part B) are still to do.
 27. Release requests (part B of the lock-watch phase): "Ask to release" with an optional message on teammates' locks (`RequestRelease`, daemon `ProxyLockRequestRelease`), a request badge on the holder's own lock rows next to "Release", a "Someone asks me to release a lock" notification kind (`notify.lockRequests`, on by default, daemon `lock_requested` event). Server: `file_lock_requests`, `FileLock.RequestRelease`, REST `POST .../locks/{id}/requests`, gRPC `RequestFileLockRelease`, the `lock.release_requested` webhook and holder email; web Locks page and `nipa lock request <path> [-m]`. **(done)**
+28. Video, font and embedded-thumbnail viewers (`VideoDiff` over the `/nipa-media/` asset route, `FontDiff`, daemon `Preview` thumbnails for `.blend`/`.uasset`). **(done)**

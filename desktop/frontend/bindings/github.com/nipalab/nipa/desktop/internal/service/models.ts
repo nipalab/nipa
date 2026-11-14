@@ -184,6 +184,11 @@ export interface CloneRequest {
     "target": string;
 }
 
+export interface CodeRange {
+    "first": number;
+    "last": number;
+}
+
 export interface Comment {
     "id": string;
     "author": Person;
@@ -467,6 +472,57 @@ export interface FileSide {
     "hash": string;
 }
 
+export interface FontChanges {
+    "added": CodeRange[] | null;
+    "removed": CodeRange[] | null;
+    "addedCount": number;
+    "removedCount": number;
+    "metrics": MetricChange[] | null;
+    "truncated"?: boolean;
+}
+
+export interface FontCompare {
+    "old": FontSide | null;
+    "new": FontSide | null;
+    "changes": FontChanges | null;
+}
+
+export interface FontInfo {
+    "family": string;
+    "style": string;
+    "fullName": string;
+    "version": string;
+    "glyphs": number;
+    "unitsPerEm": number;
+    "ascent": number;
+    "descent": number;
+    "lineGap": number;
+    "capHeight": number;
+    "xHeight": number;
+    "codepoints": number;
+    "scripts": ScriptCount[] | null;
+    "ranges": CodeRange[] | null;
+
+    /**
+     * RangesTruncated is set when Ranges lists only the first ranges.
+     */
+    "rangesTruncated"?: boolean;
+}
+
+/**
+ * FontSide is one version of a font: names, metrics, coverage and a PNG
+ * glyph sheet (black on transparent, as a data URL).
+ */
+export interface FontSide {
+    "path": string;
+    "format": string;
+    "size": number;
+    "info": FontInfo | null;
+    "sheet": string;
+    "error"?: string;
+    "tooLarge"?: boolean;
+}
+
 export interface HistoryPage {
     "commits": Commit[] | null;
 
@@ -534,6 +590,11 @@ export interface ImageInfo {
      */
     "hdr": boolean;
     "layers": ImageLayer[] | null;
+
+    /**
+     * Thumbnail marks the preview a .blend or Unreal package embeds.
+     */
+    "thumbnail": boolean;
 }
 
 export interface ImageLayer {
@@ -725,6 +786,12 @@ export interface MetaWarning {
     "kind": string;
     "related": string;
     "message": string;
+}
+
+export interface MetricChange {
+    "name": string;
+    "old": string;
+    "new": string;
 }
 
 export interface ModelCompare {
@@ -1088,6 +1155,11 @@ export interface SceneObject {
     "parent": string;
 }
 
+export interface ScriptCount {
+    "script": string;
+    "count": number;
+}
+
 export interface Shelf {
     "id": string;
     "name": string;
@@ -1293,4 +1365,38 @@ export interface UpdateState {
     "total": number;
     "error"?: string;
     "checkedAt"?: string;
+}
+
+export interface VideoCompare {
+    "old": VideoSide | null;
+    "new": VideoSide | null;
+}
+
+/**
+ * VideoSide is one version of a video: its container stats and the URL the
+ * webview streams it from (Media is the token OpenMedia takes).
+ */
+export interface VideoSide {
+    "path": string;
+    "format": string;
+    "size": number;
+    "stats": VideoStats | null;
+    "statsError"?: string;
+    "url": string;
+    "media": string;
+    "tooLarge"?: boolean;
+}
+
+export interface VideoStats {
+    "container": string;
+    "duration": number;
+    "width": number;
+    "height": number;
+    "videoCodec": string;
+    "frameRate": number;
+    "audioCodec": string;
+    "sampleRate": number;
+    "channels": number;
+    "bitrate": number;
+    "tracks": number;
 }

@@ -14,6 +14,8 @@ import type {
   FileChange,
   FileDiff,
   FileSide,
+  FontCompare,
+  FontSide,
   ImageInfo,
   LLMSettings,
   LockStatus,
@@ -25,8 +27,10 @@ import type {
   Shelf,
   Tag,
   TableCompare,
+  VideoCompare,
+  VideoSide,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
-import { spectrogramBytes, textureSvg, waveformPeaks } from "./media";
+import { glyphSheetSvg, spectrogramBytes, textureSvg, waveformPeaks } from "./media";
 
 export const ROOT = "/home/alex/studio/starfall";
 export const SERVER = "nipalab.com";
@@ -56,6 +60,9 @@ export const ITEMS = "Assets/Data/items.csv";
 export const BALANCE = "Assets/Data/balance.xlsx";
 export const MOVE = "Source/Player/Movement.cs";
 export const ICON = "Assets/UI/icon_sword.png";
+export const CUTSCENE = "Assets/Video/intro_cutscene.mp4";
+export const FONT = "Assets/UI/Fonts/Starfall-Regular.ttf";
+export const SCULPT = "Art/Source/hero_sculpt.blend";
 export const SCENE = "Assets/Levels/Forest.unity";
 export const ROCK = "Assets/Textures/Environment/rock_albedo.png";
 export const DAMAGE = "Source/Combat/Damage.cs";
@@ -90,6 +97,9 @@ export const changes = (scenario: string): DemoChanges => {
       { path: MOVE, status: "modified", kind: "text" },
       { path: SCENE, status: "modified", kind: "scene" },
       { path: ICON, status: "untracked", kind: "image" },
+      { path: CUTSCENE, status: "modified", kind: "video" },
+      { path: FONT, status: "modified", kind: "font" },
+      { path: SCULPT, status: "modified", kind: "opaque" },
     ],
     conflicts: [],
     resolved: [],
@@ -170,6 +180,9 @@ export const diffs: Record<string, FileDiff> = {
   [ICON]: diffOf(ICON, "image", "untracked", 0, 18_220, null, { untracked: true }),
   [ROCK]: diffOf(ROCK, "image", "modified", 1_905_000, 2_040_000, null),
   [DAMAGE]: diffOf(DAMAGE, "text", "modified", 2_204, 2_390, moveHunks),
+  [CUTSCENE]: diffOf(CUTSCENE, "video", "modified", 48_210_442, 51_902_118, null),
+  [FONT]: diffOf(FONT, "font", "modified", 168_204, 181_996, null),
+  [SCULPT]: diffOf(SCULPT, "opaque", "modified", 84_120_400, 86_004_112, null),
 };
 
 const imageInfo = (palette: [string, string, string], accent: string, size: number): ImageInfo => ({
@@ -190,6 +203,7 @@ const imageInfo = (palette: [string, string, string], accent: string, size: numb
   face: 0,
   hdr: false,
   layers: null,
+  thumbnail: false,
 });
 
 export const images: Record<string, { old: ImageInfo | null; new: ImageInfo | null }> = {
@@ -201,6 +215,10 @@ export const images: Record<string, { old: ImageInfo | null; new: ImageInfo | nu
   [ROCK]: {
     old: imageInfo(["#3f3f46", "#27272a", "#a1a1aa"], "#e4e4e7", 1_905_000),
     new: imageInfo(["#52525b", "#44403c", "#d6d3d1"], "#fafaf9", 2_040_000),
+  },
+  [SCULPT]: {
+    old: { ...imageInfo(["#292524", "#57534e", "#d6d3d1"], "#f5f5f4", 84_120_400), width: 256, height: 256, format: "Blender thumbnail", thumbnail: true },
+    new: { ...imageInfo(["#292524", "#78716c", "#fbbf24"], "#fffbeb", 86_004_112), width: 256, height: 256, format: "Blender thumbnail", thumbnail: true },
   },
 };
 
@@ -217,6 +235,72 @@ const audioSide = (path: string, seed: number, loud: number, size: number, rms: 
   specMaxHz: 24000,
   playback: "",
 });
+
+const videoSide = (path: string, size: number, bitrate: number, duration: number): VideoSide => ({
+  path,
+  format: "mp4",
+  size,
+  stats: { container: "mp4", duration, width: 1920, height: 1080, videoCodec: "H.264", frameRate: 30, audioCodec: "AAC", sampleRate: 48000, channels: 2, bitrate, tracks: 2 },
+  statsError: "",
+  url: "",
+  media: "",
+});
+
+export const video: VideoCompare = {
+  old: { ...videoSide(CUTSCENE, 48_210_442, 8_571_000, 45), statsError: "playback is not available in the demo" },
+  new: { ...videoSide(CUTSCENE, 51_902_118, 8_812_000, 47.12), statsError: "playback is not available in the demo" },
+};
+
+const fontInfo = (version: string, glyphs: number, codepoints: number, xHeight: number) => ({
+  family: "Starfall",
+  style: "Regular",
+  fullName: "Starfall Regular",
+  version,
+  glyphs,
+  unitsPerEm: 1000,
+  ascent: 920,
+  descent: 240,
+  lineGap: 0,
+  capHeight: 700,
+  xHeight,
+  codepoints,
+  scripts: [
+    { script: "Latin", count: codepoints - 180 },
+    { script: "Common", count: 120 },
+    { script: "Greek", count: 60 },
+  ],
+  ranges: [
+    { first: 0x20, last: 0x7e },
+    { first: 0xa0, last: 0x17f },
+  ],
+});
+
+const fontSide = (version: string, glyphs: number, codepoints: number, xHeight: number, weight: number, size: number): FontSide => ({
+  path: FONT,
+  format: "ttf",
+  size,
+  info: fontInfo(version, glyphs, codepoints, xHeight),
+  sheet: glyphSheetSvg(weight),
+});
+
+export const font: FontCompare = {
+  old: fontSide("1.002", 412, 398, 500, 400, 168_204),
+  new: fontSide("1.100", 476, 458, 512, 500, 181_996),
+  changes: {
+    added: [
+      { first: 0x391, last: 0x3a9 },
+      { first: 0x2190, last: 0x2193 },
+    ],
+    removed: [],
+    addedCount: 60,
+    removedCount: 0,
+    metrics: [
+      { name: "Version", old: "1.002", new: "1.100" },
+      { name: "Glyphs", old: "412", new: "476" },
+      { name: "x-height", old: "500", new: "512" },
+    ],
+  },
+};
 
 export const audio = {
   old: audioSide(MUSIC, 1, 0.85, 28_450_000, -16.2, -14.8),

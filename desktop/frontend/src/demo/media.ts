@@ -115,3 +115,14 @@ export function spectrogramBytes(seed: number, cols: number, rows: number, brigh
   }
   return b64(levels);
 }
+
+export function glyphSheetSvg(weight: number): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789&?!@";
+  const cells = [...chars]
+    .map((c, i) => `<text x="${28 + (i % 16) * 44}" y="${96 + Math.floor(i / 16) * 48}">${c.replace("&", "&amp;")}</text>`)
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="736" height="300" viewBox="0 0 736 300">
+<g font-family="Georgia, serif" font-weight="${weight}" fill="#000"><text x="16" y="36" font-size="21">The quick brown fox jumps over the lazy dog 0123456789</text>
+<g font-size="28" text-anchor="middle">${cells}</g></g></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}

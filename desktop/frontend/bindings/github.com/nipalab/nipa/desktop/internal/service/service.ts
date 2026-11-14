@@ -303,6 +303,14 @@ export function Files(root: string, dir: string): $CancellablePromise<$models.Fi
 }
 
 /**
+ * FontDiff decodes the old and/or new version of a font and, when both
+ * decode, lists the code points and metrics that changed.
+ */
+export function FontDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.FontCompare | null> {
+    return $Call.ByID(3506752562, root, old, $new);
+}
+
+/**
  * GenerateCommitMessage drafts a message for the staged changes.
  */
 export function GenerateCommitMessage(root: string): $CancellablePromise<$models.Draft> {
@@ -315,6 +323,15 @@ export function GenerateCommitMessage(root: string): $CancellablePromise<$models
  */
 export function GenerateMergeRequest(root: string, source: string, target: string): $CancellablePromise<$models.Draft> {
     return $Call.ByID(1840883266, root, source, target);
+}
+
+/**
+ * HasMedia reports whether a prepared media file is still available; the
+ * viewer asks after a playback error to tell an evicted file from a format
+ * the webview cannot decode.
+ */
+export function HasMedia(token: string): $CancellablePromise<boolean> {
+    return $Call.ByID(4191817772, token);
 }
 
 /**
@@ -487,6 +504,14 @@ export function OpenLink(raw: string): $CancellablePromise<$models.Navigation> {
 }
 
 /**
+ * OpenMedia opens a file the viewer prepared in the system's default
+ * application.
+ */
+export function OpenMedia(token: string): $CancellablePromise<void> {
+    return $Call.ByID(1208439292, token);
+}
+
+/**
  * OpenUpdatePage opens the available release's page in the browser.
  */
 export function OpenUpdatePage(): $CancellablePromise<void> {
@@ -530,6 +555,14 @@ export function Push(root: string, message: string): $CancellablePromise<$models
  */
 export function PushChecks(root: string): $CancellablePromise<$models.PushChecks> {
     return $Call.ByID(2589770285, root);
+}
+
+/**
+ * ReleaseMedia tells the store a viewer no longer shows these files, so they
+ * may be removed.
+ */
+export function ReleaseMedia(tokens: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2837398315, tokens);
 }
 
 /**
@@ -887,6 +920,14 @@ export function UpdateStatus(): $CancellablePromise<$models.UpdateState> {
  */
 export function UploadWorkers(): $CancellablePromise<number> {
     return $Call.ByID(574941112);
+}
+
+/**
+ * VideoDiff copies the old and/or new version of a video to a temp file the
+ * webview plays through MediaMiddleware, with container stats read in Go.
+ */
+export function VideoDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.VideoCompare | null> {
+    return $Call.ByID(7493248, root, old, $new);
 }
 
 /**

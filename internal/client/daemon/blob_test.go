@@ -455,3 +455,38 @@ func TestSerialDiff_ReadBlobDelegates(t *testing.T) {
 	require.True(t, called)
 	require.Equal(t, "a.png", got.Path)
 }
+
+func TestServer_PreviewEmbeddedThumbnail(t *testing.T) {
+	blend, err := os.ReadFile(filepath.Join("..", "..", "preview", "testdata", "media", "scene.blend"))
+	require.NoError(t, err)
+	empty, err := os.ReadFile(filepath.Join("..", "..", "preview", "testdata", "media", "empty.blend"))
+	require.NoError(t, err)
+	srv, root := blobServer(t, map[string]blobFile{
+		"working:scene.blend":  {entry: diff.Entry{Path: "scene.blend", SizeBytes: int64(len(blend))}, data: blend},
+		"snapshot:scene.blend": {entry: diff.Entry{Path: "scene.blend"}, data: empty},
+		"working:broken.blend": {entry: diff.Entry{Path: "broken.blend"}, data: []byte("BLENDER17-09v0500")},
+		"working:junk.uasset":  {entry: diff.Entry{Path: "junk.uasset"}, data: []byte("junk")},
+	}, nil)
+
+	stream := previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Source: "working", Path: "scene.blend"}}, stream))
+	got := collectPreview(stream.all())
+	require.Nil(t, got.failure)
+	info := got.images["new"]
+	require.True(t, info.GetThumbnail())
+	require.Equal(t, "Blender thumbnail", info.GetFormat())
+	require.EqualValues(t, 8, info.GetWidth())
+
+	for path, want := range map[string]string{"scene.blend": "no embedded thumbnail", "broken.blend": "no readable thumbnail", "junk.uasset": "not an Unreal package"} {
+		source := "working"
+		if path == "scene.blend" {
+			source = "snapshot"
+		}
+		stream = previewStream()
+		require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Source: source, Path: path}}, stream))
+		got = collectPreview(stream.all())
+		require.NotNil(t, got.failure, path)
+		require.EqualValues(t, previewUnsupportedCode, got.failure.GetCode())
+		require.Contains(t, got.failure.GetMessage(), want)
+	}
+}

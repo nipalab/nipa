@@ -353,6 +353,11 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
           )}
         </div>
       )}
+      {(old?.thumbnail || next?.thumbnail) && (
+        <p role="note" className="shrink-0 border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+          Thumbnail only: this is the preview image saved inside the file, not a render of the asset.
+        </p>
+      )}
       <div ref={stageRef} className="min-h-0 flex-1">
         {stage}
       </div>

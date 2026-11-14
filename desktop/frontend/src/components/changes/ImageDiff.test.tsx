@@ -10,8 +10,8 @@ vi.mock("@/api/desktop", () => ({ desktop: api }));
 const pixels = vi.hoisted(() => ({ loadPixels: vi.fn(), drawPixels: vi.fn() }));
 vi.mock("@/lib/pixels", () => pixels);
 
-import { DiffViewer } from "./DiffViewer";
-import { ImageCompareView, imageRefs } from "./ImageDiff";
+import { DiffViewer, viewerFor } from "./DiffViewer";
+import { ImageCompareView, ImageDiff, imageRefs } from "./ImageDiff";
 
 const info = (over: Partial<ImageInfo> = {}): ImageInfo => ({
   width: 4,
@@ -31,6 +31,7 @@ const info = (over: Partial<ImageInfo> = {}): ImageInfo => ({
   face: 0,
   hdr: false,
   layers: null,
+  thumbnail: false,
   ...over,
 });
 
@@ -120,6 +121,15 @@ describe("ImageDiff in the viewer registry", () => {
     api.imageDiff.mockResolvedValue(null);
     renderWithProviders(<DiffViewer root="/r" diff={imageDiff()} layout="unified" onLayout={vi.fn()} />);
     expect(await screen.findByText("There is no preview for this image.")).toBeInTheDocument();
+  });
+
+  it("shows the thumbnail a Blender or Unreal file embeds", async () => {
+    const blend = imageDiff({ path: "art/hero.blend", kind: "opaque" });
+    expect(viewerFor(blend)).toBe(ImageDiff);
+    expect(viewerFor(imageDiff({ path: "art/hero.bin", kind: "opaque" }))).not.toBe(ImageDiff);
+    api.imageDiff.mockResolvedValue({ ...compare, old: info({ thumbnail: true, format: "Blender thumbnail" }), new: info({ src: "data:new", thumbnail: true, format: "Blender thumbnail" }) });
+    renderWithProviders(<DiffViewer root="/r" diff={blend} layout="unified" onLayout={vi.fn()} />);
+    expect(await screen.findByRole("note")).toHaveTextContent("Thumbnail only");
   });
 
   it("keeps the notice for an image missing from the cache", () => {

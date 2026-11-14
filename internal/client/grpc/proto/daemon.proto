@@ -321,6 +321,9 @@ message ImagePreview {
     // right, so the GUI can apply its own exposure.
     bool hdr = 16;
     repeated ImageLayer layers = 17;
+    // thumbnail marks the preview a .blend or Unreal package embeds, not the
+    // asset itself.
+    bool thumbnail = 18;
 }
 
 message PreviewData {

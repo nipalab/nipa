@@ -2835,8 +2835,11 @@ type ImagePreview struct {
 	// hdr marks a float source: the PNG is twice preview_width wide, RGBE
 	// mantissas on the left and exponent (red) plus alpha (green) on the
 	// right, so the GUI can apply its own exposure.
-	Hdr           bool          `protobuf:"varint,16,opt,name=hdr,proto3" json:"hdr,omitempty"`
-	Layers        []*ImageLayer `protobuf:"bytes,17,rep,name=layers,proto3" json:"layers,omitempty"`
+	Hdr    bool          `protobuf:"varint,16,opt,name=hdr,proto3" json:"hdr,omitempty"`
+	Layers []*ImageLayer `protobuf:"bytes,17,rep,name=layers,proto3" json:"layers,omitempty"`
+	// thumbnail marks the preview a .blend or Unreal package embeds, not the
+	// asset itself.
+	Thumbnail     bool `protobuf:"varint,18,opt,name=thumbnail,proto3" json:"thumbnail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2988,6 +2991,13 @@ func (x *ImagePreview) GetLayers() []*ImageLayer {
 		return x.Layers
 	}
 	return nil
+}
+
+func (x *ImagePreview) GetThumbnail() bool {
+	if x != nil {
+		return x.Thumbnail
+	}
+	return false
 }
 
 type PreviewData struct {
@@ -12095,7 +12105,7 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x05width\x18\t \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\n" +
 	" \x01(\x05R\x06height\x12\x12\n" +
-	"\x04hash\x18\v \x01(\tR\x04hash\"\xd7\x03\n" +
+	"\x04hash\x18\v \x01(\tR\x04hash\"\xf5\x03\n" +
 	"\fImagePreview\x12\x12\n" +
 	"\x04side\x18\x01 \x01(\tR\x04side\x12\x14\n" +
 	"\x05width\x18\x02 \x01(\x05R\x05width\x12\x16\n" +
@@ -12115,7 +12125,8 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x05level\x18\x0e \x01(\x05R\x05level\x12\x12\n" +
 	"\x04face\x18\x0f \x01(\x05R\x04face\x12\x10\n" +
 	"\x03hdr\x18\x10 \x01(\bR\x03hdr\x12.\n" +
-	"\x06layers\x18\x11 \x03(\v2\x16.nipadaemon.ImageLayerR\x06layers\"3\n" +
+	"\x06layers\x18\x11 \x03(\v2\x16.nipadaemon.ImageLayerR\x06layers\x12\x1c\n" +
+	"\tthumbnail\x18\x12 \x01(\bR\tthumbnail\"3\n" +
 	"\vPreviewData\x12\x12\n" +
 	"\x04side\x18\x01 \x01(\tR\x04side\x12\x10\n" +
 	"\x03png\x18\x02 \x01(\fR\x03png\"\xb5\x03\n" +

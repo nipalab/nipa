@@ -137,7 +137,7 @@ func main() {
 		Name:        "Nipa",
 		Description: "Version control for game teams",
 		Services:    []application.Service{application.NewService(svc), application.NewService(notifier)},
-		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets), Middleware: service.MediaMiddleware(svc)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 		Windows:     application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
