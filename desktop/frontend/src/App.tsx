@@ -23,7 +23,7 @@ const SIDEBAR_HIDDEN_KEY = "nipa.layout.sidebar-hidden";
 // refreshOn lists the views a teammate event makes stale.
 const refreshOn: Record<string, string[]> = {
   pushed: ["history", "branches"],
-  lock_released: ["locks"],
+  lock_released: ["locks", "lock-watches"],
   review_requested: ["mrs"],
 };
 

@@ -13,7 +13,7 @@ export const scenarioFrom = (search: string): string => new URLSearchParams(sear
 
 export function createService(scenario: string): typeof Real {
   let state = clone(d.changes(scenario));
-  const lockWatches = new Set<string>();
+  const lockWatches = new Map<string, { branch: string; path: string }>();
   let llm = clone(d.llmSettings);
   let shelves = clone(d.shelves);
   const provenance = demoProvenance();
@@ -94,13 +94,13 @@ export function createService(scenario: string): typeof Real {
     LockStatus: () => ok(d.locks()),
     Lock: (_root, _branch, paths) => ok({ locked: paths ?? [], failed: [] }),
     Unlock: () => ok(undefined),
-    LockWatches: () => ok([...lockWatches]),
-    WatchLock: (_root, path) => {
-      lockWatches.add(String(path));
+    LockWatches: () => ok([...lockWatches.values()]),
+    WatchLock: (_root, branch, path) => {
+      lockWatches.set(`${branch}\0${path}`, { branch: String(branch), path: String(path) });
       return ok(undefined);
     },
-    UnwatchLock: (_root, path) => {
-      lockWatches.delete(String(path));
+    UnwatchLock: (_root, branch, path) => {
+      lockWatches.delete(`${branch}\0${path}`);
       return ok(undefined);
     },
     PickFile: () => ok(""),

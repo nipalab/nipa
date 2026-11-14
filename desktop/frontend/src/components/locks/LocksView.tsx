@@ -190,12 +190,12 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                         variant="ghost"
                         size="sm"
                         disabled={watches.toggle.isPending}
-                        aria-pressed={watches.has(l.path)}
-                        aria-label={watches.has(l.path) ? `Stop watching ${l.path}` : `Notify me when ${l.path} is free`}
-                        title={watches.has(l.path) ? "Stop watching this lock" : "Notify me when free"}
-                        onClick={() => watches.toggle.mutate(l.path)}
+                        aria-pressed={watches.has(l)}
+                        aria-label={watches.has(l) ? `Stop watching ${l.path}` : `Notify me when ${l.path} is free`}
+                        title={watches.has(l) ? "Stop watching this lock" : "Notify me when free"}
+                        onClick={() => watches.toggle.mutate(l)}
                       >
-                        {watches.has(l.path) ? <BellOff /> : <Bell />}
+                        {watches.has(l) ? <BellOff /> : <Bell />}
                       </Button>
                     )}
                     {(l.mine || data.canReleaseAny) && (
@@ -231,12 +231,13 @@ function useLockWatches(root: string, notify: Notify) {
   const queryClient = useQueryClient();
   const key = ["lock-watches", root];
   const list = useQuery({ queryKey: key, queryFn: () => desktop.lockWatches(root), retry: false });
-  const paths = list.data ?? [];
+  const watches = list.data ?? [];
+  const has = (l: { branch: string; path: string }) => watches.some((w) => w.branch === l.branch && w.path === l.path);
   const toggle = useMutation({
-    mutationFn: async (path: string) => {
-      const watching = paths.includes(path);
-      await (watching ? desktop.unwatchLock(root, path) : desktop.watchLock(root, path));
-      return { path, watching: !watching };
+    mutationFn: async (l: { branch: string; path: string }) => {
+      const watching = has(l);
+      await (watching ? desktop.unwatchLock(root, l.branch, l.path) : desktop.watchLock(root, l.branch, l.path));
+      return { path: l.path, watching: !watching };
     },
     onSuccess: ({ path, watching }) => {
       void queryClient.invalidateQueries({ queryKey: key });
@@ -244,7 +245,7 @@ function useLockWatches(root: string, notify: Notify) {
     },
     onError: (err) => notify(errorMessage(err)),
   });
-  return { has: (path: string) => paths.includes(path), toggle };
+  return { has, toggle };
 }
 
 function Centered({ children }: { children: ReactNode }) {

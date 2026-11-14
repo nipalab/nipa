@@ -173,8 +173,8 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 	for _, e := range act.Events {
 		if watched := s.watchedLockNotifications(act.Name, root, e); len(watched) > 0 {
 			for _, n := range watched {
-				if s.Notifier(n) == nil {
-					_ = s.Watches.SetLockWatch(root, n.Target.Path, false)
+				if s.Notifier(n.Notification) == nil {
+					_ = s.Watches.SetLockWatch(root, n.watch.key(), false)
 				}
 			}
 			continue

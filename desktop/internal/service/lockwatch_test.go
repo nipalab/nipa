@@ -40,21 +40,21 @@ func TestService_LockWatchRoundTrip(t *testing.T) {
 	got, err := s.LockWatches(ctx, "/w")
 	require.NoError(t, err)
 	require.Empty(t, got)
-	require.Error(t, s.WatchLock(ctx, "/w", "a.psd"))
+	require.Error(t, s.WatchLock(ctx, "/w", "", "a.psd"))
 
 	s.Watches = &memWatches{}
-	require.NoError(t, s.WatchLock(ctx, "/w", "/art/a.psd/"))
+	require.NoError(t, s.WatchLock(ctx, "/w", "feature", "/art/a.psd/"))
 	got, err = s.LockWatches(ctx, "/w")
 	require.NoError(t, err)
-	require.Equal(t, []string{"art/a.psd"}, got)
-	require.Error(t, s.WatchLock(ctx, "/w", "/"))
-	require.NoError(t, s.UnwatchLock(ctx, "/w", "art/a.psd"))
+	require.Equal(t, []LockWatch{{Branch: "feature", Path: "art/a.psd"}}, got)
+	require.Error(t, s.WatchLock(ctx, "/w", "", "/"))
+	require.NoError(t, s.UnwatchLock(ctx, "/w", "feature", "art/a.psd"))
 	got, _ = s.LockWatches(ctx, "/w")
 	require.Empty(t, got)
 }
 
 func TestService_WatchedLockNotifications(t *testing.T) {
-	w := &memWatches{paths: map[string][]string{"/w": {"art/a.psd", "art/b.psd", "audio/x.wav"}}}
+	w := &memWatches{paths: map[string][]string{"/w": {"\x00art/a.psd", "\x00art/b.psd", "\x00audio/x.wav", "feature\x00art/a.psd"}}}
 	s := &Service{Watches: w}
 
 	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: "pushed", Path: "art"}))
@@ -62,7 +62,10 @@ func TestService_WatchedLockNotifications(t *testing.T) {
 	require.Len(t, got, 2)
 	require.Equal(t, "g: art/a.psd is free", got[0].Title)
 	require.Equal(t, Navigation{Root: "/w", Tab: "locks", Path: "art/a.psd", Action: "lock"}, got[0].Target)
-	require.Len(t, w.paths["/w"], 3)
+	require.Len(t, w.paths["/w"], 4)
+	feature := s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Branch: "feature", Path: "art/a.psd"})
+	require.Len(t, feature, 1)
+	require.Equal(t, LockWatch{Branch: "feature", Path: "art/a.psd"}, feature[0].watch)
 
 	w.err = errors.New("disk")
 	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
@@ -73,7 +76,7 @@ func TestService_ActivityNotifiesWatchedLock(t *testing.T) {
 	h := newHarness()
 	h.daemon.events = make(chan *daemonpb.RepoActivity, 4)
 	h.daemon.eventReqs = make(chan *daemonpb.WatchEventsRequest, 4)
-	h.svc.Watches = &memWatches{paths: map[string][]string{"/work/game": {"hero.psd"}}}
+	h.svc.Watches = &memWatches{paths: map[string][]string{"/work/game": {"\x00hero.psd"}}}
 	rec := newActivityRecorder()
 	rec.attach(h.svc)
 	_, err := h.svc.AddRepo(ctx, "/work/game")
@@ -91,7 +94,7 @@ func TestNavigationFromDataCarriesLockAction(t *testing.T) {
 }
 
 func TestService_RecordActivityKeepsWatchWhenNotifierFails(t *testing.T) {
-	w := &memWatches{paths: map[string][]string{"/w": {"art/a.psd"}}}
+	w := &memWatches{paths: map[string][]string{"/w": {"\x00art/a.psd"}}}
 	var sent int
 	notifyErr := errors.New("no daemon")
 	s := &Service{Watches: w, Notifier: func(Notification) error { sent++; return notifyErr }}
@@ -101,7 +104,7 @@ func TestService_RecordActivityKeepsWatchWhenNotifierFails(t *testing.T) {
 	s.activity = map[string]RepoActivity{}
 	s.recordActivity(context.Background(), "/w", ev)
 	require.Equal(t, 1, sent)
-	require.Equal(t, []string{"art/a.psd"}, w.paths["/w"])
+	require.Equal(t, []string{"\x00art/a.psd"}, w.paths["/w"])
 
 	notifyErr = nil
 	s.followers = map[string]context.CancelFunc{"/w": func() {}}

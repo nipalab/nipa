@@ -379,9 +379,9 @@ export function LockStatus(root: string): $CancellablePromise<$models.LockStatus
 }
 
 /**
- * LockWatches lists the paths the user asked to be told about once free.
+ * LockWatches lists the locks the user asked to be told about once free.
  */
-export function LockWatches(root: string): $CancellablePromise<string[] | null> {
+export function LockWatches(root: string): $CancellablePromise<$models.LockWatch[] | null> {
     return $Call.ByID(3109619670, root);
 }
 
@@ -854,10 +854,10 @@ export function Unstage(root: string, paths: string[] | null): $CancellablePromi
 }
 
 /**
- * UnwatchLock drops the watch on path.
+ * UnwatchLock drops the watch on path in the branch scope.
  */
-export function UnwatchLock(root: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(4012762013, root, path);
+export function UnwatchLock(root: string, branch: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(4012762013, root, branch, path);
 }
 
 /**
@@ -882,8 +882,9 @@ export function UploadWorkers(): $CancellablePromise<number> {
 }
 
 /**
- * WatchLock asks for a notification when path is free to lock.
+ * WatchLock asks for a notification when the lock on path in the branch
+ * scope (empty = mainline) is released.
  */
-export function WatchLock(root: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(2778882628, root, path);
+export function WatchLock(root: string, branch: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(2778882628, root, branch, path);
 }

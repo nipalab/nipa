@@ -13,25 +13,49 @@ type LockWatchStore interface {
 	SetLockWatch(root, path string, watch bool) error
 }
 
-// LockWatches lists the paths the user asked to be told about once free.
-func (s *Service) LockWatches(_ context.Context, root string) ([]string, error) {
+// LockWatch is one lock the user waits on. Branch is empty for mainline.
+type LockWatch struct {
+	Branch string `json:"branch"`
+	Path   string `json:"path"`
+}
+
+const lockWatchSep = "\x00"
+
+func (w LockWatch) key() string { return w.Branch + lockWatchSep + w.Path }
+
+func parseLockWatch(key string) LockWatch {
+	branch, path, _ := strings.Cut(key, lockWatchSep)
+	return LockWatch{Branch: branch, Path: path}
+}
+
+// LockWatches lists the locks the user asked to be told about once free.
+func (s *Service) LockWatches(_ context.Context, root string) ([]LockWatch, error) {
+	out := []LockWatch{}
 	if s.Watches == nil {
-		return []string{}, nil
+		return out, nil
 	}
-	return s.Watches.LockWatches(root)
+	keys, err := s.Watches.LockWatches(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		out = append(out, parseLockWatch(k))
+	}
+	return out, nil
 }
 
-// WatchLock asks for a notification when path is free to lock.
-func (s *Service) WatchLock(_ context.Context, root, path string) error {
-	return s.setLockWatch(root, path, true)
+// WatchLock asks for a notification when the lock on path in the branch
+// scope (empty = mainline) is released.
+func (s *Service) WatchLock(_ context.Context, root, branch, path string) error {
+	return s.setLockWatch(root, branch, path, true)
 }
 
-// UnwatchLock drops the watch on path.
-func (s *Service) UnwatchLock(_ context.Context, root, path string) error {
-	return s.setLockWatch(root, path, false)
+// UnwatchLock drops the watch on path in the branch scope.
+func (s *Service) UnwatchLock(_ context.Context, root, branch, path string) error {
+	return s.setLockWatch(root, branch, path, false)
 }
 
-func (s *Service) setLockWatch(root, path string, watch bool) error {
+func (s *Service) setLockWatch(root, branch, path string, watch bool) error {
 	if s.Watches == nil {
 		return errors.New("lock watching is not available")
 	}
@@ -39,31 +63,39 @@ func (s *Service) setLockWatch(root, path string, watch bool) error {
 	if path == "" {
 		return errors.New("choose a file or folder to watch")
 	}
-	return s.Watches.SetLockWatch(root, path, watch)
+	return s.Watches.SetLockWatch(root, LockWatch{Branch: branch, Path: path}.key(), watch)
 }
 
-// watchedLockNotifications turns a released lock that covers watched paths
-// into "lock it now" notifications. The caller drops a watch once its
-// notification was delivered.
-func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []Notification {
+type watchedNotice struct {
+	Notification
+	watch LockWatch
+}
+
+// watchedLockNotifications turns a released lock that covers watched paths of
+// the same branch scope into "lock it now" notifications. The caller drops a
+// watch once its notification was delivered.
+func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []watchedNotice {
 	if e.Kind != "lock_released" || s.Watches == nil {
 		return nil
 	}
-	watched, err := s.Watches.LockWatches(root)
+	watched, err := s.LockWatches(context.Background(), root)
 	if err != nil {
 		return nil
 	}
 	released := strings.Trim(e.Path, "/")
-	var out []Notification
-	for _, p := range watched {
-		if p != released && !strings.HasPrefix(p, released+"/") {
+	var out []watchedNotice
+	for _, w := range watched {
+		if w.Branch != e.Branch || (w.Path != released && !strings.HasPrefix(w.Path, released+"/")) {
 			continue
 		}
-		out = append(out, Notification{
-			ID:     "lockwatch:" + root + ":" + p,
-			Title:  name + ": " + p + " is free",
-			Body:   fmt.Sprintf("%s released it. Click to lock it now.", e.Actor),
-			Target: Navigation{Root: root, Tab: "locks", Path: p, Action: "lock"},
+		out = append(out, watchedNotice{
+			Notification: Notification{
+				ID:     "lockwatch:" + root + ":" + w.key(),
+				Title:  name + ": " + w.Path + " is free",
+				Body:   fmt.Sprintf("%s released it. Click to lock it now.", e.Actor),
+				Target: Navigation{Root: root, Tab: "locks", Path: w.Path, Action: "lock"},
+			},
+			watch: w,
 		})
 	}
 	return out

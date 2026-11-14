@@ -59,6 +59,7 @@ export type {
     LockFailure,
     LockResult,
     LockStatus,
+    LockWatch,
     MergeOutcome,
     MergeRequest,
     MergeRequestDetail,
