@@ -171,6 +171,12 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 	}
 	prefs := s.prefs()
 	for _, e := range act.Events {
+		if watched := s.watchedLockNotifications(act.Name, root, e); len(watched) > 0 {
+			for _, n := range watched {
+				_ = s.Notifier(n)
+			}
+			continue
+		}
 		if n, ok := notificationFor(act.Name, root, e, prefs.Notify.Pushes, prefs.Notify.Locks, prefs.Notify.Reviews); ok {
 			_ = s.Notifier(n)
 		}
@@ -219,7 +225,7 @@ func notificationFor(name, root string, e TeamEvent, pushes, locks, reviews bool
 
 // Data is the payload a notification carries so a click can navigate.
 func (n Notification) Data() map[string]any {
-	return map[string]any{"root": n.Target.Root, "tab": n.Target.Tab, "number": n.Target.Number}
+	return map[string]any{"root": n.Target.Root, "tab": n.Target.Tab, "number": n.Target.Number, "path": n.Target.Path, "action": n.Target.Action}
 }
 
 // NavigationFromData reads a clicked notification's payload; numbers may
@@ -228,6 +234,8 @@ func NavigationFromData(data map[string]any) Navigation {
 	nav := Navigation{}
 	nav.Root, _ = data["root"].(string)
 	nav.Tab, _ = data["tab"].(string)
+	nav.Path, _ = data["path"].(string)
+	nav.Action, _ = data["action"].(string)
 	switch n := data["number"].(type) {
 	case int64:
 		nav.Number = n

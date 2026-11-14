@@ -379,6 +379,13 @@ export function LockStatus(root: string): $CancellablePromise<$models.LockStatus
 }
 
 /**
+ * LockWatches lists the paths the user asked to be told about once free.
+ */
+export function LockWatches(root: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3109619670, root);
+}
+
+/**
  * Merge merges a branch into the clone's branch. Conflicts stop the merge and
  * leave it waiting for ResolveConflict and a push, or AbortMerge.
  */
@@ -847,6 +854,13 @@ export function Unstage(root: string, paths: string[] | null): $CancellablePromi
 }
 
 /**
+ * UnwatchLock drops the watch on path.
+ */
+export function UnwatchLock(root: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(4012762013, root, path);
+}
+
+/**
  * Update gets the latest version of the branch into the working copy.
  */
 export function Update(root: string): $CancellablePromise<$models.OpOutcome> {
@@ -865,4 +879,11 @@ export function UpdateStatus(): $CancellablePromise<$models.UpdateState> {
  */
 export function UploadWorkers(): $CancellablePromise<number> {
     return $Call.ByID(574941112);
+}
+
+/**
+ * WatchLock asks for a notification when path is free to lock.
+ */
+export function WatchLock(root: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(2778882628, root, path);
 }

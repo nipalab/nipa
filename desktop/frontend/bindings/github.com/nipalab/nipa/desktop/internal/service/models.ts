@@ -771,6 +771,7 @@ export interface Navigation {
     "org": string;
     "project": string;
     "path": string;
+    "action": string;
 }
 
 export interface NewMergeRequest {

@@ -145,6 +145,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`changes/SyncGuard.tsx` `useSyncGuard` over `SyncPlan`, daemon
   `SyncPlan`: only the local changes the operation would replace are
   shelved, then the operation runs; a failed check never blocks),
+  lock watching (`WatchLock`/`UnwatchLock`/`LockWatches`: paths kept per
+  clone in `desktop.json` `lockWatches`; a `lock_released` event that covers
+  one raises a "free" notification instead of the generic one and clicking
+  it locks the file through `Navigation.Action`),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),

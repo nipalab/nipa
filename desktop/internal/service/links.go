@@ -27,6 +27,7 @@ type Navigation struct {
 	Org     string `json:"org"`
 	Project string `json:"project"`
 	Path    string `json:"path"`
+	Action  string `json:"action"`
 }
 
 var errBadLink = errors.New("not a Nipa link; expected nipa://<server>/<org>/<project>[/merge-requests/<n>|/commits/<id>|/file/<path>|/files|/history|/branches|/locks|/changes]")

@@ -254,6 +254,9 @@ export const desktop = {
     return { locked: r?.locked ?? [], failed: r?.failed ?? [] };
   },
   unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
+  lockWatches: async (root: string): Promise<string[]> => (await Service.LockWatches(root)) ?? [],
+  watchLock: (root: string, path: string): Promise<void> => Service.WatchLock(root, path),
+  unwatchLock: (root: string, path: string): Promise<void> => Service.UnwatchLock(root, path),
   pickFile: (root: string): Promise<string> => Service.PickFile(root),
   openFile: (root: string, path: string): Promise<void> => Service.OpenFile(root, path),
   openFileAt: (root: string, path: string, line: number): Promise<void> => Service.OpenFileAt(root, path, line),

@@ -94,7 +94,7 @@ export default function App() {
       return;
     }
     if (nav.root) {
-      go(nav.root, { tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined });
+      go(nav.root, { tab: nav.tab, number: nav.number || undefined, commit: nav.commit || undefined, path: nav.path || undefined, action: nav.action === "lock" ? "lock" : undefined });
       return;
     }
     if (nav.project) {
