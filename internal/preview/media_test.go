@@ -307,3 +307,33 @@ func FuzzDecodeThumbnail(f *testing.F) {
 		}
 	})
 }
+
+func hugeUnitsFont(t *testing.T) []byte {
+	t.Helper()
+	data := bytes.Clone(goregular.TTF)
+	n := int(binary.BigEndian.Uint16(data[4:6]))
+	for i := 0; i < n; i++ {
+		rec := data[12+16*i:]
+		if string(rec[:4]) == "head" {
+			off := binary.BigEndian.Uint32(rec[8:12])
+			binary.BigEndian.PutUint16(data[off+18:], 16)
+			return data
+		}
+	}
+	t.Fatal("no head table")
+	return nil
+}
+
+func TestRenderFontSheetBoundsCraftedMetrics(t *testing.T) {
+	f, err := DecodeFont("huge.ttf", hugeUnitsFont(t))
+	require.NoError(t, err)
+	require.Equal(t, 16, f.UnitsPerEm)
+	sheet, err := RenderFontSheet(f, FontSheetOptions{MaxCells: 16})
+	require.NoError(t, err)
+	cell := 44
+	assert.LessOrEqual(t, sheet.Rect.Dx(), 16*cell+cell/2)
+	assert.LessOrEqual(t, sheet.Rect.Dy(), 3*(cell/4)+2*cell+cell)
+
+	_, err = RenderFontSheet(f, FontSheetOptions{Columns: 1 << 20})
+	assert.ErrorIs(t, err, ErrTooLarge)
+}

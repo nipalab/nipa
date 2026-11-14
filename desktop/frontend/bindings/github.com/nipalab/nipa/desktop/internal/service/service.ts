@@ -906,17 +906,17 @@ export function UploadWorkers(): $CancellablePromise<number> {
 }
 
 /**
- * WatchLock asks for a notification when the lock on path in the branch
- * scope (empty = mainline) is released.
- */
-export function WatchLock(root: string, branch: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(2778882628, root, branch, path);
-}
-
-/**
  * VideoDiff copies the old and/or new version of a video to a temp file the
  * webview plays through MediaMiddleware, with container stats read in Go.
  */
 export function VideoDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.VideoCompare | null> {
     return $Call.ByID(7493248, root, old, $new);
+}
+
+/**
+ * WatchLock asks for a notification when the lock on path in the branch
+ * scope (empty = mainline) is released.
+ */
+export function WatchLock(root: string, branch: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(2778882628, root, branch, path);
 }

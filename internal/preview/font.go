@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"io"
 	"path/filepath"
 	"sort"
@@ -286,21 +287,23 @@ func RenderFontSheet(f *Font, opts FontSheetOptions) (*image.RGBA, error) {
 	glyphs := sheetRunes(f.Coverage, opts.MaxCells)
 	cell := int(opts.Size * 1.6)
 	pad := cell / 4
-	line := face.Metrics().Height.Ceil()
-	sampleW := font.MeasureString(small, opts.Sample).Ceil()
-	width := max(opts.Columns*cell, sampleW) + 2*pad
+	line := min(max(face.Metrics().Height.Ceil(), 0), 2*cell)
+	width := opts.Columns*cell + 2*pad
 	rows := (len(glyphs) + opts.Columns - 1) / opts.Columns
 	height := pad*3 + line + rows*cell
+	if err := checkSize(width, height); err != nil {
+		return nil, err
+	}
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	ink := image.NewUniform(color.Black)
+	limit := fixed.I(2 * cell)
 
-	d := font.Drawer{Dst: img, Src: ink, Face: small}
-	d.Dot = fixed.P(pad, pad+small.Metrics().Ascent.Ceil())
-	d.DrawString(opts.Sample)
+	d := font.Drawer{Dst: img, Src: image.NewUniform(color.Black), Face: small}
+	d.Dot = fixed.P(pad, pad+min(max(small.Metrics().Ascent.Ceil(), 0), cell))
+	drawBounded(&d, opts.Sample, limit, fixed.I(width))
 
 	d.Face = face
 	top := pad*2 + line
-	ascent := face.Metrics().Ascent.Ceil()
+	ascent := min(max(face.Metrics().Ascent.Ceil(), 0), 2*cell)
 	for i, r := range glyphs {
 		x := pad + (i%opts.Columns)*cell
 		y := top + (i/opts.Columns)*cell
@@ -308,10 +311,31 @@ func RenderFontSheet(f *Font, opts FontSheetOptions) (*image.RGBA, error) {
 		if !ok {
 			continue
 		}
-		d.Dot = fixed.P(x+(cell-adv.Ceil())/2, y+(cell-line)/2+ascent)
-		d.DrawString(string(r))
+		d.Dot = fixed.P(x+(cell-min(adv.Ceil(), cell))/2, y+(cell-line)/2+ascent)
+		drawBounded(&d, string(r), limit, fixed.I(width))
 	}
 	return img, nil
+}
+
+// drawBounded draws s like font.Drawer.DrawString but skips glyphs whose
+// outline exceeds limit in either direction: the rasterizer allocates a mask
+// as large as the outline, which a crafted font can make enormous.
+func drawBounded(d *font.Drawer, s string, limit, right fixed.Int26_6) {
+	for _, r := range s {
+		if d.Dot.X > right {
+			return
+		}
+		b, adv, ok := d.Face.GlyphBounds(r)
+		if !ok {
+			continue
+		}
+		if b.Max.X-b.Min.X <= limit && b.Max.Y-b.Min.Y <= limit {
+			if dr, mask, maskp, _, ok := d.Face.Glyph(d.Dot, r); ok {
+				draw.DrawMask(d.Dst, dr, d.Src, image.Point{}, mask, maskp, draw.Over)
+			}
+		}
+		d.Dot.X += adv
+	}
 }
 
 func sheetRunes(ranges []RuneRange, limit int) []rune {
