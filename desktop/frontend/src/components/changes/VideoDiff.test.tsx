@@ -126,6 +126,18 @@ describe("VideoCompareView", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
+  it("keeps the playable side audible when the other cannot play", () => {
+    const { unmount } = renderWithProviders(<VideoCompareView compare={{ old: side({ media: "a" }), new: side({ media: "b" }) }} />);
+    fireEvent.error(screen.getByLabelText("After video"));
+    expect((screen.getByLabelText("Before video") as HTMLVideoElement).muted).toBe(false);
+    expect(screen.queryByRole("group", { name: "Listen to" })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<VideoCompareView compare={{ old: side({ media: "a" }), new: side({ url: "", media: "", stats: null, statsError: "the video is too large to preview" }) }} />);
+    expect((screen.getByLabelText("Before video") as HTMLVideoElement).muted).toBe(false);
+    expect(screen.queryByRole("group", { name: "Listen to" })).not.toBeInTheDocument();
+  });
+
   it("explains files without playback or stats", () => {
     renderWithProviders(
       <VideoCompareView

@@ -143,6 +143,8 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
   }
   if (openError) notices.push(openError);
   const both = !!old && !!next;
+  const choosable = usable("old") && usable("new");
+  const audible: Side = choosable ? listen : usable("new") ? "new" : "old";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -170,7 +172,7 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
         <span className="font-mono tabular-nums text-muted-foreground" aria-label="Playback position">
           {formatTime(position)} / {formatTime(span)}
         </span>
-        {both && usable("old") && usable("new") && (
+        {choosable && (
           <Group label="Listen to">
             <ToolButton active={listen === "old"} label="Listen to before" onClick={() => setListen("old")}>
               <span className="px-1">A · Before</span>
@@ -192,7 +194,7 @@ export function VideoCompareView({ compare, onOpen = desktop.openMedia, hasMedia
               side={side}
               videoRef={refs[which]}
               failed={failed[which]}
-              muted={both ? listen !== which : false}
+              muted={audible !== which}
               onFail={() => playbackFailed(which, side.media)}
               onMetadata={(d) => setLoaded((l) => ({ ...l, [which]: Number.isFinite(d) ? d : 0 }))}
               onTime={() => follow(which)}
