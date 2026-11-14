@@ -205,7 +205,7 @@ func TestFileLockUsecase_RequestRelease(t *testing.T) {
 	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", "")
 	require.EqualError(t, err, "boom")
 
-	client.stubLockClient.listErr = errors.New("list down")
+	client.listErr = errors.New("list down")
 	_, _, err = uc.RequestRelease(context.Background(), t.TempDir(), "art/a.psd", "", "")
 	require.EqualError(t, err, "list down")
 

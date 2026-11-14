@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, FolderLock, GitPullRequest, Bell, BellOff, HandHelping, Loader2, Lock, LockOpen, RefreshCw, Search } from "lucide-react";
 import { desktop, type FileLock } from "@/api/desktop";
@@ -268,6 +268,8 @@ const askedBefore = (l: FileLock, userId: string) => (l.requests ?? []).some((r)
 
 function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
   const [message, setMessage] = useState("");
+  const field = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => field.current?.focus(), []);
   const holder = lock.heldByName || lock.heldBy;
   return (
     <Dialog title="Ask to release" onClose={onCancel}>
@@ -284,7 +286,7 @@ function AskDialog({ lock, busy, onConfirm, onCancel }: { lock: FileLock; busy: 
         <label className="block space-y-1 text-[12px]">
           <span className="text-muted-foreground">Message (optional)</span>
           <textarea
-            autoFocus
+            ref={field}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             maxLength={500}

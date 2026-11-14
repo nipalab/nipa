@@ -76,13 +76,39 @@ func TestFileLock_RequestRelease(t *testing.T) {
 		require.Equal(t, 1, hooks.calls)
 	})
 
-	t.Run("a failing hook does not fail the request", func(t *testing.T) {
+	t.Run("a failing hook does not fail the request and frees the cooldown", func(t *testing.T) {
 		uc, repo, _, hooks, _ := requestFixture(t)
 		hooks.err = errors.New("down")
 		repo.EXPECT().GetRequest(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, domain.NewErrorRecordNotFound())
-		repo.EXPECT().CreateRequest(gomock.Any(), gomock.Any()).Return(&domain.FileLockRequest{}, nil)
+		repo.EXPECT().CreateRequest(gomock.Any(), gomock.Any()).Return(&domain.FileLockRequest{ID: 4, Message: "hi"}, nil)
+		repo.EXPECT().UpdateRequest(gomock.Any(), snow.ID(4), "hi", time.Unix(0, 0).UTC()).Return(nil)
 		_, err := uc.RequestRelease(permissionCtx(7), 1, 9, "")
 		require.NoError(t, err)
+	})
+
+	t.Run("a failing hook and a failing reset still succeed", func(t *testing.T) {
+		uc, repo, _, hooks, _ := requestFixture(t)
+		hooks.err = errors.New("down")
+		repo.EXPECT().GetRequest(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, domain.NewErrorRecordNotFound())
+		repo.EXPECT().CreateRequest(gomock.Any(), gomock.Any()).Return(&domain.FileLockRequest{ID: 4}, nil)
+		repo.EXPECT().UpdateRequest(gomock.Any(), snow.ID(4), gomock.Any(), gomock.Any()).Return(errors.New("db down"))
+		_, err := uc.RequestRelease(permissionCtx(7), 1, 9, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("losing the insert race updates the winner's row", func(t *testing.T) {
+		uc, repo, _, hooks, now := requestFixture(t)
+		earlier := now.Add(-time.Minute)
+		gomock.InOrder(
+			repo.EXPECT().GetRequest(gomock.Any(), snow.ID(9), snow.ID(7)).Return(nil, domain.NewErrorRecordNotFound()),
+			repo.EXPECT().CreateRequest(gomock.Any(), gomock.Any()).Return(nil, domain.NewErrorConflict("record already exists")),
+			repo.EXPECT().GetRequest(gomock.Any(), snow.ID(9), snow.ID(7)).Return(&domain.FileLockRequest{ID: 4, CreatedAt: earlier}, nil),
+			repo.EXPECT().UpdateRequest(gomock.Any(), snow.ID(4), "second", earlier).Return(nil),
+		)
+		request, err := uc.RequestRelease(permissionCtx(7), 1, 9, "second")
+		require.NoError(t, err)
+		require.Equal(t, "second", request.Message)
+		require.Zero(t, hooks.calls, "the winner already notified the holder")
 	})
 
 	t.Run("works without hooks", func(t *testing.T) {
@@ -137,8 +163,12 @@ func TestFileLock_RequestRelease(t *testing.T) {
 			repo.EXPECT().ListProject(gomock.Any(), snow.ID(1), gomock.Any()).Return([]*domain.FileLock{{ID: 9, Path: "a", HeldBy: 3}}, nil),
 			repo.EXPECT().GetRequest(gomock.Any(), gomock.Any(), gomock.Any()).Return(&domain.FileLockRequest{ID: 4}, nil),
 			repo.EXPECT().UpdateRequest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(boom),
+			repo.EXPECT().ListProject(gomock.Any(), snow.ID(1), gomock.Any()).Return([]*domain.FileLock{{ID: 9, Path: "a", HeldBy: 3}}, nil),
+			repo.EXPECT().GetRequest(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, domain.NewErrorRecordNotFound()),
+			repo.EXPECT().CreateRequest(gomock.Any(), gomock.Any()).Return(nil, domain.NewErrorConflict("record already exists")),
+			repo.EXPECT().GetRequest(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, boom),
 		)
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 5; i++ {
 			_, err := uc.RequestRelease(permissionCtx(7), 1, 9, "")
 			require.ErrorIs(t, err, boom)
 		}

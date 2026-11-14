@@ -211,6 +211,7 @@ describe("LocksView", () => {
     expect(screen.queryByRole("button", { name: "Ask to release art/hero.psd" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Ask to release audio" }));
     expect(screen.getByText(/Bob holds/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Message/ })).toHaveFocus();
     await userEvent.type(screen.getByRole("textbox", { name: /Message/ }), "  need it today ");
     await userEvent.click(screen.getByRole("button", { name: "Send request" }));
     expect(api.requestRelease).toHaveBeenCalledWith("/work/game", "audio", "need it today");
