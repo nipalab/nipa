@@ -67,6 +67,17 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `sheets[]` for workbook tabs; `TableDiff.tsx` filters rows by text/column,
   "Changed columns only", previous/next change, sticky key column,
   per-column changed counts through `lib/table.ts`),
+  video compare via `VideoDiff` (each side streamed into a private temp
+  folder, `service/media.go`, served to the webview at
+  `/nipa-media/<token>/<name>` by `service.MediaMiddleware` on the Wails
+  asset server with range requests; `preview.ProbeVideo` container stats;
+  `VideoDiff.tsx` synced side-by-side playback, frame step, A/B audio,
+  "Open externally" through `OpenMedia`), font compare via `FontDiff`
+  (`preview.DecodeFont`/`RenderFontSheet`/`CompareFonts`; `FontDiff.tsx`
+  glyph sheets, metrics, added/removed code points), embedded `.blend`/
+  `.uasset`/`.umap` thumbnails in `ImageDiff` and the Files grid
+  (`lib/files.ts` `hasEmbeddedThumbnail`, daemon `Preview` sets
+  `ImagePreview.thumbnail`, "Thumbnail only" note),
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
   (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
   per-clone `.meta` index dropped on `.meta` change notices; Godot
@@ -252,6 +263,12 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `DiffScenes` (ID-matched object/prop/dependency changes, `KindScene`);
   `ParseGodotResource` (Godot text resources over `internal/godotres`,
   nodes keyed by path, ext/sub resource references rendered);
+  `ProbeVideo` MP4/MOV (ISO BMFF) and WebM/MKV (EBML) container stats with
+  box/element caps; `DecodeFont` TTF/OTF/WOFF1 over `font/sfnt` (names,
+  metrics, coverage ranges, per-script counts), `RenderFontSheet`,
+  `CompareFonts`; `DecodeThumbnail` Blender `TEST` blocks (classic and 5.0
+  headers, gzip/zstd) and Unreal package PNG/JPEG thumbnails, fixtures from
+  `testdata/gen/media`;
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked

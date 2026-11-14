@@ -4,6 +4,7 @@ import {
   ancestors,
   baseName,
   canPreview,
+  hasEmbeddedThumbnail,
   dirsToRefresh,
   kindName,
   lockFor,
@@ -116,6 +117,10 @@ describe("files helpers", () => {
     expect(canPreview(entry({ kind: "image" }))).toBe(true);
     expect(canPreview(entry({ kind: "image", status: "missing" }))).toBe(false);
     expect(canPreview(entry({ kind: "text" }))).toBe(false);
+    expect(canPreview(entry({ kind: "opaque", path: "Art/hero.blend" }))).toBe(true);
+    expect(canPreview(entry({ kind: "opaque", path: "Content/Hero.UASSET", status: "deleted" }))).toBe(false);
+    expect(hasEmbeddedThumbnail("Maps/Level.umap")).toBe(true);
+    expect(hasEmbeddedThumbnail("a.png")).toBe(false);
     expect(kindName(entry({ isDir: true }))).toBe("Folder");
     expect(kindName(entry({ kind: "model" }))).toBe("3D model");
     expect(kindName(entry({ kind: "weird" }))).toBe("File");

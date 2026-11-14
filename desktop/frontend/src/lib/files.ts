@@ -117,7 +117,12 @@ export function remoteOnly(dirs: RemoteDir[], local: FileEntry[], sparse: string
 // for clean files, the working file's stamp for changed ones.
 export const thumbKey = (e: FileEntry): string => (e.status ? `${e.status}:${e.mtime}:${e.size}` : e.hash || `${e.size}`);
 
-export const canPreview = (e: FileEntry): boolean => !e.isDir && e.kind === "image" && e.status !== "missing" && e.status !== "deleted";
+// hasEmbeddedThumbnail matches the files whose own preview image the daemon
+// extracts (Blender and Unreal packages).
+export const hasEmbeddedThumbnail = (path: string): boolean => /\.(blend|uasset|umap)$/i.test(path);
+
+export const canPreview = (e: FileEntry): boolean =>
+  !e.isDir && (e.kind === "image" || hasEmbeddedThumbnail(e.path)) && e.status !== "missing" && e.status !== "deleted";
 
 const statusNames: Record<string, string> = {
   modified: "Modified",

@@ -303,6 +303,14 @@ export function Files(root: string, dir: string): $CancellablePromise<$models.Fi
 }
 
 /**
+ * FontDiff decodes the old and/or new version of a font and, when both
+ * decode, lists the code points and metrics that changed.
+ */
+export function FontDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.FontCompare | null> {
+    return $Call.ByID(3506752562, root, old, $new);
+}
+
+/**
  * GenerateCommitMessage drafts a message for the staged changes.
  */
 export function GenerateCommitMessage(root: string): $CancellablePromise<$models.Draft> {
@@ -484,6 +492,14 @@ export function OpenFileAt(root: string, path: string, line: number): $Cancellab
  */
 export function OpenLink(raw: string): $CancellablePromise<$models.Navigation> {
     return $Call.ByID(4065448792, raw);
+}
+
+/**
+ * OpenMedia opens a file the viewer prepared in the system's default
+ * application.
+ */
+export function OpenMedia(token: string): $CancellablePromise<void> {
+    return $Call.ByID(1208439292, token);
 }
 
 /**
@@ -895,4 +911,12 @@ export function UploadWorkers(): $CancellablePromise<number> {
  */
 export function WatchLock(root: string, branch: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(2778882628, root, branch, path);
+}
+
+/**
+ * VideoDiff copies the old and/or new version of a video to a temp file the
+ * webview plays through MediaMiddleware, with container stats read in Go.
+ */
+export function VideoDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.VideoCompare | null> {
+    return $Call.ByID(7493248, root, old, $new);
 }

@@ -40,6 +40,8 @@ type ImageInfo struct {
 	// mantissas (left) with the exponent and alpha (right).
 	HDR    bool         `json:"hdr"`
 	Layers []ImageLayer `json:"layers"`
+	// Thumbnail marks the preview a .blend or Unreal package embeds.
+	Thumbnail bool `json:"thumbnail"`
 }
 
 type ImageLayer struct {
@@ -177,6 +179,7 @@ func toImageInfo(img *daemonpb.ImagePreview) *ImageInfo {
 		Face:          int(img.GetFace()),
 		HDR:           img.GetHdr(),
 		Layers:        toImageLayers(img.GetLayers()),
+		Thumbnail:     img.GetThumbnail(),
 	}
 }
 

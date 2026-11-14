@@ -117,6 +117,7 @@ type Service struct {
 	pending   *Navigation
 	upd       *updates
 	guids     guidIndex
+	media     mediaStore
 }
 
 func New(dial Dialer, store RepoStore, pick FolderPicker) *Service {
@@ -243,6 +244,7 @@ func (s *Service) RemoveRepo(ctx context.Context, root string) error {
 }
 
 func (s *Service) ServiceShutdown() error {
+	_ = s.media.close()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.active == nil {

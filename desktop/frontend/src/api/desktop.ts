@@ -8,6 +8,13 @@ import type {
   SceneMerge as RawSceneMerge,
   SceneMergeConflict,
   AudioCompare,
+  FontChanges,
+  FontCompare,
+  FontInfo,
+  FontSide,
+  VideoCompare,
+  VideoSide,
+  VideoStats,
   Check,
   Comment,
   CommentInput,
@@ -170,6 +177,7 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
   warnings: string[];
 };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow, TableSheet };
+export type { FontChanges, FontCompare, FontInfo, FontSide, VideoCompare, VideoSide, VideoStats };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
 export type Blame = Omit<RawBlame, "lines" | "commits"> & { lines: BlameLine[]; commits: Commit[] };
@@ -226,6 +234,9 @@ export const desktop = {
     Service.ImageDiff(root, old, next, { maxSize: 2048, level: 0, face: 0, ...opts }),
   modelDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<ModelCompare | null> => Service.ModelDiff(root, old, next),
   audioDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<AudioCompare | null> => Service.AudioDiff(root, old, next),
+  videoDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<VideoCompare | null> => Service.VideoDiff(root, old, next),
+  fontDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<FontCompare | null> => Service.FontDiff(root, old, next),
+  openMedia: (token: string): Promise<void> => Service.OpenMedia(token),
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null, sheet = ""): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next, sheet),
   sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
