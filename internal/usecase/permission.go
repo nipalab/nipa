@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,11 +13,17 @@ import (
 
 const permissionCacheTTL = 30 * time.Second
 
+const (
+	defaultProjectMemberLimit = 50
+	maxProjectMemberLimit     = 200
+)
+
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=permission_mock_test.go -package=usecase
 type pbacRepository interface {
 	ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error)
 	ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error)
 	ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error)
+	ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int, everyone bool) ([]*domain.ProjectMember, error)
 	CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error)
 	GetRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) (*domain.PBACRule, error)
 	DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error
@@ -606,4 +613,32 @@ func ruleAudit(action string, rule *domain.PBACRule) *domain.AuditEntry {
 		entry.ProjectID = domain.IDPtr(*rule.ProjectID)
 	}
 	return entry
+}
+
+// ListProjectMembers lists the users who can read the project and so can be
+// asked to review or be assigned: org owners and the subjects of rules that
+// grant read, or every org member and rule subject when a project default
+// grants read to all. Matched on name, ordered by name, readers only.
+func (p *Permission) ListProjectMembers(ctx context.Context, projectID snow.ID, query string, limit int) ([]*domain.ProjectMember, error) {
+	if !p.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if limit <= 0 {
+		limit = defaultProjectMemberLimit
+	}
+	if limit > maxProjectMemberLimit {
+		limit = maxProjectMemberLimit
+	}
+	defaults, err := p.repo.ListPathPermissions(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	everyone := false
+	for _, def := range defaults {
+		if def.Permission&domain.PermissionRead != 0 {
+			everyone = true
+			break
+		}
+	}
+	return p.repo.ListMemberCandidates(ctx, projectID, strings.TrimSpace(query), limit, everyone)
 }

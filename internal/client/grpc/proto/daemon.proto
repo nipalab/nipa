@@ -715,6 +715,24 @@ message ProxyMergeRequestResolveResponse {
     greet.ResolveMergeRequestThreadResponse response = 1;
 }
 
+message ProxyMergeRequestAssignRequest {
+    string root = 1;
+    greet.SetMergeRequestAssigneesRequest request = 2;
+}
+
+message ProxyMergeRequestAssignResponse {
+    greet.SetMergeRequestAssigneesResponse response = 1;
+}
+
+message ProxyMergeRequestRequestReviewRequest {
+    string root = 1;
+    greet.RequestMergeRequestReviewRequest request = 2;
+}
+
+message ProxyMergeRequestRequestReviewResponse {
+    greet.RequestMergeRequestReviewResponse response = 1;
+}
+
 message ProxyLockFileRequest {
     string root = 1;
     greet.LockFileRequest request = 2;
@@ -760,6 +778,15 @@ message ProxyTagListRequest {
 
 message ProxyTagListResponse {
     greet.ListTagsResponse response = 1;
+}
+
+message ProxyProjectMembersRequest {
+    string root = 1;
+    greet.ListProjectMembersRequest request = 2;
+}
+
+message ProxyProjectMembersResponse {
+    greet.ListProjectMembersResponse response = 1;
 }
 
 message ProxyTagCreateRequest {
@@ -1241,6 +1268,7 @@ service NipaDaemon {
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);
     rpc ProxyBranchDelete(ProxyBranchDeleteRequest) returns (ProxyBranchDeleteResponse);
     rpc ProxyTagList(ProxyTagListRequest) returns (ProxyTagListResponse);
+    rpc ProxyProjectMembers(ProxyProjectMembersRequest) returns (ProxyProjectMembersResponse);
     rpc ProxyTagCreate(ProxyTagCreateRequest) returns (ProxyTagCreateResponse);
     rpc ProxyTagDelete(ProxyTagDeleteRequest) returns (ProxyTagDeleteResponse);
     rpc ProxyTreeManifest(ProxyTreeManifestRequest) returns (ProxyTreeManifestResponse);
@@ -1266,6 +1294,8 @@ service NipaDaemon {
     rpc ProxyMergeRequestAddComment(ProxyMergeRequestAddCommentRequest) returns (ProxyMergeRequestAddCommentResponse);
     rpc ProxyMergeRequestReply(ProxyMergeRequestReplyRequest) returns (ProxyMergeRequestReplyResponse);
     rpc ProxyMergeRequestResolve(ProxyMergeRequestResolveRequest) returns (ProxyMergeRequestResolveResponse);
+    rpc ProxyMergeRequestAssign(ProxyMergeRequestAssignRequest) returns (ProxyMergeRequestAssignResponse);
+    rpc ProxyMergeRequestRequestReview(ProxyMergeRequestRequestReviewRequest) returns (ProxyMergeRequestRequestReviewResponse);
     rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyLockRequestRelease(ProxyLockRequestReleaseRequest) returns (ProxyLockRequestReleaseResponse);

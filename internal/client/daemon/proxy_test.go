@@ -145,6 +145,14 @@ func (emptyService) DeleteBranch(context.Context, *pb.DeleteBranchRequest, ...gr
 	return &pb.DeleteBranchResponse{}, nil
 }
 
+func (emptyService) SetMergeRequestAssignees(context.Context, *pb.SetMergeRequestAssigneesRequest, ...grpc.CallOption) (*pb.SetMergeRequestAssigneesResponse, error) {
+	return &pb.SetMergeRequestAssigneesResponse{}, nil
+}
+
+func (emptyService) RequestMergeRequestReview(context.Context, *pb.RequestMergeRequestReviewRequest, ...grpc.CallOption) (*pb.RequestMergeRequestReviewResponse, error) {
+	return &pb.RequestMergeRequestReviewResponse{}, nil
+}
+
 func (emptyService) UpdateMergeRequest(context.Context, *pb.UpdateMergeRequestRequest, ...grpc.CallOption) (*pb.UpdateMergeRequestResponse, error) {
 	return &pb.UpdateMergeRequestResponse{}, nil
 }
@@ -171,6 +179,10 @@ func (emptyService) ReplyMergeRequestThread(context.Context, *pb.ReplyMergeReque
 
 func (emptyService) ResolveMergeRequestThread(context.Context, *pb.ResolveMergeRequestThreadRequest, ...grpc.CallOption) (*pb.ResolveMergeRequestThreadResponse, error) {
 	return &pb.ResolveMergeRequestThreadResponse{}, nil
+}
+
+func (emptyService) ListProjectMembers(context.Context, *pb.ListProjectMembersRequest, ...grpc.CallOption) (*pb.ListProjectMembersResponse, error) {
+	return &pb.ListProjectMembersResponse{}, nil
 }
 
 func (emptyService) ListTags(context.Context, *pb.ListTagsRequest, ...grpc.CallOption) (*pb.ListTagsResponse, error) {
@@ -286,6 +298,10 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 			_, err := srv.ProxyBranchDelete(ctx, &daemonpb.ProxyBranchDeleteRequest{Root: root})
 			return err
 		}},
+		{"ProjectMembers", func() error {
+			_, err := srv.ProxyProjectMembers(ctx, &daemonpb.ProxyProjectMembersRequest{Root: root})
+			return err
+		}},
 		{"TagList", func() error {
 			_, err := srv.ProxyTagList(ctx, &daemonpb.ProxyTagListRequest{Root: root})
 			return err
@@ -328,6 +344,14 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 		}},
 		{"MergeRequestMerge", func() error {
 			_, err := srv.ProxyMergeRequestMerge(ctx, &daemonpb.ProxyMergeRequestMergeRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestAssign", func() error {
+			_, err := srv.ProxyMergeRequestAssign(ctx, &daemonpb.ProxyMergeRequestAssignRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestRequestReview", func() error {
+			_, err := srv.ProxyMergeRequestRequestReview(ctx, &daemonpb.ProxyMergeRequestRequestReviewRequest{Root: root})
 			return err
 		}},
 		{"MergeRequestClose", func() error {

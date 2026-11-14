@@ -185,8 +185,12 @@ Phase A scope: branches (list/create/delete/protect info), release tags
 `GetCommit`/`WalkCommits`/`GetMergeBase`, MR
 list/create/update/merge/close/reopen + detail incl. review summary, reviews,
 threads, commits, checks and timeline, comments (`ProxyMergeRequestAddComment`/
-`Reply`/`Resolve`) and review submission, file locks
-(lock/unlock/list). Phase B: PBAC/path permissions, groups, admin.
+`Reply`/`Resolve`) and review submission, assignees and review requests
+(`ProxyMergeRequestAssign` replaces the assignee set,
+`ProxyMergeRequestRequestReview` asks one more user), the project's
+reviewable people (`ProxyProjectMembers`: server `ListProjectMembers`, users
+who can read the project matched on name, default 50, max 200, name and id
+only), file locks (lock/unlock/list). Phase B: PBAC/path permissions, groups, admin.
 
 All proxy calls take the repo `root`, resolve `.nipa/config` → host/org/project,
 and run on the daemon's warm, auto-refreshing client.

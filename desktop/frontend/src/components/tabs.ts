@@ -1,6 +1,6 @@
-import { FileDiff, Folders, GitMerge, GitPullRequest, History, Info, Lock, Tags } from "lucide-react";
+import { Activity, FileDiff, Folders, GitMerge, GitPullRequest, History, Info, Lock, Tags } from "lucide-react";
 
-export type TabId = "files" | "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
+export type TabId = "files" | "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "activity" | "details";
 
 export const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "files", label: "Files", Icon: Folders },
@@ -10,6 +10,7 @@ export const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "branches", label: "Branches & tags", Icon: Tags },
   { id: "mrs", label: "Merge requests", Icon: GitPullRequest },
   { id: "locks", label: "Locks", Icon: Lock },
+  { id: "activity", label: "Activity", Icon: Activity },
   { id: "details", label: "Details", Icon: Info },
 ];
 

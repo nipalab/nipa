@@ -61,3 +61,19 @@ describe('lockFile', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ path: 'a.png', branch: 'feature', ttl_seconds: 600 })
   })
 })
+
+describe('listProjectMembers', () => {
+  it('sends the query and limit only when set', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const { listProjectMembers } = await import('./endpoints')
+
+    await listProjectMembers('acme', 'game')
+    await listProjectMembers('acme', 'game', 'ad a', 20)
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      '/api/v1/orgs/acme/projects/game/members',
+      '/api/v1/orgs/acme/projects/game/members?q=ad+a&limit=20',
+    ])
+  })
+})

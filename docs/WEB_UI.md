@@ -277,6 +277,11 @@ The REST endpoints behind it: `GET/POST .../reviews`,
 
 ## Permission gating
 
+`GET /api/v1/orgs/{org}/projects/{project}/members?q=&limit=` lists the users
+who can read the project (org members and access-rule subjects, matched on
+name, ordered by name; `{id, name, photo_url}` only) for reviewer and assignee
+pickers (`listProjectMembers` in `endpoints.ts`); callers need read access.
+
 `GET /api/v1/orgs/{org}/projects/{project}/permissions/me` supplies the
 capability mask. The UI hides controls the caller cannot use (`write` for
 branch creation, `admin` for settings/ACL, org `owner` or global admin for

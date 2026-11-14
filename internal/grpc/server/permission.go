@@ -167,3 +167,19 @@ func domainPBACRuleToPB(rule *domain.PBACRule) *pb.PBACRuleDetail {
 	}
 	return detail
 }
+
+func (n *nipaServer) ListProjectMembers(ctx context.Context, req *pb.ListProjectMembersRequest) (*pb.ListProjectMembersResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.GetContext().GetOrg(), req.GetContext().GetProject())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	members, err := n.uc.Permission().ListProjectMembers(ctx, project.ID, req.GetQuery(), int(req.GetLimit()))
+	if err != nil {
+		return nil, handleError(err)
+	}
+	resp := &pb.ListProjectMembersResponse{Members: make([]*pb.ProjectMember, 0, len(members))}
+	for _, member := range members {
+		resp.Members = append(resp.Members, &pb.ProjectMember{Id: member.ID.Base36(), Name: member.Name, PhotoUrl: member.PhotoUrl})
+	}
+	return resp, nil
+}

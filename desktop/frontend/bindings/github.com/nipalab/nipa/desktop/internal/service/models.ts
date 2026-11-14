@@ -314,6 +314,52 @@ export interface Draft {
     "target": string;
 }
 
+/**
+ * Feed is the merged timeline, newest first. Truncated means a source had
+ * more events inside the window than the feed reads; Partial means a source
+ * could not be read.
+ */
+export interface Feed {
+    "events": FeedEvent[] | null;
+    "truncated": boolean;
+    "partial": boolean;
+}
+
+/**
+ * FeedEvent is one line of the project timeline.
+ */
+export interface FeedEvent {
+    "id": string;
+
+    /**
+     * commit, mr_opened, mr_merged, lock
+     */
+    "kind": string;
+
+    /**
+     * RFC 3339
+     */
+    "time": string;
+    "actor": string;
+    "title": string;
+    "branch": string;
+
+    /**
+     * commit events
+     */
+    "commitId": string;
+
+    /**
+     * merge request events
+     */
+    "number": number;
+
+    /**
+     * lock events
+     */
+    "path": string;
+}
+
 export interface FileChange {
     "path": string;
 

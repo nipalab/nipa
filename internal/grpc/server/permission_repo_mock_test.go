@@ -115,6 +115,21 @@ func (mr *MockpbacRepositoryMockRecorder) ListEffectiveRules(ctx, projectID, use
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEffectiveRules", reflect.TypeOf((*MockpbacRepository)(nil).ListEffectiveRules), ctx, projectID, userID)
 }
 
+// ListMemberCandidates mocks base method.
+func (m *MockpbacRepository) ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int, everyone bool) ([]*domain.ProjectMember, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMemberCandidates", ctx, projectID, search, limit, everyone)
+	ret0, _ := ret[0].([]*domain.ProjectMember)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListMemberCandidates indicates an expected call of ListMemberCandidates.
+func (mr *MockpbacRepositoryMockRecorder) ListMemberCandidates(ctx, projectID, search, limit, everyone any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMemberCandidates", reflect.TypeOf((*MockpbacRepository)(nil).ListMemberCandidates), ctx, projectID, search, limit, everyone)
+}
+
 // ListPathPermissions mocks base method.
 func (m *MockpbacRepository) ListPathPermissions(ctx context.Context, projectID snow.ID) ([]*domain.ProjectPathPermission, error) {
 	m.ctrl.T.Helper()

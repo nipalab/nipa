@@ -37,6 +37,7 @@ import type {
   OrgResponse,
   PBACRuleResponse,
   PermissionEntry,
+  ProjectMemberResponse,
   ProjectPermissionResponse,
   ProjectResponse,
   RegisterResponse,
@@ -707,6 +708,19 @@ export function requestLockRelease(
 
 export function getMyProjectPermissions(org: string, project: string): Promise<ProjectPermissionResponse> {
   return apiJson(`${projectBase(org, project)}/permissions/me`)
+}
+
+export function listProjectMembers(
+  org: string,
+  project: string,
+  query = '',
+  limit?: number,
+): Promise<ProjectMemberResponse[]> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (limit) params.set('limit', String(limit))
+  const suffix = params.toString()
+  return apiJson(`${projectBase(org, project)}/members${suffix ? `?${suffix}` : ''}`)
 }
 
 export function listProjectRules(org: string, project: string): Promise<PBACRuleResponse[]> {

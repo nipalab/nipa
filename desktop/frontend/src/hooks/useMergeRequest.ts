@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { desktop, type CommentInput } from "@/api/desktop";
+import { desktop, type CommentInput, type Person } from "@/api/desktop";
 import type { Notify } from "@/hooks/useLocks";
 import type { Strategy } from "@/lib/mergeRequests";
 import { errorMessage } from "@/lib/utils";
@@ -49,6 +49,9 @@ export function useMergeRequest(root: string, number: number, notify: Notify) {
   );
   const edit = action(({ title, description }: { title: string; description: string }) => desktop.editMergeRequest(root, number, title, description), "Could not save", () => "Saved");
 
-  const busy = [comment, reply, resolve, review, merge, close, reopen, draft, edit].some((m) => m.isPending);
-  return { detail, activity, comment, reply, resolve, review, merge, close, reopen, draft, edit, busy };
+  const assign = action((ids: string[]) => desktop.assignMergeRequest(root, number, ids), "Could not assign");
+  const askReview = action((person: Person) => desktop.requestReview(root, number, person.id), "Could not request a review", (person) => `Asked ${person.name} to review`);
+
+  const busy = [comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview].some((m) => m.isPending);
+  return { detail, activity, comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview, busy };
 }

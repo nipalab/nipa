@@ -1070,6 +1070,22 @@ message ListMyProjectsResponse {
     repeated ProjectSummary projects = 1; // readable projects of every organization the caller belongs to
 }
 
+message ListProjectMembersRequest {
+    ProjectContext context = 1;
+    string query = 2; // case-insensitive name match; empty lists everyone
+    int32 limit = 3; // default 50, max 200
+}
+
+message ProjectMember {
+    string id = 1; // base36 user id
+    string name = 2;
+    string photo_url = 3;
+}
+
+message ListProjectMembersResponse {
+    repeated ProjectMember members = 1;
+}
+
 message ListDirectoryRequest {
     ProjectContext context = 1;
     string revision = 2; // branch name or commit id (base36); empty: the default branch
@@ -1104,6 +1120,7 @@ service NipaService {
     rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
     rpc ListMyProjects(ListMyProjectsRequest) returns (ListMyProjectsResponse);
     rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+    rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse);
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);

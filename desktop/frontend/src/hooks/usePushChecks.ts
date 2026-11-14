@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type PushChecks } from "@/api/desktop";
+import { useDebounced } from "@/hooks/useDebounced";
 
 export const PUSH_CHECKS_DEBOUNCE_MS = 400;
 
@@ -12,15 +13,6 @@ export function hasPushIssues(checks: PushChecks | undefined): boolean {
 
 export function hasPushReport(checks: PushChecks | undefined): boolean {
   return hasPushIssues(checks) || !!checks?.truncated || (checks?.warnings.length ?? 0) > 0;
-}
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
 }
 
 // usePushChecks runs the warn-only asset checks of the staged set, debounced

@@ -33,3 +33,9 @@ type SetPathPermissionRequest struct {
 	PathPrefix string `json:"path_prefix"`
 	Permission uint64 `json:"permission"`
 }
+
+type ProjectMemberResponse struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	PhotoUrl string `json:"photo_url,omitempty"`
+}

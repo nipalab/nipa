@@ -37,6 +37,8 @@ export type {
     DiffLine,
     DiskUsage,
     Draft,
+    Feed,
+    FeedEvent,
     FileChange,
     FileDetails,
     FileDiff,

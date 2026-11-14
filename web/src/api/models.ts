@@ -400,6 +400,12 @@ export interface ProjectPermissionResponse {
   defaults: PermissionEntry[]
 }
 
+export interface ProjectMemberResponse {
+  id: string
+  name: string
+  photo_url?: string
+}
+
 export interface PBACRuleResponse {
   id: number
   user_id?: string

@@ -1,4 +1,4 @@
-import type { Activity, DiffLine, FileDiff, Review, Thread, TimelineEvent } from "@/api/desktop";
+import type { Activity, DiffLine, FileDiff, Person, Review, Thread, TimelineEvent } from "@/api/desktop";
 import type { LineAnchor } from "@/components/changes/TextDiff";
 
 export type ConversationItem = { kind: "event"; at: string; event: TimelineEvent } | { kind: "review"; at: string; review: Review } | { kind: "thread"; at: string; thread: Thread };
@@ -88,3 +88,19 @@ export const reviewText: Record<string, string> = {
   changes_requested: "requested changes",
   commented: "reviewed",
 };
+
+// personNames maps user ids to display names from what the request already
+// shows (timeline actors and subjects, reviewers) and the project's people.
+export function personNames(activity?: Activity, people: Person[] = []): Record<string, string> {
+  const names: Record<string, string> = {};
+  const add = (p?: Person) => {
+    if (p?.id && p.name) names[p.id] = p.name;
+  };
+  for (const e of activity?.timeline ?? []) {
+    add(e.actor);
+    add(e.subject);
+  }
+  for (const r of activity?.reviews ?? []) add(r.reviewer);
+  people.forEach(add);
+  return names;
+}

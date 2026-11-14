@@ -173,3 +173,21 @@ func toDomainProjectPathPermission(row sqlcPostgres.ProjectPathsPermission) *dom
 		CreatedAt:  row.CreatedAt.Time,
 	}
 }
+
+func (p *PBAC) ListMemberCandidates(ctx context.Context, projectID snow.ID, search string, limit int, everyone bool) ([]*domain.ProjectMember, error) {
+	rows, err := p.queries.ProjectMemberCandidates(ctx, sqlcPostgres.ProjectMemberCandidatesParams{
+		ProjectID: projectID.Int64(),
+		Search:    search,
+		MaxRows:   int64(limit),
+		ReadMask:  int64(domain.PermissionRead),
+		Everyone:  everyone,
+	})
+	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	members := make([]*domain.ProjectMember, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, &domain.ProjectMember{ID: snow.ID(row.ID), Name: row.Name, PhotoUrl: row.PhotoUrl.String})
+	}
+	return members, nil
+}

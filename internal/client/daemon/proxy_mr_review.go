@@ -139,3 +139,41 @@ func (s *Server) ProxyMergeRequestResolve(ctx context.Context, req *daemonpb.Pro
 	}
 	return &daemonpb.ProxyMergeRequestResolveResponse{Response: res}, nil
 }
+
+// ProxyMergeRequestAssign replaces the assignees of a merge request.
+func (s *Server) ProxyMergeRequestAssign(ctx context.Context, req *daemonpb.ProxyMergeRequestAssignRequest) (*daemonpb.ProxyMergeRequestAssignResponse, error) {
+	var res *pb.SetMergeRequestAssigneesResponse
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+		request := req.GetRequest()
+		if request == nil {
+			request = &pb.SetMergeRequestAssigneesRequest{}
+		}
+		request.Context = project
+		var err error
+		res, err = client.SetMergeRequestAssignees(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &daemonpb.ProxyMergeRequestAssignResponse{Response: res}, nil
+}
+
+// ProxyMergeRequestRequestReview asks one user to review a merge request.
+func (s *Server) ProxyMergeRequestRequestReview(ctx context.Context, req *daemonpb.ProxyMergeRequestRequestReviewRequest) (*daemonpb.ProxyMergeRequestRequestReviewResponse, error) {
+	var res *pb.RequestMergeRequestReviewResponse
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+		request := req.GetRequest()
+		if request == nil {
+			request = &pb.RequestMergeRequestReviewRequest{}
+		}
+		request.Context = project
+		var err error
+		res, err = client.RequestMergeRequestReview(ctx, request)
+		return err
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return &daemonpb.ProxyMergeRequestRequestReviewResponse{Response: res}, nil
+}

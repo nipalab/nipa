@@ -10,6 +10,7 @@ import { StorageCard } from "@/components/details/StorageCard";
 import { ConflictsView } from "@/components/conflicts/ConflictsView";
 import { FilesView } from "@/components/files/FilesView";
 import { HistoryView } from "@/components/history/HistoryView";
+import { ActivityView } from "@/components/activity/ActivityView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
@@ -54,7 +55,15 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   useEffect(() => {
     if (intent && tabs.some((t) => t.id === intent.tab)) setTab(intent.tab as TabId);
   }, [intent]);
-  const openNumber = intent?.tab === "mrs" && intent.number ? { number: intent.number, seq: intent.seq } : undefined;
+  const intentMr = intent?.tab === "mrs" && intent.number ? intent.number : 0;
+  const [openNumber, setOpenNumber] = useState<{ number: number; seq: number }>();
+  useEffect(() => {
+    if (intentMr) setOpenNumber((prev) => ({ number: intentMr, seq: Math.max((prev?.seq ?? 0) + 1, intent?.seq ?? 0) }));
+  }, [intentMr, intent?.seq]);
+  const showMergeRequest = (number: number) => {
+    setOpenNumber((prev) => ({ number, seq: (prev?.seq ?? 0) + 1 }));
+    setTab("mrs");
+  };
   const openCommit = intent?.tab === "history" && intent.commit ? { id: intent.commit, seq: intent.seq } : undefined;
   const intentFile = intent?.tab === "files" && intent.path ? intent.path : "";
   const [fileNav, setFileNav] = useState<{ path: string; seq: number }>();
@@ -88,7 +97,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file", "blame", "shelves", "shelf-files"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file", "blame", "shelves", "shelf-files", "activity"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
   const finishing = useRef(false);
   const tagCheckout = useRef("");
@@ -415,6 +424,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
               ) : current === "locks" ? (
                 <LocksView root={repo.root} notify={notify} />
+              ) : current === "activity" ? (
+                <ActivityView root={repo.root} onOpenCommit={(id) => showHistory("", id)} onOpenMergeRequest={showMergeRequest} onOpenLocks={() => setTab("locks")} />
               ) : (
                 <Details repo={repo} busy={!!op} notify={notify} onEditSparse={() => setEditingSparse(true)} />
               )}

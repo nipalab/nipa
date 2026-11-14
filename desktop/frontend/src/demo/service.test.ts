@@ -225,6 +225,25 @@ describe("demo shelves", () => {
   });
 });
 
+describe("demo people and activity", () => {
+  it("searches members by name and assigns them", async () => {
+    const s = createService("default");
+    expect((await s.Members(ROOT, ""))!.length).toBeGreaterThan(2);
+    expect((await s.Members(ROOT, "MINA"))!.map((m) => m.name)).toEqual(["Mina Okafor"]);
+    const mr = (await s.AssignMergeRequest(ROOT, 42, ["u-jon", "u-unknown"]))!;
+    expect(mr.assignees!.map((p) => p.name)).toEqual(["Jon Backstrom", "u-unknown"]);
+    expect(await s.RequestReview(ROOT, 42, "u-jon")).toBeUndefined();
+  });
+
+  it("returns a timeline of every kind, newest first", async () => {
+    const feed = (await createService("default").ProjectActivity(ROOT, ""))!;
+    const kinds = new Set(feed.events!.map((e) => e.kind));
+    expect([...kinds].sort()).toEqual(["commit", "lock", "mr_merged", "mr_opened"]);
+    const times = feed.events!.map((e) => e.time);
+    expect(times).toEqual([...times].sort().reverse());
+  });
+});
+
 describe("demo media", () => {
   it("generates deterministic assets", () => {
     expect(textureSvg(["#000", "#111", "#222"], "#fff")).toMatch(/^data:image\/svg\+xml;base64,/);

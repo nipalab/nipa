@@ -178,6 +178,14 @@ export function createService(scenario: string): typeof Real {
       const request = d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0];
       return ok({ request: clone(request), mergeability: { status: "mergeable", blockedBy: "", sourceCommitId: "c12", targetCommitId: "c11", mergeBaseId: "c8" }, outstanding: [] });
     },
+    Members: (_root, query) => {
+      const q = String(query ?? "").trim().toLowerCase();
+      return ok(clone(d.members).filter((m) => !q || m.name.toLowerCase().includes(q)));
+    },
+    AssignMergeRequest: (_root, n, ids) =>
+      ok({ ...clone(d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0]), assignees: (Array.isArray(ids) ? ids : []).map((id) => d.members.find((p) => p.id === id) ?? { id, name: id }) }),
+    RequestReview: () => ok(undefined),
+    ProjectActivity: () => ok(d.feed()),
     MergeRequestActivity: (_root, n) => ok(d.activityFor(Number(n) || 0)),
     MergeRequestCommits: () => ok(clone(d.commits.slice(0, 3))),
     CreateMergeRequest: (_root, input) =>

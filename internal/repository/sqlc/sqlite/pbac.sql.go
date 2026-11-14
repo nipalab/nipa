@@ -231,6 +231,90 @@ func (q *Queries) PBACRuleListEffective(ctx context.Context, arg PBACRuleListEff
 	return items, nil
 }
 
+const projectMemberCandidates = `-- name: ProjectMemberCandidates :many
+SELECT u.id, u.name, u.photo_url
+FROM users u
+WHERE u.deleted = false
+  AND (
+      u.id IN (
+          SELECT om.user_id FROM org_members om
+          WHERE om.org_id = (SELECT p.org_id FROM projects p WHERE p.id = ?1)
+            AND (om.role = 'owner' OR ?2)
+      )
+      OR u.id IN (
+          SELECT r.user_id FROM pbac_rules r
+          WHERE r.user_id IS NOT NULL
+            AND (r.permission & ?3 <> 0 OR ?2)
+            AND (
+                r.project_id = ?1
+                OR (
+                    r.project_id IS NULL
+                    AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = ?1)
+                )
+            )
+      )
+      OR u.id IN (
+          SELECT gm.user_id FROM group_members gm
+          JOIN pbac_rules r ON r.group_id = gm.group_id
+          JOIN groups g ON g.id = gm.group_id AND g.org_id = r.org_id
+          WHERE (r.permission & ?3 <> 0 OR ?2)
+            AND (
+                r.project_id = ?1
+                OR (
+                    r.project_id IS NULL
+                    AND r.org_id = (SELECT p.org_id FROM projects p WHERE p.id = ?1)
+                )
+            )
+      )
+  )
+  AND (?4 = '' OR u.name LIKE '%' || ?4 || '%')
+ORDER BY u.name, u.id
+LIMIT ?5
+`
+
+type ProjectMemberCandidatesParams struct {
+	ProjectID int64       `json:"project_id"`
+	Everyone  int64       `json:"everyone"`
+	ReadMask  int64       `json:"read_mask"`
+	Search    interface{} `json:"search"`
+	MaxRows   int64       `json:"max_rows"`
+}
+
+type ProjectMemberCandidatesRow struct {
+	ID       int64          `json:"id"`
+	Name     string         `json:"name"`
+	PhotoUrl sql.NullString `json:"photo_url"`
+}
+
+func (q *Queries) ProjectMemberCandidates(ctx context.Context, arg ProjectMemberCandidatesParams) ([]ProjectMemberCandidatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, projectMemberCandidates,
+		arg.ProjectID,
+		arg.Everyone,
+		arg.ReadMask,
+		arg.Search,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectMemberCandidatesRow
+	for rows.Next() {
+		var i ProjectMemberCandidatesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.PhotoUrl); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const projectPathPermissionDelete = `-- name: ProjectPathPermissionDelete :exec
 DELETE FROM project_paths_permissions WHERE project_id = ? AND path_prefix = ?
 `

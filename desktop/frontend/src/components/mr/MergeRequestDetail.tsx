@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { desktop, type Activity, type Check, type MergeRequest, type MergeRequestDetail as Detail } from "@/api/desktop";
 import { MergeRequestFiles } from "@/components/mr/MergeRequestFiles";
+import { PeopleBar } from "@/components/mr/PeopleBar";
 import { CommentBox, ThreadCard } from "@/components/mr/ThreadCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
           )}
           {request.changesRequested > 0 && <span className="text-danger">changes requested</span>}
         </div>
+        <PeopleBar root={root} request={request} outstanding={mr.detail.data.outstanding} activity={activity} busy={mr.busy} onAssign={(ids) => mr.assign.mutateAsync(ids)} onRequestReview={(person) => mr.askReview.mutate(person)} />
       </header>
       <nav role="tablist" aria-label="Merge request" className="flex shrink-0 gap-1 border-b border-border px-4">
         {(

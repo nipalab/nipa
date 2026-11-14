@@ -13,6 +13,7 @@ import type {
   Draft,
   FileChange,
   FileDiff,
+  Feed,
   FileSide,
   FontCompare,
   FontSide,
@@ -698,4 +699,20 @@ export const blame = (path: string, revision: string): Blame => {
   );
   const used = new Set(lines.map((l) => l.commitId));
   return { path, revision, lines, commits: commits.filter((c) => used.has(c.id)), truncated: false };
+};
+
+export const members = [people.me, people.mina, people.jon, people.sam];
+
+export const feed = (): Feed => {
+  const lock = locks().locks ?? [];
+  return {
+    truncated: false,
+    partial: false,
+    events: [
+      { id: "mr:42:mr_opened", kind: "mr_opened", time: ago(438), actor: people.me.name, title: "Rework hero armor textures and ring mesh", branch: "feature/hero-rework", commitId: "", number: 42, path: "" },
+      ...commits.slice(0, 7).map((c, i) => ({ id: `commit:${c.id}`, kind: "commit", time: c.date, actor: c.author, title: c.message, branch: i % 3 === 1 ? "main" : "feature/hero-rework", commitId: c.id, number: 0, path: "" })),
+      { id: "mr:39:mr_merged", kind: "mr_merged", time: ago(1_800), actor: people.sam.name, title: "Loudness pass on music", branch: "audio/loudness-pass", commitId: "", number: 39, path: "" },
+      ...lock.map((l) => ({ id: `lock:${l.id}`, kind: "lock", time: l.acquiredAt, actor: l.heldByName, title: l.path, branch: l.branch, commitId: "", number: 0, path: l.path })),
+    ].sort((a, b) => b.time.localeCompare(a.time)),
+  };
 };

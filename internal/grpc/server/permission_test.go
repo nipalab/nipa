@@ -329,3 +329,30 @@ func TestNipaServer_PermissionHandlers_ResolveError(t *testing.T) {
 func strPtr(value string) *string {
 	return &value
 }
+
+func TestNipaServer_ListProjectMembers(t *testing.T) {
+	srv, repo := newTestPermissionHandler(t)
+	repo.EXPECT().ListPathPermissions(gomock.Any(), snow.ID(42)).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListMemberCandidates(gomock.Any(), snow.ID(42), "a", 10, false).Return([]*domain.ProjectMember{{ID: 5, Name: "Ada", PhotoUrl: "a.png"}}, nil)
+
+	resp, err := srv.ListProjectMembers(superAdminClaimCtx(1), &pb.ListProjectMembersRequest{Context: projectContext(), Query: "a", Limit: 10})
+
+	require.NoError(t, err)
+	require.Len(t, resp.GetMembers(), 1)
+	require.Equal(t, snow.ID(5).Base36(), resp.GetMembers()[0].GetId())
+	require.Equal(t, "Ada", resp.GetMembers()[0].GetName())
+	require.Equal(t, "a.png", resp.GetMembers()[0].GetPhotoUrl())
+}
+
+func TestNipaServer_ListProjectMembers_Errors(t *testing.T) {
+	srv, repo := newTestPermissionHandler(t)
+	repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+	_, err := srv.ListProjectMembers(superAdminClaimCtx(1), &pb.ListProjectMembersRequest{Context: &pb.ProjectContext{Org: "nope", Project: "proj"}})
+	require.Error(t, err)
+
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 7})
+	_, err = srv.ListProjectMembers(ctx, &pb.ListProjectMembersRequest{Context: projectContext()})
+	require.Error(t, err)
+}
