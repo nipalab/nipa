@@ -72,6 +72,11 @@ address as `NIPA_TEST_RATELIMIT_HOST` and focuses the run on
 specs run against the regular server on every run; the low-limit specs skip
 without `NIPA_TEST_RATELIMIT_HOST`.
 
+Two-factor-off server (free only): every free run also starts a free `nipad`
+with `MFA_ENABLED: false` on `NIPA_TEST_MFAOFF_PORT` (default 6751, log in
+`tests/.tmp/logs/free-mfaoff.log`) and exports it as `NIPA_TEST_MFAOFF_HOST`.
+The regular servers run with MFA on; the MFA-off spec skips without the host.
+
 Makefile shortcuts: `make test-client`, `make test-client-ee`,
 `make test-client-both`.
 
@@ -170,6 +175,9 @@ tests/
                           projects, branches, browser, signed chunk URLs)
     storage_quota_test.go storage quota (ee) / absent routes incl. billing
     ratelimit_test.go     rate limiting (auth_id; low-limit profile scopes)
+    mfa_test.go           two-factor login (REST, gRPC, CLI prompt/NIPA_OTP,
+                          daemon, SSH/refresh bypass, attempt cap, recovery
+                          codes, admin reset, audit, emails, MFA off)
 ```
 
 ## Adding specs

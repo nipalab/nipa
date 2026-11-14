@@ -12,6 +12,7 @@ EE_PORT="${NIPA_TEST_EE_PORT:-6747}"
 PG_PORT="${NIPA_TEST_PG_PORT:-55432}"
 S3_PORT="${NIPA_TEST_S3_PORT:-55900}"
 RATELIMIT_PORT="${NIPA_TEST_RATELIMIT_PORT:-6749}"
+MFAOFF_PORT="${NIPA_TEST_MFAOFF_PORT:-6751}"
 REDIS_PORT="${NIPA_TEST_REDIS_PORT:-6379}"
 REDIS_ADDR="${NIPA_TEST_REDIS_ADDR:-}"
 S3_BUCKET="${NIPA_TEST_S3_BUCKET:-nipa}"
@@ -26,6 +27,8 @@ RATELIMIT_PROFILE="${NIPA_TEST_RATELIMIT:-0}"
 SERVER_PID=""
 RATELIMIT_PID=""
 RATELIMIT_HOST=""
+MFAOFF_PID=""
+MFAOFF_HOST=""
 COMPOSE_STARTED=0
 PG_DSN=""
 S3_ENDPOINT=""
@@ -63,6 +66,8 @@ Environment:
                             NIPA_TEST_RATELIMIT_PORT (default 6749) and focus
                             the run on the rate limiting specs unless --filter
                             is given
+  NIPA_TEST_MFAOFF_PORT=6751 Free run only: a second free server with
+                            MFA_ENABLED=false for the two-factor-off specs
 EOF
 }
 
@@ -80,6 +85,12 @@ stop_server() {
 	fi
 	RATELIMIT_PID=""
 	RATELIMIT_HOST=""
+	if [[ -n "$MFAOFF_PID" ]] && kill -0 "$MFAOFF_PID" 2>/dev/null; then
+		kill "$MFAOFF_PID" 2>/dev/null || true
+		wait "$MFAOFF_PID" 2>/dev/null || true
+	fi
+	MFAOFF_PID=""
+	MFAOFF_HOST=""
 }
 
 stop_compose() {
@@ -227,6 +238,12 @@ RATE_LIMIT_STORE: redis
 RATE_LIMIT_REDIS_ADDR: '$REDIS_ADDR'"
 	fi
 
+	local mfa_lines="MFA_ENABLED: true
+MFA_ENCRYPTION_KEY: 'Y2xpZW50LWUyZS1tZmEta2V5LTAxMjM0NTY3ODlhYmM='"
+	if [[ "$profile" == "mfaoff" ]]; then
+		mfa_lines="MFA_ENABLED: false"
+	fi
+
 	local saas_lines=""
 	if [[ -n "$SAAS_MODE" ]]; then
 		# The free `nipad` wires no enterprise package, so SAAS_MODE is inert
@@ -244,8 +261,7 @@ SERVER_ADDRESS: 127.0.0.1
 SERVER_PORT: $port
 DATABASE_DSN: '$db_dsn'
 JWT_KEY: 'client-e2e-jwt-secret-0123456789abcdef'
-MFA_ENABLED: true
-MFA_ENCRYPTION_KEY: 'Y2xpZW50LWUyZS1tZmEta2V5LTAxMjM0NTY3ODlhYmM='
+$mfa_lines
 LOG_LEVEL: info
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 2
@@ -369,6 +385,8 @@ start_server() {
 	pid=$!
 	if [[ "$profile" == "ratelimit" ]]; then
 		RATELIMIT_PID=$pid
+	elif [[ "$profile" == "mfaoff" ]]; then
+		MFAOFF_PID=$pid
 	else
 		SERVER_PID=$pid
 	fi
@@ -390,6 +408,8 @@ start_server() {
 	done
 	if [[ "$profile" == "ratelimit" ]]; then
 		RATELIMIT_HOST="127.0.0.1:$port"
+	elif [[ "$profile" == "mfaoff" ]]; then
+		MFAOFF_HOST="127.0.0.1:$port"
 	fi
 	log "$name server is ready"
 }
@@ -409,6 +429,7 @@ run_suite() {
 	export NIPA_TEST_SAAS="$SAAS_MODE"
 	export NIPA_TEST_RATELIMIT=1
 	export NIPA_TEST_RATELIMIT_HOST="$RATELIMIT_HOST"
+	export NIPA_TEST_MFAOFF_HOST="$MFAOFF_HOST"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"
@@ -459,7 +480,7 @@ main() {
 	}
 
 	mkdir -p "$LOG_DIR"
-	rm -rf "$TMP_DIR/server-free" "$TMP_DIR/server-ee" "$TMP_DIR/server-free-ratelimit"
+	rm -rf "$TMP_DIR/server-free" "$TMP_DIR/server-ee" "$TMP_DIR/server-free-ratelimit" "$TMP_DIR/server-free-mfaoff"
 
 	local editions=()
 	case "$edition" in
@@ -494,6 +515,7 @@ main() {
 		else
 			local free_focus="$FOCUS"
 			start_server free "$FREE_PORT"
+			start_server free "$MFAOFF_PORT" mfaoff
 			if [[ "$RATELIMIT_PROFILE" == "1" ]]; then
 				start_server free "$RATELIMIT_PORT" ratelimit
 				[[ -n "$free_focus" ]] || free_focus="rate limiting"
