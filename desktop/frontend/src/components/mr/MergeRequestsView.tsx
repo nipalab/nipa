@@ -10,6 +10,8 @@ import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { usePersistedState } from "@/hooks/usePersistedState";
+import { repoSetting } from "@/lib/settings";
 
 const filters = [
   ["open", "Open"],
@@ -21,14 +23,19 @@ const filters = [
 
 type Filter = (typeof filters)[number][0];
 
+const isFilter = (v: unknown): v is Filter => filters.some(([id]) => id === v);
+
 type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number }; create?: number };
 
 export function MergeRequestsView({ root, branch, notify, open, create }: MergeRequestsViewProps) {
   const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
-  const [status, setStatus] = useState<Filter>("open");
+  const [status, setStatus] = usePersistedState<Filter>(repoSetting(root, "mrs.status"), "open", { valid: isFilter });
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<number | null>(open?.number ?? null);
+  const [selected, setSelected] = usePersistedState<number | null>(repoSetting(root, "mrs.selected"), null, {
+    valid: (v): v is number | null => v === null || typeof v === "number",
+    prefer: open?.number,
+  });
   useEffect(() => {
     if (open) setSelected(open.number);
   }, [open?.number, open?.seq]);

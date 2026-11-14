@@ -13,8 +13,10 @@ import (
 )
 
 type state struct {
-	Repos    []string  `json:"repos"`
-	Settings *Settings `json:"settings,omitempty"`
+	Repos    []string          `json:"repos"`
+	Settings *Settings         `json:"settings,omitempty"`
+	Window   *Window           `json:"window,omitempty"`
+	UI       map[string]string `json:"ui,omitempty"`
 }
 
 // Settings are the app preferences kept next to the clone list.
@@ -140,6 +142,51 @@ func (s *Store) SaveSettings(settings Settings) error {
 		return err
 	}
 	st.Settings = &settings
+	return s.save(st)
+}
+
+func (s *Store) UI() (map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	if st.UI == nil {
+		return map[string]string{}, nil
+	}
+	return st.UI, nil
+}
+
+func (s *Store) SaveUI(ui map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return err
+	}
+	st.UI = ui
+	return s.save(st)
+}
+
+func (s *Store) Window() (Window, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil || st.Window == nil {
+		return Window{}, false
+	}
+	return *st.Window, true
+}
+
+func (s *Store) SaveWindow(w Window) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return err
+	}
+	st.Window = &w
 	return s.save(st)
 }
 

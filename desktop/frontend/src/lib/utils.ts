@@ -11,22 +11,7 @@ export function errorMessage(err: unknown): string {
   return "Something went wrong";
 }
 
-export function readSetting(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-export function writeSetting(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    // Storage can be unavailable; settings then only last for the session.
-  }
-}
+export { readSetting, writeSetting } from "./settings";
 
 const PSEUDO_VERSION = /^v\d+\.\d+\.\d+-(?:\d+\.)?\d{14}-([0-9a-f]{12})(\+dirty)?$/;
 

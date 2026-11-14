@@ -217,6 +217,8 @@ export function createService(scenario: string): typeof Real {
       ]),
     Settings: () => ok({ keepInTray: true, startAtLogin: false, pollSeconds: 30, notify: { pushes: true, locks: true, reviews: true }, tools: [{ extension: ".psd", command: "/usr/bin/photopea" }, { extension: ".blend", command: "/usr/bin/blender" }], manualUpdates: false }),
     SaveSettings: (s) => ok(s),
+    UIState: () => ok({}),
+    SaveUIState: () => ok(undefined),
     UploadWorkers: () => ok(16),
     SetUploadWorkers: () => ok(undefined),
     RestartDaemon: () => ok({ version: "1.4.0", pid: 4243, port: 7070, started: true }),

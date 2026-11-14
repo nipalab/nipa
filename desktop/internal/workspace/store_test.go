@@ -110,3 +110,48 @@ func TestStore_Settings(t *testing.T) {
 	require.Error(t, err)
 	require.Error(t, s.SaveSettings(want))
 }
+
+func TestStore_UIAndWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.json")
+	s := NewStore(path)
+	ui, err := s.UI()
+	require.NoError(t, err)
+	require.NotNil(t, ui)
+	require.Empty(t, ui)
+	_, ok := s.Window()
+	require.False(t, ok)
+
+	require.NoError(t, s.Add("/work/a"))
+	require.NoError(t, s.SaveUI(map[string]string{"nipa.selectedRepo": "/work/a"}))
+	require.NoError(t, s.SaveWindow(Window{Width: 1400, Height: 900, Maximised: true}))
+
+	other := NewStore(path)
+	ui, err = other.UI()
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"nipa.selectedRepo": "/work/a"}, ui)
+	w, ok := other.Window()
+	require.True(t, ok)
+	require.Equal(t, Window{Width: 1400, Height: 900, Maximised: true}, w)
+	repos, err := other.Repos()
+	require.NoError(t, err)
+	require.Equal(t, []string{"/work/a"}, repos)
+
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	_, err = s.UI()
+	require.Error(t, err)
+	require.Error(t, s.SaveUI(nil))
+	require.Error(t, s.SaveWindow(Window{}))
+	_, ok = s.Window()
+	require.False(t, ok)
+}
+
+func TestWindow_SizeAndClosing(t *testing.T) {
+	w, h := Window{}.Size(1280, 800, 900, 560)
+	require.Equal(t, []int{1280, 800}, []int{w, h})
+	w, h = Window{Width: 500, Height: 2000}.Size(1280, 800, 900, 560)
+	require.Equal(t, []int{900, 2000}, []int{w, h})
+
+	prev := Window{Width: 1300, Height: 820}
+	require.Equal(t, Window{Width: 1300, Height: 820, Maximised: true}, prev.Closing(2560, 1440, true))
+	require.Equal(t, Window{Width: 1500, Height: 900}, prev.Closing(1500, 900, false))
+}

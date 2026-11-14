@@ -508,6 +508,28 @@ describe("locks on the Changes screen", () => {
     await userEvent.click(screen.getByRole("tab", { name: /Locks/ }));
     expect(await screen.findByText("Nothing is locked")).toBeInTheDocument();
   });
+
+  it("remembers each clone's tab and lock filter", async () => {
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    const first = view();
+    await userEvent.click(screen.getByRole("tab", { name: /Locks/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Mine/ }));
+    first.unmount();
+
+    const other = view({ ...repo, root: "/work/other" });
+    expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute("aria-selected", "true");
+    other.unmount();
+
+    view();
+    expect(screen.getByRole("tab", { name: /Locks/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("button", { name: /^Mine/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("ignores a stored tab that no longer exists", () => {
+    localStorage.setItem("nipa.repo:/work/game:tab", '"wiki"');
+    view();
+    expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute("aria-selected", "true");
+  });
 });
 
 describe("push and update", () => {

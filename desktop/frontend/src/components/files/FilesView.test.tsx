@@ -330,6 +330,22 @@ describe("FilesView", () => {
     expect(within(list()).getAllByRole("row").find((r) => r.getAttribute("aria-selected") === "true")).toBeUndefined();
   });
 
+  it("comes back to the same folder, file, tree and sort", async () => {
+    const first = view();
+    const tree = await screen.findByRole("navigation", { name: "Folders" });
+    await userEvent.click(await within(tree).findByText("Assets"));
+    await waitFor(() => expect(rowNames()).toContain("hero.png"));
+    await userEvent.click(screen.getByRole("button", { name: "Size" }));
+    await selectRow("notes.txt");
+    first.unmount();
+
+    view();
+    await waitFor(() => expect(rowNames()).toEqual(["Audio", "notes.txt", "gone.wav", "rock.png", "hero.png"]));
+    expect(within(list()).getAllByRole("row").find((r) => r.getAttribute("aria-selected") === "true")).toHaveTextContent("notes.txt");
+    expect(screen.getByRole("region", { name: "File details" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Folders" })).getByRole("button", { name: "Collapse Assets" })).toBeInTheDocument();
+  });
+
   it("resizes and remembers the list columns", async () => {
     await openAssets();
     const header = screen.getByRole("columnheader", { name: "Name" });

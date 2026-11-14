@@ -146,6 +146,16 @@ describe("MergeRequestsView list", () => {
     await userEvent.click(screen.getByRole("button", { name: "Refresh merge requests" }));
   });
 
+  it("remembers the status filter", async () => {
+    const first = view();
+    await list();
+    await userEvent.click(screen.getByRole("button", { name: "Merged" }));
+    first.unmount();
+    view();
+    await list();
+    expect(api.mergeRequests).toHaveBeenLastCalledWith("/work/game", { status: "merged", search: "", after: 0 });
+  });
+
   it("explains empty lists and failures", async () => {
     api.mergeRequests.mockResolvedValueOnce({ items: [], next: 0 }).mockRejectedValueOnce(new Error("offline"));
     view();

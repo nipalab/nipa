@@ -628,6 +628,13 @@ export function SaveSettings($in: workspace$0.Settings): $CancellablePromise<wor
 }
 
 /**
+ * SaveUIState replaces the stored interface state.
+ */
+export function SaveUIState(state: { [_ in string]?: string } | null): $CancellablePromise<void> {
+    return $Call.ByID(2584617428, state);
+}
+
+/**
  * SceneDiff compares two versions of a Unity YAML scene, prefab or asset
  * (resolving asset GUIDs through the working copy's .meta files) or of a
  * Godot text resource, object by object.
@@ -769,6 +776,13 @@ export function TakeNavigation(): $CancellablePromise<$models.Navigation | null>
  */
 export function TestLLM(endpoint: string, model: string, key: string): $CancellablePromise<void> {
     return $Call.ByID(2404892771, endpoint, model, key);
+}
+
+/**
+ * UIState returns the stored interface state.
+ */
+export function UIState(): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(1612007927);
 }
 
 /**

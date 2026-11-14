@@ -6,11 +6,15 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { ColumnResizer } from "@/components/ui/resize-handle";
 import { useColumnWidths } from "@/hooks/useColumnWidths";
+import { usePersistedState } from "@/hooks/usePersistedState";
+import { repoSetting } from "@/lib/settings";
 import { describeLockResult, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
 
 type Filter = "mine" | "team" | "all";
+
+const isFilter = (v: unknown): v is Filter => v === "mine" || v === "team" || v === "all";
 
 const isDirectory = (path: string) => !/\.[^/]+$/.test(path);
 
@@ -27,7 +31,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
   const status = useLockStatus(root);
   const columns = useColumnWidths("locks", COLUMN_DEFAULTS, 64);
   const { lock, unlock, refresh } = useLockActions(root, notify);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = usePersistedState<Filter>(repoSetting(root, "locks.filter"), "all", { valid: isFilter });
   const [query, setQuery] = useState("");
   const [releasing, setReleasing] = useState<FileLock | null>(null);
   const [picking, setPicking] = useState(false);

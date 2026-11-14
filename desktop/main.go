@@ -63,6 +63,7 @@ func main() {
 		},
 	)
 	svc.Prefs = store
+	svc.Layout = store
 	svc.Events = func(name string, data any) { app.Event.Emit(name, data) }
 	svc.PickFileFunc = func(dir string) (string, error) {
 		return app.Dialog.OpenFile().
@@ -116,6 +117,21 @@ func main() {
 		}()
 	}
 
+	saveWindow := func() {
+		if window == nil || !window.IsVisible() {
+			return
+		}
+		prev, _ := store.Window()
+		w, h := window.Size()
+		if err := store.SaveWindow(prev.Closing(w, h, window.IsMaximised())); err != nil {
+			log.Printf("save window state: %v", err)
+		}
+	}
+	quit := func() {
+		saveWindow()
+		app.Quit()
+	}
+
 	app = application.New(application.Options{
 		Name:        "Nipa",
 		Description: "Version control for game teams",
@@ -124,6 +140,10 @@ func main() {
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 		Windows:     application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
+		ShouldQuit: func() bool {
+			saveWindow()
+			return true
+		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.nipalab.nipa.desktop",
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
@@ -138,13 +158,20 @@ func main() {
 
 	prefs, _ := store.Settings()
 	background := slices.Contains(os.Args[1:], autostart.Arg) && prefs.KeepInTray
+	saved, _ := store.Window()
+	width, height := saved.Size(1280, 800, 900, 560)
+	startState := application.WindowStateNormal
+	if saved.Maximised {
+		startState = application.WindowStateMaximised
+	}
 	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Nipa",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  900,
-		MinHeight: 560,
-		Hidden:    background,
+		Title:      "Nipa",
+		Width:      width,
+		Height:     height,
+		MinWidth:   900,
+		MinHeight:  560,
+		StartState: startState,
+		Hidden:     background,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 44,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -154,6 +181,7 @@ func main() {
 		URL:              "/",
 	})
 	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		saveWindow()
 		if st, err := store.Settings(); err == nil && st.KeepInTray {
 			e.Cancel()
 			window.Hide()
@@ -172,7 +200,7 @@ func main() {
 			show()
 			svc.Navigate(e.Target)
 		case tray.ActionQuit:
-			app.Quit()
+			quit()
 		}
 	}
 	updateTray := func(list []service.RepoActivity) {

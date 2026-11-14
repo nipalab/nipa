@@ -109,6 +109,20 @@ describe("HistoryView", () => {
     expect(within(list).queryByRole("button", { name: "Load older commits" })).not.toBeInTheDocument();
   });
 
+  it("comes back to the selected commit unless a link opens another", async () => {
+    const first = view();
+    await userEvent.click(within(await commitList()).getByText("Paint hero"));
+    expect(await screen.findByRole("heading", { name: "Paint hero" })).toBeInTheDocument();
+    first.unmount();
+
+    const again = view();
+    expect(await screen.findByRole("heading", { name: "Paint hero" })).toBeInTheDocument();
+    again.unmount();
+
+    view({ path: "" });
+    expect(await screen.findByRole("heading", { name: "Merge feature" })).toBeInTheDocument();
+  });
+
   it("shows the selected commit with its changed files", async () => {
     view();
     expect(await screen.findByRole("heading", { name: "Merge feature" })).toBeInTheDocument();

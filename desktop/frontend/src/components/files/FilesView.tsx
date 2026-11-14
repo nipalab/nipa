@@ -5,8 +5,10 @@ import { desktop, type Commit, type Repo } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { ancestors, dirsToRefresh, lockFor, nextSort, parentOf, readViewMode, sortEntries, writeViewMode, type Row, type Sort, type ViewMode } from "@/lib/files";
+import { repoSetting } from "@/lib/settings";
 import { cn, errorMessage } from "@/lib/utils";
 import { FileDetail } from "./FileDetail";
 import { FileMenu, type FileAction } from "./FileMenu";
@@ -26,16 +28,22 @@ type FilesViewProps = {
 
 type Menu = { row: Row; x: number; y: number } | null;
 
+const isString = (v: unknown): v is string => typeof v === "string";
+const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString);
+const isSort = (v: unknown): v is Sort => !!v && typeof v === "object" && isString((v as Sort).key) && typeof (v as Sort).desc === "boolean";
+
 export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAddSparse }: FilesViewProps) {
   const root = repo.root;
   const queryClient = useQueryClient();
   const treeSize = useResizableWidth("files-tree", { initial: 220, min: 140, max: 480 });
   const detailSize = useResizableWidth("files-detail", { initial: 380, min: 280, max: 960 });
-  const [dir, setDir] = useState("");
-  const [selected, setSelected] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [dir, setDir] = usePersistedState(repoSetting(root, "files.dir"), "", { valid: isString });
+  const [selected, setSelected] = usePersistedState(repoSetting(root, "files.selected"), "", { valid: isString });
+  const [expandedList, setExpandedList] = usePersistedState<string[]>(repoSetting(root, "files.expanded"), [], { valid: isStringList });
+  const expanded = useMemo(() => new Set(expandedList), [expandedList]);
+  const setExpanded = (update: (prev: Set<string>) => Set<string>) => setExpandedList((prev) => [...update(new Set(prev))]);
   const [mode, setModeState] = useState<ViewMode>(readViewMode);
-  const [sort, setSort] = useState<Sort>({ key: "name", desc: false });
+  const [sort, setSort] = usePersistedState<Sort>(repoSetting(root, "files.sort"), { key: "name", desc: false }, { valid: isSort });
   const [menu, setMenu] = useState<Menu>(null);
   const pendingOpen = useRef("");
 

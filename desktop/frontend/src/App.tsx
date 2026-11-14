@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { Welcome } from "@/components/Welcome";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
 const SELECTED_KEY = "nipa.selectedRepo";
@@ -130,6 +131,7 @@ export default function App() {
     mutationFn: desktop.removeRepo,
     onSuccess: (_, root) => {
       queryClient.setQueryData<Repo[]>(["repos"], (old = []) => old.filter((r) => r.root !== root));
+      removeSettings(repoSettingsPrefix(root));
       if (selected === root) select(null);
     },
     onError: (err) => setToast(errorMessage(err)),

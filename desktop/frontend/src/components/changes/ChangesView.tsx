@@ -17,6 +17,8 @@ import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { usePersistedState } from "@/hooks/usePersistedState";
+import { repoSetting } from "@/lib/settings";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 const POLL_MS = 30_000;
@@ -33,6 +35,9 @@ type ChangesViewProps = {
   onOpenFile?: (path: string) => void;
   focusMessage?: number;
 };
+
+const isSelection = (v: unknown): v is Selection | null =>
+  v === null || (!!v && typeof v === "object" && typeof (v as Selection).path === "string" && typeof (v as Selection).staged === "boolean");
 
 function firstFile(c: ChangeSet): Selection | null {
   if (c.staged.length > 0) return { path: c.staged[0].path, staged: true };
@@ -51,7 +56,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
 export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
-  const [picked, setPicked] = useState<Selection | null>(null);
+  const [picked, setPicked] = usePersistedState<Selection | null>(repoSetting(root, "changes.selected"), null, { valid: isSelection });
   const [discarding, setDiscarding] = useState<FileChange | null>(null);
   const [layout, setLayoutState] = useState<DiffLayout>(() => (readSetting(LAYOUT_KEY) === "split" ? "split" : "unified"));
 

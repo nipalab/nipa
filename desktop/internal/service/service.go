@@ -91,6 +91,9 @@ type Service struct {
 	Prefs SettingsStore
 	// Keys stores the generation API key; nil uses the OS keyring.
 	Keys LLMKeyStore
+	// Layout stores the interface state (tabs, panes, selections); nil keeps
+	// it for the session only.
+	Layout UIStore
 
 	dial  Dialer
 	store RepoStore
