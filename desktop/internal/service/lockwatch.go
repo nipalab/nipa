@@ -43,7 +43,8 @@ func (s *Service) setLockWatch(root, path string, watch bool) error {
 }
 
 // watchedLockNotifications turns a released lock that covers watched paths
-// into "lock it now" notifications and drops those watches.
+// into "lock it now" notifications. The caller drops a watch once its
+// notification was delivered.
 func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []Notification {
 	if e.Kind != "lock_released" || s.Watches == nil {
 		return nil
@@ -56,9 +57,6 @@ func (s *Service) watchedLockNotifications(name, root string, e TeamEvent) []Not
 	var out []Notification
 	for _, p := range watched {
 		if p != released && !strings.HasPrefix(p, released+"/") {
-			continue
-		}
-		if s.Watches.SetLockWatch(root, p, false) != nil {
 			continue
 		}
 		out = append(out, Notification{

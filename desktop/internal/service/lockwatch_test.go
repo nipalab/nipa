@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -61,23 +62,12 @@ func TestService_WatchedLockNotifications(t *testing.T) {
 	require.Len(t, got, 2)
 	require.Equal(t, "g: art/a.psd is free", got[0].Title)
 	require.Equal(t, Navigation{Root: "/w", Tab: "locks", Path: "art/a.psd", Action: "lock"}, got[0].Target)
-	require.Equal(t, []string{"audio/x.wav"}, w.paths["/w"])
-	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "art"}))
-	require.Len(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "audio/x.wav"}), 1)
+	require.Len(t, w.paths["/w"], 3)
 
 	w.err = errors.New("disk")
 	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
-	w.err = nil
-	w.paths["/w"] = []string{"x"}
-	failing := &failingSet{memWatches: w}
-	s.Watches = failing
-	require.Empty(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
 	require.Nil(t, (&Service{}).watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
 }
-
-type failingSet struct{ *memWatches }
-
-func (f *failingSet) SetLockWatch(string, string, bool) error { return errors.New("write") }
 
 func TestService_ActivityNotifiesWatchedLock(t *testing.T) {
 	h := newHarness()
@@ -98,4 +88,24 @@ func TestService_ActivityNotifiesWatchedLock(t *testing.T) {
 func TestNavigationFromDataCarriesLockAction(t *testing.T) {
 	n := Notification{Target: Navigation{Root: "/w", Tab: "locks", Path: "a", Action: "lock"}}
 	require.Equal(t, n.Target, NavigationFromData(n.Data()))
+}
+
+func TestService_RecordActivityKeepsWatchWhenNotifierFails(t *testing.T) {
+	w := &memWatches{paths: map[string][]string{"/w": {"art/a.psd"}}}
+	var sent int
+	notifyErr := errors.New("no daemon")
+	s := &Service{Watches: w, Notifier: func(Notification) error { sent++; return notifyErr }}
+	ev := &daemonpb.RepoActivity{Events: []*daemonpb.TeamEvent{{Kind: daemon.EventLockReleased, Path: "art/a.psd"}}}
+
+	s.followers = map[string]context.CancelFunc{"/w": func() {}}
+	s.activity = map[string]RepoActivity{}
+	s.recordActivity(context.Background(), "/w", ev)
+	require.Equal(t, 1, sent)
+	require.Equal(t, []string{"art/a.psd"}, w.paths["/w"])
+
+	notifyErr = nil
+	s.followers = map[string]context.CancelFunc{"/w": func() {}}
+	s.activity = map[string]RepoActivity{}
+	s.recordActivity(context.Background(), "/w", ev)
+	require.Empty(t, w.paths["/w"])
 }
