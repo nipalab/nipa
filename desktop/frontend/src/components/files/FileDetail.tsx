@@ -1,6 +1,6 @@
 import { Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, History as HistoryIcon, Image as ImageIcon, Loader2, Lock, RotateCcw } from "lucide-react";
+import { AlertTriangle, History as HistoryIcon, Image as ImageIcon, Loader2, Lock, RotateCcw, X } from "lucide-react";
 import { desktop, type Commit, type FileLock } from "@/api/desktop";
 import { BlameToggle } from "@/components/changes/BlameToggle";
 import { viewerFor } from "@/components/changes/DiffViewer";
@@ -29,9 +29,10 @@ type DetailProps = {
   onRestore: (commit: Commit) => void;
   onShowCommit: (id: string) => void;
   onOpenFile?: (path: string) => void;
+  onClose?: () => void;
 };
 
-export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit, onOpenFile }: DetailProps) {
+export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit, onOpenFile, onClose }: DetailProps) {
   const info = useQuery({ queryKey: ["file", root, row.path, "info", branch], queryFn: () => desktop.fileInfo(root, branch, row.path), retry: false });
   const onDisk = row.status !== "missing" && row.status !== "deleted";
   const view = useQuery({ queryKey: ["file", root, row.path, "view"], queryFn: () => desktop.fileView(root, row.path), enabled: onDisk, retry: false });
@@ -53,6 +54,11 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
             {row.name}
           </h2>
           {row.status && <StatusLetter status={row.status} />}
+          {onClose && (
+            <button type="button" onClick={onClose} title="Close" aria-label="Close file details" className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
         <ActionBar actions={actions} />
       </header>

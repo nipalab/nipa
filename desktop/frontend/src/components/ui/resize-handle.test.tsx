@@ -86,6 +86,22 @@ describe("resizer wrappers", () => {
     expect(size.reset).toHaveBeenCalled();
   });
 
+  it("grows a pane resized from its left edge when dragged left", async () => {
+    const size = { width: 300, min: 200, max: 500, preview: vi.fn(), commit: vi.fn(), reset: vi.fn() };
+    render(<PaneResizer size={size} label="Resize details" edge="left" />);
+    const handle = screen.getByRole("separator", { name: "Resize details" });
+    expect(handle.className).toContain("-left-[3px]");
+    fireEvent.pointerDown(handle, { button: 0, clientX: 100 });
+    fireEvent.pointerMove(handle, { clientX: 60 });
+    fireEvent.pointerUp(handle);
+    expect(size.commit).toHaveBeenCalledWith(340);
+    handle.focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(size.commit).toHaveBeenLastCalledWith(316);
+    await userEvent.keyboard("{ArrowRight}");
+    expect(size.commit).toHaveBeenLastCalledWith(284);
+  });
+
   it("binds one column of a table", async () => {
     const sizes = { width: () => 120, min: 48, max: 1200, preview: vi.fn(), commit: vi.fn(), reset: vi.fn() };
     render(<ColumnResizer sizes={sizes} id="path" label="Path" />);

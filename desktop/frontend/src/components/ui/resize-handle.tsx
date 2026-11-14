@@ -9,13 +9,15 @@ type ResizeHandleProps = {
   onPreview: (width: number) => void;
   onCommit: (width: number) => void;
   onReset: () => void;
+  edge?: "left" | "right";
   className?: string;
 };
 
 const STEP = 16;
 const BIG_STEP = 64;
 
-export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onReset, className }: ResizeHandleProps) {
+export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onReset, edge = "right", className }: ResizeHandleProps) {
+  const dir = edge === "left" ? -1 : 1;
   const start = useRef<{ x: number; width: number } | null>(null);
   const last = useRef(value);
   const [dragging, setDragging] = useState(false);
@@ -42,7 +44,7 @@ export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onRe
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!start.current) return;
-    last.current = clamp(start.current.width + e.clientX - start.current.x);
+    last.current = clamp(start.current.width + (e.clientX - start.current.x) * dir);
     onPreview(last.current);
   };
 
@@ -59,7 +61,7 @@ export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onRe
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? BIG_STEP : STEP;
-    const next = { ArrowLeft: value - step, ArrowRight: value + step, Home: min, End: max }[e.key];
+    const next = { ArrowLeft: value - step * dir, ArrowRight: value + step * dir, Home: min, End: max }[e.key];
     if (next === undefined) return;
     e.preventDefault();
     onCommit(clamp(next));
@@ -84,7 +86,8 @@ export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onRe
       onDoubleClick={onReset}
       onKeyDown={onKeyDown}
       className={cn(
-        "no-drag group absolute inset-y-0 -right-[3px] z-20 flex w-[6px] cursor-col-resize justify-center outline-none",
+        "no-drag group absolute inset-y-0 z-20 flex w-[6px] cursor-col-resize justify-center outline-none",
+        edge === "left" ? "-left-[3px]" : "-right-[3px]",
         className,
       )}
     >
@@ -100,9 +103,9 @@ export function ResizeHandle({ value, min, max, label, onPreview, onCommit, onRe
 
 type PaneSize = { width: number; min: number; max: number; preview: (w: number) => void; commit: (w: number) => void; reset: () => void };
 
-export function PaneResizer({ size, label }: { size: PaneSize; label: string }) {
+export function PaneResizer({ size, label, edge }: { size: PaneSize; label: string; edge?: "left" | "right" }) {
   return (
-    <ResizeHandle value={size.width} min={size.min} max={size.max} label={label} onPreview={size.preview} onCommit={size.commit} onReset={size.reset} />
+    <ResizeHandle value={size.width} min={size.min} max={size.max} label={label} onPreview={size.preview} onCommit={size.commit} onReset={size.reset} edge={edge} />
   );
 }
 

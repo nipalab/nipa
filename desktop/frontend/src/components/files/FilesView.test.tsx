@@ -312,6 +312,38 @@ describe("FilesView", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("opens the details only for a selected file, narrow, and closes them", async () => {
+    await openAssets();
+    expect(screen.queryByRole("region", { name: "File details" })).not.toBeInTheDocument();
+    await selectRow("Audio");
+    expect(screen.queryByRole("region", { name: "File details" })).not.toBeInTheDocument();
+    await selectRow("notes.txt");
+    const detail = screen.getByRole("region", { name: "File details" });
+    expect(detail.style.width).toBe("380px");
+    const handle = within(detail).getByRole("separator", { name: "Resize file details" });
+    fireEvent.pointerDown(handle, { button: 0, clientX: 500 });
+    fireEvent.pointerMove(handle, { clientX: 460 });
+    fireEvent.pointerUp(handle);
+    expect(detail.style.width).toBe("420px");
+    await userEvent.click(within(detail).getByRole("button", { name: "Close file details" }));
+    expect(screen.queryByRole("region", { name: "File details" })).not.toBeInTheDocument();
+    expect(within(list()).getAllByRole("row").find((r) => r.getAttribute("aria-selected") === "true")).toBeUndefined();
+  });
+
+  it("resizes and remembers the list columns", async () => {
+    await openAssets();
+    const header = screen.getByRole("columnheader", { name: "Name" });
+    expect(header.style.width).toBe("280px");
+    const handle = screen.getByRole("separator", { name: "Resize Name column" });
+    fireEvent.pointerDown(handle, { button: 0, clientX: 100 });
+    fireEvent.pointerMove(handle, { clientX: 160 });
+    fireEvent.pointerUp(handle);
+    expect(header.style.width).toBe("340px");
+    const cell = within(list()).getAllByRole("row")[1].querySelector<HTMLElement>("[role=cell]")!;
+    expect(cell.style.width).toBe("340px");
+    expect(JSON.parse(localStorage.getItem("nipa.layout.cols.files") ?? "{}")).toEqual({ name: 340 });
+  });
+
   it("explains missing files and a server it cannot reach", async () => {
     api.fileInfo.mockResolvedValue({ entry: entry("Assets/gone.wav"), lastCommit: null, lastCommitError: "offline" });
     await openAssets();
@@ -336,7 +368,7 @@ describe("FilesView", () => {
     fireEvent.doubleClick(docs);
     expect(props.onAddSparse).toHaveBeenCalledWith("Docs");
     await userEvent.click(docs);
-    expect(screen.getByText("This folder is not in your checkout.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "File details" })).not.toBeInTheDocument();
     const tree = screen.getByRole("navigation", { name: "Folders" });
     await userEvent.click(within(tree).getByRole("button", { name: "Docs" }));
     await userEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Download this folder" }));

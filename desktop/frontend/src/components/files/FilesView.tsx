@@ -30,7 +30,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
   const root = repo.root;
   const queryClient = useQueryClient();
   const treeSize = useResizableWidth("files-tree", { initial: 220, min: 140, max: 480 });
-  const listSize = useResizableWidth("files-list", { initial: 460, min: 260, max: 1200 });
+  const detailSize = useResizableWidth("files-detail", { initial: 380, min: 280, max: 960 });
   const [dir, setDir] = useState("");
   const [selected, setSelected] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -45,6 +45,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
   const listing = useDirectory(repo, dir);
   const rows = useMemo(() => sortEntries(listing.rows, sort, locks), [listing.rows, sort, locks]);
   const row = rows.find((r) => r.path === selected);
+  const detailRow = row && !row.isDir && !row.remote ? row : undefined;
 
   const reveal = (path: string) => {
     setDir(parentOf(path));
@@ -188,7 +189,7 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
         <FolderTree repo={repo} current={dir} expanded={expanded} onToggle={toggle} onSelect={browse} onMenu={(r, x, y) => setMenu({ row: r, x, y })} />
         <PaneResizer size={treeSize} label="Resize folder tree" />
       </aside>
-      <section className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
+      <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
           <nav aria-label="Folder path" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden text-[12px]">
             <Crumb onClick={() => browse("")} current={dir === ""}>
@@ -244,26 +245,25 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
             />
           )}
         </div>
-        <PaneResizer size={listSize} label="Resize file list" />
       </section>
-      <section className="min-w-0 flex-1" aria-label="File details">
-        {row && !row.isDir && !row.remote ? (
+      {detailRow && (
+        <section className="relative shrink-0 border-l border-border" aria-label="File details" ref={detailSize.ref} style={{ width: detailSize.width }}>
+          <PaneResizer size={detailSize} label="Resize file details" edge="left" />
           <FileDetail
-            key={row.path}
+            key={detailRow.path}
             root={root}
             branch={repo.branch}
-            row={row}
+            row={detailRow}
             locks={locks}
-            actions={actionsFor(row)}
+            actions={actionsFor(detailRow)}
             busy={busy}
-            onRestore={(commit) => onRestore(row.path, commit)}
-            onShowCommit={(id) => onHistory(row.path, id)}
+            onRestore={(commit) => onRestore(detailRow.path, commit)}
+            onShowCommit={(id) => onHistory(detailRow.path, id)}
             onOpenFile={reveal}
+            onClose={() => setSelected("")}
           />
-        ) : (
-          <Centered>{row?.remote ? "This folder is not in your checkout." : "Select a file to see it here."}</Centered>
-        )}
-      </section>
+        </section>
+      )}
       {menu && <FileMenu x={menu.x} y={menu.y} actions={actionsFor(menu.row)} onClose={() => setMenu(null)} />}
     </div>
   );
