@@ -94,25 +94,24 @@ func resolveConflict(ctx context.Context, rp *repo, c *usecase.Conflicts, req *d
 		if set == nil {
 			return clientDomain.NewUserError("no merge or revert is waiting")
 		}
-		rev := set.Ours.ID
+		_, ours, theirs := usecase.ConflictSides(set, path)
 		if req.GetChoice() == "theirs" {
-			rev = set.Theirs.ID
+			return takeVersion(ctx, rp, c, path, theirs)
 		}
-		return takeVersion(ctx, rp, c, path, rev)
+		return takeVersion(ctx, rp, c, path, ours)
 	default:
 		return status.Errorf(codes.InvalidArgument, "unknown choice %q: use ours, theirs, content, working or delete", req.GetChoice())
 	}
 }
 
-func takeVersion(ctx context.Context, rp *repo, c *usecase.Conflicts, path, rev string) error {
-	if rev == "" {
+func takeVersion(ctx context.Context, rp *repo, c *usecase.Conflicts, path string, side *usecase.BlobRequest) error {
+	if side == nil {
 		return c.Resolve(ctx, path, usecase.Resolution{Delete: true})
 	}
 	if rp.diff == nil {
 		return status.Error(codes.FailedPrecondition, "diff is not configured")
 	}
-	req := usecase.BlobRequest{Source: usecase.BlobRevision, Revision: rev, Path: path}
-	err := rp.diff.ReadBlob(ctx, rp.root, req, func(entry diff.Entry, r io.Reader) error {
+	err := rp.diff.ReadBlob(ctx, rp.root, *side, func(entry diff.Entry, r io.Reader) error {
 		return c.Resolve(ctx, path, usecase.Resolution{Content: r, AllowMarkers: true, Mode: entry.Mode})
 	})
 	if errors.Is(err, usecase.ErrFileMissing) {

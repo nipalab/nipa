@@ -20,6 +20,10 @@ type gcLocalRepo interface {
 	cacheLocalRepo
 }
 
+type shelfStateLoader interface {
+	LoadShelfState() (*clientDomain.ShelfState, error)
+}
+
 type sharedLocker interface {
 	LockShared() (func(), error)
 }
@@ -83,6 +87,15 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 	}
 	if merge != nil || revert != nil {
 		return PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
+	}
+	if l, ok := lr.(shelfStateLoader); ok {
+		shelf, err := l.LoadShelfState()
+		if err != nil {
+			return PruneResult{}, err
+		}
+		if shelf != nil {
+			return PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
+		}
 	}
 	snapshot, err := lr.Snapshot()
 	if err != nil {

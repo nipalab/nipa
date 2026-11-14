@@ -24,15 +24,15 @@ const modeKey = "nipa.imageMode";
 const blinkMs = 700;
 
 // imageRefs maps a change onto its two file versions: a commit's parent and
-// commit revisions, or for the working copy the last synced snapshot before
-// and the working file after.
+// commit revisions (or the blob sources a shelf names), or for the working
+// copy the last synced snapshot before and the working file after.
 export function imageRefs(diff: FileDiff): { old: ImageRef | null; next: ImageRef | null } {
   const oldPath = diff.old?.path || diff.oldPath || diff.path;
   const newPath = diff.new?.path || diff.path;
   if (diff.newRevision) {
     return {
-      old: diff.old ? { source: "revision", revision: diff.oldRevision, path: oldPath } : null,
-      next: diff.new ? { source: "revision", revision: diff.newRevision, path: newPath } : null,
+      old: diff.old ? { source: diff.oldSource || "revision", revision: diff.oldRevision, path: oldPath } : null,
+      next: diff.new ? { source: diff.newSource || "revision", revision: diff.newRevision, path: newPath } : null,
     };
   }
   return {
@@ -44,6 +44,7 @@ export function imageRefs(diff: FileDiff): { old: ImageRef | null; next: ImageRe
 // viewerKey caches a viewer's data per file version: working-copy keys are
 // invalidated when files change, commit keys never go stale.
 export function viewerKey(root: string, diff: FileDiff, kind: string): unknown[] {
+  if (diff.newSource) return ["shelf", root, diff.oldSource ?? "", diff.newRevision, diff.path, kind];
   return diff.newRevision ? ["commit", root, diff.newRevision, diff.path, kind] : ["diff", root, diff.path, kind];
 }
 

@@ -15,7 +15,7 @@ const previewUnsupported = 415
 // ImageRef names one version of an image: the working file, the last synced
 // snapshot or a revision.
 type ImageRef struct {
-	Source   string `json:"source"` // working, snapshot, revision
+	Source   string `json:"source"` // working, snapshot, revision, shelf, shelf_base
 	Revision string `json:"revision,omitempty"`
 	Path     string `json:"path"`
 }

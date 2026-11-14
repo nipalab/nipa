@@ -133,6 +133,18 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   "Merge scene" for conflicted Godot `.tscn`/`.tres` in the text resolver
   via `MergeScene` (daemon `MergeGodotResource`; a clean merge resolves
   with the content, conflicts are listed above the line editor),
+  shelves via `Shelves`/`Shelve`/`ApplyShelf`/`AbortShelfApply`/`DropShelf`/
+  `ShelfFiles` (daemon `ShelveCreate`/`ShelveApply`/`ShelveList`/
+  `ShelveDrop`/`ShelveFiles`; "Shelve…" and the row icon open
+  `changes/ShelveDialog.tsx`, a checklist of every change; the collapsible
+  `changes/ShelvesPanel.tsx` under the file list applies, keeps or deletes
+  and previews shelved files in the diff pane with `FileDiff.oldSource`/
+  `newSource` `shelf_base`/`shelf`; a conflicted apply waits as
+  `pending: "shelf"` with an Abort banner and the Conflicts tab), and
+  "Shelve and continue" before Update, branch switch and tag checkout
+  (`changes/SyncGuard.tsx` `useSyncGuard` over `SyncPlan`, daemon
+  `SyncPlan`: only the local changes the operation would replace are
+  shelved, then the operation runs; a failed check never blocks),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -181,7 +193,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
+  merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, shelve, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, blame (`blame.go`: path log via
   `GetPathCommitLog` capped at 500 scanned commits, each version through a
@@ -1232,7 +1244,42 @@ provenance flows. `Blame` (`daemon/blame.go`, shared slot, `SerialBlame`
 over `RepoOps.Blame` = `usecase.Blame`) streams `progress` per version read
 and then the `result` (lines with `commit_id`/`uncommitted`, the commits
 they point at, `truncated`). `LoginSSH` takes an optional `key_path` +
-`passphrase` (exactly that key, no fallback, never logged).
+`passphrase` (exactly that key, no fallback, never logged). Shelves
+(`daemon/shelve.go` over `usecase.Shelve`, flow below): `ShelveCreate`/
+`ShelveApply` (exclusive slot, `OpEvent`, results `shelve`/`shelve_apply`,
+`abort` on apply), `ShelveList`/`ShelveDrop`/`ShelveFiles` (shared slot);
+`SyncPlan` (shared slot) answers `usecase.OverwrittenPaths` over
+`Update.TargetTree` (`UpdateRunner.TargetTree`) and a fresh status.
+
+Flow for `nipa shelve [-m name] [-u] [-- paths]`, `nipa shelve list|show [-p]|
+apply <id> [--keep]|apply --continue|apply --abort|drop` (local only;
+`usecase/shelve.go`): a shelf is `.nipa/shelves/<id>/` (`manifest.json` =
+`domain.Shelf`, entries with the shelved `ShelfFile` and the `Base` version,
+`staged`/`untracked`/`locked` flags, `base_stored` when the base text chunks
+were copied in; chunks under the shelf's own `objects/`), written by
+`localrepo.CreateShelf` in a `.tmp-<id>` folder (fsynced files and dirs,
+then one rename; stale temps swept after an hour), so `PruneObjects` never
+sees shelf content and `DropShelf` removes a folder. `Create` refuses a
+pending merge, revert or shelf apply, picks changed paths (status
+candidates; untracked only when named exactly or with `IncludeUntracked`),
+makes the snapshot content of the tracked ones available first
+(`ensureSnapshotContent`), writes the shelf, and only then unstages,
+restores tracked files (`WorkingCopy.restoreSnapshot`, Restore's core) and
+removes new files with their emptied folders. `Apply` refuses entries with
+local changes or outside the sparse set, then runs `applyThreeWay` (base =
+the shelved base, ours = the synced snapshot, theirs = the shelf; a
+`shelfOverlay` serves shelf chunks, `noDownload` refuses fetches), unstages
+what the shelf had unstaged and every conflict, and either drops the shelf
+(unless keep) or saves `shelf_state` (`ShelfState`: applied paths,
+conflicts, kinds, keep). While it is pending, status reports
+`pending: shelf`, `Conflicts.List` answers op `shelf` (`ConflictSides`:
+base `shelf_base`, ours snapshot, theirs `shelf`), `Resolve` does not stage
+and the last resolution clears the state and drops the shelf unless kept;
+`Continue` (text free of markers) and `Abort` (applied paths back to the
+snapshot, shelf kept) end it; push, merge, revert, shelve and apply refuse
+(`refuseShelfPending`) and the cache GC skips. `Diff.ReadBlob` serves
+`BlobShelf`/`BlobShelfBase` (base from the shelf when stored, else from the
+base commit).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
 `internal/usecase.StorageLedger` is attached with `Chunk.WithStorageLedger`;
@@ -1669,7 +1716,8 @@ and `nipa mcp` stay silent.
   is absent while on a branch) written
   atomically via `atomicWrite`, `nipa.db` (SQLite, `modernc.org/sqlite`,
   `_pragma=foreign_keys(ON)` in the DSN — cascades silently don't fire otherwise),
-  and `objects/` with Git-style loose chunk objects.
+  `objects/` with Git-style loose chunk objects, and `shelves/` (one folder
+  per local shelf, outside the object cache).
 - Schema (in `schema/schema.sql`, embedded via `//go:embed`, also the sqlc source):
   - `tree_nodes(path TEXT PRIMARY KEY, parent_path, hash BLOB, mode)`
   - `files(path TEXT PRIMARY KEY, tree_path FK->tree_nodes ON DELETE CASCADE, hash,
@@ -1677,7 +1725,8 @@ and `nipa mcp` stay silent.
     the concatenated 32-byte hashes of the file's chunks (metadata only, no
     content); `encoding` is `raw` or `zstd` and refers to the stored chunk bytes.
   - `meta(key PK, value)` — stores `tree_hash`, the pinned `commit_id` /
-    `commit_hash`, and the pending `merge_state` / `revert_state` JSON.
+    `commit_hash`, and the pending `merge_state` / `revert_state` /
+    `shelf_state` JSON.
   - `staged_files(path PK, staged_at)`.
   - `pinned_paths(path PK, pinned_at)` — lock pins (`PinPaths`/`UnpinPaths`/
     `ListPins`), stored normalized like snapshot paths
@@ -1703,8 +1752,8 @@ and `nipa mcp` stay silent.
   `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps the
   chunks of the `Snapshot()` files `cachedInPristine` accepts (zstd text, or
   raw content covered by a pin), so binaries are not kept twice, and it is a
-  no-op while `merge_state` or
-  `revert_state` is pending. It runs after a successful clone, update, switch,
+  no-op while `merge_state`,
+  `revert_state` or `shelf_state` is pending. It runs after a successful clone, update, switch,
   tag switch, `Push.Run` and `WorkingCopy.Restore`. `Diff.Run`/`ReadBlob`
   never prune mid-flow, because callers such as `aicontext` (`--generate`),
   `assetscan.BlobLoader` and the MCP asset tools read blobs after `Run`;

@@ -73,6 +73,10 @@ export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
               <span className="truncate">
                 Merging <Mono>{set.theirs.label}</Mono> into <Mono>{set.ours.label}</Mono>
               </span>
+            ) : set.op === "shelf" ? (
+              <span className="truncate" title={set.theirs.label}>
+                Applying {set.theirs.label}
+              </span>
             ) : (
               <span className="truncate" title={set.base.label}>
                 Reverting {set.base.label}
@@ -80,7 +84,7 @@ export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
             )}
           </p>
           <p className={cn("text-[11px]", left ? "text-muted-foreground" : "text-success")}>
-            {left ? `${set.files.length - left} of ${set.files.length} resolved` : `All ${set.files.length} resolved: ${set.op === "merge" ? "finish the merge" : "continue the revert"} above.`}
+            {left ? `${set.files.length - left} of ${set.files.length} resolved` : `All ${set.files.length} resolved: ${set.op === "merge" ? "finish the merge" : set.op === "shelf" ? "the shelf is applied" : "continue the revert"} above.`}
           </p>
         </div>
         <ul className="min-h-0 flex-1 overflow-auto py-1" aria-label="Conflicted files">

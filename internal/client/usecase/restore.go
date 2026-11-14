@@ -45,6 +45,12 @@ func (w *WorkingCopy) Restore(ctx context.Context, targets []string) (err error)
 		}
 	}
 
+	return w.restoreSnapshot(ctx, paths, tracked)
+}
+
+// restoreSnapshot re-materializes the given tracked paths from the synced
+// snapshot, skipping files that already match it.
+func (w *WorkingCopy) restoreSnapshot(ctx context.Context, paths []string, tracked map[string]domain.SnapshotFile) error {
 	statCache, err := w.localRepo.LoadStatCache()
 	if err != nil {
 		return err

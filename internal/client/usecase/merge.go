@@ -118,6 +118,9 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, err
 	}
 
+	if err := refuseShelfPending(m.localRepo); err != nil {
+		return nil, err
+	}
 	pending, err := m.localRepo.LoadMergeState()
 	if err != nil {
 		return nil, err

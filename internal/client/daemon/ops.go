@@ -7,6 +7,7 @@ import (
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/usecase"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -48,6 +49,7 @@ type UpdateRunner interface {
 	Switch(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
 	SwitchTag(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
 	SetSparse(root string, paths []string) error
+	TargetTree(ctx context.Context, root string, target usecase.SyncTarget) (*serverDomain.TreeNode, error)
 }
 
 type PushRunner interface {

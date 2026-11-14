@@ -54,10 +54,17 @@ const api = vi.hoisted(() => ({
   fileLink: vi.fn(),
   assetRefs: vi.fn(),
   provenance: vi.fn(),
+  shelves: vi.fn(),
+  shelve: vi.fn(),
+  applyShelf: vi.fn(),
+  abortShelfApply: vi.fn(),
+  dropShelf: vi.fn(),
+  shelfFiles: vi.fn(),
+  syncPlan: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-import { describeMerge, describeRevert, RepoView } from "./RepoView";
+import { describeMerge, describeRevert, describeShelve, RepoView } from "./RepoView";
 
 const repo: Repo = { root: "/work/game", name: "game", url: "https://nipa.test/studio/game", branch: "main", sparse: null };
 
@@ -134,6 +141,8 @@ beforeEach(() => {
   api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.assetRefs.mockImplementation(async (_root: string, path: string) => ({ path, asset: false, uses: [], usedBy: [], unknown: [], scanned: 0, truncated: false, partial: false }));
   api.provenance.mockResolvedValue({ enabled: false, origins: [] });
+  api.shelves.mockResolvedValue({ shelves: [], applying: "" });
+  api.syncPlan.mockResolvedValue([]);
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   repoListeners.clear();
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
@@ -1046,5 +1055,124 @@ describe("palette actions and shortcuts", () => {
     renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} onSearch={onSearch} />);
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(onSearch).toHaveBeenCalled();
+  });
+});
+
+const wipShelf = {
+  id: "s1",
+  name: "Hero WIP",
+  createdAt: new Date().toISOString(),
+  branch: "main",
+  size: 2048,
+  entries: [{ path: "art/hero.png", status: "modified", staged: false, untracked: false, locked: true, size: 2048, binary: true, kind: "image" }],
+};
+
+describe("shelves", () => {
+  it("shelves the checked changes", async () => {
+    api.shelve.mockResolvedValue({ shelf: { ...wipShelf, entries: wipShelf.entries } });
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: /Shelve…/ }));
+    const dialog = screen.getByRole("dialog", { name: "Shelve changes" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /notes.txt/ }));
+    await userEvent.type(within(dialog).getByRole("textbox"), "Hero WIP");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Shelve 3 files" }));
+    expect(api.shelve).toHaveBeenCalledWith("/work/game", { name: "Hero WIP", paths: ["src/player.go", "art/hero.png", "old.wav"] });
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('Shelved 1 file as "Hero WIP"', "success"));
+  });
+
+  it("shelves one file from its row", async () => {
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Shelve art/hero.png" }));
+    const dialog = screen.getByRole("dialog", { name: "Shelve changes" });
+    expect(within(dialog).getByRole("button", { name: "Shelve 1 file" })).toBeEnabled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("previews and applies a shelf", async () => {
+    api.shelves.mockResolvedValue({ shelves: [wipShelf], applying: "" });
+    api.shelfFiles.mockResolvedValue([{ ...imageDiff, oldSource: "shelf_base", newSource: "shelf", oldRevision: "s1", newRevision: "s1" }]);
+    api.imageDiff.mockResolvedValue(null);
+    api.applyShelf.mockResolvedValue({ shelfApply: { shelfId: "s1", name: "Hero WIP", conflicts: [], dropped: true, aborted: false } });
+    view();
+    const panel = await screen.findByRole("region", { name: "Shelves" });
+    await userEvent.click(within(panel).getByRole("button", { name: /Hero WIP/ }));
+    await userEvent.click(within(panel).getByRole("button", { name: /hero.png/ }));
+    expect(await screen.findByText(/Shelved version of/)).toBeInTheDocument();
+    expect(api.shelfFiles).toHaveBeenCalledWith("/work/game", "s1");
+    await userEvent.click(within(panel).getByRole("button", { name: "Apply" }));
+    expect(api.applyShelf).toHaveBeenCalledWith("/work/game", "s1", false);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('Applied "Hero WIP" and deleted the shelf', "success"));
+  });
+
+  it("opens the Conflicts tab when an apply conflicts and aborts it from the banner", async () => {
+    api.shelves.mockResolvedValue({ shelves: [wipShelf], applying: "" });
+    api.applyShelf.mockResolvedValue({ shelfApply: { shelfId: "s1", name: "Hero WIP", conflicts: ["art/hero.png"], dropped: false, aborted: false } });
+    view();
+    const panel = await screen.findByRole("region", { name: "Shelves" });
+    await userEvent.click(within(panel).getByRole("button", { name: /Hero WIP/ }));
+    api.changes.mockResolvedValue(changeSet({ pending: "shelf", conflicts: ["art/hero.png"], resolved: [] }));
+    api.conflicts.mockResolvedValue({ ...conflictSet("merge"), op: "shelf", theirs: { id: "s1", label: "shelf Hero WIP" } });
+    api.conflictDiff.mockResolvedValue(null);
+    await userEvent.click(within(panel).getByRole("button", { name: "Apply and keep" }));
+    expect(api.applyShelf).toHaveBeenCalledWith("/work/game", "s1", true);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('Applying "Hero WIP" stopped: 1 file conflict. Resolve them in the Conflicts tab.', "error"));
+    const banner = await screen.findByRole("status");
+    await waitFor(() => expect(banner).toHaveTextContent('Applying shelf "Hero WIP": 1 conflicting file left.'));
+    expect(await screen.findByText("Applying shelf Hero WIP")).toBeInTheDocument();
+
+    api.abortShelfApply.mockResolvedValue({ shelfApply: { shelfId: "s1", name: "Hero WIP", conflicts: [], dropped: false, aborted: true } });
+    await userEvent.click(within(banner).getByRole("button", { name: "Abort" }));
+    expect(api.abortShelfApply).toHaveBeenCalledWith("/work/game");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Stopped applying the shelf; the files are back as they were and the shelf was kept", "success"));
+  });
+
+  it("offers to shelve the changes an update would replace, then updates", async () => {
+    api.syncPlan.mockResolvedValue(["art/hero.png"]);
+    api.shelve.mockResolvedValue({ shelf: { ...wipShelf, name: "Before updating" } });
+    api.update.mockResolvedValue({ branch: "main" });
+    view();
+    await screen.findByRole("button", { name: /Shelve…/ });
+    await userEvent.click(screen.getByRole("button", { name: "Update" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Your changes would be replaced" });
+    expect(api.syncPlan).toHaveBeenCalledWith("/work/game", {});
+    expect(within(dialog).getByText("art/hero.png")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Shelve and continue" }));
+    expect(api.shelve).toHaveBeenCalledWith("/work/game", { name: "Before updating", paths: ["art/hero.png"] });
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith("/work/game"));
+  });
+
+  it("can switch anyway or cancel", async () => {
+    api.syncPlan.mockResolvedValue(["src/player.go"]);
+    api.switchBranch.mockResolvedValue({ branch: "feature" });
+    const { rerender } = renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "", action: "switch", target: "feature", seq: 1 }} />);
+    let dialog = await screen.findByRole("alertdialog", { name: "Your changes would be replaced" });
+    expect(api.syncPlan).toHaveBeenCalledWith("/work/game", { branch: "feature" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(api.switchBranch).not.toHaveBeenCalled();
+
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "", action: "checkout-tag", target: "v1", seq: 2 }} />);
+    dialog = await screen.findByRole("alertdialog", { name: "Your changes would be replaced" });
+    expect(api.syncPlan).toHaveBeenCalledWith("/work/game", { tag: "v1" });
+    api.checkoutTag.mockResolvedValue({});
+    await userEvent.click(within(dialog).getByRole("button", { name: "Continue anyway" }));
+    await waitFor(() => expect(api.checkoutTag).toHaveBeenCalledWith("/work/game", "v1"));
+    expect(api.shelve).not.toHaveBeenCalled();
+  });
+
+  it("goes ahead when the check fails or there is nothing to replace", async () => {
+    api.syncPlan.mockRejectedValue(new Error("offline"));
+    api.update.mockResolvedValue({ branch: "main" });
+    view();
+    await screen.findByRole("button", { name: /Shelve…/ });
+    await userEvent.click(screen.getByRole("button", { name: "Update" }));
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("describes shelve outcomes", () => {
+    expect(describeShelve({ shelf: { ...wipShelf, entries: [] } })).toEqual(['Shelved 0 files as "Hero WIP"', "success", false]);
+    expect(describeShelve({ shelfApply: { shelfId: "s1", name: "x", conflicts: [], dropped: false, aborted: false } })).toEqual(['Applied "x"', "success", false]);
+    expect(describeShelve({})).toEqual(['Applied "the shelf"', "success", false]);
   });
 });

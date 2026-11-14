@@ -77,6 +77,10 @@ type FileDiff struct {
 	// copy diff leaves them empty.
 	OldRevision string `json:"oldRevision,omitempty"`
 	NewRevision string `json:"newRevision,omitempty"`
+	// OldSource and NewSource name a blob source other than revision for
+	// the sides (shelf_base and shelf, with the shelf id as revision).
+	OldSource string `json:"oldSource,omitempty"`
+	NewSource string `json:"newSource,omitempty"`
 }
 
 // Changes returns the working-copy status of a clone, grouped the way the

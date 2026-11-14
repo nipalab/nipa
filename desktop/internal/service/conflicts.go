@@ -8,7 +8,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
+	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
 const maxConflictText = 4 << 20
@@ -118,7 +120,7 @@ func (s *Service) ConflictTexts(ctx context.Context, root, path string) (*Confli
 		return nil, err
 	}
 	read := func(ref *daemonpb.BlobRef) (ConflictText, error) {
-		if ref.GetSource() == "revision" && ref.GetRevision() == "" {
+		if ref == nil {
 			return ConflictText{Missing: true}, nil
 		}
 		_, data, err := s.readBlob(ctx, client, root, ref, maxConflictText)
@@ -134,17 +136,15 @@ func (s *Service) ConflictTexts(ctx context.Context, root, path string) (*Confli
 		}
 		return ConflictText{Text: string(data)}, nil
 	}
-	revision := func(id string) *daemonpb.BlobRef {
-		return &daemonpb.BlobRef{Source: "revision", Revision: id, Path: path}
-	}
+	base, ours, theirs := conflictSides(set, path)
 	out := &ConflictTexts{}
 	for _, side := range []struct {
 		dst *ConflictText
 		ref *daemonpb.BlobRef
 	}{
-		{&out.Base, revision(set.Base.ID)},
-		{&out.Ours, revision(set.Ours.ID)},
-		{&out.Theirs, revision(set.Theirs.ID)},
+		{&out.Base, base},
+		{&out.Ours, ours},
+		{&out.Theirs, theirs},
 		{&out.Working, &daemonpb.BlobRef{Source: "working", Path: path}},
 	} {
 		if *side.dst, err = read(side.ref); err != nil {
@@ -163,6 +163,9 @@ func (s *Service) ConflictDiff(ctx context.Context, root, path string) (*FileDif
 	}
 	if set.Op == "" {
 		return nil, errors.New("no merge or revert is waiting")
+	}
+	if set.Op == "shelf" {
+		return shelfConflictDiff(set, path), nil
 	}
 	if set.Ours.ID == "" || set.Theirs.ID == "" {
 		return nil, nil
@@ -227,4 +230,43 @@ func (s *Service) ResolveConflict(ctx context.Context, root string, in ResolveIn
 	return s.statusCall(ctx, root, func(c daemonpb.NipaDaemonClient) (*daemonpb.StatusResponse, error) {
 		return c.ResolveConflict(ctx, &daemonpb.ResolveConflictRequest{Root: root, Path: in.Path, Choice: in.Choice, Content: []byte(in.Content)})
 	})
+}
+
+// conflictSides maps each side of a conflicted file onto a blob ref; nil
+// means that side has no version.
+func conflictSides(set *ConflictSet, path string) (base, ours, theirs *daemonpb.BlobRef) {
+	rev := func(r ConflictRevision) clientDomain.ConflictRevision {
+		return clientDomain.ConflictRevision{ID: r.ID, Label: r.Label}
+	}
+	b, o, t := usecase.ConflictSides(&clientDomain.ConflictSet{Op: set.Op, Base: rev(set.Base), Ours: rev(set.Ours), Theirs: rev(set.Theirs)}, path)
+	ref := func(req *usecase.BlobRequest) *daemonpb.BlobRef {
+		if req == nil {
+			return nil
+		}
+		return &daemonpb.BlobRef{Source: string(req.Source), Revision: req.Revision, Path: req.Path}
+	}
+	return ref(b), ref(o), ref(t)
+}
+
+// shelfConflictDiff compares the synced version (old) with the shelf (new)
+// of a file a shelf apply left conflicted.
+func shelfConflictDiff(set *ConflictSet, path string) *FileDiff {
+	var file *ConflictFile
+	for i := range set.Files {
+		if set.Files[i].Path == path {
+			file = &set.Files[i]
+		}
+	}
+	if file == nil {
+		return nil
+	}
+	side := &FileSide{Path: path, Binary: file.Binary}
+	d := &FileDiff{Path: path, Status: "modified", Kind: file.Viewer, Old: side, New: side, Hunks: []DiffHunk{}, OldSource: string(usecase.BlobSnapshot), NewSource: string(usecase.BlobShelf), NewRevision: set.Theirs.ID}
+	switch file.Kind {
+	case "delete_modify":
+		d.Status, d.Old = "added", nil
+	case "modify_delete":
+		d.Status, d.New = "deleted", nil
+	}
+	return d
 }

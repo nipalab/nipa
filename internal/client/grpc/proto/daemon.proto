@@ -79,7 +79,7 @@ message StatusResponse {
     string branch = 7;
     StatusHead head = 8; // set when HEAD is detached
     repeated string added = 9; // subset of staged: paths the synced snapshot does not track yet
-    string pending = 10; // merge or revert while it waits for continue/abort
+    string pending = 10; // merge, revert or shelf while it waits for continue/abort
     int32 pending_remaining = 11; // revert targets still to apply, the current one included
     repeated string resolved = 12; // conflicts already settled through ResolveConflict
 }
@@ -246,8 +246,8 @@ message DiffFileEvent {
 // BlobRef names one file version: the working copy (default), the last synced
 // snapshot (the old side of a working-copy diff, offline) or a revision.
 message BlobRef {
-    string source = 1; // working, snapshot, revision
-    string revision = 2; // branch, tag, commit id or HEAD when source is revision
+    string source = 1; // working, snapshot, revision, shelf, shelf_base
+    string revision = 2; // branch, tag, commit id or HEAD when source is revision; the shelf id for shelf sources
     string path = 3; // repository-relative
 }
 
@@ -446,7 +446,21 @@ message OpResult {
         MergeResult merge = 3;
         RevertResult revert = 4;
         RestoreRevisionResult restore = 5;
+        ShelveResult shelve = 6;
+        ShelveApplyResult shelve_apply = 7;
     }
+}
+
+message ShelveResult {
+    Shelf shelf = 1;
+}
+
+message ShelveApplyResult {
+    string shelf_id = 1;
+    string name = 2;
+    repeated string conflicts = 3; // non-empty: the apply waits in the Conflicts flow
+    bool dropped = 4;
+    bool aborted = 5;
 }
 
 message RestoreRevisionResult {
@@ -994,6 +1008,83 @@ message RestoreRevisionRequest {
     string commit_id = 3; // base36 commit id
 }
 
+message ShelfEntry {
+    string path = 1;
+    string status = 2; // modified, added, deleted
+    bool staged = 3;
+    bool untracked = 4;
+    bool locked = 5; // a lock this client held when shelving
+    int64 size_bytes = 6;
+    bool is_binary = 7;
+    string kind = 8; // preview.Classify viewer kind
+}
+
+message Shelf {
+    string id = 1;
+    string name = 2;
+    int64 created_at = 3; // unix seconds
+    string branch = 4;
+    string tag = 5; // set when shelved while detached at a tag
+    string base_commit_id = 6;
+    repeated ShelfEntry entries = 7;
+    int64 size_bytes = 8; // stored bytes
+}
+
+message ShelveCreateRequest {
+    string root = 1;
+    string name = 2;
+    repeated string paths = 3; // files or folders; empty takes every change
+    bool include_untracked = 4; // also take untracked files under paths (or everywhere)
+}
+
+message ShelveApplyRequest {
+    string root = 1;
+    string id = 2;
+    bool keep = 3; // keep the shelf after a clean apply
+    bool abort = 4; // stop the waiting apply instead; id is ignored
+}
+
+message ShelveListRequest {
+    string root = 1;
+}
+
+message ShelveListResponse {
+    repeated Shelf shelves = 1;
+    string applying = 2; // id of the shelf whose apply waits on conflicts
+}
+
+message ShelveDropRequest {
+    string root = 1;
+    string id = 2;
+}
+
+message ShelveDropResponse {}
+
+message ShelveFilesRequest {
+    string root = 1;
+    string id = 2;
+}
+
+// ShelveFilesResponse lists a shelf's changes against the version they were
+// shelved from. Blob sources: shelf_base (old) and shelf (new), with the
+// shelf id as the revision.
+message ShelveFilesResponse {
+    Shelf shelf = 1;
+    repeated DiffFile files = 2;
+}
+
+message SyncPlanRequest {
+    string root = 1;
+    string branch = 2; // switch target; empty with tag empty plans an update
+    string tag = 3;
+}
+
+// SyncPlanResponse lists local changes an update or switch would replace,
+// and for a switch the staged paths that block it.
+message SyncPlanResponse {
+    repeated string overwritten = 1;
+}
+
 message AssetRefsRequest {
     string root = 1;
     string path = 2;
@@ -1187,4 +1278,10 @@ service NipaDaemon {
     rpc Provenance(ProvenanceRequest) returns (ProvenanceResponse);
     rpc SetProvenance(SetProvenanceRequest) returns (SetProvenanceResponse);
     rpc Blame(BlameRequest) returns (stream BlameEvent);
+    rpc ShelveCreate(ShelveCreateRequest) returns (stream OpEvent);
+    rpc ShelveApply(ShelveApplyRequest) returns (stream OpEvent);
+    rpc ShelveList(ShelveListRequest) returns (ShelveListResponse);
+    rpc ShelveDrop(ShelveDropRequest) returns (ShelveDropResponse);
+    rpc ShelveFiles(ShelveFilesRequest) returns (ShelveFilesResponse);
+    rpc SyncPlan(SyncPlanRequest) returns (SyncPlanResponse);
 }

@@ -22,6 +22,7 @@ import type {
   RemoteProject,
   Repo,
   SceneCompare,
+  Shelf,
   Tag,
   TableCompare,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
@@ -533,6 +534,30 @@ export const projects: RemoteProject[] = [
   { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "starfall-audio", name: "Starfall Audio", description: "Music, sfx and voice-over" },
   { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "launcher", name: "Launcher", description: "Desktop launcher and patcher" },
   { org: "pixelforge", orgName: "Pixel Forge", orgRole: "member", project: "tiny-tactics", name: "Tiny Tactics", description: "Turn-based tactics, art pipeline" },
+];
+
+export const shelves: Shelf[] = [
+  {
+    id: "mx3k2a",
+    name: "Hero armor experiments",
+    createdAt: ago(95),
+    branch: "feature/hero-rework",
+    baseCommitId: "c12",
+    size: 2_412_000,
+    entries: [
+      { path: HERO, status: "modified", staged: false, untracked: false, locked: true, size: 2_400_000, binary: true, kind: "image" },
+      { path: MOVE, status: "modified", staged: true, untracked: false, locked: false, size: 3_100, binary: false, kind: "text" },
+    ],
+  },
+  {
+    id: "mx1q7c",
+    name: "Before switching to main",
+    createdAt: ago(1_560),
+    branch: "feature/hero-rework",
+    baseCommitId: "c10",
+    size: 18_000,
+    entries: [{ path: ITEMS, status: "modified", staged: false, untracked: false, locked: false, size: 18_000, binary: false, kind: "table" }],
+  },
 ];
 
 export const conflictSet: ConflictSet = {

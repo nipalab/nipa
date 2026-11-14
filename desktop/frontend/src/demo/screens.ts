@@ -19,6 +19,7 @@ export const screens: Screen[] = [
   { name: "changes-table", scenario: "default", steps: [{ text: "items.csv" }], settle: 1000 },
   { name: "changes-workbook", scenario: "default", steps: [{ text: "balance.xlsx" }], settle: 1000 },
   { name: "changes-text", scenario: "default", steps: [{ text: "Movement.cs" }], settle: 1000 },
+  { name: "shelves", scenario: "default", steps: [{ text: "Hero armor experiments" }], settle: 1000 },
   {
     name: "files",
     scenario: "default",

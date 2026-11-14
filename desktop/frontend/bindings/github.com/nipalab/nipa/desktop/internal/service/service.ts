@@ -21,6 +21,14 @@ export function AbortMerge(root: string): $CancellablePromise<$models.OpOutcome>
 }
 
 /**
+ * AbortShelfApply stops the waiting apply and puts the files back; the
+ * shelf is kept.
+ */
+export function AbortShelfApply(root: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(3606842570, root);
+}
+
+/**
  * AccountStatus reports whether the daemon holds a session for a server.
  */
 export function AccountStatus(server: string): $CancellablePromise<$models.Account | null> {
@@ -39,6 +47,13 @@ export function Activity(): $CancellablePromise<$models.RepoActivity[] | null> {
  */
 export function AddRepo(path: string): $CancellablePromise<$models.Repo> {
     return $Call.ByID(2386251915, path);
+}
+
+/**
+ * ApplyShelf brings a shelf back; conflicts wait in the Conflicts tab.
+ */
+export function ApplyShelf(root: string, id: string, keep: boolean): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(4109901880, root, id, keep);
 }
 
 /**
@@ -235,6 +250,10 @@ export function Discard(root: string, paths: string[] | null): $CancellablePromi
  */
 export function DiskUsage(root: string): $CancellablePromise<$models.DiskUsage> {
     return $Call.ByID(379166928, root);
+}
+
+export function DropShelf(root: string, id: string): $CancellablePromise<void> {
+    return $Call.ByID(905861819, root, id);
 }
 
 /**
@@ -696,6 +715,26 @@ export function Settings(): $CancellablePromise<workspace$0.Settings> {
 }
 
 /**
+ * ShelfFiles lists a shelf's changes for the asset viewers: the old side is
+ * the version the files were shelved from, the new side the shelf.
+ */
+export function ShelfFiles(root: string, id: string): $CancellablePromise<$models.FileDiff[] | null> {
+    return $Call.ByID(4237979859, root, id);
+}
+
+/**
+ * Shelve parks the given changes (everything when Paths is empty) and puts
+ * those files back to the synced version.
+ */
+export function Shelve(root: string, $in: $models.ShelveInput): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(425849411, root, $in);
+}
+
+export function Shelves(root: string): $CancellablePromise<$models.ShelfList> {
+    return $Call.ByID(623919504, root);
+}
+
+/**
  * SignIn logs in with an email and password; the daemon stores the session
  * unless the account asks for a two-factor code (see SignInMFA).
  */
@@ -736,6 +775,14 @@ export function SubmitReview(root: string, $number: number, state: string, body:
  */
 export function SwitchBranch(root: string, branch: string): $CancellablePromise<$models.OpOutcome> {
     return $Call.ByID(1378127380, root, branch);
+}
+
+/**
+ * SyncPlan lists the local changes that updating (branch and tag empty),
+ * switching to branch or checking out tag would replace.
+ */
+export function SyncPlan(root: string, branch: string, tag: string): $CancellablePromise<$models.SyncPlan> {
+    return $Call.ByID(3028985684, root, branch, tag);
 }
 
 /**

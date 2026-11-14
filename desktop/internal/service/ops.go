@@ -27,11 +27,13 @@ type OpProgress struct {
 }
 
 type OpOutcome struct {
-	Branch     string         `json:"branch,omitempty"`
-	CommitID   string         `json:"commitId,omitempty"`
-	CommitHash string         `json:"commitHash,omitempty"`
-	Revert     *RevertOutcome `json:"revert,omitempty"`
-	Merge      *MergeOutcome  `json:"merge,omitempty"`
+	Branch     string             `json:"branch,omitempty"`
+	CommitID   string             `json:"commitId,omitempty"`
+	CommitHash string             `json:"commitHash,omitempty"`
+	Revert     *RevertOutcome     `json:"revert,omitempty"`
+	Merge      *MergeOutcome      `json:"merge,omitempty"`
+	Shelf      *Shelf             `json:"shelf,omitempty"`
+	ShelfApply *ShelfApplyOutcome `json:"shelfApply,omitempty"`
 }
 
 // Push uploads the staged files and commits them with message. Cancelling the
@@ -105,6 +107,13 @@ func toOutcome(result *daemonpb.OpResult) OpOutcome {
 	}
 	if m := result.GetMerge(); m != nil {
 		return OpOutcome{Merge: &MergeOutcome{UpToDate: m.GetUpToDate(), FastForwarded: m.GetFastForwarded(), MergeCommitted: m.GetMergeCommitted(), Aborted: m.GetAborted(), Conflicts: append([]string{}, m.GetConflicts()...)}}
+	}
+	if sh := result.GetShelve(); sh != nil {
+		shelf := toShelf(sh.GetShelf())
+		return OpOutcome{Shelf: &shelf}
+	}
+	if a := result.GetShelveApply(); a != nil {
+		return OpOutcome{ShelfApply: toShelfApply(a)}
 	}
 	if r := result.GetRestore(); r != nil {
 		return OpOutcome{CommitID: r.GetCommitId()}

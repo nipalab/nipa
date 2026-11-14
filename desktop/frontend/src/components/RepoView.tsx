@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FolderTree, GitBranch, GitMerge, Search, Tag, Trash2 } from "lucide-react";
-import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
+import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity, type ShelveInput } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
+import { useSyncGuard, type SyncAction } from "@/components/changes/SyncGuard";
 import { SparseDialog } from "@/components/clone/SparseDialog";
 import { StorageCard } from "@/components/details/StorageCard";
 import { ConflictsView } from "@/components/conflicts/ConflictsView";
@@ -83,14 +84,24 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file", "blame"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff", "disk-usage", "files", "file", "blame", "shelves", "shelf-files"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
   const finishing = useRef(false);
   const tagCheckout = useRef("");
   const restored = useRef("");
+  const afterShelve = useRef<(() => void) | null>(null);
   const operation = useRepoOperation(repo.root, {
     onDone: (op, outcome) => {
       refresh();
+      if (op === "shelve") {
+        const [text, tone, conflicted] = describeShelve(outcome);
+        notify(text, tone);
+        if (conflicted) setTab("conflicts");
+        const next = afterShelve.current;
+        afterShelve.current = null;
+        if (next && outcome.shelf) setTimeout(next, 0);
+        return;
+      }
       if (op === "push") {
         setMessage("");
         const what = finishing.current ? "Merged and pushed" : "Pushed";
@@ -120,20 +131,46 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
     },
     onError: (op, err) => {
       finishing.current = false;
+      afterShelve.current = null;
       refresh();
       notify(`${opLabel[op]} failed: ${errorMessage(err)}`);
     },
     onCancelled: (op) => {
+      afterShelve.current = null;
       refresh();
       notify(`${opLabel[op]} cancelled`);
     },
   });
   const op = operation.state;
   const detached = changes.data?.detached;
-  const switchTo = (branch: string) => {
-    tagCheckout.current = "";
-    operation.run("switch", () => desktop.switchBranch(repo.root, branch));
+  const shelve = (input: Partial<ShelveInput>) => operation.run("shelve", () => desktop.shelve(repo.root, input));
+  const shelveThen = (paths: string[], name: string, next: () => void) => {
+    afterShelve.current = next;
+    shelve({ name, paths });
   };
+  const localChanges = changes.data ? changes.data.staged.length + changes.data.unstaged.length > 0 : undefined;
+  const syncGuard = useSyncGuard(repo.root, localChanges, shelveThen);
+  const guarded = (action: SyncAction) => void syncGuard.guard(action);
+  const switchTo = (branch: string) =>
+    guarded({
+      target: { branch },
+      verb: `Switching to ${branch}`,
+      shelfName: `Before switching to ${branch}`,
+      start: () => {
+        tagCheckout.current = "";
+        operation.run("switch", () => desktop.switchBranch(repo.root, branch));
+      },
+    });
+  const checkoutTag = (name: string) =>
+    guarded({
+      target: { tag: name },
+      verb: `Checking out tag ${name}`,
+      shelfName: `Before checking out ${name}`,
+      start: () => {
+        tagCheckout.current = name;
+        operation.run("switch", () => desktop.checkoutTag(repo.root, name));
+      },
+    });
   const revert = (mode: "continue" | "skip" | "abort") => operation.run("revert", () => desktop.revert(repo.root, { mode }));
   const merge = (source: string) => operation.run("merge", () => desktop.merge(repo.root, source));
   const abortMerge = () => operation.run("merge", () => desktop.abortMerge(repo.root));
@@ -154,7 +191,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const startUpdate = () => {
     if (op) return busyNote();
     if (detached) return notify(`Checked out at tag ${detached}: switch back to a branch to update`);
-    operation.run("update", () => desktop.update(repo.root));
+    guarded({ target: {}, verb: "Updating", shelfName: "Before updating", start: () => operation.run("update", () => desktop.update(repo.root)) });
   };
   const writeMessage = () => {
     setTab("changes");
@@ -191,8 +228,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         return switchTo(target);
       case "checkout-tag":
         if (op) return busyNote();
-        tagCheckout.current = target;
-        return operation.run("switch", () => desktop.checkoutTag(repo.root, target));
+        return checkoutTag(target);
     }
   });
   useShortcuts(
@@ -257,7 +293,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
               <Button
                 size="sm"
                 onClick={startUpdate}
-                disabled={!!op || !!detached}
+                disabled={!!op || !!detached || syncGuard.checking}
                 title={`${incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"} (${shortcutHint("update")})`}
               >
                 <ArrowDownToLine />
@@ -293,6 +329,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 onResolve={() => setTab("conflicts")}
                 onFinishMerge={finishMerge}
                 onAbortMerge={abortMerge}
+                onAbortShelf={() => operation.run("shelve", () => desktop.abortShelfApply(repo.root))}
               />
             )}
             <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
@@ -338,6 +375,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                   message={message}
                   onMessage={setMessage}
                   onPush={(msg) => operation.run("push", () => desktop.push(repo.root, msg))}
+                  onShelve={shelve}
+                  onApplyShelf={(shelf, keep) => operation.run("shelve", () => desktop.applyShelf(repo.root, shelf.id, keep))}
                   onCancelOp={operation.cancel}
                   onError={(msg) => notify(msg)}
                   notify={notify}
@@ -366,10 +405,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                   notify={notify}
                   onSwitch={switchTo}
                   onMerge={merge}
-                  onCheckoutTag={(name) => {
-                    tagCheckout.current = name;
-                    operation.run("switch", () => desktop.checkoutTag(repo.root, name));
-                  }}
+                  onCheckoutTag={checkoutTag}
                 />
               ) : current === "mrs" ? (
                 <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
@@ -381,6 +417,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
             </div>
           </>
         )}
+        {syncGuard.dialog}
         {editingSparse && (
           <SparseDialog
             repo={repo}
@@ -405,7 +442,20 @@ const opLabel: Record<OpName, string> = {
   revert: "Revert",
   merge: "Merge",
   restore: "Getting the version",
+  shelve: "Shelving",
 };
+
+export function describeShelve(outcome: OpOutcome): [string, "error" | "success" | undefined, boolean] {
+  if (outcome.shelf) {
+    const n = outcome.shelf.entries?.length ?? 0;
+    return [`Shelved ${n} file${n === 1 ? "" : "s"} as "${outcome.shelf.name}"`, "success", false];
+  }
+  const a = outcome.shelfApply;
+  if (a?.aborted) return ["Stopped applying the shelf; the files are back as they were and the shelf was kept", "success", false];
+  const conflicts = a?.conflicts ?? [];
+  if (conflicts.length > 0) return [`Applying "${a?.name}" stopped: ${conflicts.length} file${conflicts.length === 1 ? "" : "s"} conflict. Resolve them in the Conflicts tab.`, "error", true];
+  return [`Applied "${a?.name ?? "the shelf"}"${a?.dropped ? " and deleted the shelf" : ""}`, "success", false];
+}
 
 export function describeMerge(outcome: OpOutcome, branch: string): [string, "error" | "success" | undefined] {
   const m = outcome.merge;
@@ -437,9 +487,10 @@ type BannersProps = {
   onResolve: () => void;
   onFinishMerge: () => void;
   onAbortMerge: () => void;
+  onAbortShelf: () => void;
 };
 
-function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, onResolve, onFinishMerge, onAbortMerge }: BannersProps) {
+function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, onResolve, onFinishMerge, onAbortMerge, onAbortShelf }: BannersProps) {
   const open = changes.conflicts.filter((p) => !changes.resolved.includes(p)).length;
   const resolveButton = open > 0 && (
     <Button size="sm" disabled={busy} onClick={onResolve}>
@@ -486,6 +537,22 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
           Finish merge
         </Button>
         <Button size="sm" disabled={busy} onClick={onAbortMerge} title="Drop the merge and restore the branch head">
+          Abort
+        </Button>
+      </div>
+    );
+  }
+  if (changes.pending === "shelf") {
+    const name = set?.theirs.label.replace(/^shelf /, "");
+    return (
+      <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
+        <AlertTriangle className="size-3.5 text-danger" />
+        <span className="mr-auto">
+          {name ? `Applying shelf "${name}": ` : "A shelf is being applied: "}
+          {`${open} conflicting file${open === 1 ? "" : "s"} left. Resolving the last one finishes the apply.`}
+        </span>
+        {resolveButton}
+        <Button size="sm" disabled={busy} onClick={onAbortShelf} title="Put the files back as they were before applying; the shelf is kept">
           Abort
         </Button>
       </div>

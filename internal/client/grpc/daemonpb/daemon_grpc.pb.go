@@ -94,6 +94,12 @@ const (
 	NipaDaemon_Provenance_FullMethodName                    = "/nipadaemon.NipaDaemon/Provenance"
 	NipaDaemon_SetProvenance_FullMethodName                 = "/nipadaemon.NipaDaemon/SetProvenance"
 	NipaDaemon_Blame_FullMethodName                         = "/nipadaemon.NipaDaemon/Blame"
+	NipaDaemon_ShelveCreate_FullMethodName                  = "/nipadaemon.NipaDaemon/ShelveCreate"
+	NipaDaemon_ShelveApply_FullMethodName                   = "/nipadaemon.NipaDaemon/ShelveApply"
+	NipaDaemon_ShelveList_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveList"
+	NipaDaemon_ShelveDrop_FullMethodName                    = "/nipadaemon.NipaDaemon/ShelveDrop"
+	NipaDaemon_ShelveFiles_FullMethodName                   = "/nipadaemon.NipaDaemon/ShelveFiles"
+	NipaDaemon_SyncPlan_FullMethodName                      = "/nipadaemon.NipaDaemon/SyncPlan"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -175,6 +181,12 @@ type NipaDaemonClient interface {
 	Provenance(ctx context.Context, in *ProvenanceRequest, opts ...grpc.CallOption) (*ProvenanceResponse, error)
 	SetProvenance(ctx context.Context, in *SetProvenanceRequest, opts ...grpc.CallOption) (*SetProvenanceResponse, error)
 	Blame(ctx context.Context, in *BlameRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlameEvent], error)
+	ShelveCreate(ctx context.Context, in *ShelveCreateRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	ShelveApply(ctx context.Context, in *ShelveApplyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	ShelveList(ctx context.Context, in *ShelveListRequest, opts ...grpc.CallOption) (*ShelveListResponse, error)
+	ShelveDrop(ctx context.Context, in *ShelveDropRequest, opts ...grpc.CallOption) (*ShelveDropResponse, error)
+	ShelveFiles(ctx context.Context, in *ShelveFilesRequest, opts ...grpc.CallOption) (*ShelveFilesResponse, error)
+	SyncPlan(ctx context.Context, in *SyncPlanRequest, opts ...grpc.CallOption) (*SyncPlanResponse, error)
 }
 
 type nipaDaemonClient struct {
@@ -1070,6 +1082,84 @@ func (c *nipaDaemonClient) Blame(ctx context.Context, in *BlameRequest, opts ...
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_BlameClient = grpc.ServerStreamingClient[BlameEvent]
 
+func (c *nipaDaemonClient) ShelveCreate(ctx context.Context, in *ShelveCreateRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[15], NipaDaemon_ShelveCreate_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ShelveCreateRequest, OpEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_ShelveCreateClient = grpc.ServerStreamingClient[OpEvent]
+
+func (c *nipaDaemonClient) ShelveApply(ctx context.Context, in *ShelveApplyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[16], NipaDaemon_ShelveApply_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ShelveApplyRequest, OpEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_ShelveApplyClient = grpc.ServerStreamingClient[OpEvent]
+
+func (c *nipaDaemonClient) ShelveList(ctx context.Context, in *ShelveListRequest, opts ...grpc.CallOption) (*ShelveListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShelveListResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ShelveList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ShelveDrop(ctx context.Context, in *ShelveDropRequest, opts ...grpc.CallOption) (*ShelveDropResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShelveDropResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ShelveDrop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ShelveFiles(ctx context.Context, in *ShelveFilesRequest, opts ...grpc.CallOption) (*ShelveFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShelveFilesResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ShelveFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) SyncPlan(ctx context.Context, in *SyncPlanRequest, opts ...grpc.CallOption) (*SyncPlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SyncPlanResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_SyncPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -1149,6 +1239,12 @@ type NipaDaemonServer interface {
 	Provenance(context.Context, *ProvenanceRequest) (*ProvenanceResponse, error)
 	SetProvenance(context.Context, *SetProvenanceRequest) (*SetProvenanceResponse, error)
 	Blame(*BlameRequest, grpc.ServerStreamingServer[BlameEvent]) error
+	ShelveCreate(*ShelveCreateRequest, grpc.ServerStreamingServer[OpEvent]) error
+	ShelveApply(*ShelveApplyRequest, grpc.ServerStreamingServer[OpEvent]) error
+	ShelveList(context.Context, *ShelveListRequest) (*ShelveListResponse, error)
+	ShelveDrop(context.Context, *ShelveDropRequest) (*ShelveDropResponse, error)
+	ShelveFiles(context.Context, *ShelveFilesRequest) (*ShelveFilesResponse, error)
+	SyncPlan(context.Context, *SyncPlanRequest) (*SyncPlanResponse, error)
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -1383,6 +1479,24 @@ func (UnimplementedNipaDaemonServer) SetProvenance(context.Context, *SetProvenan
 }
 func (UnimplementedNipaDaemonServer) Blame(*BlameRequest, grpc.ServerStreamingServer[BlameEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Blame not implemented")
+}
+func (UnimplementedNipaDaemonServer) ShelveCreate(*ShelveCreateRequest, grpc.ServerStreamingServer[OpEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method ShelveCreate not implemented")
+}
+func (UnimplementedNipaDaemonServer) ShelveApply(*ShelveApplyRequest, grpc.ServerStreamingServer[OpEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method ShelveApply not implemented")
+}
+func (UnimplementedNipaDaemonServer) ShelveList(context.Context, *ShelveListRequest) (*ShelveListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShelveList not implemented")
+}
+func (UnimplementedNipaDaemonServer) ShelveDrop(context.Context, *ShelveDropRequest) (*ShelveDropResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShelveDrop not implemented")
+}
+func (UnimplementedNipaDaemonServer) ShelveFiles(context.Context, *ShelveFilesRequest) (*ShelveFilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShelveFiles not implemented")
+}
+func (UnimplementedNipaDaemonServer) SyncPlan(context.Context, *SyncPlanRequest) (*SyncPlanResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncPlan not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -2650,6 +2764,100 @@ func _NipaDaemon_Blame_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_BlameServer = grpc.ServerStreamingServer[BlameEvent]
 
+func _NipaDaemon_ShelveCreate_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ShelveCreateRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).ShelveCreate(m, &grpc.GenericServerStream[ShelveCreateRequest, OpEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_ShelveCreateServer = grpc.ServerStreamingServer[OpEvent]
+
+func _NipaDaemon_ShelveApply_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ShelveApplyRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).ShelveApply(m, &grpc.GenericServerStream[ShelveApplyRequest, OpEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_ShelveApplyServer = grpc.ServerStreamingServer[OpEvent]
+
+func _NipaDaemon_ShelveList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShelveListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ShelveList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ShelveList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ShelveList(ctx, req.(*ShelveListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ShelveDrop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShelveDropRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ShelveDrop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ShelveDrop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ShelveDrop(ctx, req.(*ShelveDropRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ShelveFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShelveFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ShelveFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ShelveFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ShelveFiles(ctx, req.(*ShelveFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_SyncPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).SyncPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_SyncPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).SyncPlan(ctx, req.(*SyncPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2897,6 +3105,22 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "SetProvenance",
 			Handler:    _NipaDaemon_SetProvenance_Handler,
 		},
+		{
+			MethodName: "ShelveList",
+			Handler:    _NipaDaemon_ShelveList_Handler,
+		},
+		{
+			MethodName: "ShelveDrop",
+			Handler:    _NipaDaemon_ShelveDrop_Handler,
+		},
+		{
+			MethodName: "ShelveFiles",
+			Handler:    _NipaDaemon_ShelveFiles_Handler,
+		},
+		{
+			MethodName: "SyncPlan",
+			Handler:    _NipaDaemon_SyncPlan_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -2972,6 +3196,16 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Blame",
 			Handler:       _NipaDaemon_Blame_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ShelveCreate",
+			Handler:       _NipaDaemon_ShelveCreate_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ShelveApply",
+			Handler:       _NipaDaemon_ShelveApply_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -102,6 +102,9 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		return err
 	}
 
+	if err := refuseShelfPending(p.localRepo); err != nil {
+		return err
+	}
 	mergeState, err := p.localRepo.LoadMergeState()
 	if err != nil {
 		return err
