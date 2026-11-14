@@ -29,6 +29,7 @@ describe("CommitBox simple mode", () => {
     setMode("simple");
     box(none);
     expect(screen.getByRole("button", { name: /Submit 2 files/ })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Submit message" })).toBeInTheDocument();
   });
 });
 

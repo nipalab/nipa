@@ -56,8 +56,8 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
             submit();
           }
         }}
-        placeholder={`Describe your change (${shortcutHint("push")} to push)`}
-        aria-label="Push message"
+        placeholder={`Describe your change (${shortcutHint("push")} to ${verb.toLowerCase()})`}
+        aria-label={`${verb} message`}
         rows={3}
         disabled={!!op}
         className="no-drag w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
@@ -99,7 +99,7 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
           )}
         </div>
       )}
-      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to push.</p>}
+      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to {verb.toLowerCase()}.</p>}
     </div>
   );
 }

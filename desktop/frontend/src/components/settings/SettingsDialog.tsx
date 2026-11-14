@@ -19,11 +19,12 @@ export const pollOptions: { seconds: number; label: string }[] = [
 ];
 
 type SettingsDialogProps = {
+  canReplayTour?: boolean;
   onClose: () => void;
   notify: (message: string, tone?: "error" | "success") => void;
 };
 
-export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
+export function SettingsDialog({ onClose, notify, canReplayTour = true }: SettingsDialogProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -54,7 +55,7 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
             Could not load settings: {errorMessage(settings.error ?? workers.error ?? llm.error)}
           </p>
         ) : settings.data && workers.data !== undefined && llm.data ? (
-          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} />
+          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} canReplayTour={canReplayTour} />
         ) : (
           <p role="status" className="p-5 text-xs text-muted-foreground">
             Loading settings…
@@ -71,9 +72,10 @@ type FormProps = {
   initialLLM: LLMSettings;
   onClose: () => void;
   notify: SettingsDialogProps["notify"];
+  canReplayTour: boolean;
 };
 
-function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: FormProps) {
+function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, canReplayTour }: FormProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Settings>(initial);
   const [workers, setWorkers] = useState(initialWorkers > 0 ? String(initialWorkers) : "");
@@ -200,7 +202,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify }: 
         </Section>
 
         <Section title="Interface">
-          <InterfaceSection onTour={onClose} />
+          <InterfaceSection onTour={onClose} canReplay={canReplayTour} />
         </Section>
 
         <Section title="AI assistance">
@@ -295,7 +297,7 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   );
 }
 
-function InterfaceSection({ onTour }: { onTour: () => void }) {
+function InterfaceSection({ onTour, canReplay }: { onTour: () => void; canReplay: boolean }) {
   const mode = useMode();
   const simple = mode === "simple";
   return (
@@ -310,6 +312,8 @@ function InterfaceSection({ onTour }: { onTour: () => void }) {
       <Button
         type="button"
         size="sm"
+        disabled={!canReplay}
+        title={canReplay ? undefined : "Open or clone a project first"}
         onClick={() => {
           startTour();
           onTour();

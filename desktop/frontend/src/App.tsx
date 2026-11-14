@@ -213,7 +213,7 @@ export default function App() {
           }}
         />
       )}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} notify={notify} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} notify={notify} canReplayTour={!!current && !current.error} />}
       {palette && (
         <CommandPalette
           repos={list}
