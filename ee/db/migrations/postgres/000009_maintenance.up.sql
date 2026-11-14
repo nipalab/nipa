@@ -1,5 +1,6 @@
 CREATE TABLE maintenance_windows (
     id BIGINT PRIMARY KEY,
+    org_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
     project_id BIGINT REFERENCES projects(id) ON DELETE CASCADE,
     mode TEXT NOT NULL CHECK (mode IN ('read_only', 'full', 'frozen')),
     message TEXT NOT NULL DEFAULT '',
@@ -8,11 +9,14 @@ CREATE TABLE maintenance_windows (
     notify BOOLEAN NOT NULL DEFAULT false,
     created_by BIGINT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
-    CHECK (project_id IS NULL OR mode <> 'frozen')
+    CHECK (org_id IS NULL OR project_id IS NULL),
+    CHECK ((org_id IS NULL AND project_id IS NULL) OR mode <> 'frozen')
 );
 
 CREATE UNIQUE INDEX maintenance_windows_project ON maintenance_windows (project_id) WHERE project_id IS NOT NULL;
-CREATE UNIQUE INDEX maintenance_windows_server ON maintenance_windows ((project_id IS NULL)) WHERE project_id IS NULL;
+CREATE UNIQUE INDEX maintenance_windows_org ON maintenance_windows (org_id) WHERE org_id IS NOT NULL;
+CREATE UNIQUE INDEX maintenance_windows_server ON maintenance_windows ((org_id IS NULL AND project_id IS NULL))
+    WHERE org_id IS NULL AND project_id IS NULL;
 
 CREATE FUNCTION maintenance_windows_project_cleanup() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -27,6 +31,7 @@ EXECUTE FUNCTION maintenance_windows_project_cleanup();
 
 CREATE FUNCTION maintenance_windows_org_cleanup() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+    DELETE FROM maintenance_windows WHERE org_id = NEW.id;
     DELETE FROM maintenance_windows WHERE project_id IN (SELECT id FROM projects WHERE org_id = NEW.id);
     RETURN NULL;
 END;

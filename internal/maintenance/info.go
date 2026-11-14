@@ -12,13 +12,17 @@ type Info struct {
 	Message  string     `json:"message"`
 	StartsAt time.Time  `json:"starts_at"`
 	EndsAt   *time.Time `json:"ends_at,omitempty"`
+	Org      string     `json:"org,omitempty"`
 	Project  string     `json:"project,omitempty"`
 }
 
 func NewInfo(w Window, scope Scope) Info {
 	info := Info{Scope: scope, Mode: w.Mode, Message: w.Message, StartsAt: w.StartsAt, EndsAt: w.EndsAt}
-	if scope == ScopeProject {
-		info.Project = w.Key()
+	switch scope {
+	case ScopeProject:
+		info.Org, info.Project = w.Org, w.Key()
+	case ScopeOrg:
+		info.Org = w.Org
 	}
 	return info
 }
@@ -34,6 +38,9 @@ func (i Info) Metadata() map[string]string {
 	if i.EndsAt != nil {
 		md["ends_at"] = i.EndsAt.UTC().Format(time.RFC3339)
 	}
+	if i.Org != "" {
+		md["org"] = i.Org
+	}
 	if i.Project != "" {
 		md["project"] = i.Project
 	}
@@ -45,6 +52,7 @@ func InfoFromMetadata(md map[string]string) Info {
 		Scope:   Scope(md["scope"]),
 		Mode:    Mode(md["mode"]),
 		Message: md["message"],
+		Org:     md["org"],
 		Project: md["project"],
 	}
 	if t, err := time.Parse(time.RFC3339, md["starts_at"]); err == nil {

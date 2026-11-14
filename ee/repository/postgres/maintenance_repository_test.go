@@ -137,6 +137,121 @@ func (s *MaintenanceRepositorySuite) TestProjectWindows() {
 	require.Equal(t, "renamed", got.ProjectSlug)
 }
 
+func (s *MaintenanceRepositorySuite) TestOrgWindows() {
+	t := s.T()
+	ctx := context.Background()
+	db, q := s.db, s.q
+	repo := NewMaintenanceRepository(db)
+	now := time.Now().UTC().Truncate(time.Second)
+	acme := seedOrg(t, q, "Acme", "acme")
+	other := seedOrg(t, q, "Other", "other")
+	game := seedProject(t, q, acme.Int64(), "game")
+
+	_, err := repo.GetOrg(ctx, acme)
+	require.True(t, domain.IsErrorNotFound(err))
+
+	_, err = repo.UpsertOrg(ctx, domain.MaintenanceWindow{ID: 1, Mode: "full"})
+	require.Error(t, err)
+
+	_, err = repo.UpsertOrg(ctx, domain.MaintenanceWindow{ID: 1, OrgID: &acme, Mode: "frozen", StartsAt: now, UpdatedAt: now})
+	require.Error(t, err, "frozen is refused for an org")
+
+	_, err = db.ExecContext(ctx, `INSERT INTO maintenance_windows (id, org_id, project_id, mode, starts_at, created_by, updated_at) VALUES (9, $1, $2, 'full', $3, 0, $4)`, acme.Int64(), game.Int64(), now, now)
+	require.Error(t, err, "org and project are never both set")
+
+	w, err := repo.UpsertOrg(ctx, domain.MaintenanceWindow{
+		ID: 1, OrgID: &acme, OrgSlug: "acme", Mode: "full", Message: "move", StartsAt: now, CreatedBy: 5, UpdatedAt: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, acme, *w.OrgID)
+	require.Nil(t, w.ProjectID)
+	require.Equal(t, "acme", w.OrgSlug)
+
+	w, err = repo.UpsertOrg(ctx, domain.MaintenanceWindow{ID: 2, OrgID: &acme, Mode: "read_only", StartsAt: now, CreatedBy: 6, UpdatedAt: now})
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(1), w.ID, "the org window keeps its id")
+	require.Equal(t, snow.ID(5), w.CreatedBy)
+
+	_, err = repo.UpsertOrg(ctx, domain.MaintenanceWindow{ID: 3, OrgID: &other, Mode: "full", StartsAt: now, UpdatedAt: now})
+	require.NoError(t, err)
+	_, err = repo.UpsertProject(ctx, domain.MaintenanceWindow{ID: 4, ProjectID: &game, Mode: "full", StartsAt: now, UpdatedAt: now})
+	require.NoError(t, err)
+	_, err = repo.UpsertServer(ctx, domain.MaintenanceWindow{ID: 5, Mode: "frozen", StartsAt: now, UpdatedAt: now})
+	require.NoError(t, err)
+
+	server, err := repo.GetServer(ctx)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(5), server.ID)
+
+	got, err := repo.GetOrg(ctx, acme)
+	require.NoError(t, err)
+	require.Equal(t, "read_only", got.Mode)
+	require.Equal(t, "acme", got.OrgSlug)
+	require.Empty(t, got.ProjectSlug)
+
+	list, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 4)
+	require.Equal(t, acme, *list[0].OrgID)
+	require.Equal(t, "acme", list[0].OrgSlug)
+	require.Equal(t, "other", list[1].OrgSlug)
+	require.Nil(t, list[2].OrgID)
+	require.Equal(t, "acme", list[2].OrgSlug)
+	require.Equal(t, "game", list[2].ProjectSlug)
+	require.Nil(t, list[3].OrgID)
+	require.Nil(t, list[3].ProjectID)
+
+	maintenanceExec(t, db, `UPDATE organizations SET slug = 'acme2' WHERE id = $1`, acme.Int64())
+	got, err = repo.GetOrg(ctx, acme)
+	require.NoError(t, err)
+	require.Equal(t, "acme2", got.OrgSlug)
+}
+
+func (s *MaintenanceRepositorySuite) TestOrgDeletion() {
+	t := s.T()
+	ctx := context.Background()
+	db, q := s.db, s.q
+	repo := NewMaintenanceRepository(db)
+	now := time.Now().UTC()
+	soft := seedOrg(t, q, "Soft", "soft")
+	hard := seedOrg(t, q, "Hard", "hard")
+	kept := seedOrg(t, q, "Kept", "kept")
+	softProject := seedProject(t, q, soft.Int64(), "a")
+	hardProject := seedProject(t, q, hard.Int64(), "b")
+	keptProject := seedProject(t, q, kept.Int64(), "c")
+	id := snow.ID(0)
+	for _, org := range []snow.ID{soft, hard, kept} {
+		id++
+		_, err := repo.UpsertOrg(ctx, domain.MaintenanceWindow{ID: id, OrgID: &org, Mode: "full", StartsAt: now, UpdatedAt: now})
+		require.NoError(t, err)
+	}
+	for _, pid := range []snow.ID{softProject, hardProject, keptProject} {
+		id++
+		_, err := repo.UpsertProject(ctx, domain.MaintenanceWindow{ID: id, ProjectID: &pid, Mode: "full", StartsAt: now, UpdatedAt: now})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, q.DeleteOrganization(ctx, soft.Int64()))
+	maintenanceExec(t, db, `DELETE FROM organizations WHERE id = $1`, hard.Int64())
+
+	var n int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM maintenance_windows`).Scan(&n))
+	require.Equal(t, 2, n)
+	_, err := repo.GetOrg(ctx, soft)
+	require.True(t, domain.IsErrorNotFound(err))
+	_, err = repo.GetOrg(ctx, kept)
+	require.NoError(t, err)
+	_, err = repo.GetProject(ctx, keptProject)
+	require.NoError(t, err)
+
+	maintenanceExec(t, db, `INSERT INTO maintenance_windows (id, org_id, mode, starts_at, created_by, updated_at) VALUES (20, $1, 'full', $2, 0, $3)`, soft.Int64(), now, now)
+	list, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 2, "windows of a deleted org are skipped")
+	_, err = repo.GetOrg(ctx, soft)
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
 func (s *MaintenanceRepositorySuite) TestDeletedProjectsAndOrgs() {
 	t := s.T()
 	ctx := context.Background()
@@ -202,6 +317,13 @@ func (s *MaintenanceRepositorySuite) TestRecipients() {
 	subPathAdmin := seedPBACUser(t, db, 20)
 	toolsAdmin := seedPBACUser(t, db, 21)
 	deletedGroupAdmin := seedPBACUser(t, db, 22)
+	deletedProjectAdmin := seedPBACUser(t, db, 23)
+	otherWideAdmin := seedPBACUser(t, db, 24)
+	deletedUserAdmin := seedPBACUser(t, db, 25)
+	archived := seedProject(t, q, acme.Int64(), "archived")
+	empty := seedOrg(t, q, "Empty", "empty")
+	require.NoError(t, q.DeleteProject(ctx, archived.Int64()))
+	maintenanceExec(t, db, `UPDATE users SET deleted = true WHERE id = $1`, deletedUserAdmin.Int64())
 	maintenanceExec(t, db, `UPDATE users SET deleted = true WHERE id = $1`, deletedOwner.Int64())
 	maintenanceExec(t, db, `UPDATE users SET email_verified = false WHERE id = $1`, unverifiedOwner.Int64())
 
@@ -232,6 +354,10 @@ func (s *MaintenanceRepositorySuite) TestRecipients() {
 	maintenanceExec(t, db, rule, writer.Int64(), nil, acme.Int64(), game.Int64(), "", write)
 	maintenanceExec(t, db, rule, subPathAdmin.Int64(), nil, acme.Int64(), game.Int64(), "assets", admin)
 	maintenanceExec(t, db, rule, toolsAdmin.Int64(), nil, acme.Int64(), tools.Int64(), "", admin)
+	maintenanceExec(t, db, rule, groupAdmin.Int64(), nil, acme.Int64(), tools.Int64(), "", admin)
+	maintenanceExec(t, db, rule, deletedProjectAdmin.Int64(), nil, acme.Int64(), archived.Int64(), "", admin)
+	maintenanceExec(t, db, rule, deletedUserAdmin.Int64(), nil, acme.Int64(), tools.Int64(), "", admin)
+	maintenanceExec(t, db, rule, otherWideAdmin.Int64(), nil, empty.Int64(), nil, "", admin)
 
 	ids := func(rs []domain.MaintenanceRecipient) []snow.ID {
 		out := make([]snow.ID, 0, len(rs))
@@ -255,10 +381,30 @@ func (s *MaintenanceRepositorySuite) TestRecipients() {
 	require.NoError(t, err)
 	require.Empty(t, project)
 
+	org, err := repo.RecipientsOrg(ctx, acme)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{owner, both, ruleAdmin, groupAdmin, orgAdmin, toolsAdmin}, ids(org))
+
+	org, err = repo.RecipientsOrg(ctx, other)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{otherOwner}, ids(org))
+
+	org, err = repo.RecipientsOrg(ctx, empty)
+	require.NoError(t, err)
+	require.Empty(t, org, "an org-wide rule without a live project adds nobody")
+
+	org, err = repo.RecipientsOrg(ctx, dead)
+	require.NoError(t, err)
+	require.Empty(t, org)
+
 	require.NoError(t, q.DeleteProject(ctx, game.Int64()))
 	project, err = repo.RecipientsProject(ctx, game)
 	require.NoError(t, err)
 	require.Empty(t, project)
+
+	org, err = repo.RecipientsOrg(ctx, acme)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{owner, both, groupAdmin, orgAdmin, toolsAdmin}, ids(org))
 }
 
 func (s *MaintenanceRepositorySuite) TestJoinsTransaction() {
@@ -295,6 +441,14 @@ func (s *MaintenanceRepositorySuite) TestErrors() {
 	_, err = repo.UpsertServer(ctx, domain.MaintenanceWindow{})
 	require.Error(t, err)
 	_, err = repo.RecipientsServer(ctx)
+	require.Error(t, err)
+	_, err = repo.GetOrg(ctx, 1)
+	require.Error(t, err)
+	_, err = repo.UpsertOrg(ctx, domain.MaintenanceWindow{OrgID: new(snow.ID)})
+	require.Error(t, err)
+	_, err = repo.UpsertProject(ctx, domain.MaintenanceWindow{ProjectID: new(snow.ID)})
+	require.Error(t, err)
+	_, err = repo.RecipientsOrg(ctx, 1)
 	require.Error(t, err)
 	_, err = repo.RecipientsProject(ctx, 1)
 	require.Error(t, err)

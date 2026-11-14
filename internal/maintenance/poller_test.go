@@ -77,7 +77,7 @@ func TestPollerFileAppearsAndDisappears(t *testing.T) {
 	ctx := context.Background()
 	file := filepath.Join(t.TempDir(), "maintenance")
 	svc, loader, poller := newTestPoller(t, file)
-	loader.set([]Window{serverWindow(1, ReadOnly, testNow), projectWindow(2, 10, "acme", "game", ReadOnly, testNow)}, nil)
+	loader.set([]Window{serverWindow(1, ReadOnly, testNow), projectWindow(2, 10, "acme", "game", ReadOnly, testNow), orgWindow(3, 20, "acme", ReadOnly, testNow)}, nil)
 
 	require.NoError(t, poller.Poll(ctx))
 	require.Equal(t, SourceDB, svc.Snapshot().Source)
@@ -87,7 +87,8 @@ func TestPollerFileAppearsAndDisappears(t *testing.T) {
 	snap := svc.Snapshot()
 	require.Equal(t, SourceFile, snap.Source)
 	require.Equal(t, Full, snap.Server.Mode)
-	require.Len(t, snap.ByID, 2, "stored windows stay indexed")
+	require.Len(t, snap.ByID, 3, "stored windows stay indexed")
+	require.Equal(t, ReadOnly, snap.Orgs["acme"].Mode)
 	w, scope := svc.For("acme", "game")
 	require.Equal(t, Full, w.Mode)
 	require.Equal(t, ScopeServer, scope)
@@ -129,13 +130,21 @@ func TestPollerSlugChange(t *testing.T) {
 	w, _ := svc.For("acme", "game")
 	require.Equal(t, Full, w.Mode)
 
-	loader.set([]Window{projectWindow(2, 10, "acme", "renamed", Full, testNow)}, nil)
+	loader.set([]Window{projectWindow(2, 10, "acme", "renamed", Full, testNow), orgWindow(3, 20, "acme2", ReadOnly, testNow)}, nil)
 	require.NoError(t, poller.Poll(ctx))
 	w, _ = svc.For("acme", "game")
 	require.Equal(t, Off, w.Mode)
 	w, scope := svc.For("acme", "renamed")
 	require.Equal(t, Full, w.Mode)
 	require.Equal(t, ScopeProject, scope)
+
+	loader.set([]Window{orgWindow(3, 20, "acme-renamed", ReadOnly, testNow)}, nil)
+	require.NoError(t, poller.Poll(ctx))
+	w, _ = svc.For("acme", "")
+	require.Equal(t, Off, w.Mode)
+	w, scope = svc.For("acme-renamed", "")
+	require.Equal(t, ReadOnly, w.Mode)
+	require.Equal(t, ScopeOrg, scope)
 }
 
 func TestPollerResumeHook(t *testing.T) {

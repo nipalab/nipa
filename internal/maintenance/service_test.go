@@ -24,6 +24,11 @@ func projectWindow(id, projectID snow.ID, org, project string, mode Mode, start 
 	return Window{ID: id, ProjectID: &pid, Org: org, Project: project, Mode: mode, StartsAt: start}
 }
 
+func orgWindow(id, orgID snow.ID, org string, mode Mode, start time.Time) Window {
+	oid := orgID
+	return Window{ID: id, OrgID: &oid, Org: org, Mode: mode, StartsAt: start}
+}
+
 func TestServiceForEmpty(t *testing.T) {
 	svc := NewService().WithClock(fixedClock(testNow))
 	w, scope := svc.For("acme", "game")
@@ -54,6 +59,18 @@ func TestServiceFor(t *testing.T) {
 		{"tie keeps server", []Window{serverWindow(1, ReadOnly, past), projectWindow(2, 10, "acme", "game", ReadOnly, past)}, "acme", "game", ReadOnly, ScopeServer},
 		{"scheduled server", []Window{serverWindow(1, Full, future)}, "acme", "game", Off, ""},
 		{"scheduled project", []Window{serverWindow(1, ReadOnly, past), projectWindow(2, 10, "acme", "game", Full, future)}, "acme", "game", ReadOnly, ScopeServer},
+		{"org only, org target", []Window{orgWindow(3, 20, "acme", Full, past)}, "acme", "", Full, ScopeOrg},
+		{"org only, project target", []Window{orgWindow(3, 20, "acme", ReadOnly, past)}, "acme", "game", ReadOnly, ScopeOrg},
+		{"org window, other org", []Window{orgWindow(3, 20, "acme", Full, past)}, "other", "game", Off, ""},
+		{"org window, no target", []Window{orgWindow(3, 20, "acme", Full, past)}, "", "", Off, ""},
+		{"scheduled org", []Window{orgWindow(3, 20, "acme", Full, future)}, "acme", "", Off, ""},
+		{"org and project, project stricter", []Window{orgWindow(3, 20, "acme", ReadOnly, past), projectWindow(2, 10, "acme", "game", Full, past)}, "acme", "game", Full, ScopeProject},
+		{"org and project, org stricter", []Window{orgWindow(3, 20, "acme", Full, past), projectWindow(2, 10, "acme", "game", ReadOnly, past)}, "acme", "game", Full, ScopeOrg},
+		{"org and project, org target only", []Window{orgWindow(3, 20, "acme", ReadOnly, past), projectWindow(2, 10, "acme", "game", Full, past)}, "acme", "", ReadOnly, ScopeOrg},
+		{"org and server, org stricter", []Window{serverWindow(1, ReadOnly, past), orgWindow(3, 20, "acme", Full, past)}, "acme", "", Full, ScopeOrg},
+		{"org and server, server stricter", []Window{serverWindow(1, Frozen, past), orgWindow(3, 20, "acme", Full, past)}, "acme", "game", Frozen, ScopeServer},
+		{"tie of three keeps server", []Window{serverWindow(1, Full, past), orgWindow(3, 20, "acme", Full, past), projectWindow(2, 10, "acme", "game", Full, past)}, "acme", "game", Full, ScopeServer},
+		{"org and project tie keeps org", []Window{serverWindow(1, ReadOnly, past), orgWindow(3, 20, "acme", Full, past), projectWindow(2, 10, "acme", "game", Full, past)}, "acme", "game", Full, ScopeOrg},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -67,11 +84,12 @@ func TestServiceFor(t *testing.T) {
 }
 
 func TestNewSnapshotIndexes(t *testing.T) {
-	snap := NewSnapshot([]Window{serverWindow(1, ReadOnly, testNow), projectWindow(2, 10, "acme", "game", Full, testNow)}, testNow)
+	snap := NewSnapshot([]Window{serverWindow(1, ReadOnly, testNow), projectWindow(2, 10, "acme", "game", Full, testNow), orgWindow(3, 20, "acme", Full, testNow)}, testNow)
 	require.Equal(t, snow.ID(1), snap.Server.ID)
 	require.Equal(t, snow.ID(2), snap.Projects["acme/game"].ID)
-	require.Len(t, snap.ByID, 2)
-	require.Len(t, snap.Windows(), 2)
+	require.Equal(t, snow.ID(3), snap.Orgs["acme"].ID)
+	require.Len(t, snap.ByID, 3)
+	require.Len(t, snap.Windows(), 3)
 	require.Equal(t, testNow, snap.LoadedAt)
 }
 

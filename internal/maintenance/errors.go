@@ -18,8 +18,11 @@ func NewError(w Window, scope Scope) *Error {
 
 func (e *Error) Error() string {
 	subject := "server"
-	if e.Info.Scope == ScopeProject {
+	switch e.Info.Scope {
+	case ScopeProject:
 		subject = "project " + e.Info.Project
+	case ScopeOrg:
+		subject = "organization " + e.Info.Org
 	}
 	msg := fmt.Sprintf("%s is in maintenance (%s)", subject, e.Info.Mode.Label())
 	if e.Info.Message != "" {

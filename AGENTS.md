@@ -1518,25 +1518,31 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 login RPCs.
 
 Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; only the
-core and storage exist so far, nothing reads or enforces them yet): the pure
-`internal/maintenance` (no repo/usecase imports) holds `Mode`
-(`off|read_only|full|frozen`, `Stricter`), `Class` and the rule table
-(`Allowed`/`AllowedMethod`: control stays open in `frozen` for GET/HEAD only),
-`Window`/`Status`, `ParseFile` (override file: empty = `full`, else JSON
-`{mode, message, ends_at}`), `Service` (an `atomic.Pointer[Snapshot]`; `For(org,
-project)` = the stricter active server/project window and its scope, `Frozen`,
-`Apply` runs the `OnResume` hooks before publishing a snapshot that leaves
-`frozen` and keeps the frozen one if a hook fails), `Poller` (a
-`serverapp.Dispatcher`: reloads windows + file, a failed load keeps the stored
-windows, an invalid file publishes `full` with `Snapshot.FileError`) and the
-shared rejection `Info`/`Error`. Storage: `maintenance_windows` (sqlite
-`000024`, postgres `000009`; snow id, nullable `project_id`, CHECK no `frozen`
-for projects, one server window and one per project through partial unique
-indexes, upserts keep `id`/`created_by`), cleaned by triggers on project/org
-soft delete (`maintenance_windows_project_cleanup`/`_org_cleanup`, sqlite also
-`_project_delete`); queries in `maintenance.sql` of both dialects skip deleted
-projects/orgs; `RecipientsServer` (verified owners of live orgs) and
-`RecipientsProject` (org owners plus root admin rules, groups expanded).
+core and storage exist so far, nothing reads or enforces them yet): windows
+have three scopes (server, org, project). The pure `internal/maintenance` (no
+repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
+`Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
+`frozen` for GET/HEAD only), `Window` (`Scope()`/`Key()`)/`Status`, `ParseFile`
+(override file: empty = `full`, else JSON `{mode, message, ends_at}`),
+`Service` (an `atomic.Pointer[Snapshot]` with `Server`, `Orgs` by org slug and
+`Projects` by "org/project"; `For(org, project)` = the strictest active
+server/org/project window, `project` may be empty for org targets, ties report
+the broadest scope; `Frozen`; `Apply` runs the `OnResume` hooks before
+publishing a snapshot that leaves `frozen` and keeps the frozen one if a hook
+fails), `Poller` (a `serverapp.Dispatcher`: reloads windows + file, a failed
+load keeps the stored windows, an invalid file publishes `full` with
+`Snapshot.FileError`) and the shared rejection `Info`/`Error` (`organization
+acme is in maintenance (closed): ...`). Storage: `maintenance_windows` (sqlite
+`000024`, postgres `000009`; snow id, nullable `org_id`/`project_id` never both
+set, `frozen` only for the server window, one server window and one per org
+and project through partial unique indexes, upserts keep `id`/`created_by`),
+cleaned by triggers on project/org soft delete
+(`maintenance_windows_project_cleanup`/`_org_cleanup`, the org one also drops
+its projects' windows; sqlite also `_project_delete`/`_org_delete` for hard
+deletes, postgres FKs cascade); queries in `maintenance.sql` of both dialects
+skip deleted orgs/projects; recipients: `RecipientsServer` (verified owners of
+live orgs), `RecipientsOrg` (owners plus root admin rules on any live project
+of the org, org-wide and group rules included) and `RecipientsProject`.
 `sqlite|postgres.NewMaintenanceRepository` (`dbtx`-aware) is wired as
 `usecase.Repositories.Maintenance` in both mains and both e2e harnesses.
 

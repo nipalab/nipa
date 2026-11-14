@@ -14,6 +14,7 @@ type Scope string
 
 const (
 	ScopeServer  Scope = "server"
+	ScopeOrg     Scope = "org"
 	ScopeProject Scope = "project"
 )
 
@@ -27,17 +28,19 @@ const (
 type Snapshot struct {
 	Server    *Window
 	Source    string
+	Orgs      map[string]*Window
 	Projects  map[string]*Window
 	ByID      map[snow.ID]*Window
 	LoadedAt  time.Time
 	FileError string
 }
 
-// NewSnapshot indexes stored windows: the one without a project is the server
-// window, the others are keyed by "org/project".
+// NewSnapshot indexes stored windows: org windows by org slug, project windows
+// by "org/project" and the remaining one as the server window.
 func NewSnapshot(windows []Window, loadedAt time.Time) *Snapshot {
 	snap := &Snapshot{
 		Source:   SourceDB,
+		Orgs:     make(map[string]*Window),
 		Projects: make(map[string]*Window, len(windows)),
 		ByID:     make(map[snow.ID]*Window, len(windows)),
 		LoadedAt: loadedAt,
@@ -45,9 +48,12 @@ func NewSnapshot(windows []Window, loadedAt time.Time) *Snapshot {
 	for i := range windows {
 		w := &windows[i]
 		snap.ByID[w.ID] = w
-		if key := w.Key(); key != "" {
-			snap.Projects[key] = w
-		} else {
+		switch w.Scope() {
+		case ScopeProject:
+			snap.Projects[w.Key()] = w
+		case ScopeOrg:
+			snap.Orgs[w.Key()] = w
+		default:
 			snap.Server = w
 		}
 	}
@@ -93,21 +99,26 @@ func (s *Service) Snapshot() *Snapshot {
 	return s.snap.Load()
 }
 
-// For returns the effective window of a request: the stricter of the active
-// server window and the active window of org/project. Without one the window
+// For returns the effective window of a request: the strictest of the active
+// server window, the active window of org (when set) and of org/project (when
+// project is set). A tie reports the broadest scope. Without one the window
 // mode is Off and the scope empty.
 func (s *Service) For(org, project string) (Window, Scope) {
 	snap := s.snap.Load()
 	now := s.clock()
 	best, scope := Window{Mode: Off}, Scope("")
-	if snap.Server.Active(now) {
-		best, scope = *snap.Server, ScopeServer
+	pick := func(w *Window, sc Scope) {
+		if w.Active(now) && w.Mode.rank() > best.Mode.rank() {
+			best, scope = *w, sc
+		}
 	}
-	if org == "" || project == "" {
+	pick(snap.Server, ScopeServer)
+	if org == "" {
 		return best, scope
 	}
-	if w := snap.Projects[ProjectKey(org, project)]; w.Active(now) && w.Mode.rank() > best.Mode.rank() {
-		best, scope = *w, ScopeProject
+	pick(snap.Orgs[org], ScopeOrg)
+	if project != "" {
+		pick(snap.Projects[ProjectKey(org, project)], ScopeProject)
 	}
 	return best, scope
 }

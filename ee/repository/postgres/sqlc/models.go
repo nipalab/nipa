@@ -185,6 +185,7 @@ type GroupMember struct {
 
 type MaintenanceWindow struct {
 	ID        int64         `json:"id"`
+	OrgID     sql.NullInt64 `json:"org_id"`
 	ProjectID sql.NullInt64 `json:"project_id"`
 	Mode      string        `json:"mode"`
 	Message   string        `json:"message"`

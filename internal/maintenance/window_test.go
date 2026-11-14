@@ -32,10 +32,18 @@ func TestWindowStatusAndKey(t *testing.T) {
 	pid := snow.ID(7)
 	project := &Window{ProjectID: &pid, Org: "acme", Project: "game", Mode: Full, Message: "m", StartsAt: start, EndsAt: &end}
 	require.Equal(t, "acme/game", project.Key())
-	require.Equal(t, Status{Mode: Full, Active: true, Message: "m", StartsAt: start, EndsAt: &end, Project: "acme/game"}, project.Status(start))
+	require.Equal(t, ScopeProject, project.Scope())
+	require.Equal(t, Status{Mode: Full, Active: true, Message: "m", StartsAt: start, EndsAt: &end, Org: "acme", Project: "acme/game"}, project.Status(start))
+
+	oid := snow.ID(3)
+	org := &Window{OrgID: &oid, Org: "acme", Mode: ReadOnly, StartsAt: start}
+	require.Equal(t, ScopeOrg, org.Scope())
+	require.Equal(t, "acme", org.Key())
+	require.Equal(t, Status{Mode: ReadOnly, Active: true, StartsAt: start, Org: "acme"}, org.Status(start))
 
 	server := &Window{Mode: ReadOnly, StartsAt: start}
 	require.Equal(t, "", server.Key())
+	require.Equal(t, ScopeServer, server.Scope())
 	st := server.Status(start.Add(-time.Second))
 	require.False(t, st.Active)
 	require.Empty(t, st.Project)
@@ -52,6 +60,12 @@ func TestFromDomain(t *testing.T) {
 		ID: 1, ProjectID: &pid, Org: "acme", Project: "game", Mode: ReadOnly,
 		Message: "hi", StartsAt: start, Notify: true, CreatedBy: 3, UpdatedAt: start,
 	}, w)
+
+	oid := snow.ID(4)
+	w = FromDomain(domain.MaintenanceWindow{ID: 2, OrgID: &oid, OrgSlug: "acme", Mode: "full", StartsAt: start})
+	require.Equal(t, ScopeOrg, w.Scope())
+	require.Equal(t, oid, *w.OrgID)
+	require.Equal(t, "acme", w.Key())
 }
 
 func TestParseFile(t *testing.T) {

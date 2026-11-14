@@ -4,7 +4,7 @@ Handoff notes for the implementing session:
   nodelease pause, the ee main wiring and ee/e2e tests.
 - Global rules: never commit to git; new code needs >=80% test coverage; keep comments minimal.
 - Decisions taken with the user (2026-11-14): no admin bypass, manual end only, Paddle webhooks
-  refused, email announcement and per-project scope in scope, a `frozen` mode for moving the
+  refused, email announcement and per-org and per-project scope in scope, a `frozen` mode for moving the
   database, engine plugins and an upgrade.sh flag out of scope.
 - One point still to confirm: the announcement email ignores `notify_email` (like the MFA notice).
 -->
@@ -13,14 +13,14 @@ Handoff notes for the implementing session:
 
 ## 1. Goal
 
-Let an operator put a Nipa server (free `nipad` or `nipad-ee`), or a single project, into
-maintenance without stopping it, so users see a clear message instead of random failures, and
-move the database to another host with writes paused for minutes only.
+Let an operator put a Nipa server (free `nipad` or `nipad-ee`), a whole organization or a
+single project into maintenance without stopping it, so users see a clear message instead of
+random failures, and move the database to another host with writes paused for minutes only.
 
 | mode | for | reads | user writes | sign-in | DB writes by the server |
 |---|---|---|---|---|---|
-| `read_only` | storage work, backups, repairs; server or project | ✓ | ✗ | ✓ | yes (sessions, audit, outboxes) |
-| `full` | closed to users; server or project | ✗ | ✗ | ✓ | yes |
+| `read_only` | storage work, backups, repairs; server, org or project | ✓ | ✗ | ✓ | yes (sessions, audit, outboxes) |
+| `full` | closed to users; server, org or project | ✗ | ✗ | ✓ | yes |
 | `frozen` | copying or moving the database; server only | ✓ | ✗ | ✗ | **none** |
 
 Out of scope: downtime where the process is stopped. That case is handled by a static Caddy
@@ -30,18 +30,26 @@ page (phase 8). Also out of scope: Unity/Godot UI (they keep showing the error m
 ## 2. Concepts
 
 ```
-scope    server | project
+scope    server | org | project
 mode     read_only | full | frozen          (frozen: server scope only)
-window   { id, project_id?, mode, message, starts_at, ends_at?, notify,
-           created_by, updated_at }
+window   { id, org_id?, project_id?, mode, message, starts_at, ends_at?, notify,
+           created_by, updated_at }          (org_id and project_id never both set)
 ```
 
-- **One window per scope.** At most one window for the server and one per project. History
-  is kept in the audit log.
+- **One window per scope.** At most one window for the server, one per org and one per
+  project. History is kept in the audit log.
 - **Active** when `now >= starts_at`. Before that the window is only an announcement
   (`scheduled`).
-- **Effective mode** for a request is the stricter of the active server window and the active
-  window of the targeted project. Order: `frozen` > `full` > `read_only` > `off`.
+- **Effective mode** for a request is the strictest of the active windows that cover its
+  target. Order: `frozen` > `full` > `read_only` > `off`.
+  - A request that targets a project is covered by the server window, the window of the
+    project's org and the project's own window.
+  - A request that targets an org without a project (members, groups, PBAC rules, org
+    settings, creating a project in it) is covered by the server window and that org's
+    window.
+  - A request without a target is covered by the server window only.
+  - When two windows have the same mode, the broadest scope is reported (server > org >
+    project), so users see the window that will end last.
 - **Manual end only.** `ends_at` is an estimate. It is shown to users and sent as
   `Retry-After`, but it never ends maintenance on its own.
 - **No bypass.** Super admins, org owners and service tokens get the same limits as everyone
@@ -51,8 +59,8 @@ window   { id, project_id?, mode, message, starts_at, ends_at?, notify,
   - an empty file means `full`;
   - otherwise it holds JSON `{mode, message, ends_at}`.
 
-  It works over ssh without the API and keeps working when the DB is slow. Project windows
-  still apply next to it.
+  It works over ssh without the API and keeps working when the DB is slow. Org and project
+  windows still apply next to it.
 
 ### 2.1 Propagation (blue/green, multi-instance)
 
@@ -62,6 +70,7 @@ window   { id, project_id?, mode, message, starts_at, ends_at?, notify,
 type Snapshot struct {
     Server   *Window             // DB or file
     Source   string              // "db" | "file"
+    Orgs     map[string]*Window  // org slug key
     Projects map[string]*Window  // "org/project" slug key
     ByID     map[snow.ID]*Window
     LoadedAt time.Time
@@ -72,7 +81,7 @@ type Snapshot struct {
 it:
 
 1. loads every window with one query (`MaintenanceList`, joined with
-   `projects`/`organizations` for the current slugs, live projects only);
+   `projects`/`organizations` for the current slugs, live orgs and projects only);
 2. stats and parses the override file;
 3. builds a new snapshot.
 
@@ -100,10 +109,39 @@ hook's own failure path runs.
   `start`/`callback`/`complete`. `register` and `verify` are `write`.
 - `control`:
   - the maintenance admin routes;
-  - the project maintenance routes;
-  - `GET /me` and `GET /permissions/me`, which the SPA shell needs to render the admin page.
-- A project window only affects requests that target that project. Requests without a project
-  (`ListMyProjects`, org settings, profile, other projects) see the server window only.
+  - the org and project maintenance routes;
+  - `GET /me`, `GET /permissions/me` and `GET /orgs/{org}`, which the SPA shell needs to
+    render the admin page and the org settings Maintenance tab.
+- An org window only affects requests that target that org or one of its projects. A project
+  window only affects requests that target that project. Requests without a target
+  (`ListMyProjects`, `GET /orgs`, profile) see the server window only.
+  - `ListMyProjects` and `GET /orgs` still list orgs and projects that are in maintenance. The
+    SPA and desktop mark them from the status endpoints.
+
+### 2.4 Org scope across the surfaces
+
+The org level is a third window kind. Every section below applies to it the same way it
+applies to projects, with these specifics:
+
+| area | org scope |
+|---|---|
+| who sets it | owner of that org or super admin (same as a project window). Never `frozen` |
+| gRPC target | `GetContext().Org` for project requests; `GetOrg()` (`CreateGroup`, `ListGroups`, `AddGroupMember`, `RemoveGroupMember`, …) for org requests. The class test checks every `read`/`write` method resolves to project, org or server-only |
+| REST target | `{org}` path parameter alone (`/orgs/{org}/members`, `/orgs/{org}/groups`, `POST /orgs/{org}/projects`, …) |
+| routes | `GET\|PUT\|DELETE /api/v1/orgs/{org}/maintenance` (GET: org member; PUT/DELETE: org owner or super admin), class `control` |
+| status | `GET .../projects/{project}/maintenance` answers `{server, org, project}`; `GET /orgs/{org}/maintenance` answers `{server, org, projects: [...]}` (the windows of the org's projects, for owners); the admin `GET` adds `orgs: [Status]` |
+| gRPC status | `GetMaintenanceStatusResponse.org = 3`; filled like `project` (valid token, read on the org's project or org membership) |
+| error text | `organization acme is in maintenance (closed): <message>`; `ErrorInfo.Metadata` gains `org` |
+| audit | `scope: org`, `org_id` |
+| email | recipients = the org's owners plus the admins of any live project in the org (direct or group rules, org-wide rules included), deduplicated; `ProjectID` empty, thread key `maintenance:<window id>` |
+| metrics | `nipa_maintenance_windows{scope,mode}` replaces `nipa_maintenance_project_windows` (scope `org`/`project`) |
+| CLI / daemon | `nipa status`, `RepoActivity.maintenance` and the `maintenance` event carry the org window too (`MaintenanceState{server, org, project}`) |
+| desktop | the banner names the scope ("Organization acme is read-only for maintenance") |
+| SPA | the org settings page gets a Maintenance tab (org owners); the banner shows on org and project routes; `MaintenancePage` covers org routes in an org `full` window except the org settings Maintenance tab; the admin page lists org windows |
+| storage | `org_id` column; deleting an org removes its window and the windows of its projects |
+
+Server-wide `frozen` stays the only mode that pauses background writers; org and project
+windows never touch dispatchers or leases.
 
 ### 2.3 What `frozen` stops
 
@@ -346,6 +384,7 @@ present. An invalid token or no access just leaves `project` empty.
 ```sql
 CREATE TABLE maintenance_windows (
     id         BIGINT    PRIMARY KEY,
+    org_id     BIGINT,                       -- postgres: REFERENCES organizations(id) ON DELETE CASCADE
     project_id BIGINT,                       -- postgres: REFERENCES projects(id) ON DELETE CASCADE
     mode       TEXT      NOT NULL CHECK (mode IN ('read_only','full','frozen')),
     message    TEXT      NOT NULL DEFAULT '',
@@ -354,11 +393,17 @@ CREATE TABLE maintenance_windows (
     notify     BOOLEAN   NOT NULL DEFAULT FALSE,
     created_by BIGINT    NOT NULL,           -- 0 = cli
     updated_at TIMESTAMP NOT NULL,
-    CHECK (project_id IS NULL OR mode <> 'frozen')
+    CHECK (org_id IS NULL OR project_id IS NULL),
+    CHECK ((org_id IS NULL AND project_id IS NULL) OR mode <> 'frozen')
 );
 CREATE UNIQUE INDEX maintenance_windows_project ON maintenance_windows (project_id) WHERE project_id IS NOT NULL;
-CREATE UNIQUE INDEX maintenance_windows_server  ON maintenance_windows ((project_id IS NULL)) WHERE project_id IS NULL;
+CREATE UNIQUE INDEX maintenance_windows_org     ON maintenance_windows (org_id) WHERE org_id IS NOT NULL;
+CREATE UNIQUE INDEX maintenance_windows_server  ON maintenance_windows ((org_id IS NULL AND project_id IS NULL))
+    WHERE org_id IS NULL AND project_id IS NULL;
 ```
+
+The project's org is not stored on a project window: `MaintenanceList` joins it, so a project
+moved between orgs (if that ever exists) is still matched correctly.
 
 - Soft deletes clean up through triggers, so no usecase changes (same pattern as
   `file_lock_requests_cleanup`; the server sqlite connection runs without foreign keys):
@@ -366,32 +411,40 @@ CREATE UNIQUE INDEX maintenance_windows_server  ON maintenance_windows ((project
     NEW.deleted` deletes the project's window (sqlite trigger; postgres trigger + plpgsql
     function of the same name);
   - `maintenance_windows_org_cleanup`: `AFTER UPDATE OF deleted ON organizations WHEN
-    NEW.deleted` deletes the windows of the org's projects (both dialects);
+    NEW.deleted` deletes the org's own window and the windows of its projects (both
+    dialects);
+  - sqlite `maintenance_windows_org_delete` covers a hard `DELETE FROM organizations`;
   - sqlite `maintenance_windows_project_delete` covers a hard `DELETE` (postgres has the
     `ON DELETE CASCADE` foreign key).
-- `MaintenanceList`/`MaintenanceGetProject` also skip windows of deleted projects or orgs.
+- `MaintenanceList`/`MaintenanceGetOrg`/`MaintenanceGetProject` also skip windows of deleted
+  projects or orgs.
 - Migrations are numbered like the existing ones (`000024`/`000009`), not with the
   timestamp names `make migrate-create` would produce.
 - Down migrations drop the triggers, functions and table.
 
 ### 5.2 Queries (`db/queries/sqlite/maintenance.sql`, `ee/repository/postgres/queries/maintenance.sql`)
 
-- `MaintenanceList`: windows joined with project and org slugs.
-- `MaintenanceGetServer` and `MaintenanceGetProject`.
-- `MaintenanceUpsertServer` and `MaintenanceUpsertProject`: `INSERT … ON CONFLICT DO
-  UPDATE`. On sqlite every parameter is named with `sqlc.arg`.
+- `MaintenanceList`: windows joined with org slugs (org windows) or project and org slugs
+  (project windows).
+- `MaintenanceGetServer`, `MaintenanceGetOrg` and `MaintenanceGetProject`.
+- `MaintenanceUpsertServer`, `MaintenanceUpsertOrg` and `MaintenanceUpsertProject`: `INSERT …
+  ON CONFLICT DO UPDATE`. On sqlite every parameter is named with `sqlc.arg`.
 - `MaintenanceDelete WHERE id = sqlc.arg(id)`.
-- `MaintenanceRecipientsServer` and `MaintenanceRecipientsProject`: live, verified users;
-  a project admin is a user or group member with a root (`path_prefix = ''`) rule carrying
-  `PermissionAdmin` on the project or org-wide in its org (deleted groups ignored).
+- `MaintenanceRecipientsServer`, `MaintenanceRecipientsOrg` and
+  `MaintenanceRecipientsProject`: live, verified users; a project admin is a user or group
+  member with a root (`path_prefix = ''`) rule carrying `PermissionAdmin` on the project or
+  org-wide in its org (deleted groups ignored). The org query takes the org's owners plus the
+  admins of any live project in the org. An org-wide admin rule therefore only counts while the org
+  has at least one live project.
 - Run `make sqlc` afterwards.
 
 ### 5.3 Repository
 
 - `usecase.maintenanceRepository` interface (`internal/usecase/maintenance.go`): `List`,
-  `GetServer`, `GetProject`, `UpsertServer`, `UpsertProject`, `Delete` (bool = a row was
-  removed), `RecipientsServer`, `RecipientsProject`, over `domain.MaintenanceWindow` (with
-  `OrgSlug`/`ProjectSlug` on reads) and `domain.MaintenanceRecipient`. An upsert keeps the
+  `GetServer`, `GetOrg`, `GetProject`, `UpsertServer`, `UpsertOrg`, `UpsertProject`, `Delete`
+  (bool = a row was removed), `RecipientsServer`, `RecipientsOrg`, `RecipientsProject`, over
+  `domain.MaintenanceWindow` (with `OrgID`, and `OrgSlug`/`ProjectSlug` on reads) and
+  `domain.MaintenanceRecipient`. An upsert keeps the
   stored `id` and `created_by` of an existing window.
 - `sqlite.NewMaintenanceRepository(db)` and `postgres.NewMaintenanceRepository(db)`, both
   built through `dbtx.New`.
@@ -403,11 +456,13 @@ CREATE UNIQUE INDEX maintenance_windows_server  ON maintenance_windows ((project
   - `mode.go`: `Mode` (`off` plus the three window modes), `ParseMode`, `Stricter`, `Class`,
     `Allowed(class, mode)` and `AllowedMethod(class, mode, method)` (control in `frozen`
     is open for `GET`/`HEAD` only; `Allowed` treats it as a write);
-  - `window.go`: `Window`, `Status`, `Active(now)`, `FromDomain`;
+  - `window.go`: `Window` (with `OrgID`; `Scope()` and `Key()`: "org/project", the org slug
+    or empty), `Status` (`org` and `project` keys), `Active(now)`, `FromDomain`;
   - `file.go`: `ParseFile` (empty = `full`, unknown fields or modes are errors);
   - `service.go`: `Service`, `Snapshot` (+ `FileError`), `NewSnapshot(windows, at)`,
-    `For(org, project) (Window, Scope)` (mode `off` and empty scope when nothing is active,
-    a tie keeps the server scope), `Frozen()`, `Apply(ctx, *Snapshot) error`,
+    `For(org, project) (Window, Scope)` (the strictest of server, org and project windows;
+    `project` may be empty for org targets; mode `off` and empty scope when nothing is
+    active; a tie keeps the broadest scope), `Frozen()`, `Apply(ctx, *Snapshot) error`,
     `OnResume(func(ctx) error)`. The resume gate lives in `Apply`, so the poller and the
     usecase's local apply both run the hooks before leaving `frozen`;
   - `poller.go`: `NewPoller(svc, load, file, interval)` with `WithClock`/`WithErrorHook`,
@@ -418,11 +473,12 @@ CREATE UNIQUE INDEX maintenance_windows_server  ON maintenance_windows ((project
     `ErrorInfo`, `RetryAfter`); `errors.go`: `Error` with the readable message and
     `AsError`.
 - `internal/usecase/maintenance.go`: `Maintenance` with `Status`, `AdminStatus`,
-  `SetServer`, `SetProject`, `EndServer`, `EndProject`, `ProjectStatus`. It also has
+  `SetServer`, `SetOrg`, `SetProject`, `EndServer`, `EndOrg`, `EndProject`, `OrgStatus`,
+  `ProjectStatus`. It also has
   `WithAudit`, `WithMailer` and `WithService` (applies the new state locally after the
   commit) plus a `WithSystemActor()` variant for the CLI.
-  - Permissions: `IsSuperAdmin` for the server window; `orgs.IsOrgOwner` or super admin for a
-    project window.
+  - Permissions: `IsSuperAdmin` for the server window; `orgs.IsOrgOwner` or super admin for an
+    org or project window; reading an org window needs org membership.
   - Validation: message ≤ 500 runes, `ends_at > starts_at`, `starts_at` ≤ now + 90 days,
     `frozen` only for the server.
   - A server `PUT` while the snapshot source is `file` → 409.
@@ -505,7 +561,7 @@ only be set from PR 4 on.
 | 4 | Add frozen maintenance for database moves | 3 | `frozen` mode; sessions kept by the CLI and SPA |
 | 5 | Email maintenance announcements | 2 | `notify` sends mail |
 | 6 | Show maintenance in the CLI, daemon and MCP | 3 | clear errors, no retries, status lines, daemon event |
-| 7 | Show maintenance in the web UI | 3 | banner, closed page, admin page, project tab |
+| 7 | Show maintenance in the web UI | 3 | banner, closed page, admin page, org and project tabs |
 | 8 | Show maintenance in the desktop app | 6 | banner, disabled actions, notification |
 | 9 | Document maintenance operations and database moves | 4 | runbooks, Caddy fallback page |
 
@@ -517,7 +573,10 @@ passthrough moves into PR 3, so a refused restore never reports "connect to the 
 
 ### PR 1: maintenance core and storage
 
-Phases 1 and 2 below. The package is pure and the table is unused until PR 2.
+Phases 1 and 2 below. The package is pure and the table is unused until PR 2. It includes the
+org scope (2.4): the `org_id` column, indexes and checks, the org triggers, the org queries and
+repository methods, `Snapshot.Orgs` and the three-way `For`, with tests for org-only,
+org + project, org + server, ties, and org deletion.
 
 ### PR 2: admin API and `nipad maintenance` command
 
