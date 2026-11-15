@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { PromptDialog } from "@/components/ui/prompt";
 import type { Notify } from "@/hooks/useLocks";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { errorMessage } from "@/lib/utils";
@@ -28,6 +29,7 @@ type Dialog = { kind: "new-branch" } | { kind: "merge"; name: string } | { kind:
 
 export function BranchesView({ root, branch, detached, busy, notify, onSwitch, onMerge, onCheckoutTag }: BranchesViewProps) {
   const { t } = useTranslation();
+  const { writes, sync } = useMaintenance();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<Dialog>(null);
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root) });
@@ -72,7 +74,7 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
           title={t("branchesView.branches")}
           Icon={GitBranch}
           action={
-            <Button size="sm" onClick={() => setDialog({ kind: "new-branch" })} disabled={busy || !!detached} title={detached ? translate("branchesView.switchBackToABranch") : translate("branchesView.startABranchFrom", { branch })}>
+            <Button size="sm" onClick={() => setDialog({ kind: "new-branch" })} disabled={busy || !!detached || !!writes} title={writes ?? (detached ? translate("branchesView.switchBackToABranch") : translate("branchesView.startABranchFrom", { branch }))}>
               <GitBranchPlus />
               {t("branchesView.newBranch")}
             </Button>
@@ -99,19 +101,19 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                     )}
                     <span className="ml-auto font-mono text-[11px] text-muted-foreground">{b.commitId ? shortId(b.commitId) : "empty"}</span>
                     {!current && !detached && b.commitId && (
-                      <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "merge", name: b.name })} title={t("branchesView.mergeIntoTitle", { name: b.name, branch })}>
+                      <Button size="sm" disabled={busy || !!writes} onClick={() => setDialog({ kind: "merge", name: b.name })} title={writes ?? t("branchesView.mergeIntoTitle", { name: b.name, branch })}>
                         <GitMerge />
                         {t("branchesView.mergeInto", { branch })}
                       </Button>
                     )}
                     {!current && (
-                      <Button size="sm" disabled={busy} onClick={() => onSwitch(b.name)} title={translate("branchesView.checkOutInThisClone", { name: b.name })}>
+                      <Button size="sm" disabled={busy || !!sync} onClick={() => onSwitch(b.name)} title={sync ?? translate("branchesView.checkOutInThisClone", { name: b.name })}>
                         <ArrowRightLeft />
                         {t("branchesView.switch")}
                       </Button>
                     )}
                     {!b.default && b.name !== branch && (
-                      <Button size="sm" variant="ghost" disabled={busy || deleteBranch.isPending} aria-label={translate("branchesView.deleteBranch", { name: b.name })} onClick={() => setDialog({ kind: "delete-branch", name: b.name })}>
+                      <Button size="sm" variant="ghost" disabled={busy || deleteBranch.isPending || !!writes} title={writes} aria-label={translate("branchesView.deleteBranch", { name: b.name })} onClick={() => setDialog({ kind: "delete-branch", name: b.name })}>
                         <Trash2 />
                       </Button>
                     )}
@@ -125,7 +127,7 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
           title={t("branchesView.tags")}
           Icon={TagIcon}
           action={
-            <Button size="sm" onClick={() => setDialog({ kind: "new-tag" })} disabled={busy || !!detached} title={detached ? translate("branchesView.switchBackToABranch") : translate("branchesView.tagTheHeadOf", { branch })}>
+            <Button size="sm" onClick={() => setDialog({ kind: "new-tag" })} disabled={busy || !!detached || !!writes} title={writes ?? (detached ? translate("branchesView.switchBackToABranch") : translate("branchesView.tagTheHeadOf", { branch }))}>
               <Plus />
               {t("branchesView.newTag")}
             </Button>
@@ -147,11 +149,11 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                   </span>
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{shortId(tag.commitId)}</span>
                   {detached !== tag.name && (
-                    <Button size="sm" disabled={busy} onClick={() => onCheckoutTag(tag.name)} title={t("branchesView.checkOutTheTaggedFiles")}>
+                    <Button size="sm" disabled={busy || !!sync} onClick={() => onCheckoutTag(tag.name)} title={sync ?? t("branchesView.checkOutTheTaggedFiles")}>
                       {t("branchesView.checkOut")}
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" disabled={busy || deleteTag.isPending} aria-label={translate("branchesView.deleteTag", { name: tag.name })} onClick={() => setDialog({ kind: "delete-tag", name: tag.name })}>
+                  <Button size="sm" variant="ghost" disabled={busy || deleteTag.isPending || !!writes} title={writes} aria-label={translate("branchesView.deleteTag", { name: tag.name })} onClick={() => setDialog({ kind: "delete-tag", name: tag.name })}>
                     <Trash2 />
                   </Button>
                 </li>

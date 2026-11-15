@@ -1544,9 +1544,12 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 `auditedWrite`. The JWT interceptors also attach `RequestMeta` for the public
 login RPCs.
 
-Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; core,
-storage, admin API, the server subcommand, `read_only`/`full`/`frozen`
-enforcement and email announcements exist): windows
+Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; operator
+guide, database move runbooks and the hard-downtime Caddy page in
+`docs/MAINTENANCE.md`: `deploy/caddy/Caddyfile` `handle_errors 502 503 504`
+answers gRPC with the server `full` refusal, `/api`/`/auth` with its JSON and
+browsers with `deploy/caddy/maintenance/index.html`, kept in sync by
+`internal/maintenance/caddy_test.go`): windows
 have three scopes (server, org, project). The pure `internal/maintenance` (no
 repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
 `Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
@@ -1720,6 +1723,16 @@ adds `next: retry after <ends_at>`. Suite: `tests/suite/maintenance_test.go`
 `MAINTENANCE_FILE` that `tests/run.sh` configures as
 `NIPA_TEST_MAINTENANCE_FILE`, daemon events and bridge, MCP hint, the
 announcement emails).
+Desktop (PR 8, `docs/DESKTOP.md`): `service/maintenance.go` maps
+`RepoActivity.maintenance`/`TeamEvent.maintenance` to `MaintenanceWindow`
+(scope from the slot, else `project` → `org` → server) and refusals to
+`MaintenanceError` (`OpFailure.maintenance`, `cleanError`; the Wails error
+`cause` is `{message, maintenance}`, read by `lib/maintenance.ts`
+`maintenanceOf` and rendered by `errorMessage`). `MaintenanceBanner` +
+`hooks/useMaintenance.ts` (`MaintenanceProvider` in `RepoView`, `writes`/
+`sync` notes) disable writes in any active window and Update/Switch/tag
+checkout in `full`/`frozen`; the clone dialog says sign-in is paused when
+frozen; notification kind `notify.maintenance` (default on) and tray counts.
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

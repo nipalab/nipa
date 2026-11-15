@@ -194,7 +194,9 @@ func TestNotifySettings_LockRequestsDefaultOn(t *testing.T) {
 	var n NotifySettings
 	require.NoError(t, json.Unmarshal([]byte(`{"pushes":true,"locks":false,"reviews":true}`), &n))
 	require.True(t, n.LockRequests, "an older settings file keeps the new notice on")
-	require.NoError(t, json.Unmarshal([]byte(`{"lockRequests":false}`), &n))
+	require.True(t, n.Maintenance)
+	require.NoError(t, json.Unmarshal([]byte(`{"lockRequests":false,"maintenance":false}`), &n))
 	require.False(t, n.LockRequests)
+	require.False(t, n.Maintenance)
 	require.Error(t, json.Unmarshal([]byte(`{"pushes":1}`), &n))
 }

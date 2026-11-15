@@ -13,6 +13,7 @@ import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
@@ -49,7 +50,8 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
   const body = commitBody(commit.message);
   const simple = useSimple();
   const merge = commit.parents.length > 1;
-  const blocked = revertBlocked ?? (merge ? translate("commitDetail.revertingAMergeCommitIs") : undefined);
+  const { writes } = useMaintenance();
+  const blocked = writes ?? revertBlocked ?? (merge ? translate("commitDetail.revertingAMergeCommitIs") : undefined);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -58,11 +60,11 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
           <h2 className="min-w-0 flex-1 select-text break-words text-sm font-semibold">{commitTitle(commit.message)}</h2>
           {!simple && (
             <>
-              <Button size="sm" onClick={() => onBranch(commit)} disabled={busy} title={t("commitDetail.createABranchStartingAt")}>
+              <Button size="sm" onClick={() => onBranch(commit)} disabled={busy || !!writes} title={writes ?? t("commitDetail.createABranchStartingAt")}>
                 <GitBranchPlus />
                 {t("commitDetail.branch")}
               </Button>
-              <Button size="sm" onClick={() => onTag(commit)} disabled={busy} title={t("commitDetail.tagThisCommitAsA")}>
+              <Button size="sm" onClick={() => onTag(commit)} disabled={busy || !!writes} title={writes ?? t("commitDetail.tagThisCommitAsA")}>
                 <TagIcon />
                 {t("commitDetail.tag")}
               </Button>

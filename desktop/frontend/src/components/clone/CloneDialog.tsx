@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { describeProgress } from "@/hooks/useRepoOperation";
 import { joinPath } from "@/lib/sparse";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { maintenanceOf } from "@/lib/maintenance";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
@@ -107,9 +108,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const inputClass = "w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[12px] outline-none focus:ring-2 focus:ring-ring";
 
 function ErrorText({ error }: { error: unknown }) {
+  const { t } = useTranslation();
   if (!error) return null;
+  const paused = maintenanceOf(error)?.mode === "frozen";
   return (
     <p role="alert" className="text-[12px] text-danger">
+      {paused && <span className="block font-medium">{t("maintenance.signInPaused")}</span>}
       {errorMessage(error)}
     </p>
   );

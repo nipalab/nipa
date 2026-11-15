@@ -1,12 +1,15 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { translate } from "@/i18n";
+import { maintenanceOf, maintenanceText } from "./maintenance";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function errorMessage(err: unknown): string {
+  const maintenance = maintenanceOf(err);
+  if (maintenance) return maintenanceText(maintenance);
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   return translate("utils.somethingWentWrong");

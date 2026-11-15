@@ -49,3 +49,18 @@ func TestLocalizedTray(t *testing.T) {
 	require.Equal(t, "game · 새 커밋 2개 · 연결할 수 없음", entries[2].Label)
 	require.Equal(t, "Nipa 종료", entries[len(entries)-1].Label)
 }
+
+func TestMaintenanceInTray(t *testing.T) {
+	active := []service.MaintenanceWindow{{Scope: service.ScopeProject, Mode: "read_only", Active: true}}
+	scheduled := []service.MaintenanceWindow{{Scope: service.ScopeServer, Mode: "full"}}
+	list := []service.RepoActivity{
+		{Root: "/a", Name: "art", Maintenance: active},
+		{Root: "/b", Name: "code", Maintenance: scheduled},
+		{Root: "/c", Name: "docs", Maintenance: append(append([]service.MaintenanceWindow{}, scheduled...), active...)},
+	}
+	require.Equal(t, "Nipa: 2 clones in maintenance, 1 clone with maintenance scheduled", Tooltip(lang.English, list))
+	entries := Menu(lang.English, list)
+	require.Equal(t, "art · maintenance", entries[2].Label)
+	require.Equal(t, "code", entries[3].Label)
+	require.Equal(t, "メンテナンス中のクローン 2 件, メンテナンス予定のクローン 1 件", Tooltip(lang.Japanese, list)[len("Nipa: "):])
+}

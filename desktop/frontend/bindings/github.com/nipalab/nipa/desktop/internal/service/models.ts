@@ -752,6 +752,21 @@ export interface LockWatch {
     "path": string;
 }
 
+/**
+ * MaintenanceWindow is one server, org or project maintenance window; times
+ * are RFC 3339 and EndsAt is an estimate, empty when unknown.
+ */
+export interface MaintenanceWindow {
+    "scope": string;
+    "mode": string;
+    "active": boolean;
+    "message": string;
+    "startsAt": string;
+    "endsAt": string;
+    "org": string;
+    "project": string;
+}
+
 export interface MergeOutcome {
     "upToDate": boolean;
     "fastForwarded": boolean;
@@ -1099,6 +1114,12 @@ export interface RepoActivity {
     "reviewRequests": number;
     "error": string;
     "events": TeamEvent[] | null;
+
+    /**
+     * Maintenance lists the server, org and project windows covering the
+     * clone, active or scheduled.
+     */
+    "maintenance": MaintenanceWindow[] | null;
 }
 
 /**
@@ -1364,6 +1385,12 @@ export interface TeamEvent {
     "count": number;
     "path": string;
     "number": number;
+
+    /**
+     * Maintenance is the window of a maintenance event (the previous one
+     * when it ended); Message is scheduled, started, updated or ended.
+     */
+    "maintenance"?: MaintenanceWindow | null;
 }
 
 export interface Thread {

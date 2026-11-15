@@ -68,6 +68,7 @@ export type {
     LockResult,
     LockStatus,
     LockWatch,
+    MaintenanceWindow,
     MergeOutcome,
     MergeRequest,
     MergeRequestDetail,

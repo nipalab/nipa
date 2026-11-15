@@ -240,7 +240,9 @@ nipa clone http://localhost:6745/acme/rocket ./rocket
 A server, an organization or a project can be put into maintenance without
 stopping the server. The modes are `read_only`, `full` (closed) and `frozen`
 (server only, for moving the database). Windows are stored in the database,
-so every instance picks them up within `MAINTENANCE_POLL_SECONDS`.
+so every instance picks them up within `MAINTENANCE_POLL_SECONDS`. The full
+operator guide, including the database move runbooks and the Caddy page for
+hard downtime, is [MAINTENANCE.md](MAINTENANCE.md).
 
 An active window refuses requests to its scope (the server window covers
 everything, an org window its org and projects, a project window that
@@ -324,6 +326,10 @@ To upgrade, replace `bin/nipad` and restart. Pending SQLite migrations are
 applied automatically at startup; there is no separate migration step. Keep a
 backup before upgrading.
 
+To move the server to another host with writes paused for minutes only
+(`frozen` window, `sqlite3 nipa.db ".backup ..."`, chunk `rsync`), follow
+[MAINTENANCE.md](MAINTENANCE.md#moving-the-sqlite-server-nipad).
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -346,4 +352,5 @@ backup before upgrading.
 - Web UI routes and REST surface: [WEB_UI.md](WEB_UI.md)
 - SSH key login: [SSH.md](SSH.md)
 - Email notifications: [EMAIL.md](EMAIL.md)
+- Maintenance windows and database moves: [MAINTENANCE.md](MAINTENANCE.md)
 - Metrics, logs and traces: [OBSERVABILITY.md](OBSERVABILITY.md), [TRACING.md](TRACING.md)

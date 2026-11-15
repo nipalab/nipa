@@ -463,6 +463,31 @@ Sonar never compile it.
   Teammate pushes, released locks and review requests raise desktop
   notifications (each kind can be switched off); clicking one opens the
   History, Locks or Merge requests tab (`Navigation`, `app:navigate`).
+- Maintenance: `RepoActivity.maintenance` carries the daemon's
+  `MaintenanceState` as `MaintenanceWindow`s (scope from the slot: server,
+  org, project; RFC 3339 times, `endsAt` an estimate), and a `maintenance`
+  `TeamEvent` carries its window (scope derived from `project`, then `org`).
+  `MaintenanceBanner` at the top of the repo view shows the strictest active
+  window (read-only in warning, closed or frozen in danger) or the earliest
+  scheduled one (dismissible), with the mode in words, the message, the local
+  start and the estimated end. `hooks/useMaintenance.ts` (`MaintenanceProvider`
+  set by `RepoView`) gives `writes`/`sync` notes: any active window disables
+  Push/Submit, "Finish merge", revert Continue, lock/unlock/"Lock & edit"/"Ask
+  to release", branch and tag create/delete, local merge, Revert/Branch…/Tag…
+  in History and every merge request action (`useMergeRequest` reports busy);
+  `full`/`frozen` also disable Update, Switch and tag checkout. The disabled
+  buttons carry the note as tooltip; staging, shelving, diffs and local file
+  actions stay enabled. A refused operation arrives as `MaintenanceError`
+  (`OpFailure.maintenance` on op streams, gRPC refusals through `cleanError`;
+  the Wails error `cause` is `{message, maintenance}`), which `errorMessage`
+  renders as "Project x is closed for maintenance · message · Estimated end"
+  and which shows the banner until the next poll. Sign-in in the clone dialog
+  says it is paused when the refusal is `frozen`. Notifications use the
+  `maintenance` kind (Settings, on by default: `notify.maintenance`) for
+  `scheduled`/`started`/`updated`/`ended`; the tray tooltip counts clones in
+  maintenance and with a window scheduled, and the menu row says
+  "maintenance". The sidebar shows a construction icon for clones in an
+  active window.
 - Deep links: `nipa://<server>/<org>/<project>[/merge-requests/<n>|
   /commits/<id>|/file/<path>|/files|/history|/branches|/locks|/changes|/settings]`
   (a `server` query parameter overrides the address; localhost defaults to
@@ -787,3 +812,4 @@ captures both themes, converts them to WebP (ImageMagick) and writes
 27. Release requests (part B of the lock-watch phase): "Ask to release" with an optional message on teammates' locks (`RequestRelease`, daemon `ProxyLockRequestRelease`), a request badge on the holder's own lock rows next to "Release", a "Someone asks me to release a lock" notification kind (`notify.lockRequests`, on by default, daemon `lock_requested` event). Server: `file_lock_requests`, `FileLock.RequestRelease`, REST `POST .../locks/{id}/requests`, gRPC `RequestFileLockRelease`, the `lock.release_requested` webhook and holder email; web Locks page and `nipa lock request <path> [-m]`. **(done)**
 28. Video, font and embedded-thumbnail viewers (`VideoDiff` over the `/nipa-media/` asset route, `FontDiff`, daemon `Preview` thumbnails for `.blend`/`.uasset`). **(done)**
 29. Member pickers and the project activity feed: the new merge request dialog and the merge request header pick reviewers and assignees through `components/people/MemberPicker.tsx` (name search over `Members`, daemon `ProxyProjectMembers` → server `ListProjectMembers`: org members and rule subjects who can read the project, name and id only; chips, keyboard list, initials avatars) instead of raw user ids, and `PeopleBar` assigns (`AssignMergeRequest`, daemon `ProxyMergeRequestAssign`) and asks for reviews (`RequestReview`, daemon `ProxyMergeRequestRequestReview`) on open requests. The Activity tab (`ProjectActivity` composed client-side from the 10 most recently updated branches × 30 commits, open and merged merge requests and current locks; `components/activity/ActivityView.tsx`) groups a day-by-day timeline with range, person and kind filters, and its rows open History, a merge request or the Locks tab. **(done)**
+30. Maintenance mode (PR 8 of `docs/plans/MAINTENANCE_MODE.md`): the banner, disabled writes (and syncs in `full`/`frozen`), `MaintenanceError` rendering, paused sign-in and the `maintenance` notification kind with tray counts. **(done)**

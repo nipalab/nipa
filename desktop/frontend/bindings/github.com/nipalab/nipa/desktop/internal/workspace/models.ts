@@ -7,10 +7,12 @@ export interface NotifySettings {
     "reviews": boolean;
 
     /**
-     * LockRequests tells the holder that someone asked for a lock; on unless
-     * a saved file says otherwise.
+     * LockRequests tells the holder that someone asked for a lock and
+     * Maintenance announces maintenance windows; both are on unless a saved
+     * file says otherwise.
      */
     "lockRequests": boolean;
+    "maintenance": boolean;
 }
 
 /**

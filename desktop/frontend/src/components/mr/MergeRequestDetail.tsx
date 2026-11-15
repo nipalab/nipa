@@ -446,12 +446,13 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
           <Button size="sm" variant="ghost" disabled={mr.busy} onClick={() => setClosing(true)}>
             {t("mergeRequestDetail.close")}
           </Button>
-          <Button size="sm" variant="primary" disabled={mr.busy || !canMerge} onClick={() => mr.merge.mutate({ strategy, deleteSource })}>
+          <Button size="sm" variant="primary" disabled={mr.busy || !canMerge} title={mr.blocked} onClick={() => mr.merge.mutate({ strategy, deleteSource })}>
             {mr.merge.isPending ? <Loader2 className="animate-spin" /> : <GitMerge />}
             {t("mergeRequestDetail.merge")}
           </Button>
         </span>
       </div>
+      {mr.blocked && <p className="text-muted-foreground">{mr.blocked}</p>}
       {closing && (
         <ConfirmDialog
           title={translate("mergeRequestDetail.close2", { number: request.number })}

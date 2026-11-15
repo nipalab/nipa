@@ -388,6 +388,9 @@ func isConnectionError(err error) bool {
 
 // cleanError strips the gRPC envelope so the UI shows the daemon's message.
 func cleanError(err error) error {
+	if m, ok := maintenanceError(err); ok {
+		return m
+	}
 	if st, ok := status.FromError(err); ok && st.Code() != codes.OK {
 		return errors.New(st.Message())
 	}

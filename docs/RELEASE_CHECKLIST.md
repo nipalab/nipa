@@ -102,6 +102,12 @@ pre-release step, not a replacement for the automated gates below.
   dialects, document SQLite backup/VACUUM and postgres backup guidance, and
   state the local-clone policy (no local schema migration — re-clone) in the
   deployment docs.
+- [ ] **Database move rehearsal.** Run the `docs/MAINTENANCE.md` runbooks on
+  staging hosts once per edition: postgres replica → `frozen` → read-only old
+  primary → `pg_promote()` → color switch → `maintenance end`, including the
+  rollback path, and the sqlite `.backup` + chunk `rsync` move. Also stop both
+  colors once and check the Caddy maintenance page (browser, `curl /api/...`,
+  `nipa version --server`).
 - [ ] **Production deployment doc.** TLS reverse-proxy guidance for the single
   h2c port (`internal/serverapp`), `config.yaml.sample` must-change list
   (`JWT_KEY`, `CHUNK_URL_SIGNING_KEY`), env vars, metrics/health endpoints,

@@ -162,6 +162,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
           <Check label={t("settingsDialog.aLockIsReleased")} checked={draft.notify.locks} onChange={(v) => set({ notify: { ...draft.notify, locks: v } })} />
           <Check label={t("settingsDialog.someoneAsksMeToRelease")} checked={draft.notify.lockRequests} onChange={(v) => set({ notify: { ...draft.notify, lockRequests: v } })} />
           <Check label={t("settingsDialog.someoneAsksForMyReview")} checked={draft.notify.reviews} onChange={(v) => set({ notify: { ...draft.notify, reviews: v } })} />
+          <Check label={t("settingsDialog.maintenanceIsScheduled")} checked={draft.notify.maintenance} onChange={(v) => set({ notify: { ...draft.notify, maintenance: v } })} />
           <div className="flex items-center justify-between gap-3 pt-1">
             <label htmlFor={ids.poll}>{t("settingsDialog.checkTheServerEvery")}</label>
             <select

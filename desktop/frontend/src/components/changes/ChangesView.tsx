@@ -14,6 +14,7 @@ import { InsightPanel } from "@/components/files/AssetInsight";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { useSimple } from "@/lib/mode";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { usePushChecks } from "@/hooks/usePushChecks";
 import { useLLMSettings } from "@/hooks/useGenerate";
 import type { OpState } from "@/hooks/useRepoOperation";
@@ -63,6 +64,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
 
 export function ChangesView({ root, op, message, onMessage, onPush, onShelve, onApplyShelf, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
   const { t } = useTranslation();
+  const maintenance = useMaintenance();
   const simple = useSimple();
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
@@ -169,7 +171,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
   const c = changes.data;
   const busy = working;
   const empty = c.staged.length === 0 && c.unstaged.length === 0;
-  const blocked = c.detached ? translate("changesView.hEADIsAtTag", { detached: c.detached }) : undefined;
+  const blocked = c.detached ? translate("changesView.hEADIsAtTag", { detached: c.detached }) : maintenance.writes;
   const openConflicts = c.conflicts.filter((p) => !c.resolved.includes(p)).length;
   const lockIssue = stagedLockIssue(c, lockStates, lockPaths, lock.isPending);
   const selectFirst = (paths: string[]) => {
@@ -223,7 +225,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
             onDiscard={setDiscarding}
             warnings={warnings}
             locks={lockStates}
-            onLock={lockStatus.data ? (path) => lockPaths([path]) : undefined}
+            onLock={lockStatus.data && !maintenance.writes ? (path) => lockPaths([path]) : undefined}
             onShelve={onShelve ? (path) => setShelving([path]) : undefined}
           />
         )}

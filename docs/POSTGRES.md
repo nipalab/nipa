@@ -110,6 +110,16 @@ made the old `MAX(number)+1` race invisible).
   / `make migrate-down-postgres DSN=...` wrap it. The free
   `make migrate-up`/`migrate-down` remain sqlite-only.
 
+## Moving the database
+
+Move the database to another host under a `frozen` maintenance window: a
+streaming replica (`pg_basebackup -R`, same major version) or logical
+replication (identity sequences re-synced with `setval`,
+`ssh_login_challenges` set to `REPLICA IDENTITY FULL`), the old primary made
+read-only at T0, promotion, a color switch to the new `DATABASE_DSN` and
+`nipad-ee maintenance end`. Runbook and rollback in
+[MAINTENANCE.md](MAINTENANCE.md#moving-the-postgres-database-nipad-ee).
+
 ## Testing
 
 - Repository tests live in `ee/repository/postgres` and are testify suites over
