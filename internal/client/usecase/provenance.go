@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/ignore"
 	"github.com/nipalab/nipa/internal/provenance"
 )
 
@@ -22,6 +23,9 @@ type ProvenanceReport struct {
 	Recorded int
 	Moved    int
 	Deleted  int
+	// Generated lists the folders whose newly staged files look like build
+	// output or installed dependencies.
+	Generated []ignore.Generated
 }
 
 func (r ProvenanceReport) Changed() bool {

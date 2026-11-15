@@ -44,6 +44,7 @@ var methodClass = buildMethodClasses(map[maintenance.Class][]string{
 		nipaSvc + "ListMergeRequestChecks",
 		nipaSvc + "ListMergeRequestCommits",
 		nipaSvc + "GetMergeRequestDiff",
+		nipaSvc + "StreamMergeRequestDiff",
 		nipaSvc + "ListMergeRequestReviews",
 		nipaSvc + "GetMergeRequestReviewState",
 		nipaSvc + "ListMergeRequestThreads",

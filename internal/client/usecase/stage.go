@@ -113,7 +113,22 @@ func (w *WorkingCopy) AddWithReport(ctx context.Context, targets []string, opts 
 			paths = withProvenanceFile(paths)
 		}
 	}
+	rep.Generated = ignore.DetectGenerated(w.root, untracked(snapshot, paths))
 	return rep, w.localRepo.StageAddMany(paths)
+}
+
+func untracked(snapshot *domain.Snapshot, paths []string) []string {
+	tracked := make(map[string]bool, len(snapshot.Files))
+	for _, f := range snapshot.Files {
+		tracked[f.Path] = true
+	}
+	var out []string
+	for _, p := range paths {
+		if !tracked[p] {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // withoutUnchanged drops tracked paths whose cached fingerprint still matches

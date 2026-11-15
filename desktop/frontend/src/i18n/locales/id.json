@@ -1539,5 +1539,17 @@
   "maintenance.estimatedEnd": "Perkiraan selesai {{end}}",
   "maintenance.since": "Sejak {{start}}",
   "maintenance.dismiss": "Tutup",
-  "maintenance.signInPaused": "Masuk dijeda selama server dibekukan untuk pemeliharaan."
+  "maintenance.signInPaused": "Masuk dijeda selama server dibekukan untuk pemeliharaan.",
+  "generatedFolders.title_other": "Folder ini tampaknya hasil generate",
+  "generatedFolders.message_other": "{{count}} file baru tampaknya dependensi terpasang atau hasil build. File seperti ini biasanya dibuat ulang di setiap mesin dan tidak dimasukkan ke proyek.",
+  "generatedFolders.files_other": "{{count}} file",
+  "generatedFolders.more_other": "dan {{count}} folder lainnya",
+  "generatedFolders.ignoreHint": "Abaikan folder menambahkannya ke .nipaignore, sehingga rekan tim juga melewatinya, lalu menandai sisanya.",
+  "generatedFolders.stageAnyway": "Tetap tandai",
+  "generatedFolders.ignore": "Abaikan folder",
+  "gitignoreOffer.text": "Proyek ini memiliki .gitignore. Nipa hanya membaca .nipaignore, jadi file yang diabaikan git muncul di sini.",
+  "gitignoreOffer.create": "Buat .nipaignore dari .gitignore",
+  "gitignoreOffer.dismiss": "Tutup",
+  "gitignoreOffer.imported_other": "{{count}} aturan ditambahkan ke .nipaignore",
+  "gitignoreOffer.unsupported_other": "{{count}} aturan memakai sintaks yang tidak didukung Nipa dan tidak akan cocok: {{rules}}"
 }

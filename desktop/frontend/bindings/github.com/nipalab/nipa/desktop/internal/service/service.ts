@@ -8,6 +8,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as ignore$0 from "../../../internal/client/ignore/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -93,6 +96,14 @@ export function Blame(root: string, path: string, revision: string): $Cancellabl
  */
 export function Branches(root: string): $CancellablePromise<$models.Branch[] | null> {
     return $Call.ByID(3835456308, root);
+}
+
+/**
+ * CanImportGitignore reports whether the clone has a root .gitignore but no
+ * .nipaignore yet.
+ */
+export function CanImportGitignore(root: string): $CancellablePromise<boolean> {
+    return $Call.ByID(706807155, root);
 }
 
 /**
@@ -333,6 +344,14 @@ export function GenerateMergeRequest(root: string, source: string, target: strin
 }
 
 /**
+ * GeneratedFolders groups new paths under the folders that look like build
+ * output or installed dependencies, largest first.
+ */
+export function GeneratedFolders(root: string, paths: string[] | null): $CancellablePromise<ignore$0.Generated[] | null> {
+    return $Call.ByID(3455542326, root, paths);
+}
+
+/**
  * HasMedia reports whether a prepared media file is still available; the
  * viewer asks after a playback error to tell an evicted file from a format
  * the webview cannot decode.
@@ -349,6 +368,13 @@ export function History(root: string, q: $models.HistoryQuery): $CancellableProm
 }
 
 /**
+ * IgnoreFolders appends patterns to .nipaignore and returns how many were new.
+ */
+export function IgnoreFolders(root: string, patterns: string[] | null): $CancellablePromise<number> {
+    return $Call.ByID(859284235, root, patterns);
+}
+
+/**
  * IgnoreRules reads the clone's ignore files; missing files are empty.
  */
 export function IgnoreRules(root: string): $CancellablePromise<$models.IgnoreRules> {
@@ -361,6 +387,13 @@ export function IgnoreRules(root: string): $CancellablePromise<$models.IgnoreRul
  */
 export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, opts: $models.ImageOptions): $CancellablePromise<$models.ImageCompare | null> {
     return $Call.ByID(2294302882, root, old, $new, opts);
+}
+
+/**
+ * ImportGitignore copies the root .gitignore rules into .nipaignore.
+ */
+export function ImportGitignore(root: string): $CancellablePromise<ignore$0.ImportResult> {
+    return $Call.ByID(536994281, root);
 }
 
 /**

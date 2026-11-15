@@ -405,9 +405,12 @@ func FromMRDiff(files []*domain.MergeRequestDiffFile) []FileText {
 		}
 		ft := FileText{Path: f.Path, OldPath: f.OldPath, Status: f.Status, Binary: f.Binary}
 		ft.Lines = []string{header(f.Path, f.OldPath)}
-		if f.Binary {
+		switch {
+		case f.Binary:
 			ft.Lines = append(ft.Lines, "Binary file changed")
-		} else {
+		case f.TooLarge:
+			ft.Lines = append(ft.Lines, fmt.Sprintf("[diff too large to show: +%d -%d]", f.Additions, f.Deletions))
+		default:
 			ft.Lines = append(ft.Lines, f.Patch...)
 		}
 		out = append(out, ft)

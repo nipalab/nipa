@@ -1539,5 +1539,17 @@
   "maintenance.estimatedEnd": "预计结束 {{end}}",
   "maintenance.since": "开始于 {{start}}",
   "maintenance.dismiss": "关闭",
-  "maintenance.signInPaused": "服务器因维护冻结期间，登录已暂停。"
+  "maintenance.signInPaused": "服务器因维护冻结期间，登录已暂停。",
+  "generatedFolders.title_other": "这些文件夹看起来是生成的",
+  "generatedFolders.message_other": "{{count}} 个新文件看起来是已安装的依赖或构建输出。这类文件通常在每台机器上重新生成，不放入项目。",
+  "generatedFolders.files_other": "{{count}} 个文件",
+  "generatedFolders.more_other": "以及另外 {{count}} 个文件夹",
+  "generatedFolders.ignoreHint": "“忽略文件夹”会把它们加入 .nipaignore，团队成员也会跳过它们，其余文件照常暂存。",
+  "generatedFolders.stageAnyway": "仍然暂存",
+  "generatedFolders.ignore": "忽略文件夹",
+  "gitignoreOffer.text": "此项目有 .gitignore。Nipa 只读取 .nipaignore，因此 git 会忽略的文件会出现在这里。",
+  "gitignoreOffer.create": "根据 .gitignore 创建 .nipaignore",
+  "gitignoreOffer.dismiss": "关闭",
+  "gitignoreOffer.imported_other": "已向 .nipaignore 添加 {{count}} 条规则",
+  "gitignoreOffer.unsupported_other": "{{count}} 条规则使用了 Nipa 不支持的语法，不会生效：{{rules}}"
 }

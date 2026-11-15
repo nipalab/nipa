@@ -103,6 +103,8 @@ type stubBranchMerger struct {
 	ffErr         error
 	mergeOpts     usecase.MergeCommitOptions
 	deletedBranch bool
+	diff          []diff.FileDiff
+	diffErr       error
 }
 
 func (s *stubBranchMerger) GetMergeBase(_ context.Context, _ snow.ID, _, _ usecase.MergeRef) (*usecase.MergeBaseInfo, error) {
@@ -136,7 +138,7 @@ func (s *stubBranchMerger) Delete(_ context.Context, _ snow.ID, _ string) error 
 }
 
 func (s *stubBranchMerger) TreeDiffBetween(_ context.Context, _ snow.ID, _ *snow.ID, _ snow.ID) ([]diff.FileDiff, error) {
-	return nil, nil
+	return s.diff, s.diffErr
 }
 
 func (s *stubBranchMerger) BinaryChangesBetween(_ context.Context, _ snow.ID, _, _ *snow.ID) ([]string, error) {

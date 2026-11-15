@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { desktop, type AssetReferences, type ChangeSet } from "@/api/desktop";
+import { desktop, type AssetReferences, type ChangeSet, type GeneratedFolder } from "@/api/desktop";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { findGeneratedFolders, GeneratedFoldersDialog, outsideFolders, untrackedPaths } from "@/components/changes/GeneratedFolders";
 import { refsKey, useAssetRefs, useReferrers } from "@/hooks/useAssetInsight";
 import { deletionTargets, plural, referrerSummary } from "@/lib/insight";
 import { useTranslation } from "react-i18next";
@@ -20,15 +21,26 @@ export function ReferrerNote({ root, path, enabled = true }: { root: string; pat
 
 type PendingStage = { paths: string[]; targets: string[] };
 
-// useStageGuard stages paths, first asking for confirmation when a staged
-// deletion removes an asset other files still use. Lookups come from the
-// daemon's cached graph; one that is slower than QUICK_LOOKUP_MS opens the
-// confirmation right away and fills in when it arrives.
-export function useStageGuard(root: string, changes: ChangeSet | undefined, stage: (paths: string[]) => void) {
+type PendingGenerated = { paths: string[]; folders: GeneratedFolder[] };
+
+// useStageGuard stages paths, first asking when new files sit in folders that
+// look generated (node_modules, Unity Library, ...), then when a staged
+// deletion removes an asset other files still use. Reference lookups come
+// from the daemon's cached graph; one that is slower than QUICK_LOOKUP_MS
+// opens the confirmation right away and fills in when it arrives.
+export function useStageGuard(root: string, changes: ChangeSet | undefined, stage: (paths: string[]) => void, onError: (message: string) => void = () => {}) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<PendingStage | null>(null);
+  const [generated, setGenerated] = useState<PendingGenerated | null>(null);
 
   const request = async (paths: string[]) => {
+    const folders = await findGeneratedFolders(root, changes, paths);
+    if (folders.length > 0) return setGenerated({ paths, folders });
+    return checkDeletions(paths);
+  };
+
+  const checkDeletions = async (paths: string[]) => {
+    if (paths.length === 0) return;
     const targets = changes ? deletionTargets(changes, paths) : [];
     if (targets.length === 0) return stage(paths);
     const lookups = Promise.allSettled(
@@ -47,7 +59,22 @@ export function useStageGuard(root: string, changes: ChangeSet | undefined, stag
     setPending({ paths, targets });
   };
 
-  const dialog = pending ? (
+  const dialog = generated ? (
+    <GeneratedFoldersDialog
+      root={root}
+      folders={generated.folders}
+      onCancel={() => setGenerated(null)}
+      onStageAnyway={() => {
+        setGenerated(null);
+        void checkDeletions(generated.paths);
+      }}
+      onIgnored={() => {
+        setGenerated(null);
+        void checkDeletions(outsideFolders(generated.paths, generated.folders, untrackedPaths(changes, generated.paths)));
+      }}
+      onError={onError}
+    />
+  ) : pending ? (
     <DeleteReferrersDialog
       root={root}
       targets={pending.targets}

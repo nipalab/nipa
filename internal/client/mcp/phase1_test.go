@@ -260,6 +260,10 @@ func TestCapMRDiff(t *testing.T) {
 	require.True(t, cut.Files[0].Truncated)
 	require.Len(t, cut.Files[0].Patch, 1)
 	require.Equal(t, 1, cut.OmittedFiles)
+
+	large := capMRDiff([]*domain.MergeRequestDiffFile{{Path: "big.txt", TooLarge: true}}, 1<<20)
+	require.True(t, large.Files[0].Truncated)
+	require.True(t, large.Files[0].TooLarge)
 }
 
 func TestBudgetHelpers(t *testing.T) {

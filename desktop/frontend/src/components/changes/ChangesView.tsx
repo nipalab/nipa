@@ -7,6 +7,7 @@ import { DiffViewer } from "@/components/changes/DiffViewer";
 import { buildRows, FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ReferrerNote, useStageGuard } from "@/components/changes/DeleteSafety";
+import { GitignoreOffer } from "@/components/changes/GitignoreOffer";
 import { ShelveDialog } from "@/components/changes/ShelveDialog";
 import { ShelvesPanel, type ShelfPick } from "@/components/changes/ShelvesPanel";
 import { Button } from "@/components/ui/button";
@@ -106,7 +107,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
   const discard = useMutation({ mutationFn: (paths: string[]) => desktop.discard(root, paths), ...applyChanges });
 
   const data = changes.data;
-  const stageGuard = useStageGuard(root, data, (paths) => stage.mutate(paths));
+  const stageGuard = useStageGuard(root, data, (paths) => stage.mutate(paths), onError);
   const meta = useQuery({
     queryKey: ["meta", root, changes.dataUpdatedAt],
     queryFn: () => desktop.metaWarnings(root),
@@ -193,6 +194,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
             text={translate("changesView.conflictedFiles", { count: openConflicts })}
           />
         )}
+        <GitignoreOffer root={root} notify={notify} />
         {!empty && (meta.data ?? []).length > 0 && (
           <MetaWarnings
             warnings={meta.data!}

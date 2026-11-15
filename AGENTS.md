@@ -243,7 +243,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, shelve, serve, mcp), `usecase`
+  merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, shelve, ignore import, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, blame (`blame.go`: path log via
   `GetPathCommitLog` capped at 500 scanned commits, each version through a
@@ -447,7 +447,20 @@ a rule stays tracked until explicitly removed. Sparse manifests always include t
 (`loadTreeManifest`'s `keepRootTeamFile`, still behind the read filter), so
 partial checkouts apply the team rules too. The pattern compiler itself lives
 in the pure `internal/pathmatch` (`Parse`/`Compile`/`Join`/`Matches`), shared
-with asset budgets.
+with asset budgets. Nipa never reads `.gitignore`: `ignore.ImportGitignore`
+(`nipa ignore import`, the desktop `GitignoreOffer` banner shown once per
+clone while `CanImportGitignore`) appends the root `.gitignore` rules
+`.nipaignore` lacks under a `# imported from .gitignore` header and lists
+lines with unsupported syntax (`[...]`, `\`). `ignore.DetectGenerated` groups
+new paths under the outermost generated folder (`node_modules`, `.next`,
+`__pycache__`, `.godot`, ... anywhere; Unity `Library`/`Temp`/`Logs`/`obj`/
+`UserSettings` next to `ProjectSettings`; Unreal `Intermediate`/`Saved`/
+`Binaries` next to a `.uproject`) with the `.nipaignore` pattern to add
+(`ignore.AppendRules`). `AddWithReport` fills `ProvenanceReport.Generated`
+for untracked staged paths and `nipa add` prints a warning plus a
+`nipa remove` hint per folder (stages anyway); the desktop `useStageGuard`
+asks first (`GeneratedFoldersDialog`: Cancel, Stage anyway, Ignore folders =
+`IgnoreFolders` then stage the rest) before its deletion check.
 
 Flow for `nipa mcp` (reference in `docs/AI.md`): `internal/client/mcp` is a
 go-sdk MCP server over stdio (`Serve`/`NewServer`; `cmd/nipa/mcp.go` wires a
@@ -1060,7 +1073,12 @@ surface: `GetMergeRequest` (detail + mergeability + live review summary),
 `ReopenMergeRequest`, `CheckMergeRequest`,
 `ListMergeRequestCommits` (reuses `CommitLogEntry`),
 `GetMergeRequestDiff` (new `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`
-messages mirroring the REST diff model), `MergeabilityDetail.blocked_by`,
+messages mirroring the REST diff model; clients read it through the
+server-streaming `StreamMergeRequestDiff`, ~1 MiB `MergeRequestDiffPart`s,
+a file whose patch and hunks exceed one part is sent without them and
+`too_large`, shown as "diff too large to show" by `nipa mr diff`, MCP
+`truncated` and the AI prompt; an older server answers `Unimplemented` with an
+upgrade hint), `MergeabilityDetail.blocked_by`,
 `MergeRequestDetail.review`/`MergeRequestDetail.draft` (populated by
 `ListMergeRequests` via `AttachSummaries`), and
 `Branch.required_approvals`/`Branch.dismiss_stale_approvals`.
@@ -2119,7 +2137,7 @@ and `nipa mcp` stay silent.
   `UpdateMergeRequestComment`, `DeleteMergeRequestComment`,
   `ResolveMergeRequestThread`, `DeleteMergeRequestThread`,
   `ListMergeRequestReviewRequests`, `RequestMergeRequestReview`,
-  `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`; transfer RPCs `Push`, `PushStream`, `StreamTreeManifest`,
+  `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`, `StreamMergeRequestDiff`; transfer RPCs `Push`, `PushStream`, `StreamTreeManifest`,
   `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
   RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; browsing RPCs
   `ListMyProjects` (readable projects of the caller's orgs) and
