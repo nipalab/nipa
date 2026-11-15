@@ -8,12 +8,12 @@ mb         ?= 256
 gb         ?= 1
 MARKETING_DIR ?= ../nipa-web
 
-VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+VERSION    ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null)
 REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release release-server
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 GCOVR ?= gcovr
@@ -128,14 +128,26 @@ build: web build-server build-client
 ## Build both the free and enterprise servers including the web UI.
 build-all: build build-server-ee
 
-## Tag a release on a clean HEAD, e.g. `make release version=v0.1.0`.
-release:
-	@test -n "$(version)" || (echo "usage: make release version=v0.1.0" && exit 1)
+define check-release-version
+	@test -n "$(version)" || (echo "usage: make $@ version=vYY.MM.N" && exit 1)
 	@echo "$(version)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || (echo "version must look like vX.Y.Z (got '$(version)')" && exit 1)
 	@git diff-index --quiet HEAD -- || (echo "working tree is dirty; commit or stash first" && exit 1)
-	@if git rev-parse -q --verify "refs/tags/$(version)" >/dev/null; then echo "tag $(version) already exists"; exit 1; fi
+	@for t in "$(version)" "server-$(version)"; do if git rev-parse -q --verify "refs/tags/$$t" >/dev/null; then echo "tag $$t already exists"; exit 1; fi; done
+endef
+
+## Tag a full release on a clean HEAD, e.g. `make release version=v26.11.2`
+## (client + free server binaries, desktop app, production deploy).
+release:
+	$(check-release-version)
 	git tag -a "$(version)" -m "Release $(version)"
 	@echo "created tag $(version); publish it with: git push origin $(version)"
+
+## Tag a server-only release on a clean HEAD, e.g. `make release-server
+## version=v26.11.3`: deploys nipad-ee to production, no GitHub release.
+release-server:
+	$(check-release-version)
+	git tag -a "server-$(version)" -m "Server release $(version)"
+	@echo "created tag server-$(version); publish it with: git push origin server-$(version)"
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto

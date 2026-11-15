@@ -1842,7 +1842,11 @@ From `Makefile`:
   `VERSION ?= git describe --tags --always --dirty` / `REVISION`; plain
   `go build` falls back to `debug.ReadBuildInfo` (`dev-<sha>` or the VCS
   pseudo-version). `make release version=vX.Y.Z` tags a clean HEAD (annotated;
-  push manually). `nipa version [--server] [url]` reports the client build and
+  push manually; full release: binaries, desktop, production deploy) and
+  `make release-server version=vX.Y.Z` tags `server-vX.Y.Z` (production
+  `nipad-ee` deploy only, no GitHub release; the deploy build reports the
+  version without the prefix). Both refuse a version taken by either prefix;
+  `VERSION` and the desktop `GIT_VERSION` describe `v*` tags only. `nipa version [--server] [url]` reports the client build and
   probes the server through the public `GetServerVersion` RPC; both servers
   also answer unauthenticated `GET /version` (JSON) and `-version`, and log the
   version at startup. `daemon.Version` defaults to the build version (Ping /
@@ -1918,7 +1922,7 @@ TLS for the single h2c port and proxies to the active color. Assets live in
 `deploy/` (`nipad-ee@.service` template, `nipad-ee.env.sample`, `caddy/Caddyfile`,
 `caddy/caddy.env.sample` + `caddy/caddy.service.d/nipa.conf` for `MARKETING_UPSTREAM`,
 `ci-deploy.sh` driven by `.github/workflows/server-deploy.yml` for the dev (main) and
-production (`v*` tag) GitHub environments,
+production (`v*` or server-only `server-v*` tag) GitHub environments,
 `upgrade.sh`). The upgrade script installs the new binary into the idle color,
 waits for `/readyz`, rewrites the Caddyfile upstream + `systemctl reload caddy`
 (a reload never drops connections), waits for the old color to drain, then
