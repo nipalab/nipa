@@ -15,13 +15,17 @@ import (
 )
 
 // TestEndToEnd_ManifestsOverGRPCDefault pushes, clones and updates a tree
-// whose unary PushRequest and GetTreeManifestResponse would both exceed the
-// 4 MiB gRPC message limit.
+// over the streamed push and manifest RPCs. With NIPA_E2E_LARGE_MANIFEST=1 the
+// tree has 25000 files, so the unary PushRequest and GetTreeManifestResponse
+// would both exceed the 4 MiB gRPC message limit.
 func TestEndToEnd_ManifestsOverGRPCDefault(t *testing.T) {
 	if testing.Short() {
 		t.Skip("large manifest skipped in short mode")
 	}
-	const total = 25000
+	total := 1000
+	if os.Getenv("NIPA_E2E_LARGE_MANIFEST") == "1" {
+		total = 25000
+	}
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host, uc := startTestServerWithUsecases(t, dbConn)

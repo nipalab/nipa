@@ -1786,6 +1786,10 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   worker, client-side p50/p95/p99 plus a `/metrics` delta) against a running
   server. Requested metrics must be namespace-filtered (`nipa_*`), bench and
   load code stays env-gated so CI never runs it.
+- `NIPA_E2E_LARGE_MANIFEST=1 go test ./internal/e2e -run
+  TestEndToEnd_ManifestsOverGRPCDefault -v` runs the streamed push/clone/update
+  e2e with 25000 files (manifests over the 4 MiB gRPC default); CI runs it with
+  1000.
 - The server opens SQLite through `db.OpenSQLite`, which appends
   `_pragma=busy_timeout(10000)`, `_pragma=journal_mode(WAL)` and
   `_txlock=immediate` to the DSN. Without WAL + a busy timeout, concurrent
