@@ -102,7 +102,7 @@ func capMRDiff(files []*domain.MergeRequestDiffFile, budget int) mrDiffOutput {
 			out.OmittedFiles = len(files) - i
 			return out
 		}
-		file := mrDiffFile{MergeRequestDiffFile: *f}
+		file := mrDiffFile{MergeRequestDiffFile: *f, Truncated: f.TooLarge}
 		used += fileOverhead + len(f.Path) + len(f.OldPath)
 		for l, line := range f.Patch {
 			used += lineOverhead + len(line)

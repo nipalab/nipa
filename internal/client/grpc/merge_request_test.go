@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -54,9 +55,10 @@ type fakeMergeRequestServer struct {
 	commitsResp *pb.ListMergeRequestCommitsResponse
 	commitsErr  error
 
-	diffReq  *pb.GetMergeRequestDiffRequest
-	diffResp *pb.GetMergeRequestDiffResponse
-	diffErr  error
+	diffReq     *pb.GetMergeRequestDiffRequest
+	diffResp    *pb.GetMergeRequestDiffResponse
+	diffPartErr error
+	diffErr     error
 
 	submitReq  *pb.SubmitMergeRequestReviewRequest
 	submitResp *pb.SubmitMergeRequestReviewResponse
@@ -206,12 +208,17 @@ func (f *fakeMergeRequestServer) ListMergeRequestCommits(_ context.Context, req 
 	return f.commitsResp, nil
 }
 
-func (f *fakeMergeRequestServer) GetMergeRequestDiff(_ context.Context, req *pb.GetMergeRequestDiffRequest) (*pb.GetMergeRequestDiffResponse, error) {
+func (f *fakeMergeRequestServer) StreamMergeRequestDiff(req *pb.GetMergeRequestDiffRequest, stream grpc.ServerStreamingServer[pb.MergeRequestDiffPart]) error {
 	f.diffReq = req
 	if f.diffErr != nil {
-		return nil, f.diffErr
+		return f.diffErr
 	}
-	return f.diffResp, nil
+	for _, file := range f.diffResp.GetFiles() {
+		if err := stream.Send(&pb.MergeRequestDiffPart{Files: []*pb.DiffFileDetail{file}}); err != nil {
+			return err
+		}
+	}
+	return f.diffPartErr
 }
 
 func (f *fakeMergeRequestServer) SubmitMergeRequestReview(_ context.Context, req *pb.SubmitMergeRequestReviewRequest) (*pb.SubmitMergeRequestReviewResponse, error) {

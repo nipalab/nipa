@@ -391,6 +391,43 @@ func TestClient_MergeRequestReviewNotConnected(t *testing.T) {
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 
+func TestClient_GetMergeRequestDiff_ManyPartsAndTooLarge(t *testing.T) {
+	fs := &fakeMergeRequestServer{diffResp: &pb.GetMergeRequestDiffResponse{Files: []*pb.DiffFileDetail{
+		{Path: "a.txt", Status: "M", Patch: []string{"-a", "+b"}},
+		{Path: "big.txt", Status: "A", Additions: 90000, TooLarge: true},
+	}}}
+	c := newMergeRequestTestClient(t, fs)
+
+	files, err := c.GetMergeRequestDiff(context.Background(), "default", "sample", 5)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	require.False(t, files[0].TooLarge)
+	require.True(t, files[1].TooLarge)
+	require.Equal(t, int64(90000), files[1].Additions)
+	require.Empty(t, files[1].Patch)
+	require.Equal(t, int64(5), fs.diffReq.GetNumber())
+}
+
+func TestClient_GetMergeRequestDiff_FailsMidStream(t *testing.T) {
+	fs := &fakeMergeRequestServer{
+		diffResp:    &pb.GetMergeRequestDiffResponse{Files: []*pb.DiffFileDetail{{Path: "a.txt"}}},
+		diffPartErr: status.Error(codes.Internal, "boom"),
+	}
+	c := newMergeRequestTestClient(t, fs)
+	_, err := c.GetMergeRequestDiff(context.Background(), "default", "sample", 5)
+	require.Error(t, err)
+}
+
+func TestClient_GetMergeRequestDiff_OldServer(t *testing.T) {
+	fs := &fakeMergeRequestServer{diffErr: status.Error(codes.Unimplemented, "unknown method")}
+	c := newMergeRequestTestClient(t, fs)
+	_, err := c.GetMergeRequestDiff(context.Background(), "default", "sample", 5)
+	var domErr *clientDomain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Contains(t, domErr.Message, "streamed merge request diffs")
+}
+
 func TestClient_GetMergeRequestDiff_Error(t *testing.T) {
 	fs := &fakeMergeRequestServer{diffErr: status.Error(codes.NotFound, "merge request 5 not found")}
 	c := newMergeRequestTestClient(t, fs)

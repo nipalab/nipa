@@ -2,9 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
+	"github.com/nipalab/nipa/internal/client/ignore"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
@@ -30,10 +32,24 @@ func (c *Cli) setupAddCmd() *cobra.Command {
 			if rep.Changed() {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), rep.String())
 			}
+			warnGenerated(cmd.ErrOrStderr(), rep.Generated)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "stage ignored files anyway")
 	cmd.Flags().BoolVar(&noProvenance, "no-provenance", false, "do not record provenance for the staged files")
 	return cmd
+}
+
+const maxGeneratedWarnings = 5
+
+func warnGenerated(w io.Writer, dirs []ignore.Generated) {
+	for i, g := range dirs {
+		if i == maxGeneratedWarnings {
+			_, _ = fmt.Fprintf(w, "warning: %d more folders look generated\n", len(dirs)-i)
+			break
+		}
+		_, _ = fmt.Fprintf(w, "warning: staged %d new files in %s/, which looks generated (dependencies or build output)\n", g.Files, g.Dir)
+		_, _ = fmt.Fprintf(w, "  hint: add %q to .nipaignore and run `nipa remove %s` to unstage it\n", g.Pattern, g.Dir)
+	}
 }

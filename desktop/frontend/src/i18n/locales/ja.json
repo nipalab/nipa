@@ -1539,5 +1539,17 @@
   "maintenance.estimatedEnd": "終了予定 {{end}}",
   "maintenance.since": "{{start}} から",
   "maintenance.dismiss": "閉じる",
-  "maintenance.signInPaused": "サーバーがメンテナンスのため凍結されている間、サインインは一時停止されます。"
+  "maintenance.signInPaused": "サーバーがメンテナンスのため凍結されている間、サインインは一時停止されます。",
+  "generatedFolders.title_other": "生成されたフォルダーのようです",
+  "generatedFolders.message_other": "新しいファイル {{count}} 件は、インストールされた依存関係またはビルド出力のようです。こうしたファイルは通常、各マシンで再生成され、プロジェクトには含めません。",
+  "generatedFolders.files_other": "{{count}} ファイル",
+  "generatedFolders.more_other": "ほか {{count}} フォルダー",
+  "generatedFolders.ignoreHint": "「フォルダーを無視」は .nipaignore に追加するため、チームメンバーも除外されます。残りはステージされます。",
+  "generatedFolders.stageAnyway": "それでもステージ",
+  "generatedFolders.ignore": "フォルダーを無視",
+  "gitignoreOffer.text": "このプロジェクトには .gitignore があります。Nipa は .nipaignore しか読まないため、git が無視するファイルがここに表示されます。",
+  "gitignoreOffer.create": ".gitignore から .nipaignore を作成",
+  "gitignoreOffer.dismiss": "閉じる",
+  "gitignoreOffer.imported_other": ".nipaignore に {{count}} 件のルールを追加しました",
+  "gitignoreOffer.unsupported_other": "{{count}} 件のルールは Nipa が対応していない構文を使っているため一致しません: {{rules}}"
 }

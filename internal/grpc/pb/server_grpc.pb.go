@@ -62,6 +62,7 @@ const (
 	NipaService_ListMergeRequestChecks_FullMethodName          = "/greet.NipaService/ListMergeRequestChecks"
 	NipaService_ListMergeRequestCommits_FullMethodName         = "/greet.NipaService/ListMergeRequestCommits"
 	NipaService_GetMergeRequestDiff_FullMethodName             = "/greet.NipaService/GetMergeRequestDiff"
+	NipaService_StreamMergeRequestDiff_FullMethodName          = "/greet.NipaService/StreamMergeRequestDiff"
 	NipaService_SubmitMergeRequestReview_FullMethodName        = "/greet.NipaService/SubmitMergeRequestReview"
 	NipaService_ListMergeRequestReviews_FullMethodName         = "/greet.NipaService/ListMergeRequestReviews"
 	NipaService_GetMergeRequestReviewState_FullMethodName      = "/greet.NipaService/GetMergeRequestReviewState"
@@ -147,6 +148,7 @@ type NipaServiceClient interface {
 	ListMergeRequestChecks(ctx context.Context, in *ListMergeRequestChecksRequest, opts ...grpc.CallOption) (*ListMergeRequestChecksResponse, error)
 	ListMergeRequestCommits(ctx context.Context, in *ListMergeRequestCommitsRequest, opts ...grpc.CallOption) (*ListMergeRequestCommitsResponse, error)
 	GetMergeRequestDiff(ctx context.Context, in *GetMergeRequestDiffRequest, opts ...grpc.CallOption) (*GetMergeRequestDiffResponse, error)
+	StreamMergeRequestDiff(ctx context.Context, in *GetMergeRequestDiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MergeRequestDiffPart], error)
 	SubmitMergeRequestReview(ctx context.Context, in *SubmitMergeRequestReviewRequest, opts ...grpc.CallOption) (*SubmitMergeRequestReviewResponse, error)
 	ListMergeRequestReviews(ctx context.Context, in *ListMergeRequestReviewsRequest, opts ...grpc.CallOption) (*ListMergeRequestReviewsResponse, error)
 	GetMergeRequestReviewState(ctx context.Context, in *GetMergeRequestReviewStateRequest, opts ...grpc.CallOption) (*GetMergeRequestReviewStateResponse, error)
@@ -632,6 +634,25 @@ func (c *nipaServiceClient) GetMergeRequestDiff(ctx context.Context, in *GetMerg
 	return out, nil
 }
 
+func (c *nipaServiceClient) StreamMergeRequestDiff(ctx context.Context, in *GetMergeRequestDiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MergeRequestDiffPart], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[1], NipaService_StreamMergeRequestDiff_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetMergeRequestDiffRequest, MergeRequestDiffPart]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_StreamMergeRequestDiffClient = grpc.ServerStreamingClient[MergeRequestDiffPart]
+
 func (c *nipaServiceClient) SubmitMergeRequestReview(ctx context.Context, in *SubmitMergeRequestReviewRequest, opts ...grpc.CallOption) (*SubmitMergeRequestReviewResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SubmitMergeRequestReviewResponse)
@@ -804,7 +825,7 @@ func (c *nipaServiceClient) Push(ctx context.Context, in *PushRequest, opts ...g
 
 func (c *nipaServiceClient) PushStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushStreamRequest, PushResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[1], NipaService_PushStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[2], NipaService_PushStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1042,6 +1063,7 @@ type NipaServiceServer interface {
 	ListMergeRequestChecks(context.Context, *ListMergeRequestChecksRequest) (*ListMergeRequestChecksResponse, error)
 	ListMergeRequestCommits(context.Context, *ListMergeRequestCommitsRequest) (*ListMergeRequestCommitsResponse, error)
 	GetMergeRequestDiff(context.Context, *GetMergeRequestDiffRequest) (*GetMergeRequestDiffResponse, error)
+	StreamMergeRequestDiff(*GetMergeRequestDiffRequest, grpc.ServerStreamingServer[MergeRequestDiffPart]) error
 	SubmitMergeRequestReview(context.Context, *SubmitMergeRequestReviewRequest) (*SubmitMergeRequestReviewResponse, error)
 	ListMergeRequestReviews(context.Context, *ListMergeRequestReviewsRequest) (*ListMergeRequestReviewsResponse, error)
 	GetMergeRequestReviewState(context.Context, *GetMergeRequestReviewStateRequest) (*GetMergeRequestReviewStateResponse, error)
@@ -1216,6 +1238,9 @@ func (UnimplementedNipaServiceServer) ListMergeRequestCommits(context.Context, *
 }
 func (UnimplementedNipaServiceServer) GetMergeRequestDiff(context.Context, *GetMergeRequestDiffRequest) (*GetMergeRequestDiffResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMergeRequestDiff not implemented")
+}
+func (UnimplementedNipaServiceServer) StreamMergeRequestDiff(*GetMergeRequestDiffRequest, grpc.ServerStreamingServer[MergeRequestDiffPart]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamMergeRequestDiff not implemented")
 }
 func (UnimplementedNipaServiceServer) SubmitMergeRequestReview(context.Context, *SubmitMergeRequestReviewRequest) (*SubmitMergeRequestReviewResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitMergeRequestReview not implemented")
@@ -2112,6 +2137,17 @@ func _NipaService_GetMergeRequestDiff_Handler(srv interface{}, ctx context.Conte
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _NipaService_StreamMergeRequestDiff_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetMergeRequestDiffRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaServiceServer).StreamMergeRequestDiff(m, &grpc.GenericServerStream[GetMergeRequestDiffRequest, MergeRequestDiffPart]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_StreamMergeRequestDiffServer = grpc.ServerStreamingServer[MergeRequestDiffPart]
 
 func _NipaService_SubmitMergeRequestReview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitMergeRequestReviewRequest)
@@ -3070,6 +3106,11 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamTreeManifest",
 			Handler:       _NipaService_StreamTreeManifest_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamMergeRequestDiff",
+			Handler:       _NipaService_StreamMergeRequestDiff_Handler,
 			ServerStreams: true,
 		},
 		{

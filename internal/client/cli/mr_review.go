@@ -467,6 +467,10 @@ func (c *Cli) setupMrDiffCmd() *cobra.Command {
 					cmd.Println("  binary file")
 					continue
 				}
+				if file.TooLarge {
+					cmd.Println("  diff too large to show")
+					continue
+				}
 				for _, line := range file.Patch {
 					cmd.Println("  " + line)
 				}

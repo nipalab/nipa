@@ -2,6 +2,8 @@ package grpc
 
 import (
 	"context"
+	"errors"
+	"io"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -193,31 +195,60 @@ func (c *Client) ListMergeRequestCommits(ctx context.Context, org, project strin
 	return commits, nil
 }
 
+// GetMergeRequestDiff reads a merge request's diff through the
+// server-streaming StreamMergeRequestDiff.
 func (c *Client) GetMergeRequestDiff(ctx context.Context, org, project string, number int64) ([]*clientDomain.MergeRequestDiffFile, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.GetMergeRequestDiff(ctx, &pb.GetMergeRequestDiffRequest{
+	req := &pb.GetMergeRequestDiffRequest{
 		Context: &pb.ProjectContext{Org: org, Project: project},
 		Number:  number,
+	}
+	var files []*clientDomain.MergeRequestDiffFile
+	err = c.invokeWithThrottleRetry(ctx, func() error {
+		return c.callAuthed(ctx, func(authCtx context.Context) error {
+			var err error
+			files, err = readMergeRequestDiff(authCtx, client, req)
+			return err
+		})
 	})
 	if err != nil {
-		return nil, toDomainError(err)
-	}
-	files := make([]*clientDomain.MergeRequestDiffFile, 0, len(res.GetFiles()))
-	for _, file := range res.GetFiles() {
-		files = append(files, &clientDomain.MergeRequestDiffFile{
-			Path:      file.GetPath(),
-			OldPath:   file.GetOldPath(),
-			Status:    file.GetStatus(),
-			Binary:    file.GetBinary(),
-			Additions: file.GetAdditions(),
-			Deletions: file.GetDeletions(),
-			Patch:     file.GetPatch(),
-		})
+		return nil, streamError(err, "streamed merge request diffs")
 	}
 	return files, nil
+}
+
+func readMergeRequestDiff(ctx context.Context, client pb.NipaServiceClient, req *pb.GetMergeRequestDiffRequest) ([]*clientDomain.MergeRequestDiffFile, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := client.StreamMergeRequestDiff(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	files := []*clientDomain.MergeRequestDiffFile{}
+	for {
+		part, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return files, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range part.GetFiles() {
+			files = append(files, &clientDomain.MergeRequestDiffFile{
+				Path:      file.GetPath(),
+				OldPath:   file.GetOldPath(),
+				Status:    file.GetStatus(),
+				Binary:    file.GetBinary(),
+				Additions: file.GetAdditions(),
+				Deletions: file.GetDeletions(),
+				Patch:     file.GetPatch(),
+				TooLarge:  file.GetTooLarge(),
+			})
+		}
+	}
 }
 
 func (c *Client) ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL, headCommitID string) (*clientDomain.MergeRequestCheck, error) {

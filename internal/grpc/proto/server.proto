@@ -826,6 +826,9 @@ message DiffFileDetail {
     int64 deletions = 6;
     repeated string patch = 7;
     repeated DiffHunkDetail hunks = 8;
+    // too_large is set by StreamMergeRequestDiff when the file's patch and
+    // hunks were left out because they exceed the per-file budget.
+    bool too_large = 9;
 }
 
 message GetMergeRequestDiffRequest {
@@ -834,6 +837,11 @@ message GetMergeRequestDiffRequest {
 }
 
 message GetMergeRequestDiffResponse {
+    repeated DiffFileDetail files = 1;
+}
+
+// MergeRequestDiffPart is one part of StreamMergeRequestDiff, about 1 MiB.
+message MergeRequestDiffPart {
     repeated DiffFileDetail files = 1;
 }
 
@@ -1267,6 +1275,7 @@ service NipaService {
     rpc ListMergeRequestChecks(ListMergeRequestChecksRequest) returns (ListMergeRequestChecksResponse);
     rpc ListMergeRequestCommits(ListMergeRequestCommitsRequest) returns (ListMergeRequestCommitsResponse);
     rpc GetMergeRequestDiff(GetMergeRequestDiffRequest) returns (GetMergeRequestDiffResponse);
+    rpc StreamMergeRequestDiff(GetMergeRequestDiffRequest) returns (stream MergeRequestDiffPart);
 
     rpc SubmitMergeRequestReview(SubmitMergeRequestReviewRequest) returns (SubmitMergeRequestReviewResponse);
     rpc ListMergeRequestReviews(ListMergeRequestReviewsRequest) returns (ListMergeRequestReviewsResponse);

@@ -99,4 +99,5 @@ type MergeRequestDiffFile struct {
 	Additions int64    `json:"additions"`
 	Deletions int64    `json:"deletions"`
 	Patch     []string `json:"patch,omitempty"`
+	TooLarge  bool     `json:"too_large,omitempty"`
 }

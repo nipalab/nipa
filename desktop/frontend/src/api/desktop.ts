@@ -1,5 +1,6 @@
 import { Events } from "@wailsio/runtime";
 import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service";
+import type { Generated as GeneratedFolder } from "../../bindings/github.com/nipalab/nipa/internal/client/ignore";
 import type {
   Account,
   Activity as RawActivity,
@@ -181,6 +182,8 @@ export type PushChecks = Omit<RawPushChecks, "violations" | "broken" | "newlyUnu
   warnings: string[];
 };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow, TableSheet };
+export type { GeneratedFolder };
+export type GitignoreImport = { added: number; unsupported: string[] };
 export type { FontChanges, FontCompare, FontInfo, FontSide, VideoCompare, VideoSide, VideoStats };
 export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { Draft, LLMSettings };
@@ -246,6 +249,13 @@ export const desktop = {
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null, sheet = ""): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next, sheet),
   sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
+  generatedFolders: async (root: string, paths: string[]): Promise<GeneratedFolder[]> => (await Service.GeneratedFolders(root, paths)) ?? [],
+  ignoreFolders: (root: string, patterns: string[]): Promise<number> => Service.IgnoreFolders(root, patterns),
+  canImportGitignore: (root: string): Promise<boolean> => Service.CanImportGitignore(root),
+  importGitignore: async (root: string): Promise<GitignoreImport> => {
+    const r = await Service.ImportGitignore(root);
+    return { added: r.added, unsupported: r.unsupported ?? [] };
+  },
   pushChecks: async (root: string): Promise<PushChecks> => {
     const c = await Service.PushChecks(root);
     return {
