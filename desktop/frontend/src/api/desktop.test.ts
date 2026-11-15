@@ -498,7 +498,7 @@ describe("desktop api", () => {
   });
 
   it("forwards settings, activity and navigation calls", async () => {
-    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true, lockRequests: true }, tools: null, manualUpdates: false };
+    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true, lockRequests: true, maintenance: true }, tools: null, manualUpdates: false };
     service.Settings.mockResolvedValue(st);
     service.SaveSettings.mockResolvedValue({ ...st, tools: [{ extension: ".blend", command: "blender" }] });
     expect(await desktop.settings()).toEqual({ ...st, tools: [] });
@@ -507,7 +507,7 @@ describe("desktop api", () => {
 
     service.Activity.mockResolvedValueOnce(null).mockResolvedValueOnce([{ root: "/a", events: null }]);
     expect(await desktop.activity()).toEqual([]);
-    expect(await desktop.activity()).toEqual([{ root: "/a", events: [] }]);
+    expect(await desktop.activity()).toEqual([{ root: "/a", events: [], maintenance: [] }]);
 
     service.UploadWorkers.mockResolvedValue(4);
     expect(await desktop.uploadWorkers()).toBe(4);
@@ -535,7 +535,7 @@ describe("desktop api", () => {
     expect(events.On.mock.calls.map((c) => c[0])).toEqual(["repo:activity", "app:navigate"]);
     events.On.mock.calls[0][1]({ data: { root: "/a", events: null } });
     events.On.mock.calls[1][1]({ data: { root: "/a" } });
-    expect(activity).toHaveBeenCalledWith({ root: "/a", events: [] });
+    expect(activity).toHaveBeenCalledWith({ root: "/a", events: [], maintenance: [] });
     expect(navigate).toHaveBeenCalledWith();
   });
 

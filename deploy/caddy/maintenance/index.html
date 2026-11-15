@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Nipa maintenance</title>
+<style>
+  :root { color-scheme: dark; }
+  html { background-color: #0d1117; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    box-sizing: border-box;
+    background-color: #0d1117;
+    color: #e6edf3;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  }
+  main {
+    max-width: 32rem;
+    width: 100%;
+    padding: 32px 24px;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    background-color: #161b22;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid #da3633;
+    color: #ff7b72;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 16px 0 8px; font-size: 24px; font-weight: 600; }
+  p { margin: 0 0 12px; color: #9198a1; }
+  button {
+    margin-top: 8px;
+    padding: 6px 16px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background-color: #21262d;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:hover { background-color: #30363d; }
+</style>
+</head>
+<body>
+<main>
+  <span class="badge">Maintenance</span>
+  <h1>Nipa is offline for a moment</h1>
+  <p>The service is down for maintenance or restarting. Your work and your session are safe.</p>
+  <p>Try again in a few minutes. Command-line clients show the same notice and keep their sign-in.</p>
+  <button type="button" onclick="location.reload()">Check again</button>
+</main>
+</body>
+</html>

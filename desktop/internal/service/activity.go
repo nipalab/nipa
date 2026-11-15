@@ -28,6 +28,9 @@ type TeamEvent struct {
 	Count    int    `json:"count"`
 	Path     string `json:"path"`
 	Number   int64  `json:"number"`
+	// Maintenance is the window of a maintenance event (the previous one
+	// when it ended); Message is scheduled, started, updated or ended.
+	Maintenance *MaintenanceWindow `json:"maintenance,omitempty"`
 }
 
 // RepoActivity is the latest server-side state of one clone. Events only
@@ -39,6 +42,9 @@ type RepoActivity struct {
 	ReviewRequests int         `json:"reviewRequests"`
 	Error          string      `json:"error"`
 	Events         []TeamEvent `json:"events"`
+	// Maintenance lists the server, org and project windows covering the
+	// clone, active or scheduled.
+	Maintenance []MaintenanceWindow `json:"maintenance"`
 }
 
 // Notification is a desktop notification; clicking it navigates to Target.
@@ -134,17 +140,19 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 		ReviewRequests: int(pb.GetReviewRequests()),
 		Error:          pb.GetError(),
 		Events:         []TeamEvent{},
+		Maintenance:    toMaintenance(pb.GetMaintenance()),
 	}
 	for _, e := range pb.GetEvents() {
 		act.Events = append(act.Events, TeamEvent{
-			Kind:     e.GetKind(),
-			Actor:    e.GetActor(),
-			Branch:   e.GetBranch(),
-			CommitID: e.GetCommitId(),
-			Message:  e.GetMessage(),
-			Count:    int(e.GetCount()),
-			Path:     e.GetPath(),
-			Number:   e.GetNumber(),
+			Kind:        e.GetKind(),
+			Actor:       e.GetActor(),
+			Branch:      e.GetBranch(),
+			CommitID:    e.GetCommitId(),
+			Message:     e.GetMessage(),
+			Count:       int(e.GetCount()),
+			Path:        e.GetPath(),
+			Number:      e.GetNumber(),
+			Maintenance: toWindow("", e.GetMaintenance()),
 		})
 	}
 	s.emitMu.Lock()
@@ -227,6 +235,11 @@ func notificationFor(l lang.Language, name, root string, e TeamEvent, prefs work
 			Body:   body,
 			Target: Navigation{Root: root, Tab: "locks"},
 		}, true
+	case daemon.EventMaintenance:
+		if !prefs.Maintenance || e.Maintenance == nil {
+			return Notification{}, false
+		}
+		return maintenanceNotification(l, name, root, e), true
 	case daemon.EventReviewRequested:
 		if !prefs.Reviews {
 			return Notification{}, false

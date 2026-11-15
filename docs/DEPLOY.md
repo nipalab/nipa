@@ -39,6 +39,7 @@ unset; the SPA itself is same-origin and needs none).
 | `/etc/systemd/system/nipad-ee@.service` | template unit (`deploy/nipad-ee@.service`) |
 | `/etc/caddy/Caddyfile` | TLS edge (`deploy/caddy/Caddyfile`) |
 | `/etc/caddy/caddy.env` | Caddy env, `MARKETING_UPSTREAM` (`deploy/caddy/caddy.env.sample`) |
+| `/etc/caddy/maintenance/index.html` | page Caddy serves while no color answers (`deploy/caddy/maintenance/index.html`) |
 | `/etc/systemd/system/caddy.service.d/nipa.conf` | drop-in loading `caddy.env` (`deploy/caddy/caddy.service.d/nipa.conf`) |
 | `/var/lib/nipa/active-color` | which color receives traffic (written by `deploy/upgrade.sh`) |
 | `journalctl -u nipad-ee@blue` / `@green` | server logs |
@@ -196,6 +197,7 @@ Caddy proxy); it is not part of the Netlify deployment.
 
    ```
    sudo install -m 0644 deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+   sudo install -D -m 0644 deploy/caddy/maintenance/index.html /etc/caddy/maintenance/index.html
    sudo install -m 0640 -g caddy deploy/caddy/caddy.env.sample /etc/caddy/caddy.env
    sudoedit /etc/caddy/caddy.env           # MARKETING_UPSTREAM=https://<site>.netlify.app
    sudo install -D -m 0644 deploy/caddy/caddy.service.d/nipa.conf \
@@ -214,6 +216,9 @@ Caddy proxy); it is not part of the Netlify deployment.
    404 for `/metrics`, `/readyz` and `/debug/pprof` (probe them on the
    loopback port; `/healthz` and `/version` stay public). Keep the
    `reverse_proxy 127.0.0.1:<port> {` line shape: `upgrade.sh` rewrites it.
+   When no color answers, its `handle_errors` block serves the maintenance
+   page (Caddy 2.8+; gRPC and API callers get a maintenance refusal instead,
+   see [MAINTENANCE.md](MAINTENANCE.md#hard-downtime-the-caddy-maintenance-page)).
 
    `upgrade.sh` refuses to run while `MARKETING_UPSTREAM` is empty and passes
    `/etc/caddy/caddy.env` to `caddy validate --envfile`, so the check sees
@@ -408,14 +413,16 @@ version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run.
 - **Capacity:** two color instances can be live briefly during a flip, so size
   the postgres connection limit for `2 × pool + headroom` (the pool is
   currently untuned; see `docs/PERFORMANCE.md`).
-- **Maintenance:** `nipad-ee maintenance set read_only|full|frozen` (see
-  `docs/SERVER_GUIDE.md`). `frozen` is the mode for copying or moving the
-  database: the server stops writing (deliveries, quota reconcile and lease
-  renewal pause, sign-in and refresh are refused) and `/readyz` stays 200. A
-  color started during the window still migrates and claims a node lease, so
-  start one only against a writable database. End it with
-  `nipad-ee maintenance end`. The database move runbook follows in a later
-  release.
+- **Maintenance windows:** `nipad-ee maintenance set read_only|full|frozen`
+  from `/etc/nipa` (`cd /etc/nipa && sudo -u nipa /opt/nipa/<color>/nipad-ee
+  maintenance status`), the admin page or the org and project settings.
+  `frozen` is the mode for copying or moving the database: the server stops
+  writing (deliveries, quota reconcile and lease renewal pause, sign-in and
+  refresh are refused) and `/readyz` stays 200. A color started during the
+  window still migrates and claims a node lease, so start one only against a
+  writable database. Guide and runbooks (planned windows, moving postgres to
+  another VPS, the keys that must stay identical) in
+  [MAINTENANCE.md](MAINTENANCE.md).
 - **Key rotation:** rotate `JWT_KEY` to invalidate all sessions, and
   `CHUNK_URL_SIGNING_KEY` to invalidate outstanding chunk URLs. Do this as a
   normal two-color rolling change (both colors read the same config file), not

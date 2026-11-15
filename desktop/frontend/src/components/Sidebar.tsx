@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, CloudDownload, Eye, FolderGit2, FolderOpen, GitBranch, PanelLeftClose, Settings, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowDown, CloudDownload, Construction, Eye, FolderGit2, FolderOpen, GitBranch, PanelLeftClose, Settings, WifiOff } from "lucide-react";
 import type { DaemonInfo, Repo, RepoActivity } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
@@ -111,6 +111,7 @@ function ActivityBadges({ activity }: { activity?: RepoActivity }) {
   const incoming = activity.incoming >= 100 ? "100+" : String(activity.incoming);
   return (
     <span className="flex shrink-0 items-center gap-1 text-[10px]">
+      {activity.maintenance?.some((w) => w.active) && <Construction className="size-3 text-warning" aria-label={translate("sidebar.inMaintenance")} />}
       {activity.error && <WifiOff className="size-3 text-warning" aria-label={translate("sidebar.serverUnreachable", { error: activity.error })} />}
       {activity.incoming > 0 && (
         <span className="flex items-center rounded-full bg-accent-soft px-1.5 text-accent" title={translate("sidebar.newCommits", { count: activity.incoming, incoming })}>

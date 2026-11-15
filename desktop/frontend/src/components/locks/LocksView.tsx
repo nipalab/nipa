@@ -11,6 +11,7 @@ import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
 import { describeLockResult, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
 import { Trans, useTranslation } from "react-i18next";
@@ -34,6 +35,7 @@ const ACTIONS_WIDTH = 180;
 export function LocksView({ root, notify }: { root: string; notify: Notify }) {
   const { t } = useTranslation();
   const status = useLockStatus(root);
+  const { writes } = useMaintenance();
   const columns = useColumnWidths("locks", COLUMN_DEFAULTS, 64);
   const { lock, unlock, refresh } = useLockActions(root, notify);
   const [filter, setFilter] = usePersistedState<Filter>(repoSetting(root, "locks.filter"), "all", { valid: isFilter });
@@ -112,7 +114,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
         <Button size="sm" onClick={() => void refresh()} title={t("locksView.refreshLocks")} aria-label={t("locksView.refreshLocks")} disabled={status.isFetching}>
           <RefreshCw className={cn(status.isFetching && "animate-spin")} />
         </Button>
-        <Button size="sm" variant="primary" onClick={() => void lockAndEdit()} disabled={picking || lock.isPending}>
+        <Button size="sm" variant="primary" onClick={() => void lockAndEdit()} disabled={picking || lock.isPending || !!writes} title={writes}>
           <Lock />
           {t("locksView.lockAndEdit")}
         </Button>
@@ -209,9 +211,9 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={ask.isPending}
+                        disabled={ask.isPending || !!writes}
                         aria-label={translate("locksView.askToRelease2", { path: l.path })}
-                        title={askedBefore(l, data.userId) ? translate("locksView.youAlreadyAskedAskAgain") : translate("locksView.askTheHolderToRelease")}
+                        title={writes ?? (askedBefore(l, data.userId) ? translate("locksView.youAlreadyAskedAskAgain") : translate("locksView.askTheHolderToRelease"))}
                         onClick={() => setAsking(l)}
                       >
                         <HandHelping />
@@ -231,7 +233,7 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                       </Button>
                     )}
                     {(l.mine || data.canReleaseAny) && (
-                      <Button size="sm" disabled={unlock.isPending} onClick={() => (l.mine ? unlock.mutate(l) : setReleasing(l))} aria-label={translate("locksView.release2", { path: l.path })}>
+                      <Button size="sm" disabled={unlock.isPending || !!writes} title={writes} onClick={() => (l.mine ? unlock.mutate(l) : setReleasing(l))} aria-label={translate("locksView.release2", { path: l.path })}>
                         <LockOpen />
                         {t("locksView.release")}
                       </Button>

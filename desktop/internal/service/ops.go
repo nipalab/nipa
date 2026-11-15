@@ -90,7 +90,7 @@ func (s *Service) streamOp(ctx context.Context, client daemonpb.NipaDaemonClient
 			progress.ObjectsDone, progress.ObjectsTotal = p.GetObjectsDone(), p.GetObjectsTotal()
 			progress.BytesDone, progress.BytesTotal = p.GetBytesDone(), p.GetBytesTotal()
 		case ev.GetFailure() != nil:
-			return OpOutcome{}, errors.New(ev.GetFailure().GetMessage())
+			return OpOutcome{}, failureError(ev.GetFailure())
 		default:
 			return toOutcome(ev.GetResult()), nil
 		}

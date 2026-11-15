@@ -137,6 +137,22 @@ describe("CloneDialog", () => {
     expect(screen.getByText("nipa.studio.test")).toBeInTheDocument();
   });
 
+  it("says sign-in is paused while the server is frozen", async () => {
+    const frozen = { scope: "server", mode: "frozen", active: true, message: "Moving the database", startsAt: "", endsAt: "", org: "", project: "" };
+    api.accountStatus.mockResolvedValue(account({ signedIn: false, email: "" }));
+    api.signInSSH.mockRejectedValue(Object.assign(new Error("server is in maintenance (frozen)"), { cause: { maintenance: frozen } }));
+    api.signIn.mockRejectedValue(Object.assign(new Error("server is in maintenance (frozen)"), { cause: { maintenance: frozen } }));
+    show();
+    await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "nipa.studio.test{Enter}");
+    expect(await screen.findByText("The server is frozen for maintenance · Moving the database")).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Email" }), "ann@studio.test");
+    await userEvent.type(screen.getByLabelText("Password"), "secret");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Sign-in is paused while the server is frozen for maintenance.");
+    expect(alert).toHaveTextContent("The server is frozen for maintenance · Moving the database");
+  });
+
   it("asks for a two-factor code after the password", async () => {
     api.accountStatus.mockResolvedValueOnce(account({ signedIn: false, email: "" })).mockResolvedValue(account({ email: "" }));
     api.signInSSH.mockRejectedValueOnce(new Error("invalid email or SSH key"));

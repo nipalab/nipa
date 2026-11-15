@@ -6,6 +6,7 @@ import { MergeRequestDetail, MergeRequestStatus } from "@/components/mr/MergeReq
 import { MemberPicker } from "@/components/people/MemberPicker";
 import { Button } from "@/components/ui/button";
 import type { Notify } from "@/hooks/useLocks";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { useDraft, useLLMSettings } from "@/hooks/useGenerate";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
@@ -32,6 +33,7 @@ type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; op
 
 export function MergeRequestsView({ root, branch, notify, open, create }: MergeRequestsViewProps) {
   const { t } = useTranslation();
+  const { writes } = useMaintenance();
   const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
   const [status, setStatus] = usePersistedState<Filter>(repoSetting(root, "mrs.status"), "open", { valid: isFilter });
   const [searchInput, setSearchInput] = useState("");
@@ -45,7 +47,7 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
   }, [open?.number, open?.seq]);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
-    if (create) setCreating(true);
+    if (create && !writes) setCreating(true);
   }, [create]);
 
   const list = useInfiniteQuery({
@@ -86,7 +88,7 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
           <Button size="sm" variant="ghost" className="ml-auto" aria-label={t("mergeRequestsView.refreshMergeRequests")} disabled={list.isFetching} onClick={() => void list.refetch()}>
             <RefreshCw className={cn(list.isFetching && "animate-spin")} />
           </Button>
-          <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+          <Button size="sm" variant="primary" onClick={() => setCreating(true)} disabled={!!writes} title={writes}>
             <Plus />
             {t("mergeRequestsView.new")}
           </Button>

@@ -27,12 +27,18 @@ type Entry struct {
 
 // Tooltip summarizes every clone in one line.
 func Tooltip(l lang.Language, list []service.RepoActivity) string {
-	incoming, reviews, offline := 0, 0, 0
+	incoming, reviews, offline, closed, soon := 0, 0, 0, 0, 0
 	for _, a := range list {
 		incoming += a.Incoming
 		reviews += a.ReviewRequests
 		if a.Error != "" {
 			offline++
+		}
+		switch {
+		case inMaintenance(a):
+			closed++
+		case len(a.Maintenance) > 0:
+			soon++
 		}
 	}
 	var parts []string
@@ -44,6 +50,12 @@ func Tooltip(l lang.Language, list []service.RepoActivity) string {
 	}
 	if offline > 0 {
 		parts = append(parts, l.N("tray.unreachable", offline))
+	}
+	if closed > 0 {
+		parts = append(parts, l.N("tray.maintenance", closed))
+	}
+	if soon > 0 {
+		parts = append(parts, l.N("tray.maintenanceSoon", soon))
 	}
 	if len(parts) == 0 {
 		if len(list) == 0 {
@@ -81,7 +93,19 @@ func label(l lang.Language, a service.RepoActivity) string {
 	if a.Error != "" {
 		parts = append(parts, l.T("tray.cloneUnreachable"))
 	}
+	if inMaintenance(a) {
+		parts = append(parts, l.T("tray.cloneMaintenance"))
+	}
 	return strings.Join(parts, " · ")
+}
+
+func inMaintenance(a service.RepoActivity) bool {
+	for _, w := range a.Maintenance {
+		if w.Active {
+			return true
+		}
+	}
+	return false
 }
 
 func target(a service.RepoActivity) service.Navigation {

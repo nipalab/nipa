@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Activity, FileDiff, MergeRequest, MergeRequestDetail, Thread } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
+import { MaintenanceProvider, maintenanceState } from "@/hooks/useMaintenance";
 
 const api = vi.hoisted(() => ({
   mergeRequests: vi.fn(),
@@ -250,6 +251,27 @@ describe("MergeRequestsView list", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "New" }));
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  });
+});
+
+describe("MergeRequestsView in maintenance", () => {
+  it("keeps reading but disables every write", async () => {
+    const state = maintenanceState([{ scope: "project", mode: "read_only", active: true, message: "", startsAt: "", endsAt: "", org: "studio", project: "studio/game" }]);
+    renderWithProviders(
+      <MaintenanceProvider value={state}>
+        <MergeRequestsView root="/work/game" branch="art" notify={notify} create={1} />
+      </MaintenanceProvider>,
+    );
+    await list();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const create = screen.getByRole("button", { name: "New" });
+    expect(create).toBeDisabled();
+    expect(create).toHaveAttribute("title", state.writes);
+    expect(await screen.findByRole("heading", { name: /Hero pass/ })).toBeInTheDocument();
+    const merge = within(await screen.findByRole("region", { name: "Merge" }));
+    expect(merge.getByText(state.writes!)).toBeInTheDocument();
+    expect(merge.getByRole("button", { name: "Merge" })).toBeDisabled();
+    expect(merge.getByRole("button", { name: "Close" })).toBeDisabled();
   });
 });
 

@@ -292,6 +292,9 @@ describe("App", () => {
     act(() => push?.({ root: "/work/game", name: "game", incoming: 120, reviewRequests: 1, error: "", events: [] }));
     expect(await screen.findByTitle("100+ new commits to get")).toBeInTheDocument();
     expect(screen.getByTitle("1 merge request waiting for your review")).toBeInTheDocument();
+    expect(screen.queryByLabelText("In maintenance")).toBeNull();
+    act(() => push?.({ root: "/work/game", name: "game", incoming: 0, reviewRequests: 0, error: "", events: [], maintenance: [{ scope: "server", mode: "read_only", active: true, message: "", startsAt: "", endsAt: "", org: "", project: "" }] }));
+    expect(await screen.findByLabelText("In maintenance")).toBeInTheDocument();
   });
 
   it("refreshes the Locks tab when a lock is requested of me", async () => {

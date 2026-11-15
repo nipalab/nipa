@@ -5,6 +5,7 @@ import { desktop, type Commit, type Repo } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { ancestors, dirsToRefresh, lockFor, nextSort, parentOf, readViewMode, sortEntries, writeViewMode, type Row, type Sort, type ViewMode } from "@/lib/files";
@@ -38,6 +39,7 @@ const isSort = (v: unknown): v is Sort => !!v && typeof v === "object" && isStri
 
 export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAddSparse }: FilesViewProps) {
   const { t } = useTranslation();
+  const maintenance = useMaintenance();
   const root = repo.root;
   const queryClient = useQueryClient();
   const treeSize = useResizableWidth("files-tree", { initial: 220, min: 140, max: 480 });
@@ -177,7 +179,8 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
         id: "lock",
         label: translate("filesView.lock"),
         Icon: Lock,
-        disabled: !lockStatus.data || lockActions.lock.isPending,
+        disabled: !lockStatus.data || lockActions.lock.isPending || !!maintenance.writes,
+        title: maintenance.writes,
         run: () => lockStatus.data && lockActions.lock.mutate({ branch: lockStatus.data.branch, paths: [r.path] }),
       };
     }
@@ -186,8 +189,8 @@ export function FilesView({ repo, busy, notify, open, onHistory, onRestore, onAd
         id: "unlock",
         label: translate("filesView.unlock"),
         Icon: LockOpen,
-        disabled: lockActions.unlock.isPending,
-        title: lock.path === r.path ? translate("filesView.releaseYourLock") : translate("filesView.releasesYourLockOn", { path: lock.path }),
+        disabled: lockActions.unlock.isPending || !!maintenance.writes,
+        title: maintenance.writes ?? (lock.path === r.path ? translate("filesView.releaseYourLock") : translate("filesView.releasesYourLockOn", { path: lock.path })),
         run: () => lockActions.unlock.mutate(lock),
       };
     }

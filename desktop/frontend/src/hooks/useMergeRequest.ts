@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type CommentInput, type Person } from "@/api/desktop";
 import type { Notify } from "@/hooks/useLocks";
+import { useMaintenance } from "@/hooks/useMaintenance";
 import type { Strategy } from "@/lib/mergeRequests";
 import { errorMessage } from "@/lib/utils";
 import { translate } from "@/i18n";
@@ -11,6 +12,7 @@ export type ReviewState = "approved" | "changes_requested" | "commented";
 // action refreshes the request, its activity and the list.
 export function useMergeRequest(root: string, number: number, notify: Notify) {
   const queryClient = useQueryClient();
+  const { writes } = useMaintenance();
   const detail = useQuery({ queryKey: ["mr", root, number], queryFn: () => desktop.mergeRequest(root, number) });
   const activity = useQuery({ queryKey: ["mr", root, number, "activity"], queryFn: () => desktop.mergeRequestActivity(root, number) });
 
@@ -53,6 +55,6 @@ export function useMergeRequest(root: string, number: number, notify: Notify) {
   const assign = action((ids: string[]) => desktop.assignMergeRequest(root, number, ids), translate("useMergeRequest.couldNotAssign"));
   const askReview = action((person: Person) => desktop.requestReview(root, number, person.id), translate("useMergeRequest.couldNotRequestAReview"), (person) => translate("useMergeRequest.askedToReview", { name: person.name }));
 
-  const busy = [comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview].some((m) => m.isPending);
-  return { detail, activity, comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview, busy };
+  const busy = !!writes || [comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview].some((m) => m.isPending);
+  return { detail, activity, comment, reply, resolve, review, merge, close, reopen, draft, edit, assign, askReview, busy, blocked: writes };
 }

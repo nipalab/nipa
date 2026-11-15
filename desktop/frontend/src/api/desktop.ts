@@ -69,6 +69,7 @@ import type {
   LockFailure,
   LockStatus as RawLockStatus,
   LockWatch,
+  MaintenanceWindow,
   MetaWarning,
   BrokenReference,
   BudgetViolation,
@@ -114,11 +115,11 @@ import type {
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import type { NotifySettings, Settings as RawSettings, Tool } from "../../bindings/github.com/nipalab/nipa/desktop/internal/workspace/models";
 
-export type { IgnoreRules, Navigation, NotifySettings, TeamEvent, Tool };
+export type { IgnoreRules, MaintenanceWindow, Navigation, NotifySettings, TeamEvent, Tool };
 export type Settings = Omit<RawSettings, "tools"> & { tools: Tool[] };
-export type RepoActivity = Omit<RawRepoActivity, "events"> & { events: TeamEvent[] };
+export type RepoActivity = Omit<RawRepoActivity, "events" | "maintenance"> & { events: TeamEvent[]; maintenance?: MaintenanceWindow[] };
 const settings = (s: RawSettings): Settings => ({ ...s, tools: s.tools ?? [] });
-const activity = (a: RawRepoActivity): RepoActivity => ({ ...a, events: a.events ?? [] });
+const activity = (a: RawRepoActivity): RepoActivity => ({ ...a, events: a.events ?? [], maintenance: a.maintenance ?? [] });
 
 export type UpdatePhase = "idle" | "checking" | "upToDate" | "available" | "downloading" | "ready" | "error";
 export type UpdateState = Omit<RawUpdateState, "phase" | "release" | "error"> & { phase: UpdatePhase; release: Release | null; error: string };

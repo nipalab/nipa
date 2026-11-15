@@ -38,14 +38,16 @@ type NotifySettings struct {
 	Pushes  bool `json:"pushes"`
 	Locks   bool `json:"locks"`
 	Reviews bool `json:"reviews"`
-	// LockRequests tells the holder that someone asked for a lock; on unless
-	// a saved file says otherwise.
+	// LockRequests tells the holder that someone asked for a lock and
+	// Maintenance announces maintenance windows; both are on unless a saved
+	// file says otherwise.
 	LockRequests bool `json:"lockRequests"`
+	Maintenance  bool `json:"maintenance"`
 }
 
 func (n *NotifySettings) UnmarshalJSON(data []byte) error {
 	type plain NotifySettings
-	in := plain{LockRequests: true}
+	in := plain{LockRequests: true, Maintenance: true}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
 	}
@@ -70,7 +72,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		KeepInTray:  true,
 		PollSeconds: DefaultPollSeconds,
-		Notify:      NotifySettings{Pushes: true, Locks: true, Reviews: true, LockRequests: true},
+		Notify:      NotifySettings{Pushes: true, Locks: true, Reviews: true, LockRequests: true, Maintenance: true},
 		Tools:       []Tool{},
 	}
 }

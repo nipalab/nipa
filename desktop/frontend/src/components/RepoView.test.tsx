@@ -1290,3 +1290,87 @@ describe("shelves", () => {
     expect(describeShelve({})).toEqual(['Applied "the shelf"', "success", false]);
   });
 });
+
+describe("Maintenance", () => {
+  const window = (over: Record<string, unknown> = {}) => ({ scope: "project", mode: "read_only", active: true, message: "Moving storage", startsAt: "2026-11-16T09:00:00Z", endsAt: "2026-11-16T11:00:00Z", org: "acme", project: "acme/game", ...over });
+  const withWindows = (maintenance: ReturnType<typeof window>[]) => ({ root: "/work/game", name: "game", incoming: 0, reviewRequests: 0, error: "", events: [], maintenance });
+  const render = (activity?: ReturnType<typeof withWindows>, intent?: Intent) => renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={activity} intent={intent} />);
+  const note = "Not available: Project acme/game is read-only for maintenance";
+
+  beforeEach(() => {
+    api.history.mockResolvedValue({ commits: [{ id: "c2", hash: "h2", parents: ["c1"], author: "Ana", email: "", message: "Paint hero", date: "2026-11-04T09:00:00Z" }], next: "" });
+    api.commitFiles.mockResolvedValue([]);
+    api.tags.mockResolvedValue([{ name: "v1", commitId: "c1", message: "", createdAt: "", createdBy: "" }]);
+    api.branches.mockResolvedValue([
+      { name: "main", commitId: "c2", default: true, protected: false },
+      { name: "feature", commitId: "c3", default: false, protected: false },
+    ]);
+  });
+
+  it("shows a read-only window and disables writes while reads go on", async () => {
+    render(withWindows([window()]));
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("Project acme/game is read-only for maintenance");
+    expect(banner).toHaveTextContent("Moving storage");
+    expect(banner).toHaveTextContent("Estimated end");
+    expect(within(banner).queryByRole("button", { name: "Dismiss" })).toBeNull();
+
+    await fileList();
+    const push = screen.getByRole("button", { name: /^Push/ });
+    expect(push).toBeDisabled();
+    expect(push).toHaveAttribute("title", note);
+    expect(screen.getByRole("button", { name: /Update/ })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("tab", { name: /Branches/ }));
+    expect(await screen.findByRole("button", { name: /New branch/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /New tag/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Switch" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Merge into main" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("tab", { name: /History/ }));
+    expect(await screen.findByRole("button", { name: /Revert/ })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("tab", { name: /Locks/ }));
+    expect(await screen.findByRole("button", { name: "Lock & edit a file…" })).toBeDisabled();
+  });
+
+  it("closes syncing in a full window", async () => {
+    const { rerender } = render(withWindows([window({ scope: "org", mode: "full", project: "", message: "" })]));
+    const update = await screen.findByRole("button", { name: /Update/ });
+    expect(update).toBeDisabled();
+    expect(update).toHaveAttribute("title", "Not available: Organization acme is closed for maintenance");
+    await userEvent.click(screen.getByRole("tab", { name: /Branches/ }));
+    expect(await screen.findByRole("button", { name: "Switch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Check out" })).toBeDisabled();
+
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={withWindows([window({ scope: "org", mode: "full", project: "" })])} intent={{ tab: "branches", action: "switch", target: "feature", seq: 7 }} />);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Not available: Organization acme is closed for maintenance"));
+    expect(api.switchBranch).not.toHaveBeenCalled();
+  });
+
+  it("announces a scheduled window that can be dismissed", async () => {
+    render(withWindows([window({ active: false, scope: "server", mode: "frozen", message: "" })]));
+    expect(await screen.findByText(/The server will be frozen for maintenance from/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    await fileList();
+    expect(screen.getByRole("button", { name: /Update/ })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/will be frozen for maintenance/)).toBeNull();
+  });
+
+  it("renders an operation refused for maintenance and shows the window", async () => {
+    const err = Object.assign(new Error("project acme/game is in maintenance (closed)"), { cause: { message: "x", maintenance: window({ mode: "full", message: "Disk swap" }) } });
+    api.update.mockRejectedValue(err);
+    render();
+    await userEvent.click(await screen.findByRole("button", { name: /Update/ }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.stringContaining("Project acme/game is closed for maintenance · Disk swap · Estimated end")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Project acme/game is closed for maintenance");
+    expect(screen.getByRole("button", { name: /Update/ })).toBeDisabled();
+  });
+
+  it("refuses a lock intent while writes are paused", async () => {
+    render(withWindows([window()]), { tab: "changes", action: "lock", path: "art/hero.png", seq: 3 });
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(note));
+    expect(api.lock).not.toHaveBeenCalled();
+  });
+});

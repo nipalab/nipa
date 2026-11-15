@@ -26,7 +26,7 @@ random failures, and move the database to another host with writes paused for mi
 | `frozen` | copying or moving the database; server only | ✓ | ✗ | ✗ | **none** |
 
 Out of scope: downtime where the process is stopped. That case is handled by a static Caddy
-page (phase 8). Also out of scope: Unity/Godot UI (they keep showing the error message) and an
+page (phase 9, `docs/MAINTENANCE.md`). Also out of scope: Unity/Godot UI (they keep showing the error message) and an
 `upgrade.sh` flag.
 
 ## 2. Concepts
@@ -501,7 +501,7 @@ moved between orgs (if that ever exists) is still matched correctly.
   - The free main refuses `SNOWFLAKE_NODE_ID=255`.
   - The subcommand uses it, so its ids never collide with a running server.
 
-## 7. Moving the database (operator runbooks, in `docs/DEPLOY.md`)
+## 7. Moving the database (operator runbooks, shipped in `docs/MAINTENANCE.md`)
 
 ### 7.1 Postgres (`nipad-ee`)
 
@@ -564,8 +564,11 @@ only be set from PR 4 on.
 | 5 | Email maintenance announcements (done) | 2 | `notify` sends mail |
 | 6 | Show maintenance in the CLI, daemon and MCP (done) | 3 | clear errors, no retries, status lines, daemon event |
 | 7 | Show maintenance in the web UI (done) | 3 | banner, closed page, admin page, org and project tabs |
-| 8 | Show maintenance in the desktop app | 6 | banner, disabled actions, notification |
-| 9 | Document maintenance operations and database moves | 4 | runbooks, Caddy fallback page |
+| 8 | Show maintenance in the desktop app (done) | 6 | banner, disabled actions, notification |
+| 9 | Document maintenance operations and database moves (done) | 4 | runbooks, Caddy fallback page |
+
+With PR 8 and PR 9 done the plan is complete; open items are under "Remaining follow-ups"
+in the PR 9 section.
 
 PRs 5, 6 and 7 can be developed in parallel after PR 3 (PR 5 only needs PR 2).
 
@@ -802,11 +805,73 @@ Done. As built, it differs from the sections above in these points:
 
 The desktop half of phase 8.
 
+Done. As built, it differs from the sections above in these points:
+
+- The binding is `RepoActivity.maintenance: MaintenanceWindow[]` (scope from the
+  `MaintenanceState` slot) and `TeamEvent.maintenance` (scope derived from `project`, then
+  `org`, else server; the same rule maps `OpFailure.maintenance`). Times are RFC 3339 strings.
+- A refused operation is a `MaintenanceError` (`OpFailure.maintenance` on op streams, any
+  gRPC maintenance refusal through `cleanError`), which Wails passes as the error `cause`
+  `{message, maintenance}`. `errorMessage` renders it everywhere ("Project x is closed for
+  maintenance · message · Estimated end …"), and the repo view keeps the refused window in
+  the banner until the next poll.
+- "Disabled in `read_only`" also covers local merge (it pushes), revert Continue, "Finish
+  merge", "Ask to release" and every merge request action (`useMergeRequest` reports busy);
+  in `full`/`frozen` Update, Switch and tag checkout too. Clone is not disabled: the clone
+  dialog has no clone context yet; a refusal renders as the maintenance text, and a `frozen`
+  sign-in refusal adds "Sign-in is paused".
+- Notifications: kind `maintenance` (`notify.maintenance`, on by default, also for saved
+  settings without the key) for `scheduled|started|updated|ended`. The tray tooltip counts
+  clones in an active window and clones with one scheduled, the menu row says
+  "maintenance", and the sidebar shows an icon for active windows.
+- Tests: `desktop/internal/service/maintenance_test.go`, tray and workspace tests; vitest for
+  `lib/maintenance`, `MaintenanceBanner`, the RepoView maintenance cases (disabled writes,
+  full-window sync, scheduled dismissal, refused update, lock intent), the merge request view,
+  the clone dialog's paused sign-in, the sidebar icon and the settings toggle.
+
 ### PR 9: operations and docs
 
 Phase 9 below. The per-feature doc updates already landed with each PR; this one adds
 `docs/MAINTENANCE.md`, the `docs/DEPLOY.md` runbooks, the Caddy maintenance page and the
 release-checklist rehearsal.
+
+Done. As built, it differs from the sections above in these points:
+
+- The runbooks (planned windows, postgres move, sqlite move, the keys that must not
+  change, TLS/DNS) live in `docs/MAINTENANCE.md`; `docs/DEPLOY.md`, `docs/POSTGRES.md`
+  and `docs/SERVER_GUIDE.md` link to them instead of repeating them.
+- Postgres move: the color switch reuses `upgrade.sh` with the active color's own
+  binary (`upgrade.sh /opt/nipa/<active>/nipad-ee`), and the rollback is
+  `upgrade.sh --rollback` after resetting `default_transaction_read_only` on the old
+  primary first (a restarted color claims a node lease) and before
+  `maintenance end`. `upgrade.sh` itself is unchanged. Logical replication also needs
+  `ssh_login_challenges` set to `REPLICA IDENTITY FULL` (the only table without a
+  primary key); the `setval` step is a generated `\gexec` query over the identity
+  columns. The sqlite move never ends the window on the old host, so clients with a
+  stale DNS answer get frozen refusals instead of writing to the old copy.
+- Caddy page: `handle_errors 502 503 504` (Caddy 2.8+) in `deploy/caddy/Caddyfile`,
+  page `deploy/caddy/maintenance/index.html` installed in `/etc/caddy/maintenance`
+  (`NIPA_MAINTENANCE_ROOT` overrides it). Besides the HTML page it answers gRPC with a
+  trailers-only `grpc-status 14` carrying the server `full` `ErrorInfo`, and `/api`,
+  `/auth` with the maintenance JSON and `X-Nipa-Maintenance: server;full`, so every
+  client treats hard downtime like a closed server (session kept, no retries). The
+  security headers moved into a `security_headers` snippet, since error responses
+  start with fresh headers. `internal/maintenance/caddy_test.go` decodes the
+  Caddyfile's gRPC details and JSON and checks them against `maintenance.Error`; the
+  page was also checked against Caddy 2.10.2 with a stopped upstream (the CLI prints
+  the maintenance refusal) and a live upstream's own 503 passes through.
+
+### Remaining follow-ups
+
+- Confirm the three PR 5 email defaults (`notify_email` ignored, org-wide admins
+  without projects, the command queueing rows).
+- Presigned S3 GET URLs stay valid until `CHUNK_PRESIGN_TTL_SECONDS` in a `full`
+  window.
+- `GetMaintenanceStatus` never refreshes an expired token, so clients then only see
+  the server window.
+- `EMAIL_*` (and other keys without defaults) are not bound to environment variables.
+- Unity/Godot plugins and an `upgrade.sh` maintenance flag stay out of scope.
+- The release-checklist rehearsal of both moves on staging hosts.
 
 ## 9. Phase details
 
