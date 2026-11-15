@@ -9,7 +9,7 @@ type MaintenanceWindowResponse struct {
 	Mode     string     `json:"mode"`
 	Active   bool       `json:"active"`
 	Message  string     `json:"message"`
-	StartsAt time.Time  `json:"starts_at"`
+	StartsAt time.Time  `json:"starts_at,omitzero"`
 	EndsAt   *time.Time `json:"ends_at,omitempty"`
 	Org      string     `json:"org,omitempty"`
 	Project  string     `json:"project,omitempty"`

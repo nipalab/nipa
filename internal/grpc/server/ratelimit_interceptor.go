@@ -27,7 +27,8 @@ func NewRateLimiter(limiter *ratelimit.Limiter, proxies []netip.Prefix) *RateLim
 }
 
 func exemptFromRateLimit(method string) bool {
-	return method == "/greet.NipaService/GetServerVersion" || strings.HasPrefix(method, "/grpc.health.v1.Health/")
+	return method == "/greet.NipaService/GetServerVersion" || method == "/greet.NipaService/GetMaintenanceStatus" ||
+		strings.HasPrefix(method, "/grpc.health.v1.Health/")
 }
 
 func (r *RateLimiter) clientIP(ctx context.Context) string {

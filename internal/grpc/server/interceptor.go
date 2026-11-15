@@ -16,7 +16,8 @@ import (
 )
 
 // isPublicMethod lists the RPCs that skip JWT authentication: the login calls,
-// the version probe and the standard gRPC health service.
+// the version and maintenance status probes and the standard gRPC health
+// service.
 func isPublicMethod(method string) bool {
 	switch method {
 	case "/greet.NipaService/LoginWithUsernamePassword",
@@ -25,6 +26,7 @@ func isPublicMethod(method string) bool {
 		"/greet.NipaService/CompleteLoginSSHKey",
 		"/greet.NipaService/CompleteLoginMFA",
 		"/greet.NipaService/GetServerVersion",
+		"/greet.NipaService/GetMaintenanceStatus",
 		"/grpc.health.v1.Health/Check",
 		"/grpc.health.v1.Health/Watch":
 		return true

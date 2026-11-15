@@ -168,13 +168,14 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 	require.NoError(t, err)
 
 	interceptor := servergrpc.NewInterceptor(authUc)
+	maintenanceInterceptor := servergrpc.NewMaintenance(maintenanceSvc, nil)
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(interceptor.JWTUnary()),
-		grpc.StreamInterceptor(interceptor.JWTStream()),
+		grpc.ChainUnaryInterceptor(interceptor.JWTUnary(), maintenanceInterceptor.Unary()),
+		grpc.ChainStreamInterceptor(interceptor.JWTStream(), maintenanceInterceptor.Stream()),
 	)
 	pb.RegisterNipaServiceServer(grpcServer, servergrpc.New(reg))
 
-	chunkHandler := api.NewChunkTransferHandler(chunkUc)
+	chunkHandler := api.NewChunkTransferHandler(chunkUc, maintenanceSvc)
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)

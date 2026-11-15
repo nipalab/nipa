@@ -238,9 +238,10 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	require.NoError(t, err)
 
 	interceptor := servergrpc.NewInterceptor(uc.Auth)
+	maintenanceInterceptor := servergrpc.NewMaintenance(maintenanceSvc, nil)
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(interceptor.JWTUnary()),
-		grpc.StreamInterceptor(interceptor.JWTStream()),
+		grpc.ChainUnaryInterceptor(interceptor.JWTUnary(), maintenanceInterceptor.Unary()),
+		grpc.ChainStreamInterceptor(interceptor.JWTStream(), maintenanceInterceptor.Stream()),
 	)
 	pb.RegisterNipaServiceServer(grpcServer, servergrpc.New(reg))
 
@@ -248,7 +249,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	if opts.rest != nil {
 		chunkHandler = opts.rest(reg)
 	} else {
-		chunkHandler = api.NewChunkTransferHandler(uc.Chunk)
+		chunkHandler = api.NewChunkTransferHandler(uc.Chunk, maintenanceSvc)
 	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)

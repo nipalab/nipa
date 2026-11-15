@@ -10,7 +10,7 @@ type Info struct {
 	Scope    Scope      `json:"scope"`
 	Mode     Mode       `json:"mode"`
 	Message  string     `json:"message"`
-	StartsAt time.Time  `json:"starts_at"`
+	StartsAt time.Time  `json:"starts_at,omitzero"`
 	EndsAt   *time.Time `json:"ends_at,omitempty"`
 	Org      string     `json:"org,omitempty"`
 	Project  string     `json:"project,omitempty"`
@@ -30,10 +30,12 @@ func NewInfo(w Window, scope Scope) Info {
 // Metadata flattens the info into string pairs (gRPC ErrorInfo metadata).
 func (i Info) Metadata() map[string]string {
 	md := map[string]string{
-		"scope":     string(i.Scope),
-		"mode":      string(i.Mode),
-		"message":   i.Message,
-		"starts_at": i.StartsAt.UTC().Format(time.RFC3339),
+		"scope":   string(i.Scope),
+		"mode":    string(i.Mode),
+		"message": i.Message,
+	}
+	if !i.StartsAt.IsZero() {
+		md["starts_at"] = i.StartsAt.UTC().Format(time.RFC3339)
 	}
 	if i.EndsAt != nil {
 		md["ends_at"] = i.EndsAt.UTC().Format(time.RFC3339)

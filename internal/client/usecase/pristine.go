@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/maintenance"
 )
 
 type ContentDownloader interface {
@@ -70,10 +71,14 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 const errNotCached = "content not cached locally; connect to the server"
 
 // offlineError turns a failure to reach the server into the user error the
-// missing-client case reports; every other error is returned unchanged.
+// missing-client case reports; every other error, a maintenance refusal
+// included, is returned unchanged.
 func offlineError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if _, ok := maintenance.FromGRPC(err); ok {
+		return err
 	}
 	if status.Code(err) == codes.Unavailable {
 		return clientDomain.NewUserError(errNotCached)

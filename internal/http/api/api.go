@@ -9,6 +9,7 @@ import (
 	"github.com/nipalab/nipa/internal/http/handler"
 	"github.com/nipalab/nipa/internal/http/model"
 	"github.com/nipalab/nipa/internal/http/swagger"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -47,6 +48,7 @@ type API struct {
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 	webServices  []*restful.WebService
+	maintenance  *maintenance.Service
 }
 
 // Option tunes optional API behavior.
@@ -60,6 +62,7 @@ type apiOptions struct {
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 	webServices  []*restful.WebService
+	maintenance  *maintenance.Service
 }
 
 // WithMetrics enables per-route HTTP metrics on the REST container.
@@ -112,9 +115,18 @@ func WithPublicRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithMaintenance refuses the requests the maintenance windows of svc do not
+// allow with 503. Nil enforces nothing.
+func WithMaintenance(svc *maintenance.Service) Option {
+	return func(o *apiOptions) {
+		o.maintenance = svc
+	}
+}
+
 // WithWebService adds a WebService with its own root path, e.g. a provider
 // webhook that authenticates by signature. No bearer or origin filter is
-// attached: the WebService owns its authentication.
+// attached: the WebService owns its authentication. Maintenance applies to
+// it like to every other route.
 func WithWebService(ws *restful.WebService) Option {
 	return func(o *apiOptions) {
 		o.webServices = append(o.webServices, ws)
@@ -135,6 +147,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 		routes:       options.routes,
 		publicRoutes: options.publicRoutes,
 		webServices:  options.webServices,
+		maintenance:  options.maintenance,
 	}
 }
 
@@ -147,6 +160,7 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(RequestMetaFilter(a.proxies)).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
+	a.enforceMaintenance(authWs)
 	if a.rateLimit.active() {
 		authWs.Filter(a.rateLimit.AuthFilter())
 	}
@@ -162,6 +176,7 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(NewAuthFilter(a.useCase.Auth()).WithServiceTokens(a.useCase.ServiceToken()).WithTrustedProxies(a.proxies).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
+	a.enforceMaintenance(apiWs)
 	if a.rateLimit.active() {
 		apiWs.Filter(a.rateLimit.UserFilter())
 	}
@@ -191,12 +206,14 @@ func (a *API) SetupRoute() http.Handler {
 	chunkWs := new(restful.WebService).ApiVersion("1.0.0")
 	chunkWs.Path("/api/chunks").
 		Filter(sameOriginFilter)
+	a.enforceMaintenance(chunkWs)
 	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk()))
 	restful.Add(chunkWs)
 
 	restful.Add(newMaintenanceWebService(h))
 
 	for _, ws := range a.webServices {
+		a.enforceMaintenance(ws)
 		restful.Add(ws)
 	}
 
@@ -208,6 +225,12 @@ func (a *API) SetupRoute() http.Handler {
 	restful.DefaultContainer.Filter(corsFilter(a.origins))
 
 	return restful.DefaultContainer
+}
+
+func (a *API) enforceMaintenance(ws *restful.WebService) {
+	if a.maintenance != nil {
+		ws.Filter(maintenanceFilter(a.maintenance, a.metrics))
+	}
 }
 
 // Wrap adapts an AppContext handler to a go-restful route function. Extension

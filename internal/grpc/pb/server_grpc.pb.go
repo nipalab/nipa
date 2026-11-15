@@ -25,6 +25,7 @@ const (
 	NipaService_CompleteLoginSSHKey_FullMethodName             = "/greet.NipaService/CompleteLoginSSHKey"
 	NipaService_CompleteLoginMFA_FullMethodName                = "/greet.NipaService/CompleteLoginMFA"
 	NipaService_GetServerVersion_FullMethodName                = "/greet.NipaService/GetServerVersion"
+	NipaService_GetMaintenanceStatus_FullMethodName            = "/greet.NipaService/GetMaintenanceStatus"
 	NipaService_ListMyProjects_FullMethodName                  = "/greet.NipaService/ListMyProjects"
 	NipaService_ListDirectory_FullMethodName                   = "/greet.NipaService/ListDirectory"
 	NipaService_ListProjectMembers_FullMethodName              = "/greet.NipaService/ListProjectMembers"
@@ -107,6 +108,7 @@ type NipaServiceClient interface {
 	CompleteLoginSSHKey(ctx context.Context, in *CompleteLoginSSHKeyRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	CompleteLoginMFA(ctx context.Context, in *CompleteLoginMFARequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	GetServerVersion(ctx context.Context, in *GetServerVersionRequest, opts ...grpc.CallOption) (*GetServerVersionResponse, error)
+	GetMaintenanceStatus(ctx context.Context, in *GetMaintenanceStatusRequest, opts ...grpc.CallOption) (*GetMaintenanceStatusResponse, error)
 	ListMyProjects(ctx context.Context, in *ListMyProjectsRequest, opts ...grpc.CallOption) (*ListMyProjectsResponse, error)
 	ListDirectory(ctx context.Context, in *ListDirectoryRequest, opts ...grpc.CallOption) (*ListDirectoryResponse, error)
 	ListProjectMembers(ctx context.Context, in *ListProjectMembersRequest, opts ...grpc.CallOption) (*ListProjectMembersResponse, error)
@@ -241,6 +243,16 @@ func (c *nipaServiceClient) GetServerVersion(ctx context.Context, in *GetServerV
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetServerVersionResponse)
 	err := c.cc.Invoke(ctx, NipaService_GetServerVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) GetMaintenanceStatus(ctx context.Context, in *GetMaintenanceStatusRequest, opts ...grpc.CallOption) (*GetMaintenanceStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMaintenanceStatusResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetMaintenanceStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -957,6 +969,7 @@ type NipaServiceServer interface {
 	CompleteLoginSSHKey(context.Context, *CompleteLoginSSHKeyRequest) (*LoginResponse, error)
 	CompleteLoginMFA(context.Context, *CompleteLoginMFARequest) (*LoginResponse, error)
 	GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error)
+	GetMaintenanceStatus(context.Context, *GetMaintenanceStatusRequest) (*GetMaintenanceStatusResponse, error)
 	ListMyProjects(context.Context, *ListMyProjectsRequest) (*ListMyProjectsResponse, error)
 	ListDirectory(context.Context, *ListDirectoryRequest) (*ListDirectoryResponse, error)
 	ListProjectMembers(context.Context, *ListProjectMembersRequest) (*ListProjectMembersResponse, error)
@@ -1054,6 +1067,9 @@ func (UnimplementedNipaServiceServer) CompleteLoginMFA(context.Context, *Complet
 }
 func (UnimplementedNipaServiceServer) GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetServerVersion not implemented")
+}
+func (UnimplementedNipaServiceServer) GetMaintenanceStatus(context.Context, *GetMaintenanceStatusRequest) (*GetMaintenanceStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMaintenanceStatus not implemented")
 }
 func (UnimplementedNipaServiceServer) ListMyProjects(context.Context, *ListMyProjectsRequest) (*ListMyProjectsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMyProjects not implemented")
@@ -1390,6 +1406,24 @@ func _NipaService_GetServerVersion_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).GetServerVersion(ctx, req.(*GetServerVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_GetMaintenanceStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMaintenanceStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetMaintenanceStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetMaintenanceStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetMaintenanceStatus(ctx, req.(*GetMaintenanceStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2684,6 +2718,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetServerVersion",
 			Handler:    _NipaService_GetServerVersion_Handler,
+		},
+		{
+			MethodName: "GetMaintenanceStatus",
+			Handler:    _NipaService_GetMaintenanceStatus_Handler,
 		},
 		{
 			MethodName: "ListMyProjects",

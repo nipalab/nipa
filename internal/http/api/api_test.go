@@ -8,6 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -239,6 +242,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	container := NewAPI(reg,
 		WithAllowedOrigins([]string{"https://app.example.com"}),
+		WithMaintenance(maintSvc),
 		WithRoutes(func(ws *restful.WebService) {
 			ws.Route(ws.GET("/ping").To(func(_ *restful.Request, resp *restful.Response) {
 				resp.WriteHeader(http.StatusNoContent)
@@ -2334,7 +2338,12 @@ func TestAPIRoutes(t *testing.T) {
 		require.NoError(t, maintSvc.Apply(context.Background(), fileSnap))
 		expect(t, http.MethodPut, admin, `{"mode":"full"}`, superTok, http.StatusConflict)
 		expect(t, http.MethodDelete, admin, "", superTok, http.StatusConflict)
-		public = decodeBody[model.MaintenanceStatusResponse](t, doGet(t, server.URL+"/api/maintenance", ""))
+		rawStatus := doGet(t, server.URL+"/api/maintenance", "")
+		rawBody, err := io.ReadAll(rawStatus.Body)
+		_ = rawStatus.Body.Close()
+		require.NoError(t, err)
+		require.NotContains(t, string(rawBody), "starts_at", "a file override has no start")
+		require.NoError(t, json.Unmarshal(rawBody, &public))
 		require.Equal(t, "file", public.Source)
 		require.Equal(t, "full", public.Server.Mode)
 		require.NoError(t, maintSvc.Apply(context.Background(), dbSnap))
@@ -2358,6 +2367,132 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		require.Equal(t, 3, actions[domain.AuditMaintenanceScheduled])
 		require.Equal(t, 3, actions[domain.AuditMaintenanceEnded])
+	})
+
+	t.Run("maintenance enforcement", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+		superTok := superLogin.AccessToken
+		v1 := server.URL + "/api/v1"
+		admin := v1 + "/admin/maintenance"
+		status := func(t *testing.T, method, url, body, tok string) *http.Response {
+			t.Helper()
+			resp := doMethod(t, method, url, body, tok)
+			_ = resp.Body.Close()
+			return resp
+		}
+		expect := func(t *testing.T, method, url, body, tok string, code int) {
+			t.Helper()
+			require.Equal(t, code, status(t, method, url, body, tok).StatusCode, method+" "+url)
+		}
+		refused := func(t *testing.T, method, url, body, tok, marker string) {
+			t.Helper()
+			resp := status(t, method, url, body, tok)
+			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, method+" "+url)
+			require.Equal(t, marker, resp.Header.Get("X-Nipa-Maintenance"), method+" "+url)
+		}
+		passes := func(t *testing.T, method, url, body, tok string) {
+			t.Helper()
+			require.NotEqual(t, http.StatusServiceUnavailable, status(t, method, url, body, tok).StatusCode, method+" "+url)
+		}
+		expect(t, http.MethodPost, v1+"/orgs", `{"name":"Enforce","slug":"mt-enf"}`, superTok, http.StatusOK)
+		orgURL := v1 + "/orgs/mt-enf"
+		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"A","slug":"a"}`, superTok, http.StatusOK)
+		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"B","slug":"b"}`, superTok, http.StatusOK)
+		projA, projB := orgURL+"/projects/a", orgURL+"/projects/b"
+		lock := `{"path":"art/hero.png"}`
+		hook := server.URL + "/api/webhooks/test"
+
+		later := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+		expect(t, http.MethodPut, admin, `{"mode":"full","starts_at":"`+later+`"}`, superTok, http.StatusOK)
+		passes(t, http.MethodPost, projA+"/locks", lock, superTok)
+		expect(t, http.MethodPost, hook, "", "", http.StatusAccepted)
+
+		end := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+		expect(t, http.MethodPut, admin, `{"mode":"read_only","message":"backup","starts_at":"`+time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)+`","ends_at":"`+end+`"}`, superTok, http.StatusOK)
+		expect(t, http.MethodGet, projA+"/branches", "", superTok, http.StatusOK)
+		resp := doMethod(t, http.MethodPost, projA+"/locks", lock, superTok)
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Equal(t, "server;read_only", resp.Header.Get("X-Nipa-Maintenance"))
+		retry, err := strconv.Atoi(resp.Header.Get("Retry-After"))
+		require.NoError(t, err)
+		require.InDelta(t, 3600, retry, 60)
+		var rejection struct {
+			Error       string           `json:"error"`
+			Maintenance maintenance.Info `json:"maintenance"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&rejection))
+		_ = resp.Body.Close()
+		require.Equal(t, "server is in maintenance (read-only): backup", rejection.Error)
+		require.Equal(t, maintenance.ScopeServer, rejection.Maintenance.Scope)
+		refused(t, http.MethodPost, hook, "", "", "server;read_only")
+		refused(t, http.MethodPut, server.URL+"/api/chunks/mt-enf/a/abcd", "", "", "server;read_only")
+		expect(t, http.MethodGet, server.URL+"/api/maintenance", "", "", http.StatusOK)
+		expect(t, http.MethodGet, v1+"/me", "", superTok, http.StatusOK)
+		loginAs(t, "nipa")
+
+		expect(t, http.MethodPut, admin, `{"mode":"full"}`, superTok, http.StatusOK)
+		refused(t, http.MethodGet, projA+"/branches", "", superTok, "server;full")
+		refused(t, http.MethodGet, v1+"/orgs", "", superTok, "server;full")
+		expect(t, http.MethodGet, v1+"/me", "", superTok, http.StatusOK)
+		expect(t, http.MethodGet, projA+"/permissions/me", "", superTok, http.StatusOK)
+		expect(t, http.MethodGet, admin, "", superTok, http.StatusOK)
+		expect(t, http.MethodGet, projA+"/maintenance", "", superTok, http.StatusOK)
+		loginAs(t, "nipa")
+		expect(t, http.MethodDelete, admin, "", superTok, http.StatusNoContent)
+		expect(t, http.MethodGet, v1+"/orgs", "", superTok, http.StatusOK)
+
+		expect(t, http.MethodPut, projA+"/maintenance", `{"mode":"read_only"}`, superTok, http.StatusOK)
+		refused(t, http.MethodPost, projA+"/locks", lock, superTok, "project;read_only")
+		passes(t, http.MethodPost, projB+"/locks", lock, superTok)
+		expect(t, http.MethodPost, hook, "", "", http.StatusAccepted)
+
+		expect(t, http.MethodPut, projA+"/maintenance", `{"mode":"full"}`, superTok, http.StatusOK)
+		refused(t, http.MethodGet, projA+"/branches", "", superTok, "project;full")
+		expect(t, http.MethodGet, projB+"/branches", "", superTok, http.StatusOK)
+		expect(t, http.MethodGet, v1+"/orgs", "", superTok, http.StatusOK)
+
+		expect(t, http.MethodPut, orgURL+"/maintenance", `{"mode":"full"}`, superTok, http.StatusOK)
+		refused(t, http.MethodGet, projB+"/branches", "", superTok, "org;full")
+		refused(t, http.MethodGet, projA+"/branches", "", superTok, "org;full")
+		refused(t, http.MethodGet, orgURL+"/members", "", superTok, "org;full")
+		expect(t, http.MethodGet, v1+"/orgs/default/projects/default/branches", "", superTok, http.StatusOK)
+		expect(t, http.MethodDelete, orgURL+"/maintenance", "", superTok, http.StatusNoContent)
+		expect(t, http.MethodDelete, projA+"/maintenance", "", superTok, http.StatusNoContent)
+		expect(t, http.MethodGet, projA+"/branches", "", superTok, http.StatusOK)
+	})
+
+	t.Run("every route has a maintenance class", func(t *testing.T) {
+		registered := map[string]bool{}
+		var lines []string
+		for _, ws := range restful.RegisteredWebServices() {
+			for _, r := range ws.Routes() {
+				key := r.Method + " " + r.Path
+				registered[strings.TrimSuffix(key, "/")] = true
+				lines = append(lines, string(RouteClass(r.Method, r.Path))+" "+key)
+			}
+		}
+		sort.Strings(lines)
+		got := strings.Join(lines, "\n") + "\n"
+		golden := filepath.Join("testdata", "maintenance_routes.golden")
+		if os.Getenv("NIPA_UPDATE_GOLDEN") == "1" {
+			require.NoError(t, os.MkdirAll("testdata", 0o755))
+			require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
+		}
+		want, err := os.ReadFile(golden)
+		require.NoError(t, err)
+		require.Equal(t, string(want), got, "a route was added, removed or reclassified: classify it in routeClasses if it must stay open in maintenance, then rerun with NIPA_UPDATE_GOLDEN=1")
+
+		enterpriseOnly := map[string]bool{
+			"GET /api/v1/auth/capabilities":              true,
+			"GET /api/v1/auth/oauth/{provider}/start":    true,
+			"GET /api/v1/auth/oauth/{provider}/callback": true,
+			"POST /api/v1/auth/oauth/complete":           true,
+		}
+		for key := range routeClasses {
+			if !enterpriseOnly[key] {
+				require.True(t, registered[key], "%s is classified but not registered", key)
+			}
+		}
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

@@ -147,9 +147,10 @@ func WithMarketingUI(handler http.Handler) Option {
 	}
 }
 
-// WithMaintenance loads the maintenance state once before serving and keeps
-// it fresh with the poller, which runs as a dispatcher. svc must be the
-// service the usecases were built with (UsecaseDeps.Maintenance).
+// WithMaintenance enforces the maintenance windows of svc on gRPC and REST,
+// loads them once before serving and keeps them fresh with the poller, which
+// runs as a dispatcher. svc must be the service the usecases were built with
+// (UsecaseDeps.Maintenance).
 func WithMaintenance(svc *maintenance.Service, poller *maintenance.Poller) Option {
 	return func(o *runOptions) {
 		o.maintenance = svc
@@ -197,7 +198,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		slog.Error("cross-origin access disabled", "error", err)
 	}
 
-	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit), api.WithTrustedProxies(ro.proxies), api.WithAllowedOrigins(origins)}
+	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit), api.WithTrustedProxies(ro.proxies), api.WithAllowedOrigins(origins), api.WithMaintenance(ro.maintenance)}
 	for _, register := range ro.routes {
 		apiOpts = append(apiOpts, api.WithRoutes(register))
 	}
@@ -228,6 +229,11 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()}
 	streamInterceptors := []grpc.StreamServerInterceptor{grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()}
+	if ro.maintenance != nil {
+		grpcMaintenance := grpcserver.NewMaintenance(ro.maintenance, ro.metrics)
+		unaryInterceptors = append(unaryInterceptors, grpcMaintenance.Unary())
+		streamInterceptors = append(streamInterceptors, grpcMaintenance.Stream())
+	}
 	if ro.rateLimit != nil {
 		grpcLimiter := grpcserver.NewRateLimiter(ro.rateLimit.Limiter, ro.rateLimit.Proxies)
 		unaryInterceptors = append(unaryInterceptors, grpcLimiter.Unary())

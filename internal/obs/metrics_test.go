@@ -130,6 +130,8 @@ func TestMetrics_Maintenance(t *testing.T) {
 	m.SetMaintenanceServerMode("off", 0)
 	m.SetMaintenanceWindows("project", "full", 2)
 	m.ObserveMaintenancePollError()
+	m.ObserveMaintenanceRejected("grpc", "write", "server")
+	require.Equal(t, 1.0, testutil.ToFloat64(m.maintenanceRejects.WithLabelValues("grpc", "write", "server")))
 	require.Equal(t, 1.0, testutil.ToFloat64(m.maintenanceMode.WithLabelValues("read_only")))
 	require.Equal(t, 2.0, testutil.ToFloat64(m.maintenanceWindows.WithLabelValues("project", "full")))
 	require.Equal(t, 1.0, testutil.ToFloat64(m.maintenancePollErrs))
@@ -143,5 +145,6 @@ func TestMetrics_Maintenance(t *testing.T) {
 		nilMetrics.SetMaintenanceServerMode("off", 1)
 		nilMetrics.SetMaintenanceWindows("org", "full", 1)
 		nilMetrics.ObserveMaintenancePollError()
+		nilMetrics.ObserveMaintenanceRejected("http", "read", "org")
 	})
 }

@@ -21,6 +21,7 @@ type usecaseContainer interface {
 	FileLock() *usecase.FileLock
 	Org() *usecase.Org
 	Project() *usecase.Project
+	Maintenance() *usecase.Maintenance
 }
 
 type nipaServer struct {

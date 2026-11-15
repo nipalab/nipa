@@ -32,6 +32,7 @@ type Metrics struct {
 	maintenanceMode     *prometheus.GaugeVec
 	maintenanceWindows  *prometheus.GaugeVec
 	maintenancePollErrs prometheus.Counter
+	maintenanceRejects  *prometheus.CounterVec
 }
 
 // NewMetrics builds an isolated registry with the standard Go and process
@@ -125,6 +126,12 @@ func NewMetrics() *Metrics {
 			Name:      "poll_errors_total",
 			Help:      "Failed maintenance state reloads.",
 		}),
+		maintenanceRejects: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "maintenance",
+			Name:      "rejected_total",
+			Help:      "Requests refused by maintenance by transport, class and scope.",
+		}, []string{"transport", "class", "scope"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -143,6 +150,7 @@ func NewMetrics() *Metrics {
 		m.maintenanceMode,
 		m.maintenanceWindows,
 		m.maintenancePollErrs,
+		m.maintenanceRejects,
 	)
 	return m
 }
@@ -251,6 +259,14 @@ func (m *Metrics) ObserveMaintenancePollError() {
 		return
 	}
 	m.maintenancePollErrs.Inc()
+}
+
+// ObserveMaintenanceRejected counts one request refused by maintenance.
+func (m *Metrics) ObserveMaintenanceRejected(transport, class, scope string) {
+	if m == nil {
+		return
+	}
+	m.maintenanceRejects.WithLabelValues(transport, class, scope).Inc()
 }
 
 // RegisterWebhookQueue exposes the webhook job queue depth.

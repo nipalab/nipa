@@ -155,6 +155,7 @@ with the standard Go/process/build-info collectors and:
 | `nipa_maintenance_server_mode` | gauge | `mode=off\|read_only\|full\|frozen` | 1 for the effective server maintenance mode, 0 for the others; set on every published snapshot (`serverapp.NewMaintenance`) |
 | `nipa_maintenance_windows` | gauge | `scope=org\|project`, `mode=read_only\|full` | active org and project maintenance windows; same hook |
 | `nipa_maintenance_poll_errors_total` | counter | — | failed maintenance reloads (`maintenance.Poller.WithErrorHook`) |
+| `nipa_maintenance_rejected_total` | counter | `transport=grpc\|http`, `class=read\|write`, `scope=server\|org\|project` | requests refused by an active maintenance window |
 
 Cardinality rules: `route` is the go-restful route template
 (`/orgs/{org}/projects/{project}/...`), never the raw URL; `code` is the HTTP

@@ -16,9 +16,13 @@ import (
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -338,7 +342,11 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 		return []domain.MaintenanceWindow{{ID: 1, Mode: "read_only", Message: "upgrade"}}, nil
 	}), metrics)
 	reg := NewRegistry(Usecases{Maintenance: usecase.NewMaintenance(nil, nil, nil, nil, svc, nil)})
-	go func() { done <- run(cfg, reg, nil, signals, WithMetrics(metrics), WithMaintenance(svc, poller)) }()
+	hooks := new(restful.WebService).Path("/api/webhooks/test")
+	hooks.Route(hooks.POST("").To(func(_ *restful.Request, resp *restful.Response) { resp.WriteHeader(http.StatusAccepted) }))
+	go func() {
+		done <- run(cfg, reg, nil, signals, WithMetrics(metrics), WithMaintenance(svc, poller), WithWebService(hooks))
+	}()
 
 	mainURL := fmt.Sprintf("http://127.0.0.1:%d", mainPort)
 	metricsURL := fmt.Sprintf("http://127.0.0.1:%d", metricsPort)
@@ -373,6 +381,25 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 	_ = scrape.Body.Close()
 	require.NoError(t, err)
 	require.Contains(t, string(body), `nipa_maintenance_server_mode{mode="read_only"} 1`)
+
+	require.Equal(t, http.StatusOK, get(mainURL+"/readyz"), "readiness ignores maintenance")
+	require.Equal(t, http.StatusOK, get(mainURL+"/version"))
+	hook, err := client.Post(mainURL+"/api/webhooks/test", "application/json", nil)
+	require.NoError(t, err)
+	_ = hook.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, hook.StatusCode, "provider webhooks are refused in maintenance")
+	require.Equal(t, "server;read_only", hook.Header.Get("X-Nipa-Maintenance"))
+
+	conn, err := grpc.NewClient(fmt.Sprintf("127.0.0.1:%d", mainPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	st, err := pb.NewNipaServiceClient(conn).GetMaintenanceStatus(ctx, &pb.GetMaintenanceStatusRequest{})
+	require.NoError(t, err)
+	require.Equal(t, "read_only", st.GetServer().GetMode())
+	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
 
 	req, err := http.NewRequest(http.MethodOptions, mainURL+"/api/v1/auth/login", nil)
 	require.NoError(t, err)

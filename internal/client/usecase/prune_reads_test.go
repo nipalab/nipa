@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -14,6 +15,7 @@ import (
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/diff"
+	"github.com/nipalab/nipa/internal/maintenance"
 )
 
 func TestRestore_PrunesDownloadedBinaryKeepsText(t *testing.T) {
@@ -103,6 +105,11 @@ func TestOfflineError(t *testing.T) {
 	}
 	require.Same(t, read, offlineError(read))
 	require.Equal(t, other, offlineError(other))
+
+	refused := maintenance.NewError(maintenance.Window{Mode: maintenance.Full, Message: "upgrade"}, maintenance.ScopeServer).GRPCError(time.Now())
+	wrapped := fmt.Errorf("download: %w", refused)
+	require.Same(t, wrapped, offlineError(wrapped), "a maintenance refusal is not an offline server")
+	require.Contains(t, offlineError(wrapped).Error(), "server is in maintenance (closed): upgrade")
 }
 
 func TestRestore_UnreachableServerIsUserError(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/totp"
 	"github.com/nipalab/nipa/internal/usecase"
@@ -469,5 +470,19 @@ func TestCompleteAsksEnrolledAccountsForASecondFactor(t *testing.T) {
 	require.Empty(t, challenge.AccessToken)
 	for _, cookie := range resp.Cookies() {
 		require.NotEqual(t, "nipa_refresh", cookie.Name)
+	}
+}
+
+func TestRoutesMaintenanceClasses(t *testing.T) {
+	handler := NewHandler(nil, nil)
+	publicWs := new(restful.WebService).Path("/api/v1/auth")
+	RegisterPublicRoutes(publicWs, handler)
+	for _, r := range publicWs.Routes() {
+		require.Equal(t, maintenance.ClassAuth, api.RouteClass(r.Method, r.Path), r.Method+" "+r.Path)
+	}
+	authedWs := new(restful.WebService).Path("/api/v1")
+	RegisterRoutes(authedWs, handler)
+	for _, r := range authedWs.Routes() {
+		require.NotEqual(t, maintenance.ClassAuth, api.RouteClass(r.Method, r.Path), "linking identities is not a sign-in")
 	}
 }
