@@ -89,3 +89,31 @@ func scrape(t *testing.T, m *obs.Metrics) string {
 	require.Equal(t, http.StatusOK, rr.Code)
 	return rr.Body.String()
 }
+
+type pausableDispatcher struct {
+	paused func() bool
+}
+
+func (d *pausableDispatcher) Start()                     {}
+func (d *pausableDispatcher) Stop(context.Context) error { return nil }
+func (d *pausableDispatcher) SetPause(p func() bool)     { d.paused = p }
+
+type plainDispatcher struct{}
+
+func (plainDispatcher) Start()                     {}
+func (plainDispatcher) Stop(context.Context) error { return nil }
+
+func TestPauseWhileFrozen(t *testing.T) {
+	d := &pausableDispatcher{}
+	PauseWhileFrozen(nil, d)
+	require.Nil(t, d.paused, "no service, no pause")
+
+	svc := maintenance.NewService()
+	PauseWhileFrozen(svc, d, plainDispatcher{}, nil)
+	require.NotNil(t, d.paused)
+	require.False(t, d.paused())
+	require.NoError(t, svc.Apply(context.Background(), maintenance.NewSnapshot([]maintenance.Window{{ID: 1, Mode: maintenance.Frozen, StartsAt: time.Now().Add(-time.Second)}}, time.Now())))
+	require.True(t, d.paused())
+	require.NoError(t, svc.Apply(context.Background(), maintenance.NewSnapshot([]maintenance.Window{{ID: 1, Mode: maintenance.Full, StartsAt: time.Now().Add(-time.Second)}}, time.Now())))
+	require.False(t, d.paused(), "only frozen pauses")
+}

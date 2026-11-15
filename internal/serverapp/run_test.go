@@ -344,8 +344,9 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 	reg := NewRegistry(Usecases{Maintenance: usecase.NewMaintenance(nil, nil, nil, nil, svc, nil)})
 	hooks := new(restful.WebService).Path("/api/webhooks/test")
 	hooks.Route(hooks.POST("").To(func(_ *restful.Request, resp *restful.Response) { resp.WriteHeader(http.StatusAccepted) }))
+	writer := &pausableDispatcher{}
 	go func() {
-		done <- run(cfg, reg, nil, signals, WithMetrics(metrics), WithMaintenance(svc, poller), WithWebService(hooks))
+		done <- run(cfg, reg, []Dispatcher{writer}, signals, WithMetrics(metrics), WithMaintenance(svc, poller), WithWebService(hooks))
 	}()
 
 	mainURL := fmt.Sprintf("http://127.0.0.1:%d", mainPort)
@@ -367,6 +368,8 @@ func TestRunServesObservabilityOnSeparateListener(t *testing.T) {
 	require.Equal(t, http.StatusOK, get(metricsURL+"/debug/pprof/"))
 	require.Equal(t, http.StatusNotFound, get(metricsURL+"/healthz"))
 	require.GreaterOrEqual(t, loads.Load(), int32(1), "the first maintenance poll runs before serving")
+	require.NotNil(t, writer.paused, "background writers pause while frozen")
+	require.False(t, writer.paused())
 
 	maint, err := client.Get(mainURL + "/api/maintenance")
 	require.NoError(t, err)

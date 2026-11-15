@@ -159,6 +159,8 @@ func TestAPIRoutes(t *testing.T) {
 		RetryBatch:     100,
 		Workers:        2,
 	})
+	maintSvc := maintenance.NewService()
+	webhookDispatcher.SetPause(maintSvc.Frozen)
 	webhookDispatcher.Start()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -180,7 +182,6 @@ func TestAPIRoutes(t *testing.T) {
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	mfaUc := usecase.NewMFA(sqlite.NewMFARepository(dbConn), userRepo, stubPasswordHasher{}, nil, dbtx.NewTransactor(dbConn))
-	maintSvc := maintenance.NewService()
 	maintUc := usecase.NewMaintenance(sqlite.NewMaintenanceRepository(dbConn),
 		usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), orgUc, permissionUc, maintSvc, node).WithAudit(auditUc)
 	reg := &testRegistry{
@@ -203,7 +204,7 @@ func TestAPIRoutes(t *testing.T) {
 		fileLock:      fileLockUc,
 		webhook:       usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node).WithAudit(auditUc),
 		serviceToken: usecase.NewServiceToken(sqlite.NewServiceTokenRepository(dbConn), permissionUc, userRepo,
-			usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), node).WithAudit(auditUc),
+			usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), node).WithAudit(auditUc).WithPause(maintSvc.Frozen),
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 		audit:         auditUc,
 		maintenance:   maintUc,
@@ -2459,6 +2460,69 @@ func TestAPIRoutes(t *testing.T) {
 		expect(t, http.MethodDelete, orgURL+"/maintenance", "", superTok, http.StatusNoContent)
 		expect(t, http.MethodDelete, projA+"/maintenance", "", superTok, http.StatusNoContent)
 		expect(t, http.MethodGet, projA+"/branches", "", superTok, http.StatusOK)
+	})
+
+	t.Run("maintenance frozen", func(t *testing.T) {
+		superLogin, cookie := loginAs(t, "nipa")
+		cookies := []*http.Cookie{cookie}
+		superTok := superLogin.AccessToken
+		v1 := server.URL + "/api/v1"
+		admin := v1 + "/admin/maintenance"
+		status := func(t *testing.T, method, url, body, tok string) int {
+			t.Helper()
+			resp := doMethod(t, method, url, body, tok)
+			_ = resp.Body.Close()
+			return resp.StatusCode
+		}
+		expect := func(t *testing.T, method, url, body, tok string, code int) {
+			t.Helper()
+			require.Equal(t, code, status(t, method, url, body, tok), method+" "+url)
+		}
+		refused := func(t *testing.T, method, url, body, tok string) {
+			t.Helper()
+			resp := doMethod(t, method, url, body, tok)
+			_ = resp.Body.Close()
+			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, method+" "+url)
+			require.Equal(t, "server;frozen", resp.Header.Get("X-Nipa-Maintenance"), method+" "+url)
+		}
+		require.Equal(t, http.StatusOK, status(t, http.MethodPost, v1+"/orgs", `{"name":"Frozen","slug":"mt-frz"}`, superTok))
+		proj := v1 + "/orgs/mt-frz/projects/a"
+		require.Equal(t, http.StatusOK, status(t, http.MethodPost, v1+"/orgs/mt-frz/projects", `{"name":"A","slug":"a"}`, superTok))
+		st := decodeBody[model.ServiceTokenResponse](t, doMethod(t, http.MethodPost, proj+"/service-tokens", `{"name":"ci","scopes":["read"]}`, superTok))
+		expect(t, http.MethodPut, v1+"/orgs/mt-frz/maintenance", `{"mode":"frozen"}`, superTok, http.StatusBadRequest)
+		expect(t, http.MethodPut, admin, `{"mode":"frozen","message":"moving the database"}`, superTok, http.StatusOK)
+		require.True(t, maintSvc.Frozen())
+
+		changes := func() int64 {
+			var n int64
+			require.NoError(t, dbConn.QueryRow("SELECT total_changes()").Scan(&n))
+			return n
+		}
+		before := changes()
+		for _, url := range []string{proj + "/branches", v1 + "/orgs", v1 + "/me", proj + "/permissions/me", admin, proj + "/maintenance", server.URL + "/api/maintenance", proj + "/locks", proj + "/merge-requests"} {
+			require.Equal(t, http.StatusOK, status(t, http.MethodGet, url, "", superTok), url)
+		}
+		require.Equal(t, http.StatusOK, status(t, http.MethodGet, proj+"/branches", "", st.Token), "service tokens still read")
+		refused(t, http.MethodPost, proj+"/locks", `{"path":"art/hero.png"}`, superTok)
+		refused(t, http.MethodPut, admin, `{"mode":"full"}`, superTok)
+		refused(t, http.MethodDelete, admin, "", superTok)
+		refused(t, http.MethodPut, proj+"/maintenance", `{"mode":"full"}`, superTok)
+		refused(t, http.MethodPost, server.URL+"/api/webhooks/test", "", "")
+		refused(t, http.MethodPut, server.URL+"/api/chunks/mt-frz/a/abcd", "", "")
+		refused(t, http.MethodPost, v1+"/auth/login", `{"email":"nipa@example.com","password":"secret"}`, "")
+		resp := doMethodCookies(t, http.MethodPost, v1+"/auth/refresh", "", cookies)
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "refresh is closed while frozen")
+		refused(t, http.MethodPost, v1+"/auth/logout", "", superTok)
+		require.Equal(t, before, changes(), "a frozen server writes nothing")
+
+		require.NoError(t, maintUc.WithSystemActor().EndServer(context.Background()))
+		require.False(t, maintSvc.Frozen())
+		require.Greater(t, changes(), before, "the probe sees writes")
+		resp = doMethodCookies(t, http.MethodPost, v1+"/auth/refresh", "", cookies)
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, "the session survives frozen maintenance")
+		require.NotEqual(t, http.StatusServiceUnavailable, status(t, http.MethodPost, proj+"/locks", `{"path":"art/hero.png"}`, superTok))
 	})
 
 	t.Run("every route has a maintenance class", func(t *testing.T) {

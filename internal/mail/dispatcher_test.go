@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -151,4 +152,90 @@ func TestMessageCodecRoundTrip(t *testing.T) {
 
 	_, err = DecodeMessage([]byte("{not json"))
 	require.Error(t, err)
+}
+
+type countingStore struct {
+	stubStore
+	mu        sync.Mutex
+	rows      []*domain.EmailDelivery
+	claims    int
+	sweeps    int
+	delivered []snow.ID
+}
+
+func (s *countingStore) ClaimDue(context.Context, time.Time, time.Time, int64) ([]*domain.EmailDelivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims++
+	rows := s.rows
+	s.rows = nil
+	return rows, nil
+}
+
+func (s *countingStore) MarkDelivered(_ context.Context, id snow.ID, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.delivered = append(s.delivered, id)
+	return nil
+}
+
+func (s *countingStore) SweepRetention(context.Context, time.Time) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sweeps++
+	return 0, nil
+}
+
+func (s *countingStore) snapshot() (int, int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.claims, s.sweeps, len(s.delivered)
+}
+
+func TestDispatcher_PauseHoldsClaimsAndDeliveries(t *testing.T) {
+	body, err := EncodeMessage(Message{To: []string{"dev@example.com"}, Subject: "s", Text: "b"})
+	require.NoError(t, err)
+	store := &countingStore{rows: []*domain.EmailDelivery{{ID: 7, Body: body}}}
+	sender := &fakeSender{}
+	var paused atomic.Bool
+	paused.Store(true)
+	dispatcher := NewDispatcher(store, sender, DispatcherConfig{PollInterval: time.Millisecond, RetentionSweepInterval: time.Millisecond})
+	dispatcher.SetPause(paused.Load)
+	dispatcher.pauseCheck = time.Millisecond
+	dispatcher.jobs <- domain.EmailDelivery{ID: 8, Body: body}
+	dispatcher.Start()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, dispatcher.Stop(ctx))
+	})
+	dispatcher.Kick()
+	time.Sleep(30 * time.Millisecond)
+	claims, sweeps, delivered := store.snapshot()
+	require.Zero(t, claims, "no claim while paused")
+	require.Zero(t, sweeps, "no retention sweep while paused")
+	require.Zero(t, delivered, "a queued delivery waits")
+
+	paused.Store(false)
+	require.Eventually(t, func() bool {
+		_, sweeps, delivered := store.snapshot()
+		return delivered == 2 && sweeps > 0
+	}, 2*time.Second, time.Millisecond)
+	sender.mu.Lock()
+	require.Len(t, sender.sent, 2)
+	sender.mu.Unlock()
+}
+
+func TestDispatcher_StopWhilePaused(t *testing.T) {
+	store := &countingStore{}
+	dispatcher := NewDispatcher(store, &fakeSender{}, DispatcherConfig{})
+	dispatcher.SetPause(func() bool { return true })
+	dispatcher.jobs <- domain.EmailDelivery{ID: 9}
+	dispatcher.Start()
+	time.Sleep(10 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, dispatcher.Stop(ctx))
+	_, _, delivered := store.snapshot()
+	require.Zero(t, delivered)
 }

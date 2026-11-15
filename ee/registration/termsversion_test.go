@@ -94,6 +94,26 @@ func TestTermsRefreshJobRefreshesUntilStopped(t *testing.T) {
 	require.NoError(t, job.Stop(context.Background()))
 }
 
+func TestTermsRefreshJobSkipsWhilePaused(t *testing.T) {
+	var status atomic.Int32
+	var body atomic.Value
+	status.Store(http.StatusOK)
+	body.Store(`{"version":"2026-11-10"}`)
+	server := termsServer(t, &status, &body)
+	source := NewTermsVersionSource(server.URL, "2020-01-01", server.Client())
+
+	var paused atomic.Bool
+	paused.Store(true)
+	job := NewTermsRefreshJob(source, 5*time.Millisecond)
+	job.SetPause(paused.Load)
+	job.Start()
+	time.Sleep(30 * time.Millisecond)
+	require.Equal(t, "2020-01-01", source.Version(), "no refresh while paused")
+	paused.Store(false)
+	require.Eventually(t, func() bool { return source.Version() == "2026-11-10" }, time.Second, 5*time.Millisecond)
+	require.NoError(t, job.Stop(context.Background()))
+}
+
 func TestTermsRefreshJobStop(t *testing.T) {
 	require.NoError(t, NewTermsRefreshJob(NewTermsVersionSource("", "", nil), 0).Stop(context.Background()))
 	require.Equal(t, TermsRefreshInterval, NewTermsRefreshJob(nil, 0).interval)

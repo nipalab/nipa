@@ -331,3 +331,20 @@ func TestSameSession(t *testing.T) {
 	require.Empty(t, refreshSessionID(".t.x"))
 	require.Empty(t, refreshSessionID("a..x"))
 }
+
+func TestSession_Refresh_MaintenanceKeepsTheSession(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: "old", RefreshToken: "keep", Host: "example.com", Email: "apin@example.com"}}
+	refused := &domain.Error{Code: 503, Message: "server is in maintenance (frozen)", Maintenance: &domain.MaintenanceInfo{Scope: "server", Mode: "frozen"}}
+	executor := &stubRefreshExecutor{err: refused}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	session := NewSession(storage, executor, input)
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorIs(t, err, refused)
+	require.True(t, domain.IsMaintenance(err))
+	require.Equal(t, "keep", executor.lastRefresh)
+	require.Empty(t, executor.lastUsername, "no re-authentication during maintenance")
+	require.Empty(t, storage.savedTokens, "the stored session is kept")
+	require.False(t, isRefreshRejection(refused))
+	require.True(t, isRefreshRejection(domain.NewTokenError("expired")))
+}

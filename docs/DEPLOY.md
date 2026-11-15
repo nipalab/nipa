@@ -408,6 +408,14 @@ version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run.
 - **Capacity:** two color instances can be live briefly during a flip, so size
   the postgres connection limit for `2 × pool + headroom` (the pool is
   currently untuned; see `docs/PERFORMANCE.md`).
+- **Maintenance:** `nipad-ee maintenance set read_only|full|frozen` (see
+  `docs/SERVER_GUIDE.md`). `frozen` is the mode for copying or moving the
+  database: the server stops writing (deliveries, quota reconcile and lease
+  renewal pause, sign-in and refresh are refused) and `/readyz` stays 200. A
+  color started during the window still migrates and claims a node lease, so
+  start one only against a writable database. End it with
+  `nipad-ee maintenance end`. The database move runbook follows in a later
+  release.
 - **Key rotation:** rotate `JWT_KEY` to invalidate all sessions, and
   `CHUNK_URL_SIGNING_KEY` to invalidate outstanding chunk URLs. Do this as a
   normal two-color rolling change (both colors read the same config file), not

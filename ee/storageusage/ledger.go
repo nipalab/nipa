@@ -234,7 +234,11 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 // OrgStorage reports one organization's usage, its owner's quota and the
 // per-project breakdown.
 func (l *Ledger) OrgStorage(ctx context.Context, orgID snow.ID) (*OrgStorage, error) {
-	owner, quota, err := l.ownerQuota(ctx, orgID)
+	owner, _, err := l.lookupBillingOwner(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	quota, err := l.ownerQuotaBytes(ctx, owner)
 	if err != nil {
 		return nil, err
 	}

@@ -253,7 +253,18 @@ reachable. Nobody bypasses it, super admins included. Refusals are gRPC
 an end is set) and `X-Nipa-Maintenance: <scope>;<mode>`; provider webhooks
 (Paddle) get `503` too and are retried by the provider.
 
-> `frozen` cannot be set yet (it arrives with the database move support) and
+`frozen` (server window only) is for copying or moving the database: reads
+keep working, but writes, sign-in, token refresh and logout are refused and
+the server itself writes nothing (webhook and email delivery, the quota
+reconcile and the `nipad-ee` lease renewal pause until the window ends).
+Signed-in users keep their sessions. The maintenance `PUT`/`DELETE` routes are
+refused too, so end a frozen window from the host with `nipad maintenance
+end`; every instance resumes within `MAINTENANCE_POLL_SECONDS` (`nipad-ee`
+renews its node lease first and stays frozen while that fails). Wait one poll
+plus `SHUTDOWN_TIMEOUT_SECONDS` after the start before copying, so in-flight
+requests finish. A server started on a frozen database still runs its
+migrations (and `nipad-ee` claims a node lease).
+
 > `--notify` sends no email yet. `nipad-ee maintenance` takes the same
 > arguments.
 
@@ -266,6 +277,7 @@ audit log as `system` with `via: cli`):
 ./bin/nipad maintenance set read_only -m "Storage upgrade" --end 2026-11-20T23:00:00Z
 ./bin/nipad maintenance set full --org acme --start 2026-11-21T22:00:00Z
 ./bin/nipad maintenance set read_only --project acme/rocket --notify
+./bin/nipad maintenance set frozen -m "Moving the database"
 ./bin/nipad maintenance end --project acme/rocket
 ./bin/nipad maintenance end
 ```

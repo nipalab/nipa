@@ -107,6 +107,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	commonUsecase := usecase.NewCommon(repos.Org, repos.Project)
 	maintenanceUsecase := usecase.NewMaintenance(repos.Maintenance, commonUsecase, orgUsecase, permissionUsecase, deps.Maintenance, node).WithAudit(auditUsecase)
 	serviceTokenUsecase := usecase.NewServiceToken(repos.ServiceToken, permissionUsecase, repos.User, commonUsecase, node).WithAudit(auditUsecase)
+	if deps.Maintenance != nil {
+		serviceTokenUsecase.WithPause(deps.Maintenance.Frozen)
+	}
 	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
 	emailDeliveryUsecase := usecase.NewEmailDelivery(repos.Email, permissionUsecase)

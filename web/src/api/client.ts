@@ -114,6 +114,7 @@ function refreshOnce(): Promise<TokenResponse> {
     refreshInFlight = requestJson<TokenResponse>('/api/v1/auth/refresh', {
       method: 'POST',
       credentials: 'same-origin',
+      retry: true,
     })
       .then((tokens) => {
         setSession(tokens)
@@ -137,18 +138,22 @@ async function refresh(): Promise<TokenResponse> {
     try {
       return await refreshOnce()
     } catch (err) {
+      if (isMaintenanceError(err)) throw err
       lastError = err
     }
   }
   throw lastError
 }
 
+// bootstrap restores the session from the refresh cookie. A maintenance
+// refusal answers false without dropping the session, so the cookie is tried
+// again once the server accepts sign-ins.
 export async function bootstrap(): Promise<boolean> {
   try {
     await refresh()
     return true
-  } catch {
-    handleSessionLost()
+  } catch (err) {
+    if (!isMaintenanceError(err)) handleSessionLost()
     return false
   }
 }
@@ -165,33 +170,61 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   const res = await fetch(path, { ...init, headers, credentials: 'same-origin' })
 
   if (res.status === 401 && accessToken && init.retry !== true) {
+    let retried: Response
     try {
       await refresh()
-      return await apiFetch(path, { ...init, retry: true })
-    } catch {
+      retried = await apiFetch(path, { ...init, retry: true })
+    } catch (err) {
+      // During maintenance the session stays: the refresh is only postponed.
+      if (isMaintenanceError(err)) throw err
       handleSessionLost()
+      return res
     }
+    return retried
   }
   return res
 }
 
+export interface MaintenanceInfo {
+  scope: 'server' | 'org' | 'project'
+  mode: 'read_only' | 'full' | 'frozen'
+  message: string
+  starts_at?: string
+  ends_at?: string
+  org?: string
+  project?: string
+}
+
 export class ApiError extends Error {
   readonly status: number
+  readonly maintenance?: MaintenanceInfo
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, maintenance?: MaintenanceInfo) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.maintenance = maintenance
   }
+}
+
+export function isMaintenanceError(err: unknown): err is ApiError & { maintenance: MaintenanceInfo } {
+  return err instanceof ApiError && err.maintenance !== undefined
 }
 
 export async function errorFromResponse(res: Response): Promise<ApiError> {
   const body = await res.text()
+  const marked = res.headers?.get('X-Nipa-Maintenance') ?? null
   try {
-    const parsed = JSON.parse(body) as { error?: string; message?: string }
+    const parsed = JSON.parse(body) as {
+      error?: string
+      message?: string
+      maintenance?: MaintenanceInfo
+    }
     const message = parsed.error ?? parsed.message
+    const maintenance =
+      res.status === 503 && (marked !== null || parsed.maintenance) ? parsed.maintenance : undefined
     if (message) {
-      return new ApiError(message, res.status)
+      return new ApiError(message, res.status, maintenance)
     }
   } catch {
     // fall through to the raw body

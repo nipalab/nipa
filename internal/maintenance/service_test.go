@@ -183,9 +183,13 @@ func TestServiceCheck(t *testing.T) {
 	require.Nil(t, svc.Check(ClassAuth, "POST", "beta", ""))
 
 	require.NoError(t, svc.Apply(context.Background(), NewSnapshot([]Window{serverWindow(3, Frozen, past)}, testNow)))
-	e = svc.Check(ClassRead, "GET", "", "")
-	require.NotNil(t, e, "frozen is enforced as full")
+	require.Nil(t, svc.Check(ClassRead, "GET", "acme", "game"), "frozen keeps reads open")
+	require.Nil(t, svc.Check(ClassControl, "GET", "", ""))
+	require.Nil(t, svc.Check(ClassPublic, "GET", "", ""))
+	e = svc.Check(ClassAuth, "POST", "", "")
+	require.NotNil(t, e, "sign-in is closed while frozen")
 	require.Equal(t, Frozen, e.Info.Mode)
-	require.Nil(t, svc.Check(ClassAuth, "POST", "", ""))
-	require.Nil(t, svc.Check(ClassControl, "DELETE", "", ""))
+	require.Equal(t, ScopeServer, e.Info.Scope)
+	require.NotNil(t, svc.Check(ClassControl, "DELETE", "", ""))
+	require.NotNil(t, svc.Check(ClassWrite, "POST", "acme", "other"))
 }

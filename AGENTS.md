@@ -1545,9 +1545,8 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 login RPCs.
 
 Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; core,
-storage, admin API, the server subcommand and `read_only`/`full` enforcement
-exist; `frozen` is refused at write time and enforced as `full` until its
-writer pauses land): windows
+storage, admin API, the server subcommand and `read_only`/`full`/`frozen`
+enforcement exist): windows
 have three scopes (server, org, project). The pure `internal/maintenance` (no
 repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
 `Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
@@ -1581,8 +1580,7 @@ org's project windows), `ProjectStatus` (project read), `SetServer`/`SetOrg`/
 `SetProject` and `EndServer`/`EndOrg`/`EndProject` (server: super admin; org
 and project: `IsOrgOwner` or super admin; no project admins). Validation runs
 before the write: mode, `frozen` only for the server, message <= 500 runes,
-`frozen` refused for now (400), `ends_at > starts_at`, `starts_at` <= now +
-90 days, a missing `starts_at`
+`ends_at > starts_at`, `starts_at` <= now + 90 days, a missing `starts_at`
 keeps an existing window's start, else now; a server write while the snapshot
 `source` is `file` is a 409 `maintenance is controlled by MAINTENANCE_FILE`;
 ending a missing window is a 404. Writes run in `auditedWrite`
@@ -1617,7 +1615,7 @@ the server once`), reads the override file and uses `snow.ReservedCLINode`
 (255): `ee/nodelease` leases 0..254 only and `snow.NewServerNode` (both mains'
 static `SNOWFLAKE_NODE_ID`) refuses 255.
 Enforcement goes through `Service.Check(class, method, org, project)` (nil
-service = allow; `frozen` checked as `full`), no bypass for anyone. gRPC:
+service = allow), no bypass for anyone. gRPC:
 `grpcserver.Maintenance` (`maintenance_interceptor.go`, chained Metrics → JWT
 → Maintenance → RateLimit in `serverapp.run` and both e2e harnesses) classifies
 by `methodClass` (`maintenance_classes.go`, every `NipaService` and health
@@ -1645,6 +1643,37 @@ maintenance_routes.golden` lists the class of every registered route
 `/metrics`, `/docs` and the SPA never pass the filter.
 `nipa_maintenance_rejected_total{transport,class,scope}` counts refusals. A
 file override has no `starts_at` (omitted from JSON, metadata and proto).
+`frozen` (server window only, for database moves) keeps reads, public and
+control GET/HEAD open and refuses writes, sign-in, refresh, logout and the
+maintenance PUT/DELETE routes (end it with `nipad maintenance end`), and the
+server writes nothing: `serverapp.run` calls `PauseWhileFrozen(svc,
+dispatchers...)`, which hands `svc.Frozen` to every `serverapp.Pausable`
+(`SetPause`) dispatcher (the poller is not one); the webhook and mail
+dispatchers skip their sweeps/claims/retention trims and workers hold a
+claimed job in `dispatch.Pause.Wait` (`PauseCheckInterval`) until resume, the
+ee `quotaReconcileJob` waits before its run and `TermsRefreshJob` skips
+ticks; `ServiceToken.WithPause` skips the `last_used_at` touch;
+`Ledger.OrgStorage` resolves the billing owner read-only
+(`lookupBillingOwner`). `ee/nodelease.Manager.SetPause(svc.Frozen)` stops
+renewal and lease-loss detection, `Release` keeps the row while frozen, and
+`Manager.Resume` is the `Service.OnResume` hard gate (ee main): renew, else
+reclaim the same id, else `OnLost` + error; any error keeps the frozen
+snapshot and the next poll retries (counted by
+`nipa_maintenance_poll_errors_total`). Startup writes (migrations, the
+`nipad-ee` lease claim) still happen. Client: `client/grpc.toDomainError`
+turns a refusal into a 503 `domain.Error` with `Maintenance`
+(`MaintenanceInfo`), a per-mode hint and the gRPC error as `Cause`
+(`domain.IsMaintenance`); `isRefreshRejection` is false for it, so
+`Session.Refresh` keeps the stored tokens without `reauth`. SPA
+`api/client.ts`: `errorFromResponse` fills `ApiError.maintenance` from a 503
+body (`isMaintenanceError`), `refresh()` stops retrying on it, `apiFetch`
+rethrows it after a 401 without dropping the session and `bootstrap()`
+answers false without the logout event. Tests: `internal/e2e/
+maintenance_frozen_test.go` (zero writes through `PRAGMA data_version`,
+paused webhook/email delivered after `maintenance end`, a failing resume hook
+keeps frozen, kept session, `VACUUM INTO` copy starts frozen), the REST
+`maintenance frozen` subtest (`total_changes()`), `ee/e2e/maintenance_test.go`
+(read workload on a `default_transaction_read_only=on` pool).
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

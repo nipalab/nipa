@@ -16,6 +16,7 @@ import (
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/dispatch"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/usecase"
@@ -124,19 +125,32 @@ type quotaReconcileJob struct {
 	reconciler quotaReconcile
 	cancel     context.CancelFunc
 	done       chan struct{}
+	pause      dispatch.Pause
+	pauseCheck time.Duration
 }
 
 func newQuotaReconcileJob(r quotaReconcile) *quotaReconcileJob {
 	return &quotaReconcileJob{reconciler: r}
 }
 
+// SetPause delays the reconcile until paused reports false (a frozen
+// database).
+func (j *quotaReconcileJob) SetPause(paused func() bool) {
+	j.pause = paused
+}
+
 func (j *quotaReconcileJob) Start() {
-	ctx, cancel := context.WithTimeout(context.Background(), quotaReconcileTimeout)
+	stop, cancel := context.WithCancel(context.Background())
 	j.cancel = cancel
 	j.done = make(chan struct{})
 	go func() {
 		defer close(j.done)
 		defer cancel()
+		if !j.pause.Wait(stop.Done(), j.pauseCheck) {
+			return
+		}
+		ctx, cancelRun := context.WithTimeout(stop, quotaReconcileTimeout)
+		defer cancelRun()
 		reconcileQuotas(ctx, j.reconciler)
 	}()
 }

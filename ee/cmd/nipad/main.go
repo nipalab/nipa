@@ -184,6 +184,10 @@ func main() {
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
 	maintenanceRepository := postgres.NewMaintenanceRepository(dbConn)
 	maintenanceService, maintenancePoller := serverapp.NewMaintenance(cfg, maintenanceRepository, metrics)
+	if leaseManager != nil {
+		leaseManager.SetPause(maintenanceService.Frozen)
+		maintenanceService.OnResume(leaseManager.Resume)
+	}
 	deps := serverapp.UsecaseDeps{
 		MFAEnabledByDefault: mfaEnabledByDefault,
 		Maintenance:         maintenanceService,

@@ -57,6 +57,7 @@ type ServiceToken struct {
 	snowNode snow.Node
 	audit    AuditRecorder
 	now      func() time.Time
+	paused   func() bool
 }
 
 func NewServiceToken(repo serviceTokenRepository, perm permissionUsecase, users userLookup, projects serviceTokenProjectResolver, snowNode snow.Node) *ServiceToken {
@@ -73,6 +74,13 @@ func NewServiceToken(repo serviceTokenRepository, perm permissionUsecase, users 
 // WithAudit records token creation and revocation. The token is never recorded.
 func (s *ServiceToken) WithAudit(rec AuditRecorder) *ServiceToken {
 	s.audit = rec
+	return s
+}
+
+// WithPause skips the last_used_at touch while paused reports true (a frozen
+// database).
+func (s *ServiceToken) WithPause(paused func() bool) *ServiceToken {
+	s.paused = paused
 	return s
 }
 
@@ -225,7 +233,7 @@ func (s *ServiceToken) Authenticate(ctx context.Context, plaintext, orgSlug, pro
 	if !s.perm.AdminHasProject(domain.ContextWithClaim(ctx, claims), token.ProjectID) {
 		return nil, domain.NewErrorForbidden("the service token creator is no longer a project admin")
 	}
-	if token.LastUsedAt == nil || now.Sub(*token.LastUsedAt) >= serviceTokenTouchEvery {
+	if (s.paused == nil || !s.paused()) && (token.LastUsedAt == nil || now.Sub(*token.LastUsedAt) >= serviceTokenTouchEvery) {
 		_ = s.repo.TouchLastUsed(ctx, token.ID, now)
 	}
 	return &claims, nil
