@@ -186,7 +186,6 @@ func TestMaintenance_Validation(t *testing.T) {
 		{name: "unknown mode", in: MaintenanceInput{Mode: "closed"}, msg: "mode must be"},
 		{name: "off", in: MaintenanceInput{Mode: "off"}, msg: "mode must be"},
 		{name: "frozen org", in: MaintenanceInput{Mode: "frozen"}, org: true, msg: "frozen is only"},
-		{name: "frozen server", in: MaintenanceInput{Mode: "frozen"}, msg: "not available yet"},
 		{name: "long message", in: MaintenanceInput{Mode: "full", Message: strings.Repeat("é", 501)}, msg: "at most 500"},
 		{name: "start too far", in: MaintenanceInput{Mode: "full", StartsAt: &far}, msg: "within 90 days"},
 		{name: "end before start", in: MaintenanceInput{Mode: "full", EndsAt: &past}, msg: "ends_at must be after"},
@@ -449,8 +448,14 @@ func TestMaintenance_SystemActor(t *testing.T) {
 	require.Equal(t, domain.AuditActorSystem, entry.ActorType)
 	require.Equal(t, "cli", entry.Metadata["via"])
 
+	f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
+	f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, w domain.MaintenanceWindow) (*domain.MaintenanceWindow, error) {
+		require.Equal(t, "frozen", w.Mode)
+		return &w, nil
+	})
+	f.expectList()
 	_, err = sys.SetServer(context.Background(), MaintenanceInput{Mode: "frozen"})
-	requireCode(t, err, 400)
+	require.NoError(t, err)
 	f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
 	f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
 	f.expectList()

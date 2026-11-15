@@ -212,6 +212,9 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 	container := apiApp.SetupRoute()
 	if ro.maintPoller != nil {
 		loadMaintenance(ro.maintenance, ro.maintPoller)
+	}
+	PauseWhileFrozen(ro.maintenance, dispatchers...)
+	if ro.maintPoller != nil {
 		dispatchers = append(dispatchers, ro.maintPoller)
 	}
 	for _, dispatcher := range dispatchers {
@@ -362,6 +365,24 @@ func loadMaintenance(svc *maintenance.Service, poller *maintenance.Poller) {
 	snap := svc.Snapshot()
 	w, _ := svc.For("", "")
 	slog.Info("maintenance state loaded", "server_mode", w.Mode, "source", snap.Source, "org_windows", len(snap.Orgs), "project_windows", len(snap.Projects))
+}
+
+// Pausable is a background writer that can hold its database writes.
+type Pausable interface {
+	SetPause(paused func() bool)
+}
+
+// PauseWhileFrozen pauses every Pausable dispatcher while svc reports a
+// frozen server window. The maintenance poller is not Pausable: it only reads.
+func PauseWhileFrozen(svc *maintenance.Service, dispatchers ...Dispatcher) {
+	if svc == nil {
+		return
+	}
+	for _, d := range dispatchers {
+		if p, ok := d.(Pausable); ok {
+			p.SetPause(svc.Frozen)
+		}
+	}
 }
 
 // newHTTPServer builds the multiplexed HTTP/1.1 + h2c server. Only header

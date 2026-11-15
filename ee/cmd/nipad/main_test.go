@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -125,6 +127,35 @@ func TestQuotaReconcileJob(t *testing.T) {
 	job.Start()
 	<-blocked.ran
 	require.NoError(t, job.Stop(context.Background()), "stop cancels a running reconcile")
+}
+
+func TestQuotaReconcileJob_WaitsWhilePaused(t *testing.T) {
+	var paused atomic.Bool
+	paused.Store(true)
+	ran := &stubReconcile{ran: make(chan struct{})}
+	job := newQuotaReconcileJob(ran)
+	job.SetPause(paused.Load)
+	job.pauseCheck = time.Millisecond
+	job.Start()
+	select {
+	case <-ran.ran:
+		t.Fatal("the reconcile must wait while frozen")
+	case <-time.After(30 * time.Millisecond):
+	}
+	paused.Store(false)
+	<-ran.ran
+	require.NoError(t, job.Stop(context.Background()))
+
+	held := &stubReconcile{ran: make(chan struct{})}
+	job = newQuotaReconcileJob(held)
+	job.SetPause(func() bool { return true })
+	job.Start()
+	require.NoError(t, job.Stop(context.Background()), "stop ends the wait")
+	select {
+	case <-held.ran:
+		t.Fatal("a stopped job never reconciles")
+	default:
+	}
 }
 
 func TestQuotaReconcileJob_StopDeadline(t *testing.T) {

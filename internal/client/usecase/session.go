@@ -144,9 +144,11 @@ func refreshSessionID(token string) string {
 	return parts[0] + "." + parts[1]
 }
 
+// isRefreshRejection reports whether the server refused the refresh token.
+// A maintenance refusal is not one: the stored session is kept for later.
 func isRefreshRejection(err error) bool {
 	var domErr *domain.Error
-	return errors.As(err, &domErr)
+	return errors.As(err, &domErr) && domErr.Maintenance == nil
 }
 
 func (s *Session) reauth(ctx context.Context, host string, cause error) (string, error) {

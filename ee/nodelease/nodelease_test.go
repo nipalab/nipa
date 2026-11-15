@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -304,4 +305,108 @@ func TestLeaseLostCallback(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("lease lost callback was not invoked")
 	}
+}
+
+func leaseExpiry(t *testing.T, db *sql.DB, nodeID int64) time.Time {
+	t.Helper()
+	var expires time.Time
+	require.NoError(t, db.QueryRow("SELECT expires_at FROM snowflake_node_leases WHERE node_id = $1", nodeID).Scan(&expires))
+	return expires
+}
+
+func TestPauseStopsRenewalAndLossDetection(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	lost := make(chan int64, 1)
+	mgr := newTestManager(t, db, "instance-a", time.Second, func(nodeID int64) { lost <- nodeID })
+	var paused atomic.Bool
+	paused.Store(true)
+	mgr.SetPause(paused.Load)
+	_, err := mgr.Acquire(ctx)
+	require.NoError(t, err)
+	before := leaseExpiry(t, db, mgr.NodeID())
+
+	select {
+	case <-lost:
+		t.Fatal("a paused lease must not be reported lost")
+	case <-time.After(2 * time.Second):
+	}
+	require.Equal(t, before, leaseExpiry(t, db, mgr.NodeID()), "a paused lease is not renewed")
+
+	require.NoError(t, mgr.Resume(ctx))
+	require.True(t, leaseExpiry(t, db, mgr.NodeID()).After(before), "resume renews")
+	paused.Store(false)
+	resumed := leaseExpiry(t, db, mgr.NodeID())
+	require.Eventually(t, func() bool { return leaseExpiry(t, db, mgr.NodeID()).After(resumed) }, 5*time.Second, 50*time.Millisecond)
+	require.Empty(t, lost)
+}
+
+func TestResumeReclaimsAFreedLease(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	mgr := newTestManager(t, db, "instance-a", time.Minute, nil)
+	mgr.SetPause(func() bool { return true })
+	_, err := mgr.Acquire(ctx)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "DELETE FROM snowflake_node_leases WHERE node_id = $1", mgr.NodeID())
+	require.NoError(t, err)
+
+	require.NoError(t, mgr.Resume(ctx))
+	holder, ok := leaseHolder(t, db, mgr.NodeID())
+	require.True(t, ok)
+	require.Equal(t, "instance-a", holder)
+}
+
+func TestResumeFailsWhenAnotherInstanceTookTheNode(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	lost := make(chan int64, 1)
+	mgr := newTestManager(t, db, "instance-a", time.Minute, func(nodeID int64) { lost <- nodeID })
+	mgr.SetPause(func() bool { return true })
+	_, err := mgr.Acquire(ctx)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx,
+		`UPDATE snowflake_node_leases SET holder = 'thief', expires_at = now() + interval '1 hour'
+		 WHERE node_id = $1`, mgr.NodeID())
+	require.NoError(t, err)
+
+	require.ErrorContains(t, mgr.Resume(ctx), "held by another instance")
+	require.Equal(t, mgr.NodeID(), <-lost)
+}
+
+func TestResumeReportsDatabaseErrors(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	var schema string
+	require.NoError(t, db.QueryRow("SELECT current_schema()").Scan(&schema))
+	own, err := sql.Open("pgx", withSearchPath(testDSN, schema))
+	require.NoError(t, err)
+
+	lost := make(chan int64, 1)
+	mgr, err := New(Config{DB: own, Holder: "instance-a", TTL: time.Minute, OnLost: func(nodeID int64) { lost <- nodeID }})
+	require.NoError(t, err)
+	require.NoError(t, mgr.Resume(ctx), "nothing to resume before Acquire")
+	mgr.SetPause(func() bool { return true })
+	_, err = mgr.Acquire(ctx)
+	require.NoError(t, err)
+	require.NoError(t, own.Close())
+
+	require.ErrorContains(t, mgr.Resume(ctx), "renew snowflake node lease")
+	require.Empty(t, lost, "a database error is not a lost lease")
+	mgr.Release(ctx)
+}
+
+func TestReleaseWhilePausedKeepsTheLease(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	mgr := newTestManager(t, db, "instance-a", time.Minute, nil)
+	mgr.SetPause(func() bool { return true })
+	_, err := mgr.Acquire(ctx)
+	require.NoError(t, err)
+	mgr.Release(ctx)
+	require.Equal(t, 1, leaseCount(t, db), "a frozen database is not written on shutdown")
 }

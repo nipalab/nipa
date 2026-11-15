@@ -260,3 +260,25 @@ func (s *ledgerSuite) TestRecountOrg_RebuildsFromHistory() {
 	s.Equal(int64(30), s.projectUsed(project))
 	s.Equal(int64(30), s.orgUsed(org))
 }
+
+func (s *ledgerSuite) TestOrgStorage_DoesNotSeedTheOwnerMapping() {
+	ctx := context.Background()
+	mapped := func() int {
+		var n int
+		s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT count(*) FROM org_billing_owner WHERE org_id = 1`).Scan(&n))
+		return n
+	}
+	s.Require().Zero(mapped())
+	summary, err := s.ledger.OrgStorage(ctx, snow.ID(1))
+	s.Require().NoError(err)
+	s.Equal(snow.ID(1), summary.OwnerID)
+	s.Zero(mapped(), "a report never writes, so it works on a frozen database")
+
+	owner, err := s.ledger.BillingOwner(ctx, snow.ID(1))
+	s.Require().NoError(err)
+	s.Equal(snow.ID(1), owner)
+	s.Equal(1, mapped())
+	summary, err = s.ledger.OrgStorage(ctx, snow.ID(1))
+	s.Require().NoError(err)
+	s.Equal(snow.ID(1), summary.OwnerID)
+}

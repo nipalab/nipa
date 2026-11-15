@@ -105,6 +105,9 @@ func TestMaintenanceCommandSetStatusEnd(t *testing.T) {
 
 	_, err = runCmd(t, cfg, "set", "frozen", "--org", "default")
 	require.ErrorContains(t, err, "frozen is only available for the server window")
+	out, err = runCmd(t, cfg, "set", "frozen", "-m", "moving the database")
+	require.NoError(t, err)
+	require.Contains(t, out, "maintenance set: server frozen (active")
 	_, err = runCmd(t, cfg, "set", "full", "--org", "missing")
 	require.ErrorContains(t, err, "not found")
 
@@ -125,7 +128,7 @@ func TestMaintenanceCommandSetStatusEnd(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 	entries, err := sqlite.NewAuditRepository(conn).List(context.Background(), domain.AuditFilter{ActionPrefix: "maintenance", Limit: 50})
 	require.NoError(t, err)
-	require.Len(t, entries, 6)
+	require.Len(t, entries, 7)
 	for _, entry := range entries {
 		require.Equal(t, domain.AuditActorSystem, entry.ActorType)
 		require.Nil(t, entry.ActorUserID)

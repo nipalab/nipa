@@ -754,8 +754,11 @@ func decodeHash(s string) (serverDomain.Hash, error) {
 }
 
 func toDomainError(err error) error {
-	if err == nil {
-		return nil
+	if err == nil || isDomainError(err) {
+		return err
+	}
+	if refused, ok := maintenanceError(err); ok {
+		return refused
 	}
 	st, ok := status.FromError(err)
 	if !ok {

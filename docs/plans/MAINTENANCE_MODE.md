@@ -558,7 +558,7 @@ only be set from PR 4 on.
 | 1 | Add maintenance core and storage (done) | – | none |
 | 2 | Add maintenance admin API and `nipad maintenance` command (done) | 1 | windows can be set and read; nothing enforced |
 | 3 | Enforce read-only and closed maintenance (done) | 2 | `read_only`/`full` block requests |
-| 4 | Add frozen maintenance for database moves | 3 | `frozen` mode; sessions kept by the CLI and SPA |
+| 4 | Add frozen maintenance for database moves (done) | 3 | `frozen` mode; sessions kept by the CLI and SPA |
 | 5 | Email maintenance announcements | 2 | `notify` sends mail |
 | 6 | Show maintenance in the CLI, daemon and MCP | 3 | clear errors, no retries, status lines, daemon event |
 | 7 | Show maintenance in the web UI | 3 | banner, closed page, admin page, org and project tabs |
@@ -598,8 +598,7 @@ Phase 3 below. As built, it differs from the sections above in these points:
   `snow.NewServerNode` is the refusal of 255 for both mains.
 - `Org.IsOrgMember` was added for the org status read. Refused status reads
   answer 403; ending a missing window answers 404.
-- `frozen` could be stored for the server window; PR 3 refuses it until PR 4
-  lands (see below).
+- `frozen` could be stored for the server window (PR 3 refused it until PR 4).
 
 ### PR 3: enforce read-only and closed maintenance
 
@@ -612,10 +611,7 @@ Done. As built, it differs from the sections above in these points:
   transports (nil service = allow). The gRPC error lives in the core package
   (`Error.GRPCError(now)`, `FromGRPC`, `maintenance.Domain = "nipa"`), so the client
   detects it without its own parser.
-- **Temporary `frozen` restriction (removed by PR 4):** `usecase.Maintenance.set` refuses
-  `frozen` with a 400 `frozen maintenance is not available yet; use full` (REST and
-  `nipad maintenance set frozen` alike), and `Service.Check` enforces an existing frozen
-  window (override file or a row stored before PR 3) as `full`. PR 4 drops both.
+- PR 3 refused `frozen` at write time and enforced it as `full`; PR 4 removed both.
 - `MaintenanceWindow` gains `org = 6` and `project = 7`, and
   `GetMaintenanceStatusResponse` gains `source = 4`. The handler fills org and project
   through `Maintenance.ProjectStatus`/`OrgStatus` with the claims of a valid token.
@@ -638,8 +634,8 @@ Done. As built, it differs from the sections above in these points:
   `isPublicMethod`).
 - `nipa_maintenance_rejected_total` ships here. The e2e harness has no metrics, so the
   counter is asserted in the interceptor and filter unit tests, not in `internal/e2e`.
-- Known gaps left for PR 6: the client does not map the detail into a `domain.Error`
-  hint yet, and its HTTP chunk transfers retry a maintenance 503 like any 5xx.
+- Known gaps left for PR 6: the client HTTP chunk transfers retry a maintenance 503
+  like any 5xx (PR 4 added the `domain.Error` mapping).
 
 ### PR 4: frozen maintenance for database moves
 
@@ -650,6 +646,45 @@ Phase 5 below, plus:
   `toDomainError` detail mapping, which move here from phase 7.
 - `web/src/api/client.ts`: `refresh()` keeps the session on a maintenance 503.
 - Tests for both, and the `tests/suite` frozen-session spec.
+
+Done. As built, it differs from the sections above in these points:
+
+- One pause seam: `serverapp.Pausable` (`SetPause(func() bool)`), applied by
+  `serverapp.PauseWhileFrozen(svc, dispatchers...)` inside `run` to every dispatcher
+  that implements it, instead of per-dispatcher `WithPause` calls in the mains.
+  `internal/dispatch.Pause` holds the shared `Active`/`Wait`. The webhook and mail
+  dispatchers skip sweeps, claims and retention trims; a worker holding an already
+  claimed job waits (`Pause.Wait`) instead of dropping it, so nothing is sent twice.
+  `quotaReconcileJob` waits for the end of the window before its one run instead of
+  being skipped. `TermsRefreshJob` writes no database row; it skips ticks anyway.
+- More writers found and stopped: the service token `last_used_at` touch runs in
+  the bearer filter before the maintenance filter, so `ServiceToken.WithPause`
+  skips it; `GET /orgs/{org}/storage` seeded `org_billing_owner` on first use, and
+  `Ledger.OrgStorage` now resolves the owner read-only; `nodelease.Release` keeps
+  the row while frozen.
+- `nodelease.Manager.SetPause` (set after the service exists, so it is guarded by a
+  mutex) and `Resume`: renew, else reclaim the same id, else `OnLost` and an error.
+  A database error only returns the error: `Apply` keeps the frozen snapshot, the
+  next poll retries and `nipa_maintenance_poll_errors_total` counts it.
+- The maintenance `PUT`/`DELETE` routes are `control`, so a frozen window can only
+  be ended from the host (`nipad maintenance end`), as the runbook does.
+- The client maps the refusal in `toDomainError` (moved here from PR 6): a 503
+  `domain.Error` with `Maintenance` and a per-mode hint, wrapping the gRPC error so
+  `maintenance.FromGRPC` still works. The retry exclusions stay in PR 6.
+- SPA: `ApiError.maintenance` + `isMaintenanceError`; `refresh()` stops retrying,
+  `apiFetch` rethrows the typed error after a 401 and `bootstrap()` answers false
+  without the logout event. The refresh request now skips `apiFetch`'s 401 refresh
+  (`retry: true`), which could wait on its own in-flight refresh forever.
+- Tests: `internal/e2e/maintenance_frozen_test.go` checks zero writes with `PRAGMA
+  data_version` instead of a driver wrapper and covers the CLI path, the paused
+  deliveries, a failing resume hook and a `VACUUM INTO` copy that starts frozen;
+  the REST subtest uses `total_changes()`; `ee/e2e/maintenance_test.go` runs the read
+  workload on a pool with `default_transaction_read_only=on`. The `tests/suite`
+  frozen-session spec moves to PR 6 with the rest of `tests/suite/maintenance_test.go`.
+- Writes that remain possible while frozen: startup migrations and the `nipad-ee`
+  lease claim of an instance started on a frozen database, deliveries already past
+  the pause check when the window started (bounded by the wait of one poll plus
+  `SHUTDOWN_TIMEOUT_SECONDS`), and the maintenance command itself.
 
 ### PR 5: email announcements
 

@@ -62,7 +62,11 @@ the node id as follows:
   instance's id becomes reclaimable once the TTL expires; if a lease cannot be
   renewed before it expires the process exits and re-claims on restart instead
   of risking collisions. Startup fails when all 256 ids are held by live
-  instances.
+  instances. While a `frozen` maintenance window is active the lease is
+  neither renewed nor released and its loss is not checked; ending the window
+  renews it (or reclaims the same id) before the instance leaves `frozen`. If
+  another instance took the id meanwhile, the instance exits; if the database
+  is unreachable it stays frozen and retries on the next poll.
 - The free `nipad` (SQLite, local chunks) is single-instance by design and
   keeps using `SNOWFLAKE_NODE_ID` (default 0).
 

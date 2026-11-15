@@ -445,3 +445,57 @@ func TestDispatcher_BackoffSchedule(t *testing.T) {
 	require.Equal(t, int64(100), dispatcher.cfg.RetryBatch)
 	require.Equal(t, defaultWorkers, dispatcher.cfg.Workers)
 }
+
+func TestDispatcher_PauseHoldsSweepAndDeliveries(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	store := newFakeStore()
+	hook := domain.Webhook{ID: 1001, URL: server.URL, Secret: "s", IsActive: true}
+	store.addHook(hook)
+	store.addPending(2001, hook.ID, 0, time.Now().Add(-time.Second))
+
+	var paused atomic.Bool
+	paused.Store(true)
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
+	dispatcher.SetPause(paused.Load)
+	dispatcher.pauseCheck = time.Millisecond
+	dispatcher.Start()
+	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
+
+	created, err := dispatcher.Enqueue(context.Background(), hook, domain.WebhookEventPush, []byte(`{}`))
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+	require.Zero(t, hits.Load(), "nothing is delivered while paused")
+	row, _ := store.delivery(2001)
+	require.Equal(t, domain.WebhookDeliveryPending, row.State)
+	store.mu.Lock()
+	require.Zero(t, store.trimmed)
+	store.mu.Unlock()
+
+	paused.Store(false)
+	waitFor(t, 2*time.Second, func() bool {
+		a, _ := store.delivery(2001)
+		b, _ := store.delivery(created.ID)
+		return a.State == domain.WebhookDeliveryDelivered && b.State == domain.WebhookDeliveryDelivered
+	})
+}
+
+func TestDispatcher_StopWhilePaused(t *testing.T) {
+	store := newFakeStore()
+	hook := domain.Webhook{ID: 1001, URL: "http://127.0.0.1:1", Secret: "s", IsActive: true}
+	store.addHook(hook)
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
+	dispatcher.SetPause(func() bool { return true })
+	dispatcher.Start()
+	created, err := dispatcher.Enqueue(context.Background(), hook, domain.WebhookEventPush, []byte(`{}`))
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+	stopDispatcher(t, dispatcher)
+	row, _ := store.delivery(created.ID)
+	require.Equal(t, domain.WebhookDeliveryPending, row.State)
+	require.Zero(t, row.Attempt)
+}

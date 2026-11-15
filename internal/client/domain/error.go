@@ -1,13 +1,36 @@
 package domain
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 type Error struct {
-	Code    int
-	Message string
-	Hint    string
-	Action  string
-	Cause   error
+	Code        int
+	Message     string
+	Hint        string
+	Action      string
+	Cause       error
+	Maintenance *MaintenanceInfo
+}
+
+// MaintenanceInfo describes the maintenance window that refused a request.
+type MaintenanceInfo struct {
+	Scope    string
+	Mode     string
+	Message  string
+	StartsAt time.Time
+	EndsAt   *time.Time
+	Org      string
+	Project  string
+}
+
+// IsMaintenance reports whether err is a request refused by server
+// maintenance.
+func IsMaintenance(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Maintenance != nil
 }
 
 func (e *Error) Unwrap() error {

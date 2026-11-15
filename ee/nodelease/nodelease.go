@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
@@ -41,7 +42,11 @@ type Manager struct {
 
 	cancel      context.CancelFunc
 	done        chan struct{}
+	renewMu     sync.Mutex
 	lastRenewed time.Time
+
+	pauseMu sync.Mutex
+	paused  func() bool
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -106,6 +111,52 @@ func (m *Manager) NodeID() int64 {
 	return m.nodeID
 }
 
+// SetPause stops renewing while paused reports true (a frozen database): the
+// heartbeat neither writes nor treats the ageing lease as lost. Resume must
+// succeed before the pause ends.
+func (m *Manager) SetPause(paused func() bool) {
+	m.pauseMu.Lock()
+	defer m.pauseMu.Unlock()
+	m.paused = paused
+}
+
+func (m *Manager) isPaused() bool {
+	m.pauseMu.Lock()
+	paused := m.paused
+	m.pauseMu.Unlock()
+	return paused != nil && paused()
+}
+
+// Resume renews the lease after a pause, reclaiming the same node id when it
+// expired meanwhile. Another instance holding the id calls OnLost, since this
+// process may no longer mint ids with it; that and a database error are
+// returned so the caller keeps the pause.
+func (m *Manager) Resume(ctx context.Context) error {
+	m.renewMu.Lock()
+	defer m.renewMu.Unlock()
+	if m.node == nil {
+		return nil
+	}
+	renewed, err := m.renew(ctx)
+	if err != nil {
+		return fmt.Errorf("renew snowflake node lease: %w", err)
+	}
+	if !renewed {
+		claimed, err := m.claim(ctx, m.nodeID)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			slog.Error("snowflake node lease taken while paused", "node_id", m.nodeID, "holder", m.holder)
+			m.onLost(m.nodeID)
+			return fmt.Errorf("snowflake node %d is held by another instance", m.nodeID)
+		}
+	}
+	m.lastRenewed = time.Now()
+	slog.Info("snowflake node lease resumed", "node_id", m.nodeID)
+	return nil
+}
+
 // Release stops the heartbeat and frees the node id. It is safe to call
 // without a successful Acquire and more than once.
 func (m *Manager) Release(ctx context.Context) {
@@ -118,6 +169,10 @@ func (m *Manager) Release(ctx context.Context) {
 	m.cancel = nil
 	m.node = nil
 
+	if m.isPaused() {
+		slog.Info("snowflake node lease kept while the database is frozen; it expires after its ttl", "node_id", m.nodeID)
+		return
+	}
 	err := m.queries.NodeLeaseRelease(ctx, sqlcPostgres.NodeLeaseReleaseParams{
 		NodeID: m.nodeID,
 		Holder: m.holder,
@@ -157,7 +212,9 @@ func (m *Manager) startHeartbeat() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	m.done = make(chan struct{})
+	m.renewMu.Lock()
 	m.lastRenewed = time.Now()
+	m.renewMu.Unlock()
 	go m.heartbeat(ctx)
 }
 
@@ -172,6 +229,9 @@ func (m *Manager) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if m.isPaused() {
+				continue
+			}
 			if !m.keepAlive(ctx) {
 				m.onLost(m.nodeID)
 				return
@@ -180,13 +240,20 @@ func (m *Manager) heartbeat(ctx context.Context) {
 	}
 }
 
-func (m *Manager) keepAlive(ctx context.Context) bool {
+func (m *Manager) renew(ctx context.Context) (bool, error) {
 	renewed, err := m.queries.NodeLeaseRenew(ctx, sqlcPostgres.NodeLeaseRenewParams{
 		TtlSeconds: m.ttlSeconds(),
 		NodeID:     m.nodeID,
 		Holder:     m.holder,
 	})
-	if err == nil && renewed == 1 {
+	return renewed == 1, err
+}
+
+func (m *Manager) keepAlive(ctx context.Context) bool {
+	m.renewMu.Lock()
+	defer m.renewMu.Unlock()
+	renewed, err := m.renew(ctx)
+	if err == nil && renewed {
 		m.lastRenewed = time.Now()
 		return true
 	}

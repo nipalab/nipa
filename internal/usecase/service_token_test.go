@@ -204,6 +204,15 @@ func TestServiceToken_Authenticate(t *testing.T) {
 	f.admin(true)
 	_, err = f.uc.Authenticate(ctx, plain, "acme", "rocket", "checks:write")
 	require.NoError(t, err, "a recently used token is not touched again")
+
+	tok.LastUsedAt = nil
+	f.uc.WithPause(func() bool { return true })
+	f.token(plain, tok, nil)
+	f.projects.EXPECT().ResolveBySlug(gomock.Any(), "acme", "rocket").Return(&domain.Organization{}, &domain.Project{ID: 1}, nil)
+	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, EmailVerified: true}, nil)
+	f.admin(true)
+	_, err = f.uc.Authenticate(ctx, plain, "acme", "rocket", "read")
+	require.NoError(t, err, "a paused (frozen) server does not touch the token")
 }
 
 func TestServiceToken_AuthenticateRejects(t *testing.T) {

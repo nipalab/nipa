@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode"
+
+	"github.com/nipalab/nipa/internal/dispatch"
 )
 
 const (
@@ -105,6 +107,7 @@ type TermsRefreshJob struct {
 	interval time.Duration
 	cancel   context.CancelFunc
 	done     chan struct{}
+	pause    dispatch.Pause
 }
 
 func NewTermsRefreshJob(source *TermsVersionSource, interval time.Duration) *TermsRefreshJob {
@@ -112,6 +115,11 @@ func NewTermsRefreshJob(source *TermsVersionSource, interval time.Duration) *Ter
 		interval = TermsRefreshInterval
 	}
 	return &TermsRefreshJob{source: source, interval: interval}
+}
+
+// SetPause skips refreshes while paused reports true (a frozen database).
+func (j *TermsRefreshJob) SetPause(paused func() bool) {
+	j.pause = paused
 }
 
 func (j *TermsRefreshJob) Start() {
@@ -127,7 +135,9 @@ func (j *TermsRefreshJob) Start() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				j.refresh(ctx)
+				if !j.pause.Active() {
+					j.refresh(ctx)
+				}
 			}
 		}
 	}()

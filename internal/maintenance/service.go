@@ -165,18 +165,13 @@ func (s *Service) Apply(ctx context.Context, snap *Snapshot) error {
 }
 
 // Check returns the rejection of a request of class to org/project, nil when
-// the effective window allows it. A nil Service allows everything. Frozen is
-// enforced as full until the frozen writer pauses exist.
+// the effective window allows it. A nil Service allows everything.
 func (s *Service) Check(class Class, method, org, project string) *Error {
 	if s == nil {
 		return nil
 	}
 	w, scope := s.For(org, project)
-	mode := w.Mode
-	if mode == Frozen {
-		mode = Full
-	}
-	if AllowedMethod(class, mode, method) {
+	if AllowedMethod(class, w.Mode, method) {
 		return nil
 	}
 	return NewError(w, scope)

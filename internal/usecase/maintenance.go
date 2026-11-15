@@ -273,9 +273,6 @@ func (m *Maintenance) set(ctx context.Context, t maintenanceTarget, in Maintenan
 	if mode == maintenance.Frozen && t.scope != maintenance.ScopeServer {
 		return nil, domain.NewErrorUser("frozen is only available for the server window")
 	}
-	if mode == maintenance.Frozen {
-		return nil, domain.NewErrorUser("frozen maintenance is not available yet; use full")
-	}
 	if utf8.RuneCountInString(in.Message) > maxMaintenanceMessageRunes {
 		return nil, domain.NewErrorUser(fmt.Sprintf("message must be at most %d characters", maxMaintenanceMessageRunes))
 	}

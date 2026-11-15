@@ -52,9 +52,11 @@ type Dispatcher struct {
 	node   snow.Node
 	cfg    Config
 
-	runner  *dispatch.Runner
-	jobs    chan job
-	metrics *obs.Metrics
+	runner     *dispatch.Runner
+	jobs       chan job
+	metrics    *obs.Metrics
+	pause      dispatch.Pause
+	pauseCheck time.Duration
 
 	mu       sync.Mutex
 	inFlight map[snow.ID]struct{}
@@ -87,6 +89,12 @@ func (d *Dispatcher) WithMetrics(metrics *obs.Metrics) *Dispatcher {
 		return float64(len(d.inFlight))
 	})
 	return d
+}
+
+// SetPause holds the sweep and every delivery attempt while paused reports
+// true, so no delivery state is written. Call it before Start.
+func (d *Dispatcher) SetPause(paused func() bool) {
+	d.pause = paused
 }
 
 // Start launches the workers and the retry sweeper. It is a no-op when the
@@ -168,13 +176,18 @@ func (d *Dispatcher) worker() {
 		case <-d.runner.StopCh():
 			return
 		case j := <-d.jobs:
-			d.deliver(j)
+			if d.pause.Wait(d.runner.StopCh(), d.pauseCheck) {
+				d.deliver(j)
+			}
 			d.release(j.delivery.ID)
 		}
 	}
 }
 
 func (d *Dispatcher) sweep() {
+	if d.pause.Active() {
+		return
+	}
 	rows, err := d.store.ListPendingRetries(context.Background(), time.Now(), d.cfg.RetryBatch)
 	if err != nil {
 		slog.Warn("webhook retry sweep failed", "error", err)

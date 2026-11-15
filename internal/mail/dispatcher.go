@@ -66,10 +66,12 @@ type Dispatcher struct {
 	sender Sender
 	cfg    DispatcherConfig
 
-	runner  *dispatch.Runner
-	jobs    chan domain.EmailDelivery
-	kick    chan struct{}
-	metrics *obs.Metrics
+	runner     *dispatch.Runner
+	jobs       chan domain.EmailDelivery
+	kick       chan struct{}
+	metrics    *obs.Metrics
+	pause      dispatch.Pause
+	pauseCheck time.Duration
 }
 
 func NewDispatcher(store DispatcherStore, sender Sender, cfg DispatcherConfig) *Dispatcher {
@@ -88,6 +90,15 @@ func (d *Dispatcher) WithMetrics(metrics *obs.Metrics) *Dispatcher {
 	d.metrics = metrics
 	metrics.RegisterMailQueue(func() float64 { return float64(len(d.jobs)) })
 	return d
+}
+
+// SetPause holds claiming, retention sweeps and delivery attempts while
+// paused reports true, so the outbox is not written. A job a worker picked up
+// during the pause is dropped on resume: its sending row is stale by then and
+// the next claim hands it out again, so it is never sent twice. Call it before
+// Start.
+func (d *Dispatcher) SetPause(paused func() bool) {
+	d.pause = paused
 }
 
 // Start launches the workers and the poll loop. It is a no-op when the
@@ -143,12 +154,21 @@ func (d *Dispatcher) worker() {
 		case <-d.runner.StopCh():
 			return
 		case delivery := <-d.jobs:
+			if d.pause.Active() {
+				if !d.pause.Wait(d.runner.StopCh(), d.pauseCheck) {
+					return
+				}
+				continue
+			}
 			d.deliver(delivery)
 		}
 	}
 }
 
 func (d *Dispatcher) sweep() {
+	if d.pause.Active() {
+		return
+	}
 	now := time.Now()
 	rows, err := d.store.ClaimDue(context.Background(), now, now.Add(-d.cfg.StaleAfter), d.cfg.BatchSize)
 	if err != nil {
@@ -199,6 +219,9 @@ func (d *Dispatcher) markFailed(delivery domain.EmailDelivery, cause error) {
 }
 
 func (d *Dispatcher) trim() {
+	if d.pause.Active() {
+		return
+	}
 	if _, err := d.store.SweepRetention(context.Background(), time.Now().Add(-d.cfg.Retention)); err != nil {
 		slog.Warn("email delivery retention sweep failed", "error", err)
 	}
