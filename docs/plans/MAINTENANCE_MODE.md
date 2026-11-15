@@ -869,7 +869,9 @@ Done. As built, it differs from the sections above in these points:
   window.
 - `GetMaintenanceStatus` never refreshes an expired token, so clients then only see
   the server window.
-- `EMAIL_*` (and other keys without defaults) are not bound to environment variables.
+- ~~`EMAIL_*` (and other keys without defaults) are not bound to environment variables.~~
+  Fixed: `config.LoadConfig` binds every `Config` key, so each one is read from
+  the environment.
 - Unity/Godot plugins and an `upgrade.sh` maintenance flag stay out of scope.
 - The release-checklist rehearsal of both moves on staging hosts.
 

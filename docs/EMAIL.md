@@ -227,6 +227,9 @@ polled).
 
 ## Configuration reference
 
+Every key can be set in `config.yaml`, `.env` or as an environment variable of
+the same name (environment wins).
+
 | Key                             | Default                  | Description                                             |
 | ------------------------------- | ------------------------ | ------------------------------------------------------- |
 | `EMAIL_SENDER`                  | `off`                    | `off`, `log`, `smtp`, `sendgrid`, `scaleway` or `http`. |

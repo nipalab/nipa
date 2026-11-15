@@ -234,9 +234,9 @@ the freeze.
   not the org and project windows (a refused request still reports them).
 - `nipa status` waits up to 2 s for the maintenance probe when the server is
   unreachable.
-- `EMAIL_*` settings are read from `config.yaml`/`.env` only, not from the
-  process environment, so set them there for the server and for
-  `maintenance --notify`/`end`.
+- `maintenance --notify`/`end` read `EMAIL_*` from the shell running the
+  command plus `config.yaml`/`.env`, not from a color's systemd env file, so
+  keep the email settings in `config.yaml` (or export them) for the command.
 
 ## Runbooks
 

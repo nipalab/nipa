@@ -66,11 +66,10 @@ without it. Start from the sample:
 cp config.yaml.sample config.yaml
 ```
 
-A `.env` file next to `config.yaml` is merged on top. Keys present in
-`config.yaml` (and keys with built-in defaults) can be overridden by environment
-variables of the same name; the core settings `SERVER_ADDRESS`, `SERVER_PORT`,
-`SHUTDOWN_TIMEOUT_SECONDS` and `SNOWFLAKE_NODE_ID` are read from the
-environment even when absent from the file. Relative paths (`nipa.db`,
+A `.env` file next to `config.yaml` is merged on top. Every key can also be
+set as an environment variable of the same name, whether or not it appears in
+the file; the precedence is environment, then `.env`, then `config.yaml`, then
+the built-in default. Relative paths (`nipa.db`,
 `./chunks`) are resolved against the working directory, so run the server from
 the directory that holds its data.
 

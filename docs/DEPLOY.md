@@ -44,7 +44,8 @@ unset; the SPA itself is same-origin and needs none).
 | `/var/lib/nipa/active-color` | which color receives traffic (written by `deploy/upgrade.sh`) |
 | `journalctl -u nipad-ee@blue` / `@green` | server logs |
 
-Both colors share `config.yaml`, so `JWT_KEY`, `CHUNK_URL_SIGNING_KEY`,
+Every key can live in `config.yaml`, `/etc/nipa/.env` or a systemd
+`EnvironmentFile` (environment wins). Both colors share `config.yaml`, so `JWT_KEY`, `CHUNK_URL_SIGNING_KEY`,
 `MFA_ENCRYPTION_KEY` and the database/S3 settings are identical across flips.
 Sessions, presigned chunk URLs and enrolled second factors stay valid across
 restarts; do not rotate those keys during an upgrade.

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -207,14 +208,9 @@ func LoadConfig() (*Config, error) {
 	v.SetConfigType("env")
 	_ = v.MergeInConfig()
 
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
-	// config file, so the per-color systemd env files must bind explicitly.
-	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "MFA_ENCRYPTION_KEY", "MFA_ENABLED", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL", "METRICS_ADDRESS",
-		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS",
-		"BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT",
-		"PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY",
-		"PADDLE_PRICE_SEAT_YEARLY", "PADDLE_PRICE_STORAGE_MONTHLY", "PADDLE_PRICE_STORAGE_YEARLY"} {
+	for _, key := range envKeys(reflect.TypeOf(Config{})) {
 		if err := v.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
 		}
@@ -228,6 +224,29 @@ func LoadConfig() (*Config, error) {
 	cfg.MFAEnabledSet = v.IsSet("MFA_ENABLED")
 
 	return &cfg, nil
+}
+
+func envKeys(t reflect.Type) []string {
+	var keys []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name, opts, _ := strings.Cut(f.Tag.Get("mapstructure"), ",")
+		if name == "-" || (name == "" && opts == "") {
+			continue
+		}
+		if f.Type.Kind() != reflect.Struct {
+			keys = append(keys, name)
+			continue
+		}
+		prefix := ""
+		if !strings.Contains(opts, "squash") {
+			prefix = name + "."
+		}
+		for _, k := range envKeys(f.Type) {
+			keys = append(keys, prefix+k)
+		}
+	}
+	return keys
 }
 
 // SSHLoginAudience returns the canonical origin SSH login signatures must be

@@ -1965,6 +1965,10 @@ and `nipa mcp` stay silent.
   renewed until shutdown, exit on lost lease) so multi-pod never collides,
   while the free `nipad` stays single-instance with the static default 0.
   Client localrepo tables do NOT use snow IDs.
+- **Server config**: `internal/config.LoadConfig` reads `config.yaml`, merges
+  `.env`, and binds every `Config` `mapstructure` key to the environment
+  (`envKeys`), so a new field is env-settable without a manual `BindEnv`
+  (precedence env > `.env` > `config.yaml` > `SetDefault`).
 - **Errors**: `internal/domain.Error` with HTTP-style `Code` + `Message` +
   `InternalMessage` + `Cause`. Constructions: `NewErrorNotFound(msg)`,
   `NewErrorNoPermission()`, `NewErrorUser(msg)`, `NewErrorDatabase(internalMsg)`,
