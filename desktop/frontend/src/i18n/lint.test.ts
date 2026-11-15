@@ -58,7 +58,7 @@ describe("translation keys", () => {
       }
     };
     walk(path.resolve(__dirname, ".."));
-    const dynamic = (k: string) => k.startsWith("commandPalette.section.") || k.startsWith("noun.");
+    const dynamic = (k: string) => k.startsWith("commandPalette.section.") || k.startsWith("noun.") || k.startsWith("shortcuts.group.");
     expect(used.filter((k) => !known.has(k) && !dynamic(k))).toEqual([]);
   });
 });

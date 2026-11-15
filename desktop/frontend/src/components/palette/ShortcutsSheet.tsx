@@ -1,3 +1,4 @@
+import { translate } from "@/i18n";
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,8 +33,8 @@ export function ShortcutsSheet({ onClose }: { onClose: () => void }) {
         </div>
         <div className="min-h-0 space-y-4 overflow-y-auto p-4">
           {shortcutGroups.map((group) => (
-            <section key={group} aria-label={group}>
-              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group}</h3>
+            <section key={group} aria-label={translate(`shortcuts.group.${group}`)}>
+              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{translate(`shortcuts.group.${group}`)}</h3>
               <dl className="space-y-1 text-xs">
                 {shortcuts
                   .filter((s) => s.group === group)

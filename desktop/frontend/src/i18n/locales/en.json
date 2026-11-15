@@ -1196,8 +1196,6 @@
   "font.unitsPerEm": "Units per em",
   "font.lineGap": "Line gap",
   "font.capHeight": "Cap height",
-  "generate.text": "{{key}}: {{v}}",
-  "generate.text2": "{{body}}\n\n{{key}}: {{v}}",
   "history.noMessage": "(no message)",
   "history.text": "{{author}} {{email}} {{message}} {{id}} {{hash}}",
   "insight.andMore": " and {{max}} more",
@@ -1566,5 +1564,8 @@
   "conflicts.deletedIt": "{{theirs}} deleted it",
   "conflicts.deletedIt2": "{{ours}} deleted it",
   "conflicts.takeTheVersionFrom": "Take the version from {{theirs}}",
-  "conflicts.useTheVersionFrom": "Use the version from {{theirs}}"
+  "conflicts.useTheVersionFrom": "Use the version from {{theirs}}",
+  "shortcuts.group.General": "General",
+  "shortcuts.group.Repository": "Repository",
+  "shortcuts.group.Changes": "Changes"
 }

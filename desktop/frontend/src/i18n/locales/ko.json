@@ -1181,8 +1181,6 @@
   "font.unitsPerEm": "em당 단위 수",
   "font.lineGap": "줄 간격",
   "font.capHeight": "대문자 높이",
-  "generate.text": "{{key}}: {{v}}",
-  "generate.text2": "{{body}}\n\n{{key}}: {{v}}",
   "history.noMessage": "(메시지 없음)",
   "history.text": "{{author}} {{email}} {{message}} {{id}} {{hash}}",
   "insight.andMore": " 외 {{max}}개",
@@ -1520,5 +1518,8 @@
   "conflicts.deletedIt": "{{theirs}}이(가) 삭제했습니다",
   "conflicts.deletedIt2": "{{ours}}이(가) 삭제했습니다",
   "conflicts.takeTheVersionFrom": "{{theirs}}의 버전 사용",
-  "conflicts.useTheVersionFrom": "{{theirs}}의 버전 사용"
+  "conflicts.useTheVersionFrom": "{{theirs}}의 버전 사용",
+  "shortcuts.group.General": "일반",
+  "shortcuts.group.Repository": "리포지토리",
+  "shortcuts.group.Changes": "변경"
 }

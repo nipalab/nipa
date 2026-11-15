@@ -1181,8 +1181,6 @@
   "font.unitsPerEm": "Unit per em",
   "font.lineGap": "Celah baris",
   "font.capHeight": "Tinggi kapital",
-  "generate.text": "{{key}}: {{v}}",
-  "generate.text2": "{{body}}\n\n{{key}}: {{v}}",
   "history.noMessage": "(tanpa pesan)",
   "history.text": "{{author}} {{email}} {{message}} {{id}} {{hash}}",
   "insight.andMore": " dan {{max}} lagi",
@@ -1520,5 +1518,8 @@
   "conflicts.deletedIt": "{{theirs}} menghapusnya",
   "conflicts.deletedIt2": "{{ours}} menghapusnya",
   "conflicts.takeTheVersionFrom": "Ambil versi dari {{theirs}}",
-  "conflicts.useTheVersionFrom": "Gunakan versi dari {{theirs}}"
+  "conflicts.useTheVersionFrom": "Gunakan versi dari {{theirs}}",
+  "shortcuts.group.General": "Umum",
+  "shortcuts.group.Repository": "Repositori",
+  "shortcuts.group.Changes": "Perubahan"
 }

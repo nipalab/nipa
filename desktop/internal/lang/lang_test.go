@@ -63,3 +63,10 @@ func TestCatalogsMatchEnglish(t *testing.T) {
 		require.Equal(t, english, got, string(l))
 	}
 }
+
+func TestMultiCommitNotificationKeepsArgumentOrder(t *testing.T) {
+	for _, l := range all {
+		require.NotContains(t, l.T("notify.commits", "game", 3, "main"), "%!", string(l))
+	}
+	require.Equal(t, "game: main に新しいコミット 3 件", Japanese.T("notify.commits", "game", 3, "main"))
+}
