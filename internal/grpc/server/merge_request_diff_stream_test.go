@@ -101,6 +101,20 @@ func TestStreamMergeRequestDiff_SplitsPartsAndFlagsLargeFiles(t *testing.T) {
 	require.Equal(t, int64(40000), huge.GetAdditions())
 }
 
+func TestStreamMergeRequestDiff_DropsHunksBeforePatch(t *testing.T) {
+	merger := &stubBranchMerger{diff: []diff.FileDiff{textChange("mid.txt", "", lines(10000, "big"))}}
+	srv := newDiffStreamServer(t, merger)
+
+	stream := &fakeDiffStream{}
+	require.NoError(t, srv.StreamMergeRequestDiff(diffReq, stream))
+	require.Len(t, stream.parts, 1)
+	require.Len(t, stream.parts[0].GetFiles(), 1)
+	f := stream.parts[0].GetFiles()[0]
+	require.False(t, f.GetTooLarge())
+	require.NotEmpty(t, f.GetPatch())
+	require.Empty(t, f.GetHunks())
+}
+
 func TestStreamMergeRequestDiff_EmptyAndErrors(t *testing.T) {
 	t.Run("no files sends nothing", func(t *testing.T) {
 		stream := &fakeDiffStream{}
