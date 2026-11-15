@@ -291,9 +291,11 @@ func TestEndToEnd_MaintenanceAnnouncements(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	require.Zero(t, sender.count(), "a window last stored without notify ends silently")
 
-	var queued int
-	require.NoError(t, dbConn.QueryRowContext(ctx, `SELECT COUNT(*) FROM email_deliveries WHERE event LIKE 'maintenance.%' AND state = 'delivered'`).Scan(&queued))
-	require.Equal(t, 25, queued)
+	require.Eventually(t, func() bool {
+		var queued int
+		err := dbConn.QueryRowContext(ctx, `SELECT COUNT(*) FROM email_deliveries WHERE event LIKE 'maintenance.%' AND state = 'delivered'`).Scan(&queued)
+		return err == nil && queued == 25
+	}, 10*time.Second, 50*time.Millisecond)
 }
 
 func TestEndToEnd_MaintenanceAnnouncementFromCLI(t *testing.T) {
