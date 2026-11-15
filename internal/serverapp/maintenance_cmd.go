@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
@@ -19,7 +20,7 @@ import (
 
 // MaintenanceOpener opens the server database for the maintenance command
 // without running migrations. Org, Project, PBAC, Audit and Maintenance must
-// be set in the returned repositories.
+// be set in the returned repositories; Email enables --notify.
 type MaintenanceOpener func(cfg *config.Config) (usecase.Repositories, *sql.DB, error)
 
 const maintenanceUsage = `usage:
@@ -138,6 +139,9 @@ func runMaintenanceCommand(ctx context.Context, cfg *config.Config, args []strin
 			return err
 		}
 		_, _ = fmt.Fprintf(out, "maintenance set: %s\n", describeStatus(scopeLabel(f.org, f.project), *st))
+		if f.notify {
+			printNotified(out, *st)
+		}
 		return nil
 	default:
 		switch {
@@ -178,7 +182,23 @@ func openMaintenance(ctx context.Context, cfg *config.Config, open MaintenanceOp
 	audit := usecase.NewAudit(repos.Audit, node, dbtx.NewTransactor(dbConn)).WithProjectOrgs(repos.PBAC)
 	uc := usecase.NewMaintenance(repos.Maintenance, usecase.NewCommon(repos.Org, repos.Project), nil, nil, svc, node).
 		WithAudit(audit).WithSystemActor()
+	if repos.Email != nil && emailEnabled(cfg, out) {
+		uc.WithMailer(usecase.NewMaintenanceEmailer(repos.Email, node, cfg.EmailBaseURL))
+	}
 	return uc, closeDB, nil
+}
+
+func emailEnabled(cfg *config.Config, out io.Writer) bool {
+	sender, err := mail.NewFromConfig(cfg.MailSenderConfig())
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "warning: email disabled: %v\n", err)
+		return false
+	}
+	if sender == nil {
+		return false
+	}
+	_ = sender.Close()
+	return true
 }
 
 func checkMaintenanceSchema(ctx context.Context, dbConn *sql.DB) error {
@@ -233,6 +253,17 @@ func describeStatus(label string, st maintenance.Status) string {
 		s += ": " + st.Message
 	}
 	return s
+}
+
+func printNotified(out io.Writer, st maintenance.Status) {
+	if st.Notified == nil || !*st.Notified {
+		_, _ = fmt.Fprintln(out, "notified: false (email off or no recipients)")
+		return
+	}
+	_, _ = fmt.Fprintln(out, "notified: true (queued; the running server sends it on its next email poll)")
+	if st.Active && st.Mode == maintenance.Frozen {
+		_, _ = fmt.Fprintln(out, "note: email is paused while frozen; it goes out once the window ends. Announce with a scheduled window before freezing.")
+	}
 }
 
 func printMaintenanceState(out io.Writer, state usecase.MaintenanceState) {

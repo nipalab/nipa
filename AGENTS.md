@@ -1545,8 +1545,8 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 login RPCs.
 
 Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; core,
-storage, admin API, the server subcommand and `read_only`/`full`/`frozen`
-enforcement exist): windows
+storage, admin API, the server subcommand, `read_only`/`full`/`frozen`
+enforcement and email announcements exist): windows
 have three scopes (server, org, project). The pure `internal/maintenance` (no
 repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
 `Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
@@ -1569,8 +1569,9 @@ cleaned by triggers on project/org soft delete
 its projects' windows; sqlite also `_project_delete`/`_org_delete` for hard
 deletes, postgres FKs cascade); queries in `maintenance.sql` of both dialects
 skip deleted orgs/projects; recipients: `RecipientsServer` (verified owners of
-live orgs), `RecipientsOrg` (owners plus root admin rules on any live project
-of the org, org-wide and group rules included) and `RecipientsProject`.
+live orgs), `RecipientsOrg` (owners plus root admin rules org-wide or on any
+live project of the org, direct or through live groups; org-wide admins count
+without projects) and `RecipientsProject`.
 `sqlite|postgres.NewMaintenanceRepository` (`dbtx`-aware) is wired as
 `usecase.Repositories.Maintenance` in both mains and both e2e harnesses.
 `usecase.Maintenance` (`maintenance.go`, gomock-tested): `Status` (public
@@ -1585,10 +1586,23 @@ keeps an existing window's start, else now; a server write while the snapshot
 `source` is `file` is a 409 `maintenance is controlled by MAINTENANCE_FILE`;
 ending a missing window is a 404. Writes run in `auditedWrite`
 (`maintenance.scheduled|updated|ended`, target `maintenance_window`, metadata
-`scope`, `org_id`, `project_id`, `mode`, `starts_at`, `ends_at`, `notify`)
-together with the optional `MaintenanceMailer.Announce(notice, window,
-recipients)` seam (`WithMailer`, nil = `notified: false`, no implementation
-yet); after the commit `apply` rebuilds the snapshot from `List` (keeping a
+`scope`, `org_id`, `project_id`, `mode`, `starts_at`, `ends_at`, `notify`,
+`notified`) together with the optional `MaintenanceMailer` (`WithMailer`):
+with `notify` the usecase loads the scope's recipients in the transaction and
+calls `Announce(ctx, MaintenanceAnnouncement{Notice, Window, OrgName,
+Recipients}) (queued, error)`; notices are `scheduled` (new window or first
+announcement), `updated` (an announced window changed) and `finished` (end of
+a window stored with `notify`); `notified` = at least one message queued, and
+`Kick` runs after the commit. `usecase.MaintenanceEmailer`
+(`maintenance_notify.go`, wired in `BuildUsecases` with the email dispatcher
+as kicker, and in the subcommand when `mail.NewFromConfig` gives a sender and
+the opener sets `Repositories.Email`, without kicker) dedupes by user and
+address, drops invalid addresses, ignores `notify_email`, writes one outbox
+row per recipient (event `maintenance.<notice>`, thread key
+`maintenance:<window id>`, `ProjectID` only for project windows; later notices
+reply to the per-recipient root `Message-ID`) with plain text + HTML (scope,
+mode in words, UTC start and estimated end, message, `EMAIL_BASE_URL` link).
+After the commit `apply` rebuilds the snapshot from `List` (keeping a
 current file override) through `Service.Apply`. `WithSystemActor()` is the
 CLI variant: no permission checks, `created_by` 0, actor `system`, `via: cli`.
 REST (`internal/http/api/maintenance.go`, handlers/DTOs in
@@ -1610,8 +1624,9 @@ runs right after `version.Flag` in both mains: `maintenance status`, `set
 <read_only|full|frozen> [--org <slug> | --project <org/project>] [-m]
 [--start] [--end] [--notify]`, `end [--org|--project]`; it loads the config,
 opens the database through the main's `MaintenanceOpener` (sqlite or the ee
-postgres opener, never migrating; a missing table is `schema too old, start
-the server once`), reads the override file and uses `snow.ReservedCLINode`
+postgres opener, never migrating, `Email` included for `--notify`; a missing
+table is `schema too old, start the server once`), prints `notified: true|false`
+with `--notify` (a note when it queued mail for an active frozen window), reads the override file and uses `snow.ReservedCLINode`
 (255): `ee/nodelease` leases 0..254 only and `snow.NewServerNode` (both mains'
 static `SNOWFLAKE_NODE_ID`) refuses 255.
 Enforcement goes through `Service.Check(class, method, org, project)` (nil

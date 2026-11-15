@@ -244,6 +244,7 @@ func openMaintenanceDB(cfg *config.Config) (usecase.Repositories, *sql.DB, error
 		PBAC:        sqlite.NewPBACRepository(conn),
 		Audit:       sqlite.NewAuditRepository(conn),
 		Maintenance: sqlite.NewMaintenanceRepository(conn),
+		Email:       sqlite.NewEmailRepository(conn),
 	}, conn, nil
 }
 

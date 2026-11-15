@@ -208,22 +208,22 @@ WHERE u.deleted = false
       UNION
       SELECT r.user_id
       FROM pbac_rules r
-      JOIN projects p ON p.org_id = ?1
-      JOIN organizations o ON o.id = p.org_id
-      WHERE p.deleted = false AND o.deleted = false
+      JOIN organizations o ON o.id = r.org_id
+      LEFT JOIN projects p ON p.id = r.project_id
+      WHERE r.org_id = ?1 AND o.deleted = false
         AND r.user_id IS NOT NULL
-        AND (r.project_id = p.id OR (r.project_id IS NULL AND r.org_id = p.org_id))
+        AND (r.project_id IS NULL OR (p.org_id = r.org_id AND p.deleted = false))
         AND r.path_prefix = ''
         AND (r.permission & 65536) <> 0
       UNION
       SELECT gm.user_id
       FROM pbac_rules r
-      JOIN projects p ON p.org_id = ?1
-      JOIN organizations o ON o.id = p.org_id
+      JOIN organizations o ON o.id = r.org_id
+      LEFT JOIN projects p ON p.id = r.project_id
       JOIN groups g ON g.id = r.group_id AND g.org_id = r.org_id AND g.deleted = false
       JOIN group_members gm ON gm.group_id = g.id
-      WHERE p.deleted = false AND o.deleted = false
-        AND (r.project_id = p.id OR (r.project_id IS NULL AND r.org_id = p.org_id))
+      WHERE r.org_id = ?1 AND o.deleted = false
+        AND (r.project_id IS NULL OR (p.org_id = r.org_id AND p.deleted = false))
         AND r.path_prefix = ''
         AND (r.permission & 65536) <> 0
   )

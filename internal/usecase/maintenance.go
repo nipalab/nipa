@@ -57,10 +57,19 @@ const (
 	MaintenanceNoticeFinished  MaintenanceNotice = "finished"
 )
 
-// MaintenanceMailer announces a window to its recipients. It runs inside the
-// window's transaction.
+// MaintenanceAnnouncement is one notice about a window for its recipients.
+type MaintenanceAnnouncement struct {
+	Notice     MaintenanceNotice
+	Window     domain.MaintenanceWindow
+	OrgName    string
+	Recipients []domain.MaintenanceRecipient
+}
+
+// MaintenanceMailer queues an announcement inside the window's transaction and
+// answers how many messages it queued; Kick runs after the commit.
 type MaintenanceMailer interface {
-	Announce(ctx context.Context, notice MaintenanceNotice, window domain.MaintenanceWindow, recipients []domain.MaintenanceRecipient) error
+	Announce(ctx context.Context, a MaintenanceAnnouncement) (int, error)
+	Kick()
 }
 
 // MaintenanceInput is a window to store. A missing StartsAt keeps the stored
@@ -312,7 +321,10 @@ func (m *Maintenance) set(ctx context.Context, t maintenanceTarget, in Maintenan
 	t.fill(&w)
 	notice, action := MaintenanceNoticeScheduled, domain.AuditMaintenanceScheduled
 	if existing != nil {
-		notice, action = MaintenanceNoticeUpdated, domain.AuditMaintenanceUpdated
+		action = domain.AuditMaintenanceUpdated
+		if existing.Notify {
+			notice = MaintenanceNoticeUpdated
+		}
 	}
 	var saved *domain.MaintenanceWindow
 	notified := false
@@ -325,11 +337,12 @@ func (m *Maintenance) set(ctx context.Context, t maintenanceTarget, in Maintenan
 		notified, err = m.announce(ctx, t, notice, *saved)
 		return err
 	}, func() *domain.AuditEntry {
-		return m.auditEntry(action, t, *saved)
+		return m.auditEntry(action, t, *saved, notified)
 	})
 	if err != nil {
 		return nil, err
 	}
+	m.kick(notified)
 	m.apply(ctx)
 	st := maintenance.FromDomain(*saved)
 	status := st.Status(m.svc.Now())
@@ -346,6 +359,7 @@ func (m *Maintenance) end(ctx context.Context, t maintenanceTarget) error {
 		return domain.NewErrorNotFound("no maintenance window")
 	}
 	t.fill(existing)
+	notified := false
 	err = auditedWrite(ctx, m.audit, func(ctx context.Context) error {
 		deleted, err := m.repo.Delete(ctx, existing.ID)
 		if err != nil {
@@ -354,14 +368,15 @@ func (m *Maintenance) end(ctx context.Context, t maintenanceTarget) error {
 		if !deleted {
 			return domain.NewErrorNotFound("no maintenance window")
 		}
-		_, err = m.announce(ctx, t, MaintenanceNoticeFinished, *existing)
+		notified, err = m.announce(ctx, t, MaintenanceNoticeFinished, *existing)
 		return err
 	}, func() *domain.AuditEntry {
-		return m.auditEntry(domain.AuditMaintenanceEnded, t, *existing)
+		return m.auditEntry(domain.AuditMaintenanceEnded, t, *existing, notified)
 	})
 	if err != nil {
 		return err
 	}
+	m.kick(notified)
 	m.apply(ctx)
 	return nil
 }
@@ -421,21 +436,30 @@ func (m *Maintenance) announce(ctx context.Context, t maintenanceTarget, notice 
 	default:
 		recipients, err = m.repo.RecipientsServer(ctx)
 	}
-	if err != nil {
+	if err != nil || len(recipients) == 0 {
 		return false, err
 	}
-	if err := m.mailer.Announce(ctx, notice, w, recipients); err != nil {
-		return false, err
+	a := MaintenanceAnnouncement{Notice: notice, Window: w, Recipients: recipients}
+	if t.org != nil {
+		a.OrgName = t.org.Name
 	}
-	return true, nil
+	n, err := m.mailer.Announce(ctx, a)
+	return n > 0, err
 }
 
-func (m *Maintenance) auditEntry(action string, t maintenanceTarget, w domain.MaintenanceWindow) *domain.AuditEntry {
+func (m *Maintenance) kick(notified bool) {
+	if notified {
+		m.mailer.Kick()
+	}
+}
+
+func (m *Maintenance) auditEntry(action string, t maintenanceTarget, w domain.MaintenanceWindow, notified bool) *domain.AuditEntry {
 	metadata := map[string]any{
 		"scope":     string(t.scope),
 		"mode":      w.Mode,
 		"starts_at": w.StartsAt.UTC().Format(time.RFC3339),
 		"notify":    w.Notify,
+		"notified":  notified,
 	}
 	if w.EndsAt != nil {
 		metadata["ends_at"] = w.EndsAt.UTC().Format(time.RFC3339)

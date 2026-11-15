@@ -44,6 +44,7 @@ func e2eMaintenanceOpener(cfg *config.Config) (serverusecase.Repositories, *sql.
 		PBAC:        sqlite.NewPBACRepository(conn),
 		Audit:       sqlite.NewAuditRepository(conn),
 		Maintenance: sqlite.NewMaintenanceRepository(conn),
+		Email:       sqlite.NewEmailRepository(conn),
 	}, conn, nil
 }
 

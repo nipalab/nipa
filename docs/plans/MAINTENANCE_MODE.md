@@ -6,7 +6,9 @@ Handoff notes for the implementing session:
 - Decisions taken with the user (2026-11-14): no admin bypass, manual end only, Paddle webhooks
   refused, email announcement and per-org and per-project scope in scope, a `frozen` mode for moving the
   database, engine plugins and an upgrade.sh flag out of scope.
-- One point still to confirm: the announcement email ignores `notify_email` (like the MFA notice).
+- Pending user confirmation (PR 5 defaults): the announcement email ignores `notify_email`;
+  org-wide admins get org emails even when the org has no project; `nipad maintenance set
+  --notify` queues the rows itself for the running server to send.
 -->
 
 # Maintenance mode: design and implementation plan
@@ -434,8 +436,8 @@ moved between orgs (if that ever exists) is still matched correctly.
   `MaintenanceRecipientsProject`: live, verified users; a project admin is a user or group
   member with a root (`path_prefix = ''`) rule carrying `PermissionAdmin` on the project or
   org-wide in its org (deleted groups ignored). The org query takes the org's owners plus the
-  admins of any live project in the org. An org-wide admin rule therefore only counts while the org
-  has at least one live project.
+  admins of any live project in the org, plus org-wide admins even when the org has no live
+  project (changed in PR 5).
 - Run `make sqlc` afterwards.
 
 ### 5.3 Repository
@@ -559,7 +561,7 @@ only be set from PR 4 on.
 | 2 | Add maintenance admin API and `nipad maintenance` command (done) | 1 | windows can be set and read; nothing enforced |
 | 3 | Enforce read-only and closed maintenance (done) | 2 | `read_only`/`full` block requests |
 | 4 | Add frozen maintenance for database moves (done) | 3 | `frozen` mode; sessions kept by the CLI and SPA |
-| 5 | Email maintenance announcements | 2 | `notify` sends mail |
+| 5 | Email maintenance announcements (done) | 2 | `notify` sends mail |
 | 6 | Show maintenance in the CLI, daemon and MCP | 3 | clear errors, no retries, status lines, daemon event |
 | 7 | Show maintenance in the web UI | 3 | banner, closed page, admin page, org and project tabs |
 | 8 | Show maintenance in the desktop app | 6 | banner, disabled actions, notification |
@@ -689,6 +691,42 @@ Done. As built, it differs from the sections above in these points:
 ### PR 5: email announcements
 
 Phase 6 below.
+
+Done. As built, it differs from the sections above in these points:
+
+- The implementation is `usecase.MaintenanceEmailer` (`maintenance_notify.go`);
+  `MaintenanceMailer` stays the seam, now `Announce(ctx, MaintenanceAnnouncement{Notice,
+  Window, OrgName, Recipients}) (int, error)` plus `Kick()`, which the usecase calls after
+  the commit. `notified` (answer and audit metadata) is true only when at least one message
+  was queued: false without a mailer (`EMAIL_SENDER=off`), without `notify`, or when no
+  recipient has a valid address.
+- Event names are `maintenance.scheduled|updated|finished` instead of one `maintenance`
+  event. "Scheduled" is also sent when an existing window is announced for the first time
+  (it was stored without `notify`), and its subject says "started" when the window is
+  already active. "Finished" is sent when the window was last stored with `notify`.
+- Recipients are deduplicated by user id and address (case-insensitive) and invalid
+  addresses dropped in the mailer; there is no fan-out cap. Org-wide admins (direct or
+  group rules) now receive org emails even when the org has no live project
+  (`MaintenanceRecipientsOrg` rewritten in both dialects).
+- The body lists the scope, the mode in words, start and estimated end in UTC (with the
+  note that the end is an estimate and maintenance ends manually) and the message; it does
+  not list per-mode capabilities beyond the one-line mode text. Links: `EMAIL_BASE_URL/`,
+  `/<org>` or `/<org>/<project>`.
+- `nipad maintenance set --notify` queues the rows in the window's transaction when the
+  loaded config has a sender (`mail.NewFromConfig` non-nil) and the opener sets
+  `Repositories.Email` (both mains do now); it cannot kick, so the running server sends
+  them on its next email poll. A misconfigured sender only prints a warning.
+- Frozen: the dispatcher is paused, so rows queued for an active frozen window go out when
+  it ends; the command prints a note. The runbook announces a move by scheduling the
+  window ahead (`--start`), which mails before it activates.
+- Three defaults are pending user confirmation: `notify_email` is ignored; org-wide admins
+  count without projects; the CLI writes the outbox rows itself. Flipping the first is
+  `AND u.notify_email = true` in the three recipient queries, the second a revert of the org
+  query, the third dropping the mailer in `openMaintenance`.
+- Tests: gomock usecase and mailer tests, recipient repository tests in both dialects,
+  `internal/e2e` (server/org/project recipients, threading, notify off, and a CLI-queued
+  row sent by the server's dispatcher) and the `serverapp` command test. The `tests/suite`
+  receiver spec (both editions) was not added.
 
 ### PR 6: CLI, daemon and MCP
 

@@ -356,6 +356,7 @@ func openMaintenanceDB(cfg *config.Config) (usecase.Repositories, *sql.DB, error
 		PBAC:        postgres.NewPBACRepository(conn),
 		Audit:       postgres.NewAuditRepository(conn),
 		Maintenance: postgres.NewMaintenanceRepository(conn),
+		Email:       postgres.NewEmailRepository(conn),
 	}, conn, nil
 }
 

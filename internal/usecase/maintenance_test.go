@@ -284,7 +284,7 @@ func TestMaintenance_SetProject(t *testing.T) {
 		f := newMaintFixture(t)
 		f.uc.WithMailer(f.mailer)
 		start := maintNow.Add(2 * time.Hour)
-		existing := &domain.MaintenanceWindow{ID: 50, ProjectID: domain.IDPtr(maintProject.ID), Mode: "full", StartsAt: start, CreatedBy: 3}
+		existing := &domain.MaintenanceWindow{ID: 50, ProjectID: domain.IDPtr(maintProject.ID), Mode: "full", StartsAt: start, CreatedBy: 3, Notify: true}
 		recipients := []domain.MaintenanceRecipient{{UserID: 3, Email: "o@example.com"}}
 		f.resolver.EXPECT().ResolveBySlug(gomock.Any(), "acme", "game").Return(maintOrg, maintProject, nil)
 		f.orgs.EXPECT().IsOrgOwner(gomock.Any(), maintOrg.ID).Return(true, nil)
@@ -295,12 +295,15 @@ func TestMaintenance_SetProject(t *testing.T) {
 			return &w, nil
 		})
 		f.repo.EXPECT().RecipientsProject(gomock.Any(), maintProject.ID).Return(recipients, nil)
-		f.mailer.EXPECT().Announce(gomock.Any(), MaintenanceNoticeUpdated, gomock.Any(), recipients).DoAndReturn(
-			func(_ context.Context, _ MaintenanceNotice, w domain.MaintenanceWindow, _ []domain.MaintenanceRecipient) error {
-				require.Equal(t, "acme", w.OrgSlug)
-				require.Equal(t, "game", w.ProjectSlug)
-				return nil
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, a MaintenanceAnnouncement) (int, error) {
+				require.Equal(t, MaintenanceNoticeUpdated, a.Notice)
+				require.Equal(t, recipients, a.Recipients)
+				require.Equal(t, "acme", a.Window.OrgSlug)
+				require.Equal(t, "game", a.Window.ProjectSlug)
+				return 1, nil
 			})
+		f.mailer.EXPECT().Kick()
 		f.expectList(domain.MaintenanceWindow{ID: 50, ProjectID: domain.IDPtr(maintProject.ID), OrgSlug: "acme", ProjectSlug: "game", Mode: "read_only", StartsAt: maintNow})
 		st, err := f.uc.SetProject(permissionCtx(3), "acme", "game", MaintenanceInput{Mode: "read_only", Notify: true})
 		require.NoError(t, err)
@@ -359,8 +362,8 @@ func TestMaintenance_WriteFailures(t *testing.T) {
 		f.uc.WithMailer(f.mailer)
 		f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
 		f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
-		f.repo.EXPECT().RecipientsServer(gomock.Any()).Return(nil, nil)
-		f.mailer.EXPECT().Announce(gomock.Any(), MaintenanceNoticeScheduled, gomock.Any(), gomock.Any()).Return(errors.New("smtp"))
+		f.repo.EXPECT().RecipientsServer(gomock.Any()).Return([]domain.MaintenanceRecipient{{UserID: 1, Email: "a@example.com"}}, nil)
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).Return(0, errors.New("smtp"))
 		_, err := f.uc.SetServer(superCtx(), MaintenanceInput{Mode: "full", Notify: true})
 		require.EqualError(t, err, "smtp")
 	})
@@ -409,11 +412,16 @@ func TestMaintenance_End(t *testing.T) {
 		f.resolver.EXPECT().ResolveOrg(gomock.Any(), "acme").Return(maintOrg, nil)
 		f.repo.EXPECT().GetOrg(gomock.Any(), maintOrg.ID).Return(&domain.MaintenanceWindow{ID: 2, OrgID: domain.IDPtr(maintOrg.ID), Mode: "full", StartsAt: maintNow, EndsAt: &end, Notify: true}, nil)
 		f.repo.EXPECT().Delete(gomock.Any(), snow.ID(2)).Return(true, nil)
-		f.repo.EXPECT().RecipientsOrg(gomock.Any(), maintOrg.ID).Return(nil, nil)
-		f.mailer.EXPECT().Announce(gomock.Any(), MaintenanceNoticeFinished, gomock.Any(), gomock.Any()).Return(nil)
+		f.repo.EXPECT().RecipientsOrg(gomock.Any(), maintOrg.ID).Return([]domain.MaintenanceRecipient{{UserID: 1, Email: "a@example.com"}}, nil)
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, a MaintenanceAnnouncement) (int, error) {
+			require.Equal(t, MaintenanceNoticeFinished, a.Notice)
+			return 1, nil
+		})
+		f.mailer.EXPECT().Kick()
 		f.expectList()
 		require.NoError(t, f.uc.EndOrg(superCtx(), "acme"))
 		entry := f.rec.only(t)
+		require.Equal(t, true, entry.Metadata["notified"])
 		require.Equal(t, domain.AuditMaintenanceEnded, entry.Action)
 		require.Equal(t, end.Format(time.RFC3339), entry.Metadata["ends_at"])
 	})
@@ -552,5 +560,86 @@ func TestMaintenance_Statuses(t *testing.T) {
 		f.perm.EXPECT().HasProjectAccess(gomock.Any(), maintProject.ID, domain.PermissionRead).Return(false)
 		_, err := f.uc.ProjectStatus(permissionCtx(3), "acme", "game")
 		requireCode(t, err, 403)
+	})
+}
+
+func TestMaintenance_Announcements(t *testing.T) {
+	recipients := []domain.MaintenanceRecipient{{UserID: 1, Email: "a@example.com"}}
+	t.Run("notify false never looks up recipients", func(t *testing.T) {
+		f := newMaintFixture(t)
+		f.uc.WithMailer(f.mailer)
+		f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
+		f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
+		f.expectList()
+		st, err := f.uc.SetServer(superCtx(), MaintenanceInput{Mode: "full"})
+		require.NoError(t, err)
+		require.False(t, *st.Notified)
+		require.Equal(t, false, f.rec.only(t).Metadata["notified"])
+	})
+	t.Run("no recipients queues nothing", func(t *testing.T) {
+		f := newMaintFixture(t)
+		f.uc.WithMailer(f.mailer)
+		f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
+		f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
+		f.repo.EXPECT().RecipientsServer(gomock.Any()).Return(nil, nil)
+		f.expectList()
+		st, err := f.uc.SetServer(superCtx(), MaintenanceInput{Mode: "full", Notify: true})
+		require.NoError(t, err)
+		require.False(t, *st.Notified)
+	})
+	t.Run("nothing deliverable is not notified and not kicked", func(t *testing.T) {
+		f := newMaintFixture(t)
+		f.uc.WithMailer(f.mailer)
+		f.repo.EXPECT().GetServer(gomock.Any()).Return(nil, notFound())
+		f.repo.EXPECT().UpsertServer(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
+		f.repo.EXPECT().RecipientsServer(gomock.Any()).Return(recipients, nil)
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).Return(0, nil)
+		f.expectList()
+		st, err := f.uc.SetServer(superCtx(), MaintenanceInput{Mode: "full", Notify: true})
+		require.NoError(t, err)
+		require.False(t, *st.Notified)
+	})
+	t.Run("org window carries the org name and kicks after the commit", func(t *testing.T) {
+		f := newMaintFixture(t)
+		committed := false
+		f.uc.WithAudit(&commitRecorder{captureRecorder: f.rec, committed: &committed}).WithMailer(f.mailer)
+		org := &domain.Organization{ID: maintOrg.ID, Slug: "acme", Name: "Acme Games"}
+		f.resolver.EXPECT().ResolveOrg(gomock.Any(), "acme").Return(org, nil)
+		f.repo.EXPECT().GetOrg(gomock.Any(), org.ID).Return(&domain.MaintenanceWindow{ID: 5, OrgID: domain.IDPtr(org.ID), Mode: "full", StartsAt: maintNow}, nil)
+		f.repo.EXPECT().UpsertOrg(gomock.Any(), gomock.Any()).DoAndReturn(echoUpsert)
+		f.repo.EXPECT().RecipientsOrg(gomock.Any(), org.ID).Return(recipients, nil)
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, a MaintenanceAnnouncement) (int, error) {
+			require.False(t, committed)
+			require.Equal(t, MaintenanceNoticeScheduled, a.Notice, "a window announced for the first time is scheduled")
+			require.Equal(t, "Acme Games", a.OrgName)
+			require.Equal(t, "acme", a.Window.OrgSlug)
+			return 1, nil
+		})
+		f.mailer.EXPECT().Kick().Do(func() { require.True(t, committed) })
+		f.expectList()
+		st, err := f.uc.SetOrg(superCtx(), "acme", MaintenanceInput{Mode: "read_only", Notify: true})
+		require.NoError(t, err)
+		require.True(t, *st.Notified)
+		entry := f.rec.only(t)
+		require.Equal(t, domain.AuditMaintenanceUpdated, entry.Action)
+		require.Equal(t, true, entry.Metadata["notified"])
+	})
+	t.Run("ending a window without notify sends nothing", func(t *testing.T) {
+		f := newMaintFixture(t)
+		f.uc.WithMailer(f.mailer)
+		f.repo.EXPECT().GetServer(gomock.Any()).Return(&domain.MaintenanceWindow{ID: 1, Mode: "full"}, nil)
+		f.repo.EXPECT().Delete(gomock.Any(), snow.ID(1)).Return(true, nil)
+		f.expectList()
+		require.NoError(t, f.uc.EndServer(superCtx()))
+		require.Equal(t, false, f.rec.only(t).Metadata["notified"])
+	})
+	t.Run("a failed end announcement rolls back", func(t *testing.T) {
+		f := newMaintFixture(t)
+		f.uc.WithMailer(f.mailer)
+		f.repo.EXPECT().GetServer(gomock.Any()).Return(&domain.MaintenanceWindow{ID: 1, Mode: "full", Notify: true}, nil)
+		f.repo.EXPECT().Delete(gomock.Any(), snow.ID(1)).Return(true, nil)
+		f.repo.EXPECT().RecipientsServer(gomock.Any()).Return(recipients, nil)
+		f.mailer.EXPECT().Announce(gomock.Any(), gomock.Any()).Return(0, errors.New("outbox"))
+		require.EqualError(t, f.uc.EndServer(superCtx()), "outbox")
 	})
 }

@@ -120,6 +120,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		).WithKicker(deps.EmailDispatcher))
 		orgInvitationUsecase = orgInvitationUsecase.WithOutbox(repos.Email, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher)
 		mfaUsecase = mfaUsecase.WithNotifier(usecase.NewMFAMailer(repos.Email, node, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher))
+		maintenanceUsecase.WithMailer(usecase.NewMaintenanceEmailer(repos.Email, node, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher))
 		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
 
