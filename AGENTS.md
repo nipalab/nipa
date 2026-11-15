@@ -2117,8 +2117,11 @@ and `nipa mcp` stay silent.
   (project write; refs carry `hash` + exact `size_bytes`) and
   `GetChunkDownloadUrls` (`commit_ids` + optional `paths` prefixes + `hashes`;
   the visible set is the union of the referenced commit trees narrowed by the
-  prefixes — `Branch.VisibleChunks(projectID, commitIDs, paths)` — and requested
-  hashes are filtered against it first) return one
+  prefixes — `Branch.VisibleChunks(projectID, commitIDs, paths)`, cached per
+  caller, project, commits and paths in `visibleChunkCache` (2 min idle TTL,
+  2M hashes, one walk for concurrent misses) so a clone's download windows walk
+  the trees once; a path rule change reaches them after the TTL, project access
+  is checked on every call — and requested hashes are filtered against it first) return one
   page of signed paths built by `internal/chunkurl` (`/api/chunks/{org}/{project}/{hash}
   ?op=put|get&size=&exp=&sig=`, HMAC-SHA256 with `CHUNK_URL_SIGNING_KEY`,
   constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s) — or

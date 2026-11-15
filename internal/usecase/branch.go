@@ -69,6 +69,7 @@ type Branch struct {
 	mergeCommitter mergeCommitter
 	chunkUploads   chunkUploader
 	audit          AuditRecorder
+	visible        *visibleChunkCache
 }
 
 // WithAudit records branch protection changes.
@@ -88,6 +89,7 @@ func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode s
 		permUc:     permUc,
 		branchRepo: branchRepo,
 		snowNode:   snowNode,
+		visible:    newVisibleChunkCache(visibleChunksTTL, visibleChunksMaxHashes, time.Now),
 	}
 }
 
@@ -732,11 +734,24 @@ func (b *Branch) EnsureProjectAccess(ctx context.Context, projectID snow.ID, per
 
 // VisibleChunks returns the deduplicated chunk hashes of every readable file
 // across the given commits, narrowed by paths. The result is sorted so callers
-// can binary-search it.
+// can binary-search it, and shared with other callers, so it must not be
+// modified. Answers are cached per caller for the download windows of one
+// clone, so a path rule change reaches them after visibleChunksTTL.
 func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok || b.visible == nil {
+		return b.visibleChunks(ctx, projectID, commitIDs, paths)
+	}
+	key := visibleChunksKey(claim, projectID, commitIDs, paths)
+	return b.visible.get(key, func() ([]domain.Hash, error) {
+		return b.visibleChunks(ctx, projectID, commitIDs, paths)
+	})
+}
+
+func (b *Branch) visibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
 	if len(commitIDs) == 0 {
 		return nil, domain.NewErrorUser("at least one commit id is required")
 	}
