@@ -937,7 +937,14 @@ runs a transaction and an outbox write), `register` and `register/resend` are
 throttled per email (`register_email`; a throttled call answers 429 and sends
 nothing, counted whether or not an account exists), and password login spends a hash comparison on unknown
 emails and on accounts without a password so timing does not reveal
-registrations or OAuth-only accounts. Both flows end on the SPA `/onboarding` step
+registrations or OAuth-only accounts. With `REGISTRATION_ENABLED=false` only invited addresses (pending org
+invitation or a super-admin `signup_invites` row) get an account; the others
+join `signup_waitlist` through `registration.Waitlist` (one "on the waitlist"
+email per address, social sign-up redirects with `oauth_error=waitlisted`),
+and super admins page `GET /admin/waitlist`, delete entries and
+`POST /admin/waitlist/notify` the oldest unnotified addresses without an
+account (allowlisted while invite-only, then emailed a `/register` link).
+Both flows end on the SPA `/onboarding` step
 (workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
 `/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
 the client side, and `GET /api/v1/auth/capabilities` (registered by

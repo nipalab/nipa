@@ -267,6 +267,11 @@ type Querier interface {
 	SignupInviteDelete(ctx context.Context, id int64) (int64, error)
 	SignupInviteList(ctx context.Context) ([]SignupInvite, error)
 	SignupInviteUpsert(ctx context.Context, arg SignupInviteUpsertParams) (SignupInvite, error)
+	SignupWaitlistDelete(ctx context.Context, id int64) (int64, error)
+	SignupWaitlistJoin(ctx context.Context, arg SignupWaitlistJoinParams) (int64, error)
+	SignupWaitlistList(ctx context.Context, arg SignupWaitlistListParams) ([]SignupWaitlist, error)
+	SignupWaitlistMarkNotified(ctx context.Context, arg SignupWaitlistMarkNotifiedParams) error
+	SignupWaitlistPending(ctx context.Context, limit int64) ([]SignupWaitlist, error)
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)

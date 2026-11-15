@@ -23,6 +23,7 @@ type Handler struct {
 	providers func() []string
 	billing   *BillingCapabilities
 	invites   *SignupInvites
+	waitlist  *Waitlist
 }
 
 // BillingCapabilities tells the SPA which billing provider runs and which
@@ -164,6 +165,9 @@ func RegisterRoutes(ws *restful.WebService, h *Handler) {
 	tags := []string{"Auth"}
 	if h.invites != nil {
 		registerSignupInviteRoutes(ws, h)
+	}
+	if h.waitlist != nil {
+		registerWaitlistRoutes(ws, h)
 	}
 
 	ws.Route(

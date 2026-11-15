@@ -289,7 +289,10 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	transactor := dbtx.NewTransactor(dbConn)
 
 	invitations := postgres.NewOrgInvitationRepository(dbConn)
-	signupInvites := registration.NewSignupInvites(postgres.NewSignupInviteRepository(dbConn), transactor, snowUser).WithAudit(audit)
+	signupInviteRepo := postgres.NewSignupInviteRepository(dbConn)
+	signupInvites := registration.NewSignupInvites(signupInviteRepo, transactor, snowUser).WithAudit(audit)
+	waitlist := registration.NewWaitlist(postgres.NewSignupWaitlistRepository(dbConn), transactor, snowUser, cfg.EmailBaseURL).
+		WithAudit(audit).WithInvites(signupInviteRepo, !cfg.RegistrationEnabled)
 	invited := func(ctx context.Context, email string) (bool, error) {
 		if allowed, err := signupInvites.Allowed(ctx, email); err != nil || allowed {
 			return allowed, err
@@ -302,10 +305,12 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		BaseURL:        cfg.EmailBaseURL,
 		InviteOnly:     !cfg.RegistrationEnabled,
 		Invited:        invited,
-	}).WithAudit(audit).WithTermsVersion(termsSource.Version).WithLimiter(limiter)
-	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities).WithSignupInvites(signupInvites)
+	}).WithAudit(audit).WithTermsVersion(termsSource.Version).WithLimiter(limiter).WithWaitlist(waitlist)
+	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities).
+		WithSignupInvites(signupInvites).WithWaitlist(waitlist)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)
+		waitlist.WithMailer(emailRepository, emailDispatcher)
 	} else {
 		slog.Warn("SAAS_MODE with EMAIL_SENDER=off: confirmation emails will not be sent")
 	}
@@ -337,6 +342,9 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		InviteOnly:     !cfg.RegistrationEnabled,
 		Invited:        invited,
+		Waitlist: func(ctx context.Context, name, email string) error {
+			return waitlist.Join(ctx, name, email, registration.WaitlistSourceOAuth)
+		},
 	}).WithAudit(audit).WithTermsVersion(termsSource.Version)
 	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
 	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)

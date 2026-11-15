@@ -470,13 +470,9 @@ func TestVerificationURLUsesTheBaseURL(t *testing.T) {
 }
 
 func TestMessageHostFallsBackWithoutABaseURL(t *testing.T) {
-	env := newRegistrationEnv(t)
-
-	require.Equal(t, "nipa.example.com", env.registration.messageHost())
-	env.registration.cfg.BaseURL = ""
-	require.Equal(t, "nipa.local", env.registration.messageHost())
-	env.registration.cfg.BaseURL = "://invalid"
-	require.Equal(t, "nipa.local", env.registration.messageHost())
+	require.Equal(t, "nipa.example.com", messageHost("https://nipa.example.com"))
+	require.Equal(t, "nipa.local", messageHost(""))
+	require.Equal(t, "nipa.local", messageHost("://invalid"))
 }
 
 func tokenFromBody(t *testing.T, body string) string {

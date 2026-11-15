@@ -451,6 +451,15 @@ type SignupInvite struct {
 	ExpiresAt sql.NullTime `json:"expires_at"`
 }
 
+type SignupWaitlist struct {
+	ID         int64        `json:"id"`
+	Email      string       `json:"email"`
+	Name       string       `json:"name"`
+	Source     string       `json:"source"`
+	CreatedAt  time.Time    `json:"created_at"`
+	NotifiedAt sql.NullTime `json:"notified_at"`
+}
+
 type SnowflakeNodeLease struct {
 	NodeID     int64     `json:"node_id"`
 	Holder     string    `json:"holder"`
