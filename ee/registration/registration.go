@@ -187,8 +187,12 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 	case !domain.IsErrorNotFound(err):
 		return err
 	}
-	if err := r.requireInvite(ctx, email); err != nil {
+	invited, err := r.invited(ctx, email)
+	if err != nil {
 		return err
+	}
+	if !invited {
+		return r.declineUninvited(ctx)
 	}
 	token, tokenHash, err := newVerificationToken()
 	if err != nil {
@@ -462,18 +466,21 @@ func recordSignup(ctx context.Context, rec usecase.AuditRecorder, user *domain.U
 	return rec.Record(ctx, entry)
 }
 
-func (r *Registration) requireInvite(ctx context.Context, email string) error {
+func (r *Registration) invited(ctx context.Context, email string) (bool, error) {
 	if !r.cfg.InviteOnly {
-		return nil
+		return true, nil
 	}
-	if r.cfg.Invited != nil {
-		invited, err := r.cfg.Invited(ctx, email)
-		if err != nil {
-			return err
-		}
-		if invited {
-			return nil
-		}
+	if r.cfg.Invited == nil {
+		return false, nil
 	}
-	return domain.NewErrorForbidden("registration is by invitation only")
+	return r.cfg.Invited(ctx, email)
+}
+
+// declineUninvited answers like a signup without creating or mailing anything,
+// so the response does not reveal which addresses are registered or invited.
+func (r *Registration) declineUninvited(ctx context.Context) error {
+	now := r.now()
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return r.repo.DeleteExpiredEmailVerifications(ctx, now)
+	})
 }

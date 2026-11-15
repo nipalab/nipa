@@ -549,9 +549,10 @@ func TestRegisterInviteOnly(t *testing.T) {
 		env.registration.cfg.Invited = check
 
 		err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
-		require.Error(t, err)
+		require.NoError(t, err, "the response must not reveal whether the address is invited")
 		require.Empty(t, env.repo.created)
 		require.Empty(t, env.outbox.deliveries)
+		require.Equal(t, 1, env.repo.expiredSweeps)
 		require.True(t, env.registration.InviteOnly())
 	})
 
@@ -568,7 +569,8 @@ func TestRegisterInviteOnly(t *testing.T) {
 		env := newRegistrationEnv(t)
 		env.registration.cfg.InviteOnly = true
 
-		require.Error(t, env.registration.Register(context.Background(), "Bob", "bob@example.com", false))
+		require.NoError(t, env.registration.Register(context.Background(), "Bob", "bob@example.com", false))
+		require.Empty(t, env.repo.created)
 	})
 
 	t.Run("checker errors pass through", func(t *testing.T) {

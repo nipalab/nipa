@@ -13,7 +13,7 @@ The free `nipad` never registers these routes, so every endpoint below answers
 
 | Env | Meaning |
 |---|---|
-| `REGISTRATION_ENABLED` | default `true`; `false` limits new accounts (register and social) to emails with a pending org invitation, others get 403 `registration is by invitation only` / `oauth_error=registration_closed`; `/auth/capabilities` reports `invite_only` |
+| `REGISTRATION_ENABLED` | default `true`; `false` limits new accounts (register and social) to emails with a pending org invitation, other addresses get the usual 202 with no account or email (no existence oracle); social sign-up redirects with `oauth_error=registration_closed`; `/auth/capabilities` reports `invite_only` |
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
 | `SAAS_TERMS_URL` | JSON document the website publishes with the current terms version (`https://nipalab.com/legal.json` → `{"version":"2026-11-10"}`); fetched at startup and every 15 minutes, a failed fetch keeps the last good version |
