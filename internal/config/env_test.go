@@ -3,8 +3,10 @@ package config
 import (
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,4 +119,12 @@ func TestEnvKeys(t *testing.T) {
 		} `mapstructure:"F"`
 	}{}))
 	require.Equal(t, []string{"A", "E", "F.G"}, keys)
+}
+
+func TestEnvKeyReplacerMapsNestedKeys(t *testing.T) {
+	v := viper.New()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	require.NoError(t, v.BindEnv("F.G"))
+	t.Setenv("F_G", "7")
+	require.Equal(t, 7, v.GetInt("F.G"))
 }

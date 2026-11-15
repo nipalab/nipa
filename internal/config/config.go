@@ -208,6 +208,7 @@ func LoadConfig() (*Config, error) {
 	v.SetConfigType("env")
 	_ = v.MergeInConfig()
 
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	for _, key := range envKeys(reflect.TypeOf(Config{})) {
 		if err := v.BindEnv(key); err != nil {
