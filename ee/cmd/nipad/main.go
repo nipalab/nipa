@@ -288,9 +288,16 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	registrationRepo := postgres.NewRegistrationRepository(dbConn)
 	transactor := dbtx.NewTransactor(dbConn)
 
+	invitations := postgres.NewOrgInvitationRepository(dbConn)
+	invited := func(ctx context.Context, email string) (bool, error) {
+		pending, err := invitations.ListPendingByEmail(ctx, strings.ToLower(strings.TrimSpace(email)), time.Now())
+		return len(pending) > 0, err
+	}
 	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
+		InviteOnly:     !cfg.RegistrationEnabled,
+		Invited:        invited,
 	}).WithAudit(audit).WithTermsVersion(termsSource.Version).WithLimiter(limiter)
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
@@ -324,6 +331,8 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	})
 	oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
+		InviteOnly:     !cfg.RegistrationEnabled,
+		Invited:        invited,
 	}).WithAudit(audit).WithTermsVersion(termsSource.Version)
 	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
 	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)

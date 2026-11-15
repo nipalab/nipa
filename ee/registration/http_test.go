@@ -264,3 +264,12 @@ func TestVerifyEndpointRejectsOverlongPassword(t *testing.T) {
 	require.Contains(t, body, "at most 72 bytes")
 	require.Contains(t, server.env.repo.verifications, snow.ID(42), "the link stays usable")
 }
+
+func TestCapabilitiesReportsInviteOnly(t *testing.T) {
+	server := newRegistrationServer(t, nil)
+	server.env.registration.cfg.InviteOnly = true
+
+	resp, body := server.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.JSONEq(t, `{"registration": true, "invite_only": true, "providers": []}`, body)
+}

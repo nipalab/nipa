@@ -49,6 +49,8 @@ type transactor interface {
 type Config struct {
 	FreeQuotaBytes int64
 	TermsVersion   string
+	InviteOnly     bool
+	Invited        func(ctx context.Context, email string) (bool, error)
 }
 
 // OAuth runs social login and signup: it resolves the provider profile to a
@@ -202,6 +204,18 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding 
 	}
 	if !domain.IsErrorNotFound(err) {
 		return "", false, err
+	}
+
+	if o.cfg.InviteOnly {
+		invited := false
+		if o.cfg.Invited != nil {
+			if invited, err = o.cfg.Invited(ctx, profile.Email); err != nil {
+				return "", false, err
+			}
+		}
+		if !invited {
+			return withQueryParam(base, "oauth_error", "registration_closed"), false, nil
+		}
 	}
 
 	userID, err := o.createAccount(ctx, provider, profile, state)

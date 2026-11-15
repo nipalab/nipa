@@ -538,3 +538,52 @@ func requireTooManyRequests(t *testing.T, err error) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 429, domErr.Code)
 }
+
+func TestRegisterInviteOnly(t *testing.T) {
+	invited := map[string]bool{"bob@example.com": true}
+	check := func(_ context.Context, email string) (bool, error) { return invited[email], nil }
+
+	t.Run("rejects an address without an invitation", func(t *testing.T) {
+		env := newRegistrationEnv(t)
+		env.registration.cfg.InviteOnly = true
+		env.registration.cfg.Invited = check
+
+		err := env.registration.Register(context.Background(), "Alice", "alice@example.com", false)
+		require.Error(t, err)
+		require.Empty(t, env.repo.created)
+		require.Empty(t, env.outbox.deliveries)
+		require.True(t, env.registration.InviteOnly())
+	})
+
+	t.Run("allows an invited address", func(t *testing.T) {
+		env := newRegistrationEnv(t)
+		env.registration.cfg.InviteOnly = true
+		env.registration.cfg.Invited = check
+
+		require.NoError(t, env.registration.Register(context.Background(), "Bob", "bob@example.com", false))
+		require.Len(t, env.repo.created, 1)
+	})
+
+	t.Run("without a checker nobody is invited", func(t *testing.T) {
+		env := newRegistrationEnv(t)
+		env.registration.cfg.InviteOnly = true
+
+		require.Error(t, env.registration.Register(context.Background(), "Bob", "bob@example.com", false))
+	})
+
+	t.Run("checker errors pass through", func(t *testing.T) {
+		env := newRegistrationEnv(t)
+		env.registration.cfg.InviteOnly = true
+		env.registration.cfg.Invited = func(context.Context, string) (bool, error) { return false, errors.New("boom") }
+
+		require.EqualError(t, env.registration.Register(context.Background(), "Bob", "bob@example.com", false), "boom")
+	})
+
+	t.Run("an existing account is unaffected", func(t *testing.T) {
+		env := newRegistrationEnv(t)
+		env.registration.cfg.InviteOnly = true
+		env.users.users = []*domain.User{{ID: 7, Email: "alice@example.com", EmailVerified: true}}
+
+		require.NoError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com", false))
+	})
+}

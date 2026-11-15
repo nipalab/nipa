@@ -69,6 +69,7 @@ func (h *Handler) WithBilling(billing *BillingCapabilities) *Handler {
 
 type capabilitiesResponse struct {
 	Registration bool                 `json:"registration"`
+	InviteOnly   bool                 `json:"invite_only,omitempty"`
 	Providers    []string             `json:"providers"`
 	Billing      *BillingCapabilities `json:"billing,omitempty"`
 	Terms        *termsCapabilities   `json:"terms,omitempty"`
@@ -188,7 +189,7 @@ func (h *Handler) Capabilities(appCtx httpApp.AppContext) {
 	if providers == nil {
 		providers = []string{}
 	}
-	response := capabilitiesResponse{Registration: true, Providers: providers, Billing: h.billing}
+	response := capabilitiesResponse{Registration: true, InviteOnly: h.reg.InviteOnly(), Providers: providers, Billing: h.billing}
 	if version := h.reg.TermsVersion(); version != "" {
 		response.Terms = &termsCapabilities{Version: version}
 	}

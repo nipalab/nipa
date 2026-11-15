@@ -171,6 +171,8 @@ EMAIL_HTTP_BODY_TEMPLATE: ''
 # (the confirmation link) and a configured EMAIL_SENDER to deliver it. SaaS
 # mode also enables the cloud storage ledger (see STORAGE_LEDGER above).
 SAAS_MODE: false
+# false limits sign-up (register and social) to emails with a pending org invitation.
+REGISTRATION_ENABLED: true
 # Free-tier storage quota seeded for every self-registered account (bytes).
 SAAS_FREE_QUOTA_BYTES: 16106127360
 # Public base URL used to build OAuth callback URLs. Social login providers

@@ -13,6 +13,7 @@ export const OAUTH_SIGNIN_ERRORS: Record<string, string> = {
   email_required:
     'The provider did not share a verified email address. Verify an email with the provider or register with your email and password.',
   identity_taken: 'This provider account is already linked to another Nipa account.',
+  registration_closed: 'Sign-up is by invitation only. Use the email address your invitation was sent to.',
 }
 
 export const OAUTH_LINK_ERRORS: Record<string, string> = {
