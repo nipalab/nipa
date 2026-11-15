@@ -15,6 +15,8 @@ import (
 
 const visibleChunksTTL = 2 * time.Minute
 
+const visibleChunksComputeTimeout = 30 * time.Second
+
 // DefaultVisibleChunksCacheHashes bounds the chunk hashes the download
 // visibility cache keeps per server process (32 bytes each).
 const DefaultVisibleChunksCacheHashes = 2_000_000
@@ -93,7 +95,9 @@ func (c *visibleChunkCache) get(ctx context.Context, key string, compute func(co
 	c.entries[key] = e
 	c.mu.Unlock()
 
-	e.hashes, e.err = compute(context.WithoutCancel(ctx))
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), visibleChunksComputeTimeout)
+	e.hashes, e.err = compute(cctx)
+	cancel()
 	e.weight = len(e.hashes) + 1 + len(key)/32
 
 	c.mu.Lock()

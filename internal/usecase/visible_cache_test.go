@@ -237,3 +237,20 @@ func TestVisibleChunkCache_WaiterHonoursOwnContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	close(release)
 }
+
+func TestVisibleChunkCache_ComputeIsBoundedAndDetached(t *testing.T) {
+	c := newVisibleChunkCache(time.Minute, 100, time.Now)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var deadline time.Time
+	var hasDeadline bool
+	var ctxErr error
+	_, _ = c.get(ctx, "k", func(cctx context.Context) ([]domain.Hash, error) {
+		deadline, hasDeadline = cctx.Deadline()
+		ctxErr = cctx.Err()
+		return nil, nil
+	})
+	require.True(t, hasDeadline)
+	require.WithinDuration(t, time.Now().Add(visibleChunksComputeTimeout), deadline, 5*time.Second)
+	require.NoError(t, ctxErr)
+}
