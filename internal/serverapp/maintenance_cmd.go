@@ -111,7 +111,7 @@ func runMaintenanceCommand(ctx context.Context, cfg *config.Config, args []strin
 		return err
 	}
 
-	uc, closeDB, err := openMaintenance(ctx, cfg, open, out)
+	uc, closeDB, err := openMaintenance(ctx, cfg, open, out, sub == "end" || f.notify)
 	if err != nil {
 		return err
 	}
@@ -160,7 +160,7 @@ func runMaintenanceCommand(ctx context.Context, cfg *config.Config, args []strin
 	}
 }
 
-func openMaintenance(ctx context.Context, cfg *config.Config, open MaintenanceOpener, out io.Writer) (*usecase.Maintenance, func(), error) {
+func openMaintenance(ctx context.Context, cfg *config.Config, open MaintenanceOpener, out io.Writer, mailer bool) (*usecase.Maintenance, func(), error) {
 	repos, dbConn, err := open(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -182,7 +182,7 @@ func openMaintenance(ctx context.Context, cfg *config.Config, open MaintenanceOp
 	audit := usecase.NewAudit(repos.Audit, node, dbtx.NewTransactor(dbConn)).WithProjectOrgs(repos.PBAC)
 	uc := usecase.NewMaintenance(repos.Maintenance, usecase.NewCommon(repos.Org, repos.Project), nil, nil, svc, node).
 		WithAudit(audit).WithSystemActor()
-	if repos.Email != nil && emailEnabled(cfg, out) {
+	if mailer && repos.Email != nil && emailEnabled(cfg, out) {
 		uc.WithMailer(usecase.NewMaintenanceEmailer(repos.Email, node, cfg.EmailBaseURL))
 	}
 	return uc, closeDB, nil

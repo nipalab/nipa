@@ -287,4 +287,10 @@ func TestMaintenanceCommandNotify(t *testing.T) {
 	require.Contains(t, out, "warning: email disabled")
 	require.Contains(t, out, "notified: false")
 	require.Len(t, outboxRows(t, dsn), 3)
+
+	for _, args := range [][]string{{"status"}, {"set", "full", "--org", "default"}} {
+		out, err = runCmd(t, cfg, args...)
+		require.NoError(t, err)
+		require.NotContains(t, out, "email disabled", args[0])
+	}
 }
