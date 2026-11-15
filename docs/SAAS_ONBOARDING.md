@@ -13,6 +13,8 @@ The free `nipad` never registers these routes, so every endpoint below answers
 
 | Env | Meaning |
 |---|---|
+| `REGISTRATION_ENABLED` | default `true`; `false` limits new accounts (register and social) to emails with a pending org invitation, other addresses get the usual 202 with no account or email (no existence oracle); social sign-up redirects with `oauth_error=registration_closed`; `/auth/capabilities` reports `invite_only` |
+| `REGISTRATION_ENABLED=false` allowlist | a super admin allows single emails with `POST /api/v1/admin/signup-invites` `{"email","expires_in_days"?}` (0/absent = no expiry, max 365), lists with `GET` and revokes with `DELETE .../{id}`; an allowed email can register (email or social) and then creates its own org in onboarding, becoming its owner. Pending org invitations also allow sign-up. Stored in `signup_invites` (postgres `000010`), audited as `signup_invite.created/revoked` |
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
 | `SAAS_TERMS_URL` | JSON document the website publishes with the current terms version (`https://nipalab.com/legal.json` → `{"version":"2026-11-10"}`); fetched at startup and every 15 minutes, a failed fetch keeps the last good version |

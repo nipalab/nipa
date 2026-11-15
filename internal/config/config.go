@@ -64,6 +64,7 @@ type Config struct {
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
 	StorageLedgerDefaultQuotaBytes  int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
 	SaaSMode                        bool    `mapstructure:"SAAS_MODE"`
+	RegistrationEnabled             bool    `mapstructure:"REGISTRATION_ENABLED"`
 	SaasFreeQuotaBytes              int64   `mapstructure:"SAAS_FREE_QUOTA_BYTES"`
 	SaasTermsVersion                string  `mapstructure:"SAAS_TERMS_VERSION"`
 	SaasTermsURL                    string  `mapstructure:"SAAS_TERMS_URL"`
@@ -161,6 +162,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("MAINTENANCE_POLL_SECONDS", DefaultMaintenancePollSeconds)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
+	v.SetDefault("REGISTRATION_ENABLED", true)
 	v.SetDefault("ALLOW_INSECURE_DEV_SECRETS", false)
 	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_TERMS_VERSION", "")

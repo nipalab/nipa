@@ -263,6 +263,10 @@ type Querier interface {
 	SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error
 	SetOwnerQuotaOverride(ctx context.Context, arg SetOwnerQuotaOverrideParams) error
 	SetProjectUsage(ctx context.Context, projectID int64) error
+	SignupInviteAllowed(ctx context.Context, arg SignupInviteAllowedParams) (bool, error)
+	SignupInviteDelete(ctx context.Context, id int64) (int64, error)
+	SignupInviteList(ctx context.Context) ([]SignupInvite, error)
+	SignupInviteUpsert(ctx context.Context, arg SignupInviteUpsertParams) (SignupInvite, error)
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)

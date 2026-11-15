@@ -149,7 +149,7 @@ export default function LoginPage() {
 
       {capabilities?.registration && (
         <AuthAside>
-          New to Nipa?{' '}
+          {capabilities.invite_only ? 'Have an invitation?' : 'New to Nipa?'}{' '}
           <PrimerLink as={Link} to="/register" state={{ from }}>
             Create an account
           </PrimerLink>

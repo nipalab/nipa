@@ -706,3 +706,41 @@ func TestCallbackRecordsASystemAuditForNewAccounts(t *testing.T) {
 		require.Equal(t, "oauth:"+ProviderGitHub, rec.entries[0].Metadata["source"])
 	}
 }
+
+func TestCallbackInviteOnly(t *testing.T) {
+	run := func(t *testing.T, invited func(context.Context, string) (bool, error)) (*oauthEnv, string, error) {
+		env := newOAuthEnv(t)
+		env.oauth.cfg.InviteOnly = true
+		env.oauth.cfg.Invited = invited
+		env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true, Name: "Alice"}
+		state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding, "")
+		require.NoError(t, err)
+		target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		return env, target, err
+	}
+
+	t.Run("closed without an invitation", func(t *testing.T) {
+		env, target, err := run(t, func(context.Context, string) (bool, error) { return false, nil })
+		require.NoError(t, err)
+		require.Equal(t, "registration_closed", redirectQuery(t, target).Get("oauth_error"))
+		require.Empty(t, env.users.users)
+	})
+
+	t.Run("closed without a checker", func(t *testing.T) {
+		_, target, err := run(t, nil)
+		require.NoError(t, err)
+		require.Equal(t, "registration_closed", redirectQuery(t, target).Get("oauth_error"))
+	})
+
+	t.Run("open with an invitation", func(t *testing.T) {
+		env, target, err := run(t, func(context.Context, string) (bool, error) { return true, nil })
+		require.NoError(t, err)
+		require.Equal(t, "1", redirectQuery(t, target).Get("new"))
+		require.Len(t, env.users.users, 1)
+	})
+
+	t.Run("checker error", func(t *testing.T) {
+		_, _, err := run(t, func(context.Context, string) (bool, error) { return false, errors.New("boom") })
+		require.EqualError(t, err, "boom")
+	})
+}

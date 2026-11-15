@@ -62,6 +62,7 @@ export interface BillingCapabilities {
 
 export interface OnboardingCapabilities {
   registration: boolean
+  invite_only?: boolean
   providers: string[]
   billing?: BillingCapabilities
   terms?: { version: string }

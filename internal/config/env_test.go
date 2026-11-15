@@ -128,3 +128,11 @@ func TestEnvKeyReplacerMapsNestedKeys(t *testing.T) {
 	t.Setenv("F_G", "7")
 	require.Equal(t, 7, v.GetInt("F.G"))
 }
+
+func TestLoadConfig_RegistrationEnabled(t *testing.T) {
+	clearConfigEnv(t)
+	require.True(t, loadWithMinimalYAML(t).RegistrationEnabled)
+
+	t.Setenv("REGISTRATION_ENABLED", "false")
+	require.False(t, loadWithMinimalYAML(t).RegistrationEnabled)
+}

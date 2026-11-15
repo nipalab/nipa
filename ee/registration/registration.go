@@ -67,11 +67,17 @@ type transactor interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// Config carries the registration policy knobs.
+// InviteChecker reports whether an email address holds a pending invitation.
+type InviteChecker func(ctx context.Context, email string) (bool, error)
+
+// Config carries the registration policy knobs. InviteOnly closes open
+// sign-up: only addresses Invited reports as invited may create an account.
 type Config struct {
 	FreeQuotaBytes int64
 	BaseURL        string
 	TermsVersion   string
+	InviteOnly     bool
+	Invited        InviteChecker
 }
 
 // Registration runs the self-registration flow: it creates an inactive account,
@@ -154,6 +160,11 @@ func (r *Registration) WithMailer(outbox outbox, kicker dispatcherKicker) *Regis
 // and sets a password. An address that already has an account looks the same as
 // a new signup: an unconfirmed one is re-sent its link and a confirmed one gets
 // a notice instead, so both paths write and mail like a signup.
+// InviteOnly reports whether sign-up is limited to invited addresses.
+func (r *Registration) InviteOnly() bool {
+	return r.cfg.InviteOnly
+}
+
 func (r *Registration) Register(ctx context.Context, name, email string, acceptTerms bool) error {
 	name, email, err := usecase.ValidateUserIdentity(name, email)
 	if err != nil {
@@ -175,6 +186,13 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 		return r.reissue(ctx, existing)
 	case !domain.IsErrorNotFound(err):
 		return err
+	}
+	invited, err := r.invited(ctx, email)
+	if err != nil {
+		return err
+	}
+	if !invited {
+		return r.declineUninvited(ctx)
 	}
 	token, tokenHash, err := newVerificationToken()
 	if err != nil {
@@ -446,4 +464,23 @@ func recordSignup(ctx context.Context, rec usecase.AuditRecorder, user *domain.U
 		entry.Metadata["terms_version"] = termsVersion
 	}
 	return rec.Record(ctx, entry)
+}
+
+func (r *Registration) invited(ctx context.Context, email string) (bool, error) {
+	if !r.cfg.InviteOnly {
+		return true, nil
+	}
+	if r.cfg.Invited == nil {
+		return false, nil
+	}
+	return r.cfg.Invited(ctx, email)
+}
+
+// declineUninvited answers like a signup without creating or mailing anything,
+// so the response does not reveal which addresses are registered or invited.
+func (r *Registration) declineUninvited(ctx context.Context) error {
+	now := r.now()
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		return r.repo.DeleteExpiredEmailVerifications(ctx, now)
+	})
 }

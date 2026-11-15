@@ -51,6 +51,12 @@ export default function RegisterPage() {
         </Banner>
       )}
 
+      {capabilities?.invite_only && !sentTo && (
+        <Banner variant="info" title="Sign-up is by invitation only.">
+          Use the email address your invitation was sent to.
+        </Banner>
+      )}
+
       {sentTo ? (
         <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
           <Banner variant="success" title="Check your email">
