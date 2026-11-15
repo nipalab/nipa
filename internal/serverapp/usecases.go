@@ -78,7 +78,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	if repos.FileLockSerializer != nil {
 		fileLockUsecase = fileLockUsecase.WithSerializer(transactor, repos.FileLockSerializer)
 	}
-	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
+	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase).WithVisibleChunksCacheHashes(cfg.ChunkVisibilityCacheHashes)
 
 	mergeRequestUsecase := usecase.NewMergeRequest(repos.MergeRequest, repos.Branch, permissionUsecase, branchUsecase, node, transactor).
 		WithFileLocks(fileLockUsecase)

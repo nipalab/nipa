@@ -89,8 +89,17 @@ func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode s
 		permUc:     permUc,
 		branchRepo: branchRepo,
 		snowNode:   snowNode,
-		visible:    newVisibleChunkCache(visibleChunksTTL, visibleChunksMaxHashes, time.Now),
+		visible:    newVisibleChunkCache(visibleChunksTTL, DefaultVisibleChunksCacheHashes, time.Now),
 	}
+}
+
+// WithVisibleChunksCacheHashes overrides DefaultVisibleChunksCacheHashes;
+// zero or less keeps the default.
+func (b *Branch) WithVisibleChunksCacheHashes(n int) *Branch {
+	if n > 0 {
+		b.visible = newVisibleChunkCache(visibleChunksTTL, n, time.Now)
+	}
+	return b
 }
 
 // WithFileLocks enables the binary lock gate on this usecase.

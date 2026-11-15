@@ -12,10 +12,11 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-const (
-	visibleChunksTTL       = 2 * time.Minute
-	visibleChunksMaxHashes = 2_000_000
-)
+const visibleChunksTTL = 2 * time.Minute
+
+// DefaultVisibleChunksCacheHashes bounds the chunk hashes the download
+// visibility cache keeps per server process (32 bytes each).
+const DefaultVisibleChunksCacheHashes = 2_000_000
 
 type visibleEntry struct {
 	key    string

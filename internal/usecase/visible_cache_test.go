@@ -177,3 +177,10 @@ func TestBranch_VisibleChunks_ChecksAccessBeforeCache(t *testing.T) {
 	_, err = uc.VisibleChunks(ctx, 1, []string{snow.ID(1).Base36()}, nil)
 	require.True(t, domain.IsErrorNoPermission(err))
 }
+
+func TestBranch_WithVisibleChunksCacheHashes(t *testing.T) {
+	uc := NewBranch(nil, nil, nil)
+	require.Equal(t, DefaultVisibleChunksCacheHashes, uc.visible.maxHashes)
+	require.Equal(t, DefaultVisibleChunksCacheHashes, uc.WithVisibleChunksCacheHashes(0).visible.maxHashes)
+	require.Equal(t, 10, uc.WithVisibleChunksCacheHashes(10).visible.maxHashes)
+}
