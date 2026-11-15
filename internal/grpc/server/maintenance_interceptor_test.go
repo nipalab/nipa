@@ -48,17 +48,17 @@ func TestMethodClassesCoverServiceDesc(t *testing.T) {
 		require.True(t, described[method], "%s is classified but not served", method)
 	}
 	for method := range serverScopeOnly {
-		require.Contains(t, []maintenance.Class{read, write}, methodClass[method], method)
+		require.Contains(t, []maintenance.Class{maintenance.ClassRead, maintenance.ClassWrite}, methodClass[method], method)
 	}
 	require.Equal(t, maintenance.ClassWrite, classOf("/greet.NipaService/Unknown"))
 }
 
 func TestPublicAndAuthMethodsSkipJWT(t *testing.T) {
 	for method, class := range methodClass {
-		if class == public && method != "/grpc.health.v1.Health/List" {
+		if class == maintenance.ClassPublic && method != "/grpc.health.v1.Health/List" {
 			require.True(t, isPublicMethod(method), method)
 		}
-		if class == auth {
+		if class == maintenance.ClassAuth {
 			require.True(t, isPublicMethod(method), method)
 		}
 	}
@@ -72,7 +72,7 @@ func TestMaintenanceTargetCoversEveryScopedMethod(t *testing.T) {
 		md := methods.Get(i)
 		full := nipaSvc + string(md.Name())
 		class := methodClass[full]
-		if class != read && class != write {
+		if class != maintenance.ClassRead && class != maintenance.ClassWrite {
 			continue
 		}
 		mt, err := protoregistry.GlobalTypes.FindMessageByName(md.Input().FullName())

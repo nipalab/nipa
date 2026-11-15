@@ -2,109 +2,110 @@ package server
 
 import "github.com/nipalab/nipa/internal/maintenance"
 
-const (
-	public  = maintenance.ClassPublic
-	auth    = maintenance.ClassAuth
-	read    = maintenance.ClassRead
-	write   = maintenance.ClassWrite
-	nipaSvc = "/greet.NipaService/"
-)
+const nipaSvc = "/greet.NipaService/"
 
 // methodClass classifies every gRPC method for maintenance. A method missing
 // here is treated as a write; TestMethodClassesCoverServiceDesc keeps it
 // exhaustive.
-var methodClass = map[string]maintenance.Class{
-	nipaSvc + "LoginWithUsernamePassword": auth,
-	nipaSvc + "LoginWithRefreshToken":     auth,
-	nipaSvc + "BeginLoginSSHKey":          auth,
-	nipaSvc + "CompleteLoginSSHKey":       auth,
-	nipaSvc + "CompleteLoginMFA":          auth,
-	nipaSvc + "GetServerVersion":          public,
-	nipaSvc + "GetMaintenanceStatus":      public,
+var methodClass = buildMethodClasses(map[maintenance.Class][]string{
+	maintenance.ClassPublic: {
+		nipaSvc + "GetServerVersion",
+		nipaSvc + "GetMaintenanceStatus",
+		"/grpc.health.v1.Health/Check",
+		"/grpc.health.v1.Health/Watch",
+		"/grpc.health.v1.Health/List",
+	},
+	maintenance.ClassAuth: {
+		nipaSvc + "LoginWithUsernamePassword",
+		nipaSvc + "LoginWithRefreshToken",
+		nipaSvc + "BeginLoginSSHKey",
+		nipaSvc + "CompleteLoginSSHKey",
+		nipaSvc + "CompleteLoginMFA",
+	},
+	maintenance.ClassRead: {
+		nipaSvc + "ListMyProjects",
+		nipaSvc + "ListDirectory",
+		nipaSvc + "ListProjectMembers",
+		nipaSvc + "GetListBranch",
+		nipaSvc + "GetBranch",
+		nipaSvc + "GetBranchByName",
+		nipaSvc + "GetDefaultBranch",
+		nipaSvc + "ListTags",
+		nipaSvc + "GetTagByName",
+		nipaSvc + "GetTreeManifest",
+		nipaSvc + "GetCommitLog",
+		nipaSvc + "GetCommit",
+		nipaSvc + "WalkCommits",
+		nipaSvc + "GetMergeBase",
+		nipaSvc + "ListMergeRequests",
+		nipaSvc + "GetMergeRequest",
+		nipaSvc + "CheckMergeRequest",
+		nipaSvc + "ListMergeRequestChecks",
+		nipaSvc + "ListMergeRequestCommits",
+		nipaSvc + "GetMergeRequestDiff",
+		nipaSvc + "ListMergeRequestReviews",
+		nipaSvc + "GetMergeRequestReviewState",
+		nipaSvc + "ListMergeRequestThreads",
+		nipaSvc + "ListMergeRequestReviewRequests",
+		nipaSvc + "ListMergeRequestTimeline",
+		nipaSvc + "GetChunkDownloadUrls",
+		nipaSvc + "ListFileLocks",
+		nipaSvc + "GetMyPermissions",
+		nipaSvc + "ListPBACRules",
+		nipaSvc + "ListProjectPathPermissions",
+		nipaSvc + "ListGroups",
+	},
+	maintenance.ClassWrite: {
+		nipaSvc + "CreateBranch",
+		nipaSvc + "RenameBranch",
+		nipaSvc + "DeleteBranch",
+		nipaSvc + "SetDefaultBranch",
+		nipaSvc + "SetBranchProtection",
+		nipaSvc + "CreateTag",
+		nipaSvc + "DeleteTag",
+		nipaSvc + "MergeFastForward",
+		nipaSvc + "CreateMergeRequest",
+		nipaSvc + "UpdateMergeRequest",
+		nipaSvc + "SetMergeRequestAssignees",
+		nipaSvc + "MergeMergeRequest",
+		nipaSvc + "CloseMergeRequest",
+		nipaSvc + "ReopenMergeRequest",
+		nipaSvc + "ReportMergeRequestCheck",
+		nipaSvc + "SubmitMergeRequestReview",
+		nipaSvc + "WithdrawMergeRequestReview",
+		nipaSvc + "DismissMergeRequestReview",
+		nipaSvc + "AddMergeRequestComment",
+		nipaSvc + "ReplyMergeRequestThread",
+		nipaSvc + "UpdateMergeRequestComment",
+		nipaSvc + "DeleteMergeRequestComment",
+		nipaSvc + "ResolveMergeRequestThread",
+		nipaSvc + "DeleteMergeRequestThread",
+		nipaSvc + "RequestMergeRequestReview",
+		nipaSvc + "RemoveMergeRequestReviewRequest",
+		nipaSvc + "Push",
+		nipaSvc + "GetChunkUploadUrls",
+		nipaSvc + "ConfirmChunkUploads",
+		nipaSvc + "LockFile",
+		nipaSvc + "UnlockFile",
+		nipaSvc + "RequestFileLockRelease",
+		nipaSvc + "CreatePBACRule",
+		nipaSvc + "DeletePBACRule",
+		nipaSvc + "SetProjectPathPermission",
+		nipaSvc + "DeleteProjectPathPermission",
+		nipaSvc + "CreateGroup",
+		nipaSvc + "AddGroupMember",
+		nipaSvc + "RemoveGroupMember",
+	},
+})
 
-	nipaSvc + "ListMyProjects":     read,
-	nipaSvc + "ListDirectory":      read,
-	nipaSvc + "ListProjectMembers": read,
-
-	nipaSvc + "GetListBranch":       read,
-	nipaSvc + "GetBranch":           read,
-	nipaSvc + "GetBranchByName":     read,
-	nipaSvc + "GetDefaultBranch":    read,
-	nipaSvc + "CreateBranch":        write,
-	nipaSvc + "RenameBranch":        write,
-	nipaSvc + "DeleteBranch":        write,
-	nipaSvc + "SetDefaultBranch":    write,
-	nipaSvc + "SetBranchProtection": write,
-
-	nipaSvc + "ListTags":     read,
-	nipaSvc + "GetTagByName": read,
-	nipaSvc + "CreateTag":    write,
-	nipaSvc + "DeleteTag":    write,
-
-	nipaSvc + "GetTreeManifest":  read,
-	nipaSvc + "GetCommitLog":     read,
-	nipaSvc + "GetCommit":        read,
-	nipaSvc + "WalkCommits":      read,
-	nipaSvc + "GetMergeBase":     read,
-	nipaSvc + "MergeFastForward": write,
-
-	nipaSvc + "CreateMergeRequest":       write,
-	nipaSvc + "UpdateMergeRequest":       write,
-	nipaSvc + "ListMergeRequests":        read,
-	nipaSvc + "GetMergeRequest":          read,
-	nipaSvc + "SetMergeRequestAssignees": write,
-	nipaSvc + "MergeMergeRequest":        write,
-	nipaSvc + "CloseMergeRequest":        write,
-	nipaSvc + "ReopenMergeRequest":       write,
-	nipaSvc + "CheckMergeRequest":        read,
-	nipaSvc + "ReportMergeRequestCheck":  write,
-	nipaSvc + "ListMergeRequestChecks":   read,
-	nipaSvc + "ListMergeRequestCommits":  read,
-	nipaSvc + "GetMergeRequestDiff":      read,
-
-	nipaSvc + "SubmitMergeRequestReview":        write,
-	nipaSvc + "ListMergeRequestReviews":         read,
-	nipaSvc + "GetMergeRequestReviewState":      read,
-	nipaSvc + "WithdrawMergeRequestReview":      write,
-	nipaSvc + "DismissMergeRequestReview":       write,
-	nipaSvc + "ListMergeRequestThreads":         read,
-	nipaSvc + "AddMergeRequestComment":          write,
-	nipaSvc + "ReplyMergeRequestThread":         write,
-	nipaSvc + "UpdateMergeRequestComment":       write,
-	nipaSvc + "DeleteMergeRequestComment":       write,
-	nipaSvc + "ResolveMergeRequestThread":       write,
-	nipaSvc + "DeleteMergeRequestThread":        write,
-	nipaSvc + "ListMergeRequestReviewRequests":  read,
-	nipaSvc + "RequestMergeRequestReview":       write,
-	nipaSvc + "RemoveMergeRequestReviewRequest": write,
-	nipaSvc + "ListMergeRequestTimeline":        read,
-
-	nipaSvc + "Push":                 write,
-	nipaSvc + "GetChunkUploadUrls":   write,
-	nipaSvc + "GetChunkDownloadUrls": read,
-	nipaSvc + "ConfirmChunkUploads":  write,
-
-	nipaSvc + "LockFile":               write,
-	nipaSvc + "UnlockFile":             write,
-	nipaSvc + "ListFileLocks":          read,
-	nipaSvc + "RequestFileLockRelease": write,
-
-	nipaSvc + "GetMyPermissions":            read,
-	nipaSvc + "CreatePBACRule":              write,
-	nipaSvc + "ListPBACRules":               read,
-	nipaSvc + "DeletePBACRule":              write,
-	nipaSvc + "ListProjectPathPermissions":  read,
-	nipaSvc + "SetProjectPathPermission":    write,
-	nipaSvc + "DeleteProjectPathPermission": write,
-
-	nipaSvc + "CreateGroup":       write,
-	nipaSvc + "ListGroups":        read,
-	nipaSvc + "AddGroupMember":    write,
-	nipaSvc + "RemoveGroupMember": write,
-
-	"/grpc.health.v1.Health/Check": public,
-	"/grpc.health.v1.Health/Watch": public,
-	"/grpc.health.v1.Health/List":  public,
+func buildMethodClasses(groups map[maintenance.Class][]string) map[string]maintenance.Class {
+	out := make(map[string]maintenance.Class)
+	for class, methods := range groups {
+		for _, m := range methods {
+			out[m] = class
+		}
+	}
+	return out
 }
 
 // serverScopeOnly lists the read and write methods whose request names no
