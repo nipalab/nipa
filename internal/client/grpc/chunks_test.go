@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -41,6 +42,8 @@ type chunkTestServer struct {
 	uploadAuth      string
 	downloadAuth    string
 	lastUploadRefs  []*pb.ChunkRef
+	maxUploadRefs   int
+	maxConfirmed    int
 	lastDownload    *pb.GetChunkDownloadUrlsRequest
 	uploadBadHash   bool
 	downloadBadHash bool
@@ -124,6 +127,7 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 		}
 	}
 	s.lastUploadRefs = req.GetChunks()
+	s.maxUploadRefs = max(s.maxUploadRefs, len(req.GetChunks()))
 	if s.uploadErr != nil {
 		return nil, s.uploadErr
 	}
@@ -199,6 +203,7 @@ func (s *chunkTestServer) takeGarbage(hash string) bool {
 
 func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
 	s.lastConfirm = req
+	s.maxConfirmed = max(s.maxConfirmed, len(req.GetHashes()), len(req.GetProofs()))
 	if s.confirmErr != nil {
 		return nil, s.confirmErr
 	}
@@ -385,6 +390,31 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes())
 	require.Len(t, srv.lastConfirm.GetProofs(), 2, "every uploaded chunk is confirmed with a proof")
 	require.True(t, srv.isLinked(h1.String()))
+}
+
+func TestClient_UploadChunks_BatchesManySmallChunks(t *testing.T) {
+	srv := newChunkTestServer()
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	chunks := make([]*serverDomain.ChunkData, 2*uploadBatch+500)
+	for i := range chunks {
+		data := []byte(fmt.Sprintf("module.exports = %d", i))
+		chunks[i] = &serverDomain.ChunkData{Hash: chunker.Sum(data), Data: data}
+	}
+	reported := 0
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, chunks,
+		func(*serverDomain.ChunkData) { reported++ })
+	require.NoError(t, err)
+	require.Equal(t, len(chunks), uploaded)
+	require.Zero(t, skipped)
+	require.Equal(t, len(chunks), reported)
+	require.Equal(t, uploadBatch, srv.maxUploadRefs)
+	require.Equal(t, uploadBatch, srv.maxConfirmed)
+	for _, ch := range chunks {
+		require.True(t, srv.isLinked(ch.Hash.String()))
+	}
 }
 
 func TestClient_UploadChunks_SkipsStored(t *testing.T) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
@@ -88,6 +90,14 @@ func TestMaintenanceTargetCoversEveryScopedMethod(t *testing.T) {
 			org, project := maintenanceTarget(msg.Interface())
 			require.Equal(t, "acme", org, full)
 			require.Equal(t, "game", project, full)
+		case fields.ByName("header") != nil:
+			header := msg.Mutable(fields.ByName("header")).Message()
+			pc := header.Mutable(header.Descriptor().Fields().ByName("context")).Message()
+			pc.Set(pc.Descriptor().Fields().ByName("org"), protoreflect.ValueOfString("acme"))
+			pc.Set(pc.Descriptor().Fields().ByName("project"), protoreflect.ValueOfString("game"))
+			org, project := maintenanceTarget(msg.Interface())
+			require.Equal(t, "acme", org, full)
+			require.Equal(t, "game", project, full)
 		case fields.ByName("org") != nil:
 			msg.Set(fields.ByName("org"), protoreflect.ValueOfString("acme"))
 			org, project := maintenanceTarget(msg.Interface())
@@ -103,6 +113,8 @@ func TestMaintenanceTargetCoversEveryScopedMethod(t *testing.T) {
 	require.Empty(t, org+project)
 	org, project = maintenanceTarget(&pb.PushRequest{})
 	require.Empty(t, org+project, "a missing context is server scope")
+	org, project = maintenanceTarget(&pb.PushStreamRequest{Part: &pb.PushStreamRequest_Removed{}})
+	require.Empty(t, org+project, "a part other than the header is server scope")
 }
 
 func maintSvc(t *testing.T, windows ...maintenance.Window) *maintenance.Service {
@@ -257,4 +269,63 @@ func TestMaintenanceInterceptorStream(t *testing.T) {
 func TestMaintenanceInterceptorNilService(t *testing.T) {
 	m := NewMaintenance(nil, nil)
 	require.NoError(t, callUnary(m, "Push", &pb.PushRequest{}))
+}
+
+type recvStream struct {
+	grpc.ServerStream
+	msgs []proto.Message
+	err  error
+}
+
+func (s *recvStream) RecvMsg(m any) error {
+	if s.err != nil {
+		return s.err
+	}
+	if len(s.msgs) == 0 {
+		return io.EOF
+	}
+	proto.Merge(m.(proto.Message), s.msgs[0])
+	s.msgs = s.msgs[1:]
+	return nil
+}
+
+func TestMaintenanceInterceptorClientStreamChecksHeader(t *testing.T) {
+	m := NewMaintenance(maintSvc(t, projectWin("acme", "game", maintenance.ReadOnly)), nil)
+	info := &grpc.StreamServerInfo{FullMethod: nipaSvc + "PushStream", IsClientStream: true}
+	push := func(project string) *recvStream {
+		return &recvStream{msgs: []proto.Message{
+			&pb.PushStreamRequest{Part: &pb.PushStreamRequest_Header{Header: &pb.PushStreamHeader{Context: pctx("acme", project)}}},
+			&pb.PushStreamRequest{Part: &pb.PushStreamRequest_Removed{Removed: &pb.PushStreamRemoved{Paths: []string{"a"}}}},
+		}}
+	}
+	drain := func(_ any, ss grpc.ServerStream) error {
+		for {
+			if err := ss.RecvMsg(&pb.PushStreamRequest{}); err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+		}
+	}
+
+	err := m.Stream()(nil, push("game"), info, drain)
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	require.NoError(t, m.Stream()(nil, push("other"), info, drain))
+
+	broken := errors.New("transport closed")
+	require.Equal(t, broken, m.Stream()(nil, &recvStream{err: broken}, info, drain))
+}
+
+func TestMaintenanceInterceptorServerStreamChecksRequest(t *testing.T) {
+	m := NewMaintenance(maintSvc(t, projectWin("acme", "game", maintenance.Full)), nil)
+	info := &grpc.StreamServerInfo{FullMethod: nipaSvc + "StreamTreeManifest", IsServerStream: true}
+	read := func(project string) error {
+		ss := &recvStream{msgs: []proto.Message{&pb.GetTreeManifestRequest{Context: pctx("acme", project)}}}
+		return m.Stream()(nil, ss, info, func(_ any, ss grpc.ServerStream) error {
+			return ss.RecvMsg(&pb.GetTreeManifestRequest{})
+		})
+	}
+	require.Equal(t, codes.Unavailable, status.Code(read("game")))
+	require.NoError(t, read("other"))
 }

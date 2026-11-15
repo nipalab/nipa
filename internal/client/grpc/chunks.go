@@ -24,6 +24,10 @@ import (
 // presigned and sent again, e.g. after it deleted garbage planted on their key.
 const maxUploadAttempts = 3
 
+// uploadBatch bounds the chunks one presign and confirm round carries, so a
+// window of many small chunks stays far below the gRPC message size limit.
+const uploadBatch = 1000
+
 // UploadChunks stores chunk content on the server. Chunks the project is
 // already linked to are skipped. For the rest, the client first proves it holds
 // the bytes (the server links content it already has, with no transfer) and
@@ -45,15 +49,17 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 
 	uploaded := map[serverDomain.Hash]struct{}{}
 	skipped := map[serverDomain.Hash]struct{}{}
-	remaining := chunks
-	for attempt := 0; attempt < maxUploadAttempts && len(remaining) > 0; attempt++ {
-		remaining, err = c.uploadAttempt(authedCtx, client, scope, remaining, uploaded, skipped)
-		if err != nil {
-			return 0, 0, err
+	for start := 0; start < len(chunks); start += uploadBatch {
+		remaining := chunks[start:min(start+uploadBatch, len(chunks))]
+		for attempt := 0; attempt < maxUploadAttempts && len(remaining) > 0; attempt++ {
+			remaining, err = c.uploadAttempt(authedCtx, client, scope, remaining, uploaded, skipped)
+			if err != nil {
+				return 0, 0, err
+			}
 		}
-	}
-	if len(remaining) > 0 {
-		return 0, 0, domain.NewUserError(fmt.Sprintf("upload incomplete: %d chunk(s) missing on the server", len(remaining)))
+		if len(remaining) > 0 {
+			return 0, 0, domain.NewUserError(fmt.Sprintf("upload incomplete: %d chunk(s) missing on the server", len(remaining)))
+		}
 	}
 
 	if len(onChunk) > 0 && onChunk[0] != nil {

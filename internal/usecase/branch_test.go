@@ -491,6 +491,28 @@ func TestBranch_GetTreeManifest_Recursive(t *testing.T) {
 	require.Equal(t, childFiles, got.TreeChildren[0].FileChildren)
 }
 
+func TestBranch_GetTreeManifest_SkipsEmptyDirectories(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, TreeID: 100}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{{ID: 1, Name: "a.txt"}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).
+		Return([]*domain.TreeNode{{ID: 200, Name: "left-over", Hash: emptyTreeHash}}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", nil, "", true)
+	require.NoError(t, err)
+	require.Len(t, got.FileChildren, 1)
+	require.Empty(t, got.TreeChildren, "an empty directory is neither queried nor listed")
+}
+
 func TestBranch_GetTreeManifest_NotRecursive(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)

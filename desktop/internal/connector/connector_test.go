@@ -301,3 +301,38 @@ func TestStartDetachedRunsServe(t *testing.T) {
 	require.Error(t, startDetached(bin, filepath.Join(blocker, "sub", "d.log"), ""))
 	require.Error(t, startDetached(bin, filepath.Join(dir, "logs"), ""))
 }
+
+type bigDaemon struct {
+	daemonpb.UnimplementedNipaDaemonServer
+}
+
+func (d *bigDaemon) Ping(context.Context, *daemonpb.PingRequest) (*daemonpb.PingResponse, error) {
+	return &daemonpb.PingResponse{Version: "test-1"}, nil
+}
+
+func (d *bigDaemon) ListRepos(context.Context, *daemonpb.ListReposRequest) (*daemonpb.ListReposResponse, error) {
+	res := &daemonpb.ListReposResponse{}
+	for i := 0; i < 60000; i++ {
+		res.Repos = append(res.Repos, &daemonpb.RepoInfo{Root: strings.Repeat("r", 100)})
+	}
+	return res, nil
+}
+
+func TestConnect_AcceptsResponsesOverTheGRPCDefault(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := grpc.NewServer()
+	daemonpb.RegisterNipaDaemonServer(srv, &bigDaemon{})
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(srv.Stop)
+	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: l.Addr().(*net.TCPAddr).Port, Token: "t", Version: "test-1"}))
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, start: noStart(t)})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, conn.Close()) }()
+
+	res, err := conn.Client.ListRepos(context.Background(), &daemonpb.ListReposRequest{})
+	require.NoError(t, err)
+	require.Len(t, res.GetRepos(), 60000)
+}

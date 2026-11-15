@@ -1830,6 +1830,10 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   worker, client-side p50/p95/p99 plus a `/metrics` delta) against a running
   server. Requested metrics must be namespace-filtered (`nipa_*`), bench and
   load code stays env-gated so CI never runs it.
+- `NIPA_E2E_LARGE_MANIFEST=1 go test ./internal/e2e -run
+  TestEndToEnd_ManifestsOverGRPCDefault -v` runs the streamed push/clone/update
+  e2e with 25000 files (manifests over the 4 MiB gRPC default); CI runs it with
+  1000.
 - The server opens SQLite through `db.OpenSQLite`, which appends
   `_pragma=busy_timeout(10000)`, `_pragma=journal_mode(WAL)` and
   `_txlock=immediate` to the DSN. Without WAL + a busy timeout, concurrent
@@ -2071,7 +2075,7 @@ and `nipa mcp` stay silent.
   `UpdateMergeRequestComment`, `DeleteMergeRequestComment`,
   `ResolveMergeRequestThread`, `DeleteMergeRequestThread`,
   `ListMergeRequestReviewRequests`, `RequestMergeRequestReview`,
-  `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`; transfer RPCs `Push`,
+  `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`; transfer RPCs `Push`, `PushStream`, `StreamTreeManifest`,
   `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
   RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; browsing RPCs
   `ListMyProjects` (readable projects of the caller's orgs) and
@@ -2131,7 +2135,9 @@ and `nipa mcp` stay silent.
   (presign checks every ref with 16 concurrent `Exists` calls, so a lost
   object is uploaded again); confirmations are
   serialized client-side under a mutex so concurrent upload windows never stack
-  SQLite metadata writes. Chunks the project is already linked to come back with `already_stored` so
+  SQLite metadata writes. `UploadChunks` presigns, claims and confirms a window
+  in batches of `uploadBatch` (1000) chunks, so a window of many small files
+  never builds a presign or confirm message near the gRPC size limit. Chunks the project is already linked to come back with `already_stored` so
   clients skip the transfer. A project may reference a chunk only after it proved it
   holds the bytes (`internal/chunkproof`): `GetChunkUploadUrls` hands every
   chunk the project is not linked to an HMAC-signed, project- and hash-bound
@@ -2143,9 +2149,46 @@ and `nipa mcp` stay silent.
   only chunks reported missing are uploaded and then confirmed with their proofs.
   Unproven hashes are reported missing, `ApplyPush` joins through the link table,
   and server-generated merge content is linked via `AttributeProjectChunks`.
-  `Push` sends `base_commit_id` (base36; preferred over
+  The client pushes through the client-streaming `PushStream` only (the unary
+  `Push` stays for older clients; an older server answers `Unimplemented`,
+  reported with an upgrade hint): `PushStreamHeader` first, then
+  `PushStreamFiles`/`PushStreamRemoved` batches of about 1 MiB
+  (`internal/client/grpc/push.go`, raw 32-byte hashes) and `PushStreamChunks`
+  continuations that append to the last file when its chunk list does not fit
+  one part. The stream carries its own bearer token, refresh and rate-limit
+  retry (`Client.callAuthed`, no unary interceptor). The server
+  (`internal/grpc/server/push_stream.go`) runs `usecase.Push.CheckTarget`
+  (write access, message, branch, protection, `base_commit_id`) on the header
+  before reading the file list, caps files plus removed paths at
+  `PUSH_MAX_FILES` (default 2000000, `Push.WithMaxFiles`, also applied to the
+  unary `Push`) and the encoded manifest at 1 GiB, and applies the push only
+  after the client closed the stream. The maintenance stream interceptor checks
+  the first message of a client stream for its org/project. The header carries
+  `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
-  full server tree) and `parent_2_commit_hash` for merge commits.
+  full server tree) and `parent_2_commit_hash` for merge commits. The daemon
+  loopback (`daemon.MaxMessageBytes`, 256 MiB) applies to the daemon server,
+  the JSON bridge client and the desktop connector. Manifests come the same
+  way: the client reads every tree through the server-streaming
+  `StreamTreeManifest` (`GetTreeManifestRequest` in, `TreeManifestPart`s
+  out; `internal/grpc/server/manifest_stream.go` writes about 1 MiB parts,
+  `internal/client/grpc/manifest.go` rebuilds a `pb.TreeManifest`):
+  entries are depth first, a `TreeManifestDir` (depth 0 = root, its parent is
+  the last directory one level up) followed by its own `TreeManifestFile`s,
+  `TreeManifestChunks` continue the last file's chunk hashes and sizes, no
+  entry means no tree. The first part carries the branch and, for a recursive
+  request of a whole commit (no paths), the `CommitDetail` from
+  `Branch.GetCommit`, so the client's `GetCommit` is one streamed call. The
+  daemon's `ProxyTreeManifest`/`ProxyCommitGet` stream through the optional
+  `manifestStreamer` method of the `ProxyConn` (`withProxyConn`). The unary
+  `GetTreeManifest`/`GetCommit` stay for older clients; the maintenance
+  stream interceptor checks a server stream's request like a unary one.
+  Pushes never store an empty directory: a rebuilt directory left without
+  files or subdirectories is dropped (cascading to its parents) and a kept
+  child with the empty-tree hash is not carried over, and
+  `Branch.loadTreeManifest` skips nodes with the empty-tree hash without a
+  query, since the content-node lookup of an empty hash scans every row
+  sharing it.
   `Push.pushStaged` scans into 16MB windows handed to
   two uploader goroutines (queue depth 2), so hashing overlaps with the network;
   window chunks are cached locally before upload (text and pinned raw files

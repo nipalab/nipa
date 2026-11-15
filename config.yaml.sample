@@ -103,6 +103,8 @@ CHUNK_S3_SECRET_ACCESS_KEY: ''
 CHUNK_URL_SIGNING_KEY: ''
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
+# Most files plus removed paths one push may carry (default 2000000).
+PUSH_MAX_FILES: 2000000
 # Enterprise storage accounting and quota (`nipad-ee` only, see
 # docs/CLOUD_STORAGE_QUOTA.md). Empty disables the ledger and its
 # /orgs/{org}/storage and /billing/me routes; `cloud` tracks usage per

@@ -49,6 +49,46 @@ message GetTreeManifestResponse {
     TreeManifest root_tree = 2;
 }
 
+// StreamTreeManifest sends a manifest depth first: each directory entry is
+// followed by its own files, then by its subdirectories. A directory's depth
+// (0 = root) names its parent, the last directory sent one level up. No entry
+// at all means no tree (an empty branch or an unchanged tree_hash).
+message TreeManifestDir {
+    int32 depth = 1;
+    string name = 2;
+    bytes tree_hash = 3; // raw 32-byte hash
+}
+
+message TreeManifestFile {
+    string name = 1;
+    FileMode mode = 2;
+    int64 size_bytes = 3;
+    bool is_binary = 4;
+    repeated bytes chunk_hashes = 5; // raw 32-byte hashes; more may follow in TreeManifestChunks
+    string encoding = 6;
+    repeated int64 chunk_sizes = 7; // parallel to chunk_hashes; empty when unknown
+}
+
+// TreeManifestChunks appends chunk hashes (and sizes) to the last file sent.
+message TreeManifestChunks {
+    repeated bytes chunk_hashes = 1;
+    repeated int64 chunk_sizes = 2;
+}
+
+message TreeManifestEntry {
+    oneof entry {
+        TreeManifestDir dir = 1;
+        TreeManifestFile file = 2;
+        TreeManifestChunks chunks = 3;
+    }
+}
+
+message TreeManifestPart {
+    string branch = 1; // first part only
+    CommitDetail commit = 2; // first part only: set for a recursive manifest of a whole commit
+    repeated TreeManifestEntry entries = 3;
+}
+
 message PushFile {
     string path = 1; // repository-relative file path, e.g. "assets/logo.png"
     FileMode mode = 2;
@@ -125,6 +165,52 @@ message PushRequest {
     repeated string removed_files = 6; // paths removed relative to the base tree
     optional string parent_2_commit_hash = 7; // second parent for merge commits; empty for normal pushes
     optional string base_commit_id = 8; // base36 snow ID; preferred over base_tree_hash (sparse/filtered clones)
+}
+
+// PushStream carries one push as a sequence of messages so the file list is
+// never bound by the gRPC message size: the header first, then file batches,
+// chunk continuations and removed paths in any order. The push is applied only
+// after the client closes the stream.
+message PushStreamHeader {
+    ProjectContext context = 1;
+    string branch = 2;
+    string base_tree_hash = 3; // hex tree hash the client is based on, empty for branches without commits
+    string message = 4;
+    optional string parent_2_commit_hash = 5; // hex hash of the second parent for merge commits
+    optional string base_commit_id = 6; // base36 snow ID; preferred over base_tree_hash
+}
+
+message PushStreamFile {
+    string path = 1;
+    FileMode mode = 2;
+    int64 size_bytes = 3;
+    bool is_binary = 4;
+    bytes file_hash = 5; // raw 32-byte BLAKE3 hash
+    repeated bytes chunk_hashes = 6; // raw 32-byte hashes; more may follow in PushStreamChunks
+    string encoding = 7; // raw or zstd; hashes refer to the stored bytes
+}
+
+message PushStreamFiles {
+    repeated PushStreamFile files = 1;
+}
+
+// PushStreamChunks appends chunk hashes to the last file sent, for files whose
+// chunk list does not fit one message.
+message PushStreamChunks {
+    repeated bytes chunk_hashes = 1;
+}
+
+message PushStreamRemoved {
+    repeated string paths = 1;
+}
+
+message PushStreamRequest {
+    oneof part {
+        PushStreamHeader header = 1;
+        PushStreamFiles files = 2;
+        PushStreamChunks chunks = 3;
+        PushStreamRemoved removed = 4;
+    }
 }
 
 message PushResponse {
@@ -1162,6 +1248,7 @@ service NipaService {
     rpc CreateTag(CreateTagRequest) returns (CreateTagResponse);
     rpc DeleteTag(DeleteTagRequest) returns (DeleteTagResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
+    rpc StreamTreeManifest(GetTreeManifestRequest) returns (stream TreeManifestPart);
     rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
     rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
     rpc WalkCommits(WalkCommitsRequest) returns (WalkCommitsResponse);
@@ -1201,6 +1288,7 @@ service NipaService {
 
     rpc ListMergeRequestTimeline(ListMergeRequestTimelineRequest) returns (ListMergeRequestTimelineResponse);
     rpc Push(PushRequest) returns (PushResponse);
+    rpc PushStream(stream PushStreamRequest) returns (PushResponse);
     rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
     rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);
     rpc ConfirmChunkUploads(ConfirmChunkUploadsRequest) returns (ConfirmChunkUploadsResponse);

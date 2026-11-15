@@ -12,7 +12,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN
 async function run(page: import("playwright-core").Page, step: Step) {
   if ("tab" in step) await page.getByRole("tab", { name: step.tab }).click();
   else if ("button" in step) await page.getByRole("button", { name: step.button }).first().click();
-  else if ("text" in step) await page.getByText(step.text).first().click();
+  else if ("text" in step) await page.getByText(step.text, { exact: step.exact }).first().click();
   else if ("type" in step) await page.keyboard.type(step.type);
   else await page.waitForTimeout(step.wait);
 }
@@ -23,6 +23,8 @@ for (const theme of opts.themes) {
     await context.addInitScript((t) => {
       localStorage.setItem("nipa.theme", t);
       localStorage.setItem("nipa.selectedRepo", "/home/alex/studio/starfall");
+      localStorage.setItem("nipa.mode", "full");
+      localStorage.setItem("nipa.tour", "done");
     }, theme);
     const page = await context.newPage();
     await page.goto(demoUrl(opts.base, screen));

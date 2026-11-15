@@ -65,8 +65,14 @@ type fakeServer struct {
 	createBranch        *pb.Branch
 	createBranchErr     error
 	createReq           *pb.CreateBranchRequest
-	lastPushReq         *pb.PushRequest
+	pushParts           []*pb.PushStreamRequest
+	pushAuth            []string
 	pushErr             error
+	pushErrs            []error
+	pushFailAfterHeader error
+	manifestAuth        []string
+	manifestErrs        []error
+	rawManifestParts    []*pb.TreeManifestPart
 	pushResp            *pb.PushResponse
 	mergeBaseErr        error
 	mergeBaseResp       *pb.GetMergeBaseResponse
@@ -760,7 +766,7 @@ func TestClient_GetTreeNodeManifest_Success(t *testing.T) {
 			Path:        "README.md",
 			Mode:        pb.FileMode_FILE_MODE_READ_WRITE,
 			SizeBytes:   12,
-			ChunkHashes: []string{hash1.String(), "not-a-valid-hash", hash2.String()},
+			ChunkHashes: []string{hash1.String(), hash2.String()},
 		}},
 		SubTrees: []*pb.TreeManifest{{
 			Path: "assets",
@@ -789,7 +795,7 @@ func TestClient_GetTreeNodeManifest_Success(t *testing.T) {
 	require.Equal(t, "README.md", file.Name)
 	require.Equal(t, int(pb.FileMode_FILE_MODE_READ_WRITE), file.Mode)
 	require.Equal(t, int64(12), file.SizeBytes)
-	require.Len(t, file.Chunks, 2, "invalid chunk hashes should be skipped")
+	require.Len(t, file.Chunks, 2)
 	require.Equal(t, hash1, file.Chunks[0].Hash)
 	require.Equal(t, hash2, file.Chunks[1].Hash)
 

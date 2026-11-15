@@ -657,6 +657,10 @@ func (b *Branch) findTreeNode(ctx context.Context, root *domain.TreeNode, path s
 }
 
 func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, path string, recursive bool, filter *PathFilter, sparse domain.PrefixSet) error {
+	if node.Hash == emptyTreeHash {
+		node.FileChildren, node.TreeChildren = nil, nil
+		return nil
+	}
 	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
 	if err != nil {
 		return err

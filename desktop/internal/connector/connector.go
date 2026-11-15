@@ -155,7 +155,8 @@ func attach(ctx context.Context, path string, alive func(int) bool) (*Conn, erro
 	}
 	cc, err := grpc.NewClient(fmt.Sprintf("127.0.0.1:%d", ep.Port),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(tokenCredentials(ep.Token)))
+		grpc.WithPerRPCCredentials(tokenCredentials(ep.Token)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(daemon.MaxMessageBytes), grpc.MaxCallSendMsgSize(daemon.MaxMessageBytes)))
 	if err != nil {
 		return nil, err
 	}

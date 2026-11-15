@@ -8,18 +8,15 @@ import (
 )
 
 func (c *Client) GetCommit(ctx context.Context, org, project, commitID string) (*clientDomain.CommitDetail, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
-	res, err := client.GetCommit(ctx, &pb.GetCommitRequest{
-		Context:  &pb.ProjectContext{Org: org, Project: project},
-		CommitId: commitID,
+	res, commit, err := c.StreamTreeManifest(ctx, &pb.GetTreeManifestRequest{
+		Context:   &pb.ProjectContext{Org: org, Project: project},
+		CommitId:  &commitID,
+		Recursive: true,
 	})
 	if err != nil {
-		return nil, toDomainError(err)
+		return nil, streamError(err, "streamed tree manifests")
 	}
-	return toCommitDetail(res), nil
+	return toCommitDetail(&pb.GetCommitResponse{Commit: commit, RootTree: res.GetRootTree()}), nil
 }
 
 func (c *Client) WalkCommits(ctx context.Context, org, project, startCommitID, stopCommitID string, limit int) ([]*clientDomain.CommitWalkEntry, error) {
