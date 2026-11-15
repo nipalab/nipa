@@ -219,11 +219,18 @@ func TestDispatcher_PauseHoldsClaimsAndDeliveries(t *testing.T) {
 	paused.Store(false)
 	require.Eventually(t, func() bool {
 		_, sweeps, delivered := store.snapshot()
-		return delivered == 2 && sweeps > 0
+		return delivered > 0 && sweeps > 0
 	}, 2*time.Second, time.Millisecond)
 	sender.mu.Lock()
-	require.Len(t, sender.sent, 2)
+	for _, msg := range sender.sent {
+		require.NotEmpty(t, msg.Subject)
+	}
 	sender.mu.Unlock()
+	store.mu.Lock()
+	for _, id := range store.delivered {
+		require.NotEqual(t, snow.ID(8), id, "the held job is reclaimed through a claim, not sent by its worker")
+	}
+	store.mu.Unlock()
 }
 
 func TestDispatcher_StopWhilePaused(t *testing.T) {

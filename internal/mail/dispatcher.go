@@ -93,7 +93,10 @@ func (d *Dispatcher) WithMetrics(metrics *obs.Metrics) *Dispatcher {
 }
 
 // SetPause holds claiming, retention sweeps and delivery attempts while
-// paused reports true, so the outbox is not written. Call it before Start.
+// paused reports true, so the outbox is not written. A job a worker picked up
+// during the pause is dropped on resume: its sending row is stale by then and
+// the next claim hands it out again, so it is never sent twice. Call it before
+// Start.
 func (d *Dispatcher) SetPause(paused func() bool) {
 	d.pause = paused
 }
@@ -151,9 +154,13 @@ func (d *Dispatcher) worker() {
 		case <-d.runner.StopCh():
 			return
 		case delivery := <-d.jobs:
-			if d.pause.Wait(d.runner.StopCh(), d.pauseCheck) {
-				d.deliver(delivery)
+			if d.pause.Active() {
+				if !d.pause.Wait(d.runner.StopCh(), d.pauseCheck) {
+					return
+				}
+				continue
 			}
+			d.deliver(delivery)
 		}
 	}
 }
