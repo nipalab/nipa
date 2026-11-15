@@ -1,10 +1,11 @@
 name: Server deploy
 
 # dev:        every green "Build and Test" run on main deploys automatically.
-# production: pushing a v* tag whose commit passed CI deploys after the
-#             production environment's required reviewers approve.
+# production: pushing a v* tag (full release) or a server-v* tag (server
+#             only, no GitHub release) whose commit passed CI deploys after
+#             the production environment's required reviewers approve.
 # Manual:     "Run workflow" picks the environment and deploy or rollback;
-#             production deploys must be started from a v* tag.
+#             production deploys must be started from a v* or server-v* tag.
 # Setup (hosts, sudoers, environments, secrets): docs/DEPLOY.md, "CI deploys".
 on:
   workflow_run:
@@ -12,7 +13,7 @@ on:
     types: [completed]
     branches: [main]
   push:
-    tags: ["v*"]
+    tags: ["v*", "server-v*"]
   workflow_dispatch:
     inputs:
       environment:
@@ -61,8 +62,8 @@ jobs:
             *) echo "::error::unsupported event $EVENT"; exit 1 ;;
           esac
           if [[ "$environment" == production && "$action" == deploy ]]; then
-            if [[ "$REF_TYPE" != tag || "$REF_NAME" != v* ]]; then
-              echo "::error::production deploys only from a v* tag (got $REF_TYPE $REF_NAME)"
+            if [[ "$REF_TYPE" != tag || ( "$REF_NAME" != v* && "$REF_NAME" != server-v* ) ]]; then
+              echo "::error::production deploys only from a v* or server-v* tag (got $REF_TYPE $REF_NAME)"
               exit 1
             fi
           fi
@@ -125,7 +126,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - id: version
-        run: echo "version=$(git describe --tags --always)" >>"$GITHUB_OUTPUT"
+        run: |
+          version="$(git describe --tags --always --match 'v*' --match 'server-v*')"
+          echo "version=${version#server-}" >>"$GITHUB_OUTPUT"
 
       - name: Build
         env:

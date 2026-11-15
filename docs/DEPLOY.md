@@ -340,12 +340,14 @@ VPS set up with the steps above (its own domain in the Caddyfile, its own
 | Environment | Trigger | Gate |
 |---|---|---|
 | `dev` | every green `Build and Test` run on `main` | none |
-| `production` | pushing a `v*` tag | the tagged commit must have a green `Build and Test` run, then the environment's required reviewers approve |
-| either | **Actions → Server deploy → Run workflow** (`deploy` or `rollback`) | production `deploy` only from a `v*` tag |
+| `production` | pushing a `v*` tag (full release) or a `server-v*` tag (server only) | the tagged commit must have a green `Build and Test` run, then the environment's required reviewers approve |
+| either | **Actions → Server deploy → Run workflow** (`deploy` or `rollback`) | production `deploy` only from a `v*` or `server-v*` tag |
 
 Deploys of one environment never overlap (`concurrency: deploy-<env>`). After
 the flip the job polls `<DEPLOY_URL>/version` until it reports the built
-version (`git describe --tags --always`) and fails otherwise. **Rollback** runs
+version (`git describe --tags --always` over `v*` and `server-v*` tags, the
+`server-` prefix dropped, so `server-v26.11.3` reports `v26.11.3`) and fails
+otherwise. **Rollback** runs
 `upgrade.sh --rollback` (flip back to the previous color's binary) without
 building.
 
@@ -385,13 +387,25 @@ deploy-<env>`) and record the host key with `ssh-keyscan -p <port> <host>`
 | secret | `DEPLOY_KNOWN_HOSTS` | the `ssh-keyscan` line(s) |
 
 For `production` also enable **Required reviewers** and set **Deployment
-branches and tags** to the tag pattern `v*` only; for `dev` restrict it to
+branches and tags** to the tag patterns `v*` and `server-v*` only; for `dev` restrict it to
 `main`. Runners connect from GitHub's IP ranges, so SSH must be reachable from
 them (or front it with Tailscale / a self-hosted runner and point
 `DEPLOY_HOST` at that address).
 
 Release flow: merge to `main` (dev updates), then `make release
-version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run.
+version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run. A
+`v*` tag also publishes the GitHub release (`release.yml`: `nipa`/`nipad`) and
+the desktop app (`desktop-release.yml`, which installed apps update from).
+
+Server-only flow: `make release-server version=vX.Y.Z && git push origin
+server-vX.Y.Z` deploys `nipad-ee` to production the same way and starts no
+other workflow (no GitHub release, no desktop update). Both targets refuse a
+version already used by either prefix. Versions are CalVer `vYY.MM.N` (`N` =
+the month's release counter, shared by both prefixes), so a server hotfix is
+the next counter: `v26.11.2` full, `server-v26.11.3` hotfix, `v26.11.4` or
+`v26.12.1` next full release. `make` and
+the desktop build describe only `v*` tags, so client builds never take a
+server version.
 
 ## Day-2 operations
 
