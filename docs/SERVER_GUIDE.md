@@ -265,8 +265,14 @@ plus `SHUTDOWN_TIMEOUT_SECONDS` after the start before copying, so in-flight
 requests finish. A server started on a frozen database still runs its
 migrations (and `nipad-ee` claims a node lease).
 
-> `--notify` sends no email yet. `nipad-ee maintenance` takes the same
-> arguments.
+`notify` (`--notify` on the command line) emails the people the window
+affects (see `docs/EMAIL.md`): when the window is created, changed and ended.
+The answer's `notified` is true only when messages were queued (false with
+`EMAIL_SENDER=off`, without `notify` or without recipients). The command line
+queues the rows itself; the running server sends them on its next email poll
+(`EMAIL_POLL_SECONDS`). A frozen server sends no email until the window ends,
+so announce a move with a window scheduled ahead (`--start`), then let it
+start. `nipad-ee maintenance` takes the same arguments.
 
 From the server host, with the same `config.yaml` as the server (the command
 opens the database directly, never migrates it, and records its changes in the

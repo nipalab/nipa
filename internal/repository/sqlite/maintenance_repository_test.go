@@ -316,6 +316,8 @@ func TestMaintenanceRepositorySQLite_Recipients(t *testing.T) {
 	deletedProjectAdmin := seedPBACUser(t, db, 23)
 	otherWideAdmin := seedPBACUser(t, db, 24)
 	deletedUserAdmin := seedPBACUser(t, db, 25)
+	emptyGroupAdmin := seedPBACUser(t, db, 26)
+	emptyWriter := seedPBACUser(t, db, 27)
 	archived := seedProject(t, q, acme.Int64(), "archived")
 	empty := seedOrg(t, q, "Empty", "empty")
 	require.NoError(t, q.DeleteProject(ctx, archived.Int64()))
@@ -354,6 +356,10 @@ func TestMaintenanceRepositorySQLite_Recipients(t *testing.T) {
 	maintenanceExec(t, db, rule, deletedProjectAdmin.Int64(), nil, acme.Int64(), archived.Int64(), "", admin)
 	maintenanceExec(t, db, rule, deletedUserAdmin.Int64(), nil, acme.Int64(), tools.Int64(), "", admin)
 	maintenanceExec(t, db, rule, otherWideAdmin.Int64(), nil, empty.Int64(), nil, "", admin)
+	emptyTeam := seedPBACGroup(t, db, 52, empty.Int64(), "empty-team", emptyGroupAdmin.Int64())
+	maintenanceExec(t, db, rule, nil, emptyTeam.Int64(), empty.Int64(), nil, "", admin)
+	maintenanceExec(t, db, rule, emptyWriter.Int64(), nil, empty.Int64(), nil, "", write)
+	maintenanceExec(t, db, rule, deadOrgOwner.Int64(), nil, dead.Int64(), nil, "", admin)
 
 	ids := func(rs []domain.MaintenanceRecipient) []snow.ID {
 		out := make([]snow.ID, 0, len(rs))
@@ -387,7 +393,7 @@ func TestMaintenanceRepositorySQLite_Recipients(t *testing.T) {
 
 	org, err = repo.RecipientsOrg(ctx, empty)
 	require.NoError(t, err)
-	require.Empty(t, org, "an org-wide rule without a live project adds nobody")
+	require.Equal(t, []snow.ID{otherWideAdmin, emptyGroupAdmin}, ids(org), "org-wide admins count without a live project")
 
 	org, err = repo.RecipientsOrg(ctx, dead)
 	require.NoError(t, err)

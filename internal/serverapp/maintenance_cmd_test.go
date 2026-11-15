@@ -15,6 +15,7 @@ import (
 	"github.com/nipalab/nipa/db"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -30,6 +31,7 @@ func sqliteMaintenanceOpener(cfg *config.Config) (usecase.Repositories, *sql.DB,
 		PBAC:        sqlite.NewPBACRepository(conn),
 		Audit:       sqlite.NewAuditRepository(conn),
 		Maintenance: sqlite.NewMaintenanceRepository(conn),
+		Email:       sqlite.NewEmailRepository(conn),
 	}, conn, nil
 }
 
@@ -86,6 +88,7 @@ func TestMaintenanceCommandSetStatusEnd(t *testing.T) {
 	require.Contains(t, out, "maintenance set: server read_only (active")
 	require.Contains(t, out, "until about 2999-01-01T00:00:00Z")
 	require.Contains(t, out, ": disk swap")
+	require.Contains(t, out, "notified: false")
 
 	start := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
 	out, err = runCmd(t, cfg, "set", "--org", "default", "full", "--start", start)
@@ -204,5 +207,90 @@ func TestMaintenanceCommandBadArguments(t *testing.T) {
 	for _, tc := range cases {
 		_, err := runCmd(t, cfg, tc.args...)
 		require.ErrorContains(t, err, tc.msg, tc.args)
+	}
+}
+
+type outboxRow struct {
+	event, email, subject string
+	body                  []byte
+}
+
+func outboxRows(t *testing.T, dsn string) []outboxRow {
+	t.Helper()
+	conn, err := db.OpenSQLite(dsn)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	rows, err := conn.Query(`SELECT event, email, subject, body FROM email_deliveries ORDER BY id`)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	var out []outboxRow
+	for rows.Next() {
+		var r outboxRow
+		require.NoError(t, rows.Scan(&r.event, &r.email, &r.subject, &r.body))
+		out = append(out, r)
+	}
+	require.NoError(t, rows.Err())
+	return out
+}
+
+func TestMaintenanceCommandNotify(t *testing.T) {
+	dsn := migratedDSN(t)
+	conn, err := db.OpenSQLite(dsn)
+	require.NoError(t, err)
+	_, err = conn.Exec(`UPDATE users SET email = 'admin@example.com', email_verified = true WHERE id = 1`)
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	cfg := &config.Config{DatabaseDSN: dsn, EmailSender: "log", EmailBaseURL: "https://nipa.example"}
+
+	start := time.Now().Add(time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
+	out, err := runCmd(t, cfg, "set", "read_only", "--start", start, "-m", "backup", "--notify")
+	require.NoError(t, err)
+	require.Contains(t, out, "notified: true (queued")
+	require.NotContains(t, out, "note:")
+	rows := outboxRows(t, dsn)
+	require.Len(t, rows, 1)
+	require.Equal(t, "maintenance.scheduled", rows[0].event)
+	require.Equal(t, "admin@example.com", rows[0].email)
+	require.Equal(t, "Maintenance scheduled: the Nipa server", rows[0].subject)
+	msg, err := mail.DecodeMessage(rows[0].body)
+	require.NoError(t, err)
+	require.Contains(t, msg.Text, "Message: backup")
+	require.Contains(t, msg.Text, "https://nipa.example/")
+
+	out, err = runCmd(t, cfg, "set", "frozen", "--start", time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), "--notify")
+	require.NoError(t, err)
+	require.Contains(t, out, "note: email is paused while frozen")
+	_, err = runCmd(t, cfg, "end")
+	require.NoError(t, err)
+	rows = outboxRows(t, dsn)
+	require.Len(t, rows, 3)
+	require.Equal(t, "maintenance.updated", rows[1].event)
+	require.Equal(t, "maintenance.finished", rows[2].event)
+	finished, err := mail.DecodeMessage(rows[2].body)
+	require.NoError(t, err)
+	require.Equal(t, msg.MessageID, finished.InReplyTo)
+
+	_, err = runCmd(t, cfg, "set", "full", "--project", "default/default")
+	require.NoError(t, err)
+	_, err = runCmd(t, cfg, "end", "--project", "default/default")
+	require.NoError(t, err)
+	require.Len(t, outboxRows(t, dsn), 3, "a window stored without notify sends nothing when it ends")
+
+	cfg.EmailSender = "off"
+	out, err = runCmd(t, cfg, "set", "full", "--org", "default", "--notify")
+	require.NoError(t, err)
+	require.Contains(t, out, "notified: false")
+
+	cfg.EmailSender = "smtp"
+	out, err = runCmd(t, cfg, "set", "read_only", "--org", "default", "--notify")
+	require.NoError(t, err)
+	require.Contains(t, out, "warning: email disabled")
+	require.Contains(t, out, "notified: false")
+	require.Len(t, outboxRows(t, dsn), 3)
+
+	for _, args := range [][]string{{"status"}, {"set", "full", "--org", "default"}} {
+		out, err = runCmd(t, cfg, args...)
+		require.NoError(t, err)
+		require.NotContains(t, out, "email disabled", args[0])
 	}
 }

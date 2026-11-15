@@ -180,6 +180,29 @@ about a merge request uses a per-recipient thread `Message-ID` that later
 messages reference with `In-Reply-To`/`References`, so mail clients group the
 conversation.
 
+Maintenance announcements (`maintenance.scheduled`, `maintenance.updated`,
+`maintenance.finished`) are written by a window stored with `notify` (admin
+API, org/project maintenance routes or `nipad maintenance set --notify`), in
+the same transaction as the window. Recipients: for the server window the
+verified owners of every live organization; for an org window its owners plus
+the users holding a root admin rule (directly or through a group) org-wide or
+on any live project of the org; for a project window the org's owners plus the
+project's admins (project and org-wide rules, groups expanded). Deleted and
+unverified users and invalid addresses are skipped and duplicates collapse by
+user and address, but `notify_email` is ignored (a service notice, like the
+two-factor notices) and there is no fan-out cap. A new window, or one
+announced for the first time, sends "Maintenance scheduled" ("started" when
+it is already active); a change to an announced window sends "updated"; ending
+a window that was last stored with `notify` sends "finished". The body names
+the scope, the mode in words, the start and estimated end in UTC (the end is
+an estimate; maintenance ends manually) and the message, with a link to
+`EMAIL_BASE_URL` (the org or project page for those scopes). Messages of one
+window share the thread key `maintenance:<window id>`, so updates reply to the
+first announcement. Only project-window messages show up in the project's
+"Email deliveries" list. Deliveries pause while the server is `frozen`, so
+announce a database move with a window scheduled ahead (`--start`) before it
+freezes.
+
 `mr.created` goes to the reviewers and assignees given at creation
 (`reviewer_ids`/`assignee_ids`, `nipa mr create --reviewer/--assignee`); the
 author is the actor and is skipped. Those reviewers get only the "opened"

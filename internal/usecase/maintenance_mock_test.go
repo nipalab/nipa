@@ -379,15 +379,28 @@ func (m *MockMaintenanceMailer) EXPECT() *MockMaintenanceMailerMockRecorder {
 }
 
 // Announce mocks base method.
-func (m *MockMaintenanceMailer) Announce(ctx context.Context, notice MaintenanceNotice, window domain.MaintenanceWindow, recipients []domain.MaintenanceRecipient) error {
+func (m *MockMaintenanceMailer) Announce(ctx context.Context, a MaintenanceAnnouncement) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Announce", ctx, notice, window, recipients)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "Announce", ctx, a)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Announce indicates an expected call of Announce.
-func (mr *MockMaintenanceMailerMockRecorder) Announce(ctx, notice, window, recipients any) *gomock.Call {
+func (mr *MockMaintenanceMailerMockRecorder) Announce(ctx, a any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Announce", reflect.TypeOf((*MockMaintenanceMailer)(nil).Announce), ctx, notice, window, recipients)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Announce", reflect.TypeOf((*MockMaintenanceMailer)(nil).Announce), ctx, a)
+}
+
+// Kick mocks base method.
+func (m *MockMaintenanceMailer) Kick() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Kick")
+}
+
+// Kick indicates an expected call of Kick.
+func (mr *MockMaintenanceMailerMockRecorder) Kick() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Kick", reflect.TypeOf((*MockMaintenanceMailer)(nil).Kick))
 }

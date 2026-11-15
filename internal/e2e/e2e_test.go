@@ -108,7 +108,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	return host
 }
 
-func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverapp.Usecases) {
+func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*serverapp.UsecaseDeps)) (string, serverapp.Usecases) {
 	t.Helper()
 
 	passwordHasher := hasher.NewHasher(2)
@@ -125,6 +125,23 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 	maintenanceRepo := sqlite.NewMaintenanceRepository(dbConn)
 	maintenanceSvc, maintenancePoller := serverapp.NewMaintenance(&config.Config{}, maintenanceRepo, nil)
 	require.NoError(t, maintenancePoller.Poll(context.Background()))
+	deps := serverapp.UsecaseDeps{
+		Config: &config.Config{
+			JWTKey:                 e2eJWTSecret,
+			ChunkURLSigningKey:     "e2e-chunk-signing-key",
+			ChunkPresignTTLSeconds: 3600,
+			ChunkMaxPageSize:       1000,
+		},
+		DB:                dbConn,
+		Snow:              node,
+		Hasher:            passwordHasher,
+		ChunkStore:        chunkStore,
+		WebhookDispatcher: webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}),
+		Maintenance:       maintenanceSvc,
+	}
+	for _, opt := range opts {
+		opt(&deps)
+	}
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
 		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
@@ -147,20 +164,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepo,
-	}, serverapp.UsecaseDeps{
-		Config: &config.Config{
-			JWTKey:                 e2eJWTSecret,
-			ChunkURLSigningKey:     "e2e-chunk-signing-key",
-			ChunkPresignTTLSeconds: 3600,
-			ChunkMaxPageSize:       1000,
-		},
-		DB:                dbConn,
-		Snow:              node,
-		Hasher:            passwordHasher,
-		ChunkStore:        chunkStore,
-		WebhookDispatcher: webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}),
-		Maintenance:       maintenanceSvc,
-	})
+	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk
 
