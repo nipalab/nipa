@@ -242,8 +242,20 @@ stopping the server. The modes are `read_only`, `full` (closed) and `frozen`
 (server only, for moving the database). Windows are stored in the database,
 so every instance picks them up within `MAINTENANCE_POLL_SECONDS`.
 
-> Windows can be set and read, but requests are not refused and `--notify`
-> sends no email yet. `nipad-ee maintenance` takes the same arguments.
+An active window refuses requests to its scope (the server window covers
+everything, an org window its org and projects, a project window that
+project): `read_only` refuses writes (push, locks, merge requests, branch and
+tag changes, settings), `full` also refuses reads. Sign-in, refresh and
+logout, the maintenance status and admin routes, `GET /api/v1/me`,
+`/readyz`, `/healthz`, `/version`, `/metrics` and the web UI files stay
+reachable. Nobody bypasses it, super admins included. Refusals are gRPC
+`UNAVAILABLE` (reason `MAINTENANCE`) and HTTP `503` with `Retry-After` (when
+an end is set) and `X-Nipa-Maintenance: <scope>;<mode>`; provider webhooks
+(Paddle) get `503` too and are retried by the provider.
+
+> `frozen` cannot be set yet (it arrives with the database move support) and
+> `--notify` sends no email yet. `nipad-ee maintenance` takes the same
+> arguments.
 
 From the server host, with the same `config.yaml` as the server (the command
 opens the database directly, never migrates it, and records its changes in the
@@ -259,8 +271,7 @@ audit log as `system` with `via: cli`):
 ```
 
 `--start` defaults to now (or the stored start of an existing window),
-`--end` is an estimate shown to users and never ends a window, and `frozen`
-is only accepted for the server. While `MAINTENANCE_FILE` exists, the server
+`--end` is an estimate shown to users and never ends a window. While `MAINTENANCE_FILE` exists, the server
 window cannot be changed (`409`). If the command answers `schema too old,
 start the server once`, start the new server version first so it migrates.
 
@@ -269,7 +280,10 @@ Over HTTP: `GET /api/maintenance` (public, server window only),
 `GET|PUT|DELETE /api/v1/orgs/{org}/maintenance` and
 `GET|PUT|DELETE /api/v1/orgs/{org}/projects/{project}/maintenance` (reading:
 org members / project readers; writing: org owners or super admins). The `PUT`
-body is `{"mode", "message", "starts_at", "ends_at", "notify"}`.
+body is `{"mode", "message", "starts_at", "ends_at", "notify"}`. Over gRPC,
+the public `GetMaintenanceStatus` answers the server window and, for a valid
+token with access, the org and project windows of the given context. A window
+from `MAINTENANCE_FILE` has no `starts_at`.
 
 ## Data, backups and upgrades
 

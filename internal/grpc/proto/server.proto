@@ -1111,6 +1111,31 @@ message GetServerVersionResponse {
     string go_version = 3;
 }
 
+// MaintenanceWindow is a stored or file maintenance window. starts_at is
+// unset for a MAINTENANCE_FILE override; ends_at is an estimate.
+message MaintenanceWindow {
+    string mode = 1; // read_only | full | frozen
+    bool active = 2;
+    string message = 3;
+    google.protobuf.Timestamp starts_at = 4;
+    google.protobuf.Timestamp ends_at = 5;
+    string org = 6;
+    string project = 7; // "org/project"
+}
+
+message GetMaintenanceStatusRequest {
+    ProjectContext context = 1; // optional: org alone or org + project
+}
+
+// GetMaintenanceStatusResponse fills org and project only for a valid bearer
+// token with access to them.
+message GetMaintenanceStatusResponse {
+    MaintenanceWindow server = 1;
+    MaintenanceWindow project = 2;
+    MaintenanceWindow org = 3;
+    string source = 4; // db | file
+}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
@@ -1118,6 +1143,7 @@ service NipaService {
     rpc CompleteLoginSSHKey(CompleteLoginSSHKeyRequest) returns (LoginResponse);
     rpc CompleteLoginMFA(CompleteLoginMFARequest) returns (LoginResponse);
     rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
+    rpc GetMaintenanceStatus(GetMaintenanceStatusRequest) returns (GetMaintenanceStatusResponse);
     rpc ListMyProjects(ListMyProjectsRequest) returns (ListMyProjectsResponse);
     rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
     rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse);

@@ -101,7 +101,8 @@ func (stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil }
 func (stubPasswordHasher) Compare(_, _ string) bool      { return true }
 
 type loginMockContainer struct {
-	auth *usecase.Auth
+	auth        *usecase.Auth
+	maintenance *usecase.Maintenance
 }
 
 func (m *loginMockContainer) Auth() *usecase.Auth             { return m.auth }
@@ -123,6 +124,9 @@ func (m *loginMockContainer) MergeRequestCheck() *usecase.MergeRequestCheck { re
 func (m *loginMockContainer) FileLock() *usecase.FileLock                   { return nil }
 func (m *loginMockContainer) Org() *usecase.Org                             { return nil }
 func (m *loginMockContainer) Project() *usecase.Project                     { return nil }
+func (m *loginMockContainer) Maintenance() *usecase.Maintenance {
+	return m.maintenance
+}
 
 const stubSessionSecret = "stub-session-secret"
 

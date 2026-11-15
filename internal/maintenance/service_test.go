@@ -157,3 +157,35 @@ func TestServiceOnPublish(t *testing.T) {
 	require.Error(t, svc.Apply(context.Background(), NewSnapshot(nil, testNow)))
 	require.Len(t, got, 2, "a refused snapshot is not published")
 }
+
+func TestServiceCheck(t *testing.T) {
+	var nilSvc *Service
+	require.Nil(t, nilSvc.Check(ClassWrite, "POST", "acme", "game"))
+
+	past := testNow.Add(-time.Hour)
+	svc := NewService().WithClock(fixedClock(testNow))
+	require.NoError(t, svc.Apply(context.Background(), NewSnapshot([]Window{
+		projectWindow(1, 10, "acme", "game", ReadOnly, past),
+		orgWindow(2, 20, "beta", Full, past),
+	}, testNow)))
+
+	require.Nil(t, svc.Check(ClassRead, "GET", "acme", "game"))
+	e := svc.Check(ClassWrite, "POST", "acme", "game")
+	require.NotNil(t, e)
+	require.Equal(t, ScopeProject, e.Info.Scope)
+	require.Nil(t, svc.Check(ClassWrite, "POST", "acme", "other"))
+	require.Nil(t, svc.Check(ClassWrite, "POST", "", ""))
+
+	e = svc.Check(ClassRead, "GET", "beta", "")
+	require.NotNil(t, e)
+	require.Equal(t, ScopeOrg, e.Info.Scope)
+	require.Nil(t, svc.Check(ClassControl, "PUT", "beta", ""))
+	require.Nil(t, svc.Check(ClassAuth, "POST", "beta", ""))
+
+	require.NoError(t, svc.Apply(context.Background(), NewSnapshot([]Window{serverWindow(3, Frozen, past)}, testNow)))
+	e = svc.Check(ClassRead, "GET", "", "")
+	require.NotNil(t, e, "frozen is enforced as full")
+	require.Equal(t, Frozen, e.Info.Mode)
+	require.Nil(t, svc.Check(ClassAuth, "POST", "", ""))
+	require.Nil(t, svc.Check(ClassControl, "DELETE", "", ""))
+}

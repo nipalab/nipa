@@ -62,10 +62,21 @@ func TestInfoMetadataRoundTrip(t *testing.T) {
 	require.NotContains(t, md, "org")
 	require.Nil(t, InfoFromMetadata(md).EndsAt)
 	require.True(t, InfoFromMetadata(map[string]string{}).StartsAt.IsZero())
+
+	file := Info{Scope: ScopeServer, Mode: Full}
+	require.NotContains(t, file.Metadata(), "starts_at")
 }
 
 func TestInfoJSON(t *testing.T) {
 	data, err := json.Marshal(NewInfo(Window{Mode: Frozen, StartsAt: testNow}, ScopeServer))
 	require.NoError(t, err)
 	require.JSONEq(t, `{"scope":"server","mode":"frozen","message":"","starts_at":"2026-11-14T10:00:00Z"}`, string(data))
+
+	data, err = json.Marshal(NewInfo(Window{Mode: Full}, ScopeServer))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"scope":"server","mode":"full","message":""}`, string(data), "a file override has no start")
+	w := Window{Mode: Full}
+	data, err = json.Marshal(w.Status(testNow))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"mode":"full","active":true,"message":""}`, string(data))
 }

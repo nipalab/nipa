@@ -62,6 +62,9 @@ func (m *mockUsecaseContainer) MergeRequestCheck() *usecase.MergeRequestCheck {
 func (m *mockUsecaseContainer) FileLock() *usecase.FileLock { return m.fileLock }
 func (m *mockUsecaseContainer) Org() *usecase.Org           { return m.org }
 func (m *mockUsecaseContainer) Project() *usecase.Project   { return m.project }
+func (m *mockUsecaseContainer) Maintenance() *usecase.Maintenance {
+	return nil
+}
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()

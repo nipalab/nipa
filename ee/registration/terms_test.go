@@ -12,6 +12,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -204,4 +205,20 @@ func TestTermsEndpointsRequireAuthentication(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/me/terms", `{"version":"2026-11-10"}`)
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestRoutesMaintenanceClasses(t *testing.T) {
+	handler := NewHandler(nil, nil)
+	publicWs := new(restful.WebService).Path("/api/v1/auth")
+	RegisterPublicRoutes(publicWs, handler)
+	classes := map[string]maintenance.Class{}
+	for _, r := range publicWs.Routes() {
+		classes[r.Method+" "+r.Path] = api.RouteClass(r.Method, r.Path)
+	}
+	require.Equal(t, map[string]maintenance.Class{
+		"GET /api/v1/auth/capabilities":     maintenance.ClassPublic,
+		"POST /api/v1/auth/register":        maintenance.ClassWrite,
+		"POST /api/v1/auth/register/resend": maintenance.ClassWrite,
+		"POST /api/v1/auth/verify":          maintenance.ClassWrite,
+	}, classes)
 }

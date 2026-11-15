@@ -1545,8 +1545,9 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 login RPCs.
 
 Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; core,
-storage, admin API and the server subcommand exist, nothing enforces the
-windows yet): windows
+storage, admin API, the server subcommand and `read_only`/`full` enforcement
+exist; `frozen` is refused at write time and enforced as `full` until its
+writer pauses land): windows
 have three scopes (server, org, project). The pure `internal/maintenance` (no
 repo/usecase imports) holds `Mode` (`off|read_only|full|frozen`, `Stricter`),
 `Class` and the rule table (`Allowed`/`AllowedMethod`: control stays open in
@@ -1580,7 +1581,8 @@ org's project windows), `ProjectStatus` (project read), `SetServer`/`SetOrg`/
 `SetProject` and `EndServer`/`EndOrg`/`EndProject` (server: super admin; org
 and project: `IsOrgOwner` or super admin; no project admins). Validation runs
 before the write: mode, `frozen` only for the server, message <= 500 runes,
-`ends_at > starts_at`, `starts_at` <= now + 90 days, a missing `starts_at`
+`frozen` refused for now (400), `ends_at > starts_at`, `starts_at` <= now +
+90 days, a missing `starts_at`
 keeps an existing window's start, else now; a server write while the snapshot
 `source` is `file` is a 409 `maintenance is controlled by MAINTENANCE_FILE`;
 ending a missing window is a 404. Writes run in `auditedWrite`
@@ -1614,6 +1616,35 @@ postgres opener, never migrating; a missing table is `schema too old, start
 the server once`), reads the override file and uses `snow.ReservedCLINode`
 (255): `ee/nodelease` leases 0..254 only and `snow.NewServerNode` (both mains'
 static `SNOWFLAKE_NODE_ID`) refuses 255.
+Enforcement goes through `Service.Check(class, method, org, project)` (nil
+service = allow; `frozen` checked as `full`), no bypass for anyone. gRPC:
+`grpcserver.Maintenance` (`maintenance_interceptor.go`, chained Metrics → JWT
+→ Maintenance → RateLimit in `serverapp.run` and both e2e harnesses) classifies
+by `methodClass` (`maintenance_classes.go`, every `NipaService` and health
+method; unknown = write) and targets `GetContext()` org/project, else
+`GetOrg()`, else server only (`serverScopeOnly`: `ListMyProjects`); tests walk
+the ServiceDescs and instantiate every read/write request through
+`protoregistry`. A refusal is `Error.GRPCError(now)`: `Unavailable` +
+`errdetails.ErrorInfo{Reason: MAINTENANCE, Domain: nipa, Metadata}` + a
+`RetryInfo` while `ends_at` is ahead; `maintenance.FromGRPC` reads it back
+(the client `offlineError` passes it through instead of "content not cached
+locally"). The public, rate-limit-exempt `GetMaintenanceStatus`
+(`grpc/server/maintenance.go`) answers `{server, org, project, source}`; org
+and project only for a valid bearer token through `ProjectStatus`/`OrgStatus`.
+REST: `maintenanceFilter` (`http/api/maintenance_filter.go`) is a WebService
+filter on `/api/v1/auth`, `/api/v1` (after the bearer filter, before the rate
+limit), `/api/chunks`, `/api/maintenance` and every `api.WithWebService`
+(the Paddle webhook is a write, so 503); `RouteClass(method, path)` = the
+`routeClasses` public/auth/control entries (trailing `/` trimmed), else
+GET/HEAD/OPTIONS read and the rest write; target = `{org}`/`{project}` path
+parameters. A refusal is 503 with `Retry-After`, `X-Nipa-Maintenance:
+<scope>;<mode>` and `{error, maintenance: Info}`. `testdata/
+maintenance_routes.golden` lists the class of every registered route
+(`NIPA_UPDATE_GOLDEN=1` rewrites it); ee route classes are tested in
+`ee/oauth` and `ee/registration`. `/healthz`, `/readyz`, `/version`,
+`/metrics`, `/docs` and the SPA never pass the filter.
+`nipa_maintenance_rejected_total{transport,class,scope}` counts refusals. A
+file override has no `starts_at` (omitted from JSON, metadata and proto).
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

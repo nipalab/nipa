@@ -555,9 +555,9 @@ only be set from PR 4 on.
 
 | PR | title | depends on | user-visible change |
 |---|---|---|---|
-| 1 | Add maintenance core and storage | – | none |
-| 2 | Add maintenance admin API and `nipad maintenance` command | 1 | windows can be set and read; nothing enforced |
-| 3 | Enforce read-only and closed maintenance | 2 | `read_only`/`full` block requests |
+| 1 | Add maintenance core and storage (done) | – | none |
+| 2 | Add maintenance admin API and `nipad maintenance` command (done) | 1 | windows can be set and read; nothing enforced |
+| 3 | Enforce read-only and closed maintenance (done) | 2 | `read_only`/`full` block requests |
 | 4 | Add frozen maintenance for database moves | 3 | `frozen` mode; sessions kept by the CLI and SPA |
 | 5 | Email maintenance announcements | 2 | `notify` sends mail |
 | 6 | Show maintenance in the CLI, daemon and MCP | 3 | clear errors, no retries, status lines, daemon event |
@@ -598,13 +598,48 @@ Phase 3 below. As built, it differs from the sections above in these points:
   `snow.NewServerNode` is the refusal of 255 for both mains.
 - `Org.IsOrgMember` was added for the org status read. Refused status reads
   answer 403; ending a missing window answers 404.
-- `frozen` can already be stored for the server window; PR 3 must not enforce
-  it until PR 4 lands (or refuse it until then).
+- `frozen` could be stored for the server window; PR 3 refuses it until PR 4
+  lands (see below).
 
 ### PR 3: enforce read-only and closed maintenance
 
 Phase 4 below, plus the `pristine.go` `offlineError` passthrough with its unit test (a
 maintenance error is checked through `status.FromError` details before `codes.Unavailable`).
+
+Done. As built, it differs from the sections above in these points:
+
+- One decision point, `Service.Check(class, method, org, project) *Error`, used by both
+  transports (nil service = allow). The gRPC error lives in the core package
+  (`Error.GRPCError(now)`, `FromGRPC`, `maintenance.Domain = "nipa"`), so the client
+  detects it without its own parser.
+- **Temporary `frozen` restriction (removed by PR 4):** `usecase.Maintenance.set` refuses
+  `frozen` with a 400 `frozen maintenance is not available yet; use full` (REST and
+  `nipad maintenance set frozen` alike), and `Service.Check` enforces an existing frozen
+  window (override file or a row stored before PR 3) as `full`. PR 4 drops both.
+- `MaintenanceWindow` gains `org = 6` and `project = 7`, and
+  `GetMaintenanceStatusResponse` gains `source = 4`. The handler fills org and project
+  through `Maintenance.ProjectStatus`/`OrgStatus` with the claims of a valid token.
+- A window from `MAINTENANCE_FILE` has no `starts_at`: omitted from the JSON status and
+  rejection bodies (`omitzero`), from the `ErrorInfo` metadata and from the proto.
+- The REST filter is a per-WebService filter on `/api/v1/auth`, `/api/v1` (after the
+  bearer filter, before the rate limit, like gRPC), `/api/chunks`, `/api/maintenance`
+  and every `api.WithWebService`, and `NewChunkTransferHandler(chunks, svc)` takes the
+  service for the harnesses. Routes registered with `GET("")` end in `/`, so
+  `RouteClass` trims a trailing slash.
+- `control` is `GET /api/v1/me`, `GET .../projects/{project}/permissions/me` (the SPA's
+  `/permissions/me`) and the maintenance routes; `GET /orgs/{org}` does not exist. The
+  gRPC `GetMyPermissions` is a `read`.
+- Route coverage is a golden file (`internal/http/api/testdata/maintenance_routes.golden`,
+  rewritten with `NIPA_UPDATE_GOLDEN=1`), so a new route fails until its class is
+  reviewed, plus a check that every `routeClasses` key is registered. Enterprise routes
+  (`/auth/capabilities`, OAuth) are checked by `RouteClass` tests in `ee/oauth` and
+  `ee/registration`.
+- `grpc.health.v1.Health/List` is classed `public` but still needs a token (it is not in
+  `isPublicMethod`).
+- `nipa_maintenance_rejected_total` ships here. The e2e harness has no metrics, so the
+  counter is asserted in the interceptor and filter unit tests, not in `internal/e2e`.
+- Known gaps left for PR 6: the client does not map the detail into a `domain.Error`
+  hint yet, and its HTTP chunk transfers retry a maintenance 503 like any 5xx.
 
 ### PR 4: frozen maintenance for database moves
 
