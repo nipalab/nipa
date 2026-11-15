@@ -117,3 +117,19 @@ func TestAppendRules_Errors(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+func TestImportGitignore_BOM(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, GitignoreFile, "\xef\xbb\xbfnode_modules/\n*.log\n")
+	writeFile(t, root, FileName, "\xef\xbb\xbfnode_modules/\n")
+	res, err := ImportGitignore(root)
+	require.NoError(t, err)
+	require.Equal(t, 1, res.Added)
+
+	root = t.TempDir()
+	writeFile(t, root, GitignoreFile, "\xef\xbb\xbfnode_modules/\n")
+	_, err = ImportGitignore(root)
+	require.NoError(t, err)
+	data, _ := os.ReadFile(filepath.Join(root, FileName))
+	require.Equal(t, "# imported from .gitignore\nnode_modules/\n", string(data))
+}

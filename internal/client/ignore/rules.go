@@ -1,6 +1,7 @@
 package ignore
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 
 // GitignoreFile is the git ignore file ImportGitignore reads.
 const GitignoreFile = ".gitignore"
+
+var utf8BOM = []byte("\xef\xbb\xbf")
 
 // ImportResult describes what ImportGitignore wrote.
 type ImportResult struct {
@@ -32,7 +35,7 @@ func ImportGitignore(root string) (ImportResult, error) {
 	}
 	var patterns []string
 	var res ImportResult
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(string(bytes.TrimPrefix(data, utf8BOM)), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -63,7 +66,7 @@ func appendRules(root, header string, patterns []string) (int, error) {
 		return 0, fmt.Errorf("read ignore rules: %w", err)
 	}
 	have := map[string]bool{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(string(bytes.TrimPrefix(data, utf8BOM)), "\n") {
 		have[strings.TrimSpace(line)] = true
 	}
 	var add []string
