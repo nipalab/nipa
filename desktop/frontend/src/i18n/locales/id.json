@@ -1551,5 +1551,6 @@
   "gitignoreOffer.create": "Buat .nipaignore dari .gitignore",
   "gitignoreOffer.dismiss": "Tutup",
   "gitignoreOffer.imported_other": "{{count}} aturan ditambahkan ke .nipaignore",
-  "gitignoreOffer.unsupported_other": "{{count}} aturan memakai sintaks yang tidak didukung Nipa dan tidak akan cocok: {{rules}}"
+  "gitignoreOffer.unsupported_other": "{{count}} aturan memakai sintaks yang tidak didukung Nipa dan tidak akan cocok: {{rules}}",
+  "commitBox.largePush_other": "Anda akan melakukan {{verb}} untuk {{files}} file. Jika jumlahnya lebih dari yang Anda kira, cari folder hasil generate seperti node_modules dan tambahkan ke .nipaignore."
 }

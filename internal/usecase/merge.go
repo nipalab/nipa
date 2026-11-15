@@ -59,6 +59,15 @@ func (b *Branch) resolveMergeRef(ctx context.Context, projectID snow.ID, ref Mer
 }
 
 func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error) {
+	return b.mergeBase(ctx, projectID, target, source, true)
+}
+
+// GetMergeBaseCommits is GetMergeBase without the merge base tree.
+func (b *Branch) GetMergeBaseCommits(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error) {
+	return b.mergeBase(ctx, projectID, target, source, false)
+}
+
+func (b *Branch) mergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef, withTree bool) (*MergeBaseInfo, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -97,7 +106,7 @@ func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, so
 		SourceCommitHash:  sourceSide.commitHash,
 		MergeBaseCommitID: baseCommitID,
 	}
-	if baseCommitID == nil {
+	if baseCommitID == nil || !withTree {
 		return info, nil
 	}
 	tree, err := b.commitTreeManifest(ctx, projectID, *baseCommitID, true)

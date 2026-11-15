@@ -3582,6 +3582,7 @@ type GetMergeBaseRequest struct {
 	SourceBranch   string                 `protobuf:"bytes,3,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`               // used when source_commit_id is empty
 	TargetCommitId *string                `protobuf:"bytes,4,opt,name=target_commit_id,json=targetCommitId,proto3,oneof" json:"target_commit_id,omitempty"` // base36 snow ID; takes precedence over target_branch
 	SourceCommitId *string                `protobuf:"bytes,5,opt,name=source_commit_id,json=sourceCommitId,proto3,oneof" json:"source_commit_id,omitempty"` // base36 snow ID; takes precedence over source_branch
+	OmitTree       bool                   `protobuf:"varint,6,opt,name=omit_tree,json=omitTree,proto3" json:"omit_tree,omitempty"`                          // leave merge_base_tree empty; the client streams it with StreamTreeManifest
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -3651,6 +3652,13 @@ func (x *GetMergeBaseRequest) GetSourceCommitId() string {
 	return ""
 }
 
+func (x *GetMergeBaseRequest) GetOmitTree() bool {
+	if x != nil {
+		return x.OmitTree
+	}
+	return false
+}
+
 type GetMergeBaseResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	TargetBranch      string                 `protobuf:"bytes,1,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
@@ -3658,7 +3666,7 @@ type GetMergeBaseResponse struct {
 	TargetCommitId    string                 `protobuf:"bytes,3,opt,name=target_commit_id,json=targetCommitId,proto3" json:"target_commit_id,omitempty"`            // base36 snow ID; empty when the branch has no commits
 	SourceCommitId    string                 `protobuf:"bytes,4,opt,name=source_commit_id,json=sourceCommitId,proto3" json:"source_commit_id,omitempty"`            // base36 snow ID; empty when the branch has no commits
 	MergeBaseCommitId string                 `protobuf:"bytes,5,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3" json:"merge_base_commit_id,omitempty"` // base36 snow ID; empty when either head is empty
-	MergeBaseTree     *TreeManifest          `protobuf:"bytes,6,opt,name=merge_base_tree,json=mergeBaseTree,proto3" json:"merge_base_tree,omitempty"`               // recursive manifest of the merge base tree
+	MergeBaseTree     *TreeManifest          `protobuf:"bytes,6,opt,name=merge_base_tree,json=mergeBaseTree,proto3" json:"merge_base_tree,omitempty"`               // recursive manifest of the merge base tree; empty with omit_tree
 	TargetCommitHash  string                 `protobuf:"bytes,7,opt,name=target_commit_hash,json=targetCommitHash,proto3" json:"target_commit_hash,omitempty"`      // hex commit hash; empty when the branch has no commits
 	SourceCommitHash  string                 `protobuf:"bytes,8,opt,name=source_commit_hash,json=sourceCommitHash,proto3" json:"source_commit_hash,omitempty"`      // hex commit hash; empty when the branch has no commits
 	unknownFields     protoimpl.UnknownFields
@@ -12384,13 +12392,14 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x10DeleteTagRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\x13\n" +
-	"\x11DeleteTagResponse\"\x98\x02\n" +
+	"\x11DeleteTagResponse\"\xb5\x02\n" +
 	"\x13GetMergeBaseRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12#\n" +
 	"\rtarget_branch\x18\x02 \x01(\tR\ftargetBranch\x12#\n" +
 	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\x12-\n" +
 	"\x10target_commit_id\x18\x04 \x01(\tH\x00R\x0etargetCommitId\x88\x01\x01\x12-\n" +
-	"\x10source_commit_id\x18\x05 \x01(\tH\x01R\x0esourceCommitId\x88\x01\x01B\x13\n" +
+	"\x10source_commit_id\x18\x05 \x01(\tH\x01R\x0esourceCommitId\x88\x01\x01\x12\x1b\n" +
+	"\tomit_tree\x18\x06 \x01(\bR\bomitTreeB\x13\n" +
 	"\x11_target_commit_idB\x13\n" +
 	"\x11_source_commit_id\"\xfe\x02\n" +
 	"\x14GetMergeBaseResponse\x12#\n" +

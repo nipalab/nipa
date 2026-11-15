@@ -1055,6 +1055,49 @@ func TestGetMergeBase_Success(t *testing.T) {
 	require.Equal(t, domain.Hash{9}.String(), resp.SourceCommitHash)
 }
 
+func TestGetMergeBase_OmitTree(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	base := snow.ID(10)
+	targetHead := snow.ID(11)
+	sourceHead := snow.ID(12)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &targetHead}, nil),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: &sourceHead}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+			Return(&domain.Commit{ID: targetHead, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+			Return(&domain.Commit{ID: targetHead, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}, nil),
+	)
+
+	resp, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+		OmitTree:     true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, base.Base36(), resp.MergeBaseCommitId)
+	require.Equal(t, targetHead.Base36(), resp.TargetCommitId)
+	require.Equal(t, domain.Hash{9}.String(), resp.SourceCommitHash)
+	require.Nil(t, resp.MergeBaseTree)
+}
+
 func TestGetMergeBase_EmptyBranches(t *testing.T) {
 	branch, perm, repo := newTestBranchUc(t)
 	srv := New(newMockUsecaseContainer(t, branch))

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Draft, PushChecks } from "@/api/desktop";
 import { setMode } from "@/lib/mode";
-import { CommitBox } from "./CommitBox";
+import { CommitBox, LARGE_PUSH_FILES } from "./CommitBox";
 
 const none: PushChecks = { violations: [], broken: [], newlyUnused: [], warnings: [], truncated: false, scanned: 0 };
 
@@ -183,5 +183,21 @@ describe("CommitBox generate", () => {
     await userEvent.click(screen.getByRole("button", { name: /Generate/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not generate a message: AI generation is not configured");
     expect(screen.getByLabelText("Push message")).toHaveValue("");
+  });
+});
+
+describe("CommitBox large push note", () => {
+  it("stays hidden at the threshold", () => {
+    box(none, { stagedCount: LARGE_PUSH_FILES });
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("names the file count and points at .nipaignore above the threshold", () => {
+    box(none, { stagedCount: 21520 });
+    const note = screen.getByRole("note");
+    expect(note).toHaveTextContent("You are about to push 21,520 files.");
+    expect(note).toHaveTextContent("node_modules");
+    expect(note).toHaveTextContent(".nipaignore");
+    expect(screen.getByRole("button", { name: /Push 21520 files/ })).toBeEnabled();
   });
 });

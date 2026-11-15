@@ -89,7 +89,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   warn-only pre-push checks via `PushChecks` (daemon `PushPlan`; the
   collapsible "Checks" block above Push in `CommitBox`, budget violations
   and broken/unused references, "Push anyway"; `usePushChecks` keyed on the
-  staged set, debounced, refreshed on `repo:changed`),
+  staged set, debounced, refreshed on `repo:changed`; above
+  `LARGE_PUSH_FILES` (10,000) staged files `CommitBox` adds a note with the
+  count pointing at generated folders and `.nipaignore`),
   generated push messages and MR descriptions via `GenerateCommitMessage`/
   `GenerateMergeRequest` (daemon `Generate`; Generate buttons in `CommitBox`
   and the New merge request dialog, shown when `LLMSettings.configured`;
@@ -1229,7 +1231,9 @@ via localrepo `LoadCommit`, falling back to the configured branch; otherwise
 with `diff.FromTree`; missing chunks are downloaded with `downloadMissing`
 through the commit-scoped `ChunkScope` (binary content only with
 `--ext-diff`). `<a>...<b>` calls `GetMergeBase` with
-the two commit IDs and uses `MergeBaseTree` as the old side. Renames always run
+the two commit IDs and uses `MergeBaseTree` as the old side (the client sends
+`omit_tree` and streams the base tree through `StreamTreeManifest` with
+`commit_id`; an older server's inline tree is used as is). Renames always run
 through `diff.DetectRenames` (exact hash, line similarity for text, chunk
 overlap otherwise); `-w`/`-b` live in `diff.Options` and `diff.FilterIgnored`
 drops files whose differences are fully ignored. `--ext-diff` runs
@@ -2176,7 +2180,10 @@ and `nipa mcp` stay silent.
   `{context, start_commit_id, stop_commit_id?, limit}` and returns
   `CommitWalkEntry`s newest-first, both-parents, stop-exclusive. `GetMergeBase`
   takes branch names and/or optional `target_commit_id`/`source_commit_id`
-  (base36, take precedence) so a merge base can be resolved for commit pairs.
+  (base36, take precedence) so a merge base can be resolved for commit pairs;
+  `omit_tree` (`Branch.GetMergeBaseCommits`) leaves `merge_base_tree` empty,
+  and `client/grpc.GetMergeBase` always sets it and streams the tree, so the
+  answer never carries a whole tree (absent = the old inline tree).
   All are project-scoped in the usecase because `CommitGet`/`CommitGetByHash`
   have no project filter, and commit IDs are server-local (snow) identifiers.
 - **Chunk transfer is presigned HTTP, not gRPC streaming.** `GetChunkUploadUrls`
@@ -2237,7 +2244,11 @@ and `nipa mcp` stay silent.
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
   full server tree) and `parent_2_commit_hash` for merge commits. The daemon
   loopback (`daemon.MaxMessageBytes`, 256 MiB) applies to the daemon server,
-  the JSON bridge client and the desktop connector. Manifests come the same
+  the JSON bridge client and the desktop connector. `Transport.Connect` adds a
+  `MaxRecvMessageBytes` (64 MiB) default `MaxCallRecvMsgSize` so remaining
+  unary answers (`WalkCommits`, `ListFileLocks`, ...) are not cut at gRPC's
+  4 MiB default (caller dial options still override it); the server limits
+  are unchanged. Manifests come the same
   way: the client reads every tree through the server-streaming
   `StreamTreeManifest` (`GetTreeManifestRequest` in, `TreeManifestPart`s
   out; `internal/grpc/server/manifest_stream.go` writes about 1 MiB parts,
