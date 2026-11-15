@@ -1603,5 +1603,7 @@
   "gitignoreOffer.imported_one": "Added {{count}} rule to .nipaignore",
   "gitignoreOffer.imported_other": "Added {{count}} rules to .nipaignore",
   "gitignoreOffer.unsupported_one": "{{count}} rule uses syntax Nipa does not support and will not match: {{rules}}",
-  "gitignoreOffer.unsupported_other": "{{count}} rules use syntax Nipa does not support and will not match: {{rules}}"
+  "gitignoreOffer.unsupported_other": "{{count}} rules use syntax Nipa does not support and will not match: {{rules}}",
+  "commitBox.largePush_one": "You are about to {{verb}} {{files}} file. If that is more than you expect, look for generated folders such as node_modules and add them to .nipaignore.",
+  "commitBox.largePush_other": "You are about to {{verb}} {{files}} files. If that is more than you expect, look for generated folders such as node_modules and add them to .nipaignore."
 }

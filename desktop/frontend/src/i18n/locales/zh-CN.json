@@ -1551,5 +1551,6 @@
   "gitignoreOffer.create": "根据 .gitignore 创建 .nipaignore",
   "gitignoreOffer.dismiss": "关闭",
   "gitignoreOffer.imported_other": "已向 .nipaignore 添加 {{count}} 条规则",
-  "gitignoreOffer.unsupported_other": "{{count}} 条规则使用了 Nipa 不支持的语法，不会生效：{{rules}}"
+  "gitignoreOffer.unsupported_other": "{{count}} 条规则使用了 Nipa 不支持的语法，不会生效：{{rules}}",
+  "commitBox.largePush_other": "即将{{verb}} {{files}} 个文件。如果比预期多,请检查是否有 node_modules 等生成的文件夹,并将其添加到 .nipaignore。"
 }

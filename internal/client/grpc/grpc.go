@@ -25,6 +25,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// MaxRecvMessageBytes caps unary server responses; gRPC's 4 MiB default is too
+// small for large lock lists or commit walks.
+const MaxRecvMessageBytes = 64 << 20
+
 type Transport struct {
 	mu         sync.Mutex
 	url        string
@@ -58,6 +62,7 @@ func (t *Transport) Connect(address string, opts ...grpc.DialOption) error {
 	if err != nil {
 		return err
 	}
+	opts = append([]grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMessageBytes))}, opts...)
 	opts = append(opts,
 		grpc.WithTransportCredentials(creds),
 		obs.ActiveTracing().GRPCDialOption(),

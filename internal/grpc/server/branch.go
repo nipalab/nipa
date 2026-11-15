@@ -229,7 +229,11 @@ func (n *nipaServer) GetMergeBase(ctx context.Context, req *pb.GetMergeBaseReque
 	if err != nil {
 		return nil, handleError(err)
 	}
-	info, err := n.uc.Branch().GetMergeBase(ctx, project.ID, target, source)
+	getMergeBase := n.uc.Branch().GetMergeBase
+	if req.GetOmitTree() {
+		getMergeBase = n.uc.Branch().GetMergeBaseCommits
+	}
+	info, err := getMergeBase(ctx, project.ID, target, source)
 	if err != nil {
 		return nil, handleError(err)
 	}

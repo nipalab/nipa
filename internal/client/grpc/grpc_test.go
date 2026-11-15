@@ -1089,6 +1089,46 @@ func TestClient_GetMergeBase_Success(t *testing.T) {
 	require.Equal(t, "README.md", got.MergeBaseTree.FileChildren[0].Name)
 }
 
+func TestClient_GetMergeBase_StreamsOmittedTree(t *testing.T) {
+	base := snow.ID(3).Base36()
+	fs := &fakeServer{
+		mergeBaseResp: &pb.GetMergeBaseResponse{
+			TargetBranch:      "main",
+			SourceBranch:      "feature",
+			MergeBaseCommitId: base,
+		},
+		treeManifest: &pb.TreeManifest{Path: "root", Files: []*pb.FileNode{{Path: "a.txt", Mode: pb.FileMode_FILE_MODE_READ_WRITE, SizeBytes: 3}}},
+	}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
+	require.NoError(t, err)
+	require.True(t, fs.lastMergeReq.GetOmitTree())
+	require.Equal(t, base, fs.lastCommitID)
+	require.True(t, fs.lastRecursive)
+	require.Empty(t, fs.lastPaths)
+	require.NotNil(t, got.MergeBaseTree)
+	require.Len(t, got.MergeBaseTree.FileChildren, 1)
+	require.Equal(t, "a.txt", got.MergeBaseTree.FileChildren[0].Name)
+}
+
+func TestClient_GetMergeBase_TreeStreamError(t *testing.T) {
+	fs := &fakeServer{
+		mergeBaseResp:   &pb.GetMergeBaseResponse{MergeBaseCommitId: snow.ID(3).Base36()},
+		treeManifestErr: status.Error(codes.NotFound, "commit not found"),
+	}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
 func TestClient_GetMergeBase_NilTree(t *testing.T) {
 	fs := &fakeServer{mergeBaseResp: &pb.GetMergeBaseResponse{
 		TargetBranch: "main",

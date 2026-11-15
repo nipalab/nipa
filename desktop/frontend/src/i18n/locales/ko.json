@@ -1551,5 +1551,6 @@
   "gitignoreOffer.create": ".gitignore로 .nipaignore 만들기",
   "gitignoreOffer.dismiss": "닫기",
   "gitignoreOffer.imported_other": ".nipaignore에 규칙 {{count}}개를 추가했습니다",
-  "gitignoreOffer.unsupported_other": "규칙 {{count}}개는 Nipa가 지원하지 않는 구문을 사용하므로 일치하지 않습니다: {{rules}}"
+  "gitignoreOffer.unsupported_other": "규칙 {{count}}개는 Nipa가 지원하지 않는 구문을 사용하므로 일치하지 않습니다: {{rules}}",
+  "commitBox.largePush_other": "파일 {{files}}개를 {{verb}}하려고 합니다. 예상보다 많다면 node_modules 같은 생성 폴더가 있는지 확인하고 .nipaignore에 추가하세요."
 }

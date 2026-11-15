@@ -2,12 +2,15 @@ package grpc
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/nipalab/nipa/internal/chunker"
@@ -141,4 +144,30 @@ func TestClient_WalkCommits_Error(t *testing.T) {
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 409, domErr.Code)
+}
+
+func TestClient_WalkCommits_ReceivesOver4MiB(t *testing.T) {
+	message := strings.Repeat("m", 64<<10)
+	resp := &pb.WalkCommitsResponse{}
+	for i := 0; i < 96; i++ {
+		resp.Commits = append(resp.Commits, &pb.CommitWalkEntry{CommitId: snow.ID(i + 1).Base36(), Message: message})
+	}
+	require.Greater(t, proto.Size(resp), 4<<20)
+	addr := startTestServer(t, &fakeServer{walkCommitsResp: resp})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.WalkCommits(context.Background(), "default", "sample", snow.ID(1).Base36(), "", 0)
+	require.NoError(t, err)
+	require.Len(t, got, 96)
+}
+
+func TestClient_CallerDialOptionOverridesRecvLimit(t *testing.T) {
+	resp := &pb.WalkCommitsResponse{Commits: []*pb.CommitWalkEntry{{CommitId: "1", Message: strings.Repeat("m", 2<<10)}}}
+	addr := startTestServer(t, &fakeServer{walkCommitsResp: resp})
+	tr := NewTransport()
+	require.NoError(t, tr.Connect(addr, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1<<10))))
+	c := NewClient(tr, &stubSession{accessToken: "tok"})
+	_, err := c.WalkCommits(context.Background(), "default", "sample", "1", "", 0)
+	require.Error(t, err)
 }

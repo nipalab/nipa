@@ -11,7 +11,7 @@ import (
 
 // GetMergeBase resolves the merge base of two branch or commit refs and
 // returns the head commit IDs/hashes plus the recursive manifest of the base
-// tree.
+// tree, which is streamed separately unless an older server sent it inline.
 func (c *Client) GetMergeBase(ctx context.Context, org, project string, target, source clientDomain.MergeRef) (*clientDomain.MergeBaseInfo, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
@@ -21,6 +21,7 @@ func (c *Client) GetMergeBase(ctx context.Context, org, project string, target, 
 		Context:      &pb.ProjectContext{Org: org, Project: project},
 		TargetBranch: target.Branch,
 		SourceBranch: source.Branch,
+		OmitTree:     true,
 	}
 	if target.CommitID != "" {
 		req.TargetCommitId = &target.CommitID
@@ -41,8 +42,20 @@ func (c *Client) GetMergeBase(ctx context.Context, org, project string, target, 
 		TargetCommitHash:  res.GetTargetCommitHash(),
 		SourceCommitHash:  res.GetSourceCommitHash(),
 	}
-	if res.MergeBaseTree != nil {
+	switch {
+	case res.MergeBaseTree != nil:
 		info.MergeBaseTree = toServerTreeNode(res.GetMergeBaseTree())
+	case info.MergeBaseCommitID != "":
+		base := info.MergeBaseCommitID
+		tree, err := c.treeManifest(ctx, &pb.GetTreeManifestRequest{
+			Context:   &pb.ProjectContext{Org: org, Project: project},
+			CommitId:  &base,
+			Recursive: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.MergeBaseTree = tree
 	}
 	return info, nil
 }

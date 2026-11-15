@@ -8,7 +8,9 @@ import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
 import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
 import { Trans, useTranslation } from "react-i18next";
-import { translate } from "@/i18n";
+import { locale, translate } from "@/i18n";
+
+export const LARGE_PUSH_FILES = 10_000;
 
 export type LockIssue = { message: string; action?: { label: string; onClick: () => void; busy?: boolean } };
 
@@ -81,6 +83,12 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
       )}
       {op ? <Progress op={op} onCancel={onCancel} /> : null}
       {!op && report && <ChecksBlock checks={report} onSelect={onSelectPath} />}
+      {!op && stagedCount > LARGE_PUSH_FILES && (
+        <p role="note" className="flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px]">
+          <AlertTriangle className="mt-px size-3 shrink-0 text-warning" />
+          <span>{t("commitBox.largePush", { count: stagedCount, files: stagedCount.toLocaleString(locale()), verb: verb.toLowerCase() })}</span>
+        </p>
+      )}
       {!op && (
         <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason ?? lockIssue?.message}>
           <ArrowUpFromLine />

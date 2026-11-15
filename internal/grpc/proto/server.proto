@@ -376,6 +376,7 @@ message GetMergeBaseRequest {
     string source_branch = 3; // used when source_commit_id is empty
     optional string target_commit_id = 4; // base36 snow ID; takes precedence over target_branch
     optional string source_commit_id = 5; // base36 snow ID; takes precedence over source_branch
+    bool omit_tree = 6; // leave merge_base_tree empty; the client streams it with StreamTreeManifest
 }
 
 message GetMergeBaseResponse {
@@ -384,7 +385,7 @@ message GetMergeBaseResponse {
     string target_commit_id = 3; // base36 snow ID; empty when the branch has no commits
     string source_commit_id = 4; // base36 snow ID; empty when the branch has no commits
     string merge_base_commit_id = 5; // base36 snow ID; empty when either head is empty
-    TreeManifest merge_base_tree = 6; // recursive manifest of the merge base tree
+    TreeManifest merge_base_tree = 6; // recursive manifest of the merge base tree; empty with omit_tree
     string target_commit_hash = 7; // hex commit hash; empty when the branch has no commits
     string source_commit_hash = 8; // hex commit hash; empty when the branch has no commits
 }
