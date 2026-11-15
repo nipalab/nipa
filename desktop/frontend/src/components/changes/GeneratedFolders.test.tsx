@@ -50,8 +50,9 @@ describe("helpers", () => {
     expect(untrackedPaths(undefined, all)).toEqual([]);
   });
 
-  it("drops paths inside the folders", () => {
-    expect(outsideFolders(["node_modules", "node_modules/x", "node_modules2/y", "a"], [nodeModules])).toEqual(["node_modules2/y", "a"]);
+  it("drops untracked paths inside the folders and keeps tracked ones", () => {
+    const untracked = ["node_modules", "node_modules/x", "node_modules2/y", "a"];
+    expect(outsideFolders([...untracked, "node_modules/tracked.js"], [nodeModules], untracked)).toEqual(["node_modules2/y", "a", "node_modules/tracked.js"]);
   });
 });
 

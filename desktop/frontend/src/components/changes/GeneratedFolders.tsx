@@ -12,8 +12,9 @@ export function untrackedPaths(changes: ChangeSet | undefined, paths: string[]):
   return paths.filter((p) => untracked.has(p));
 }
 
-export function outsideFolders(paths: string[], folders: GeneratedFolder[]): string[] {
-  return paths.filter((p) => !folders.some((f) => p === f.dir || p.startsWith(f.dir + "/")));
+export function outsideFolders(paths: string[], folders: GeneratedFolder[], untracked: string[]): string[] {
+  const fresh = new Set(untracked);
+  return paths.filter((p) => !fresh.has(p) || !folders.some((f) => p === f.dir || p.startsWith(f.dir + "/")));
 }
 
 // findGeneratedFolders names the folders among the new paths that look like

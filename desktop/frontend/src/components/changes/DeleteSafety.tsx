@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { desktop, type AssetReferences, type ChangeSet, type GeneratedFolder } from "@/api/desktop";
 import { ConfirmDialog } from "@/components/ui/confirm";
-import { findGeneratedFolders, GeneratedFoldersDialog, outsideFolders } from "@/components/changes/GeneratedFolders";
+import { findGeneratedFolders, GeneratedFoldersDialog, outsideFolders, untrackedPaths } from "@/components/changes/GeneratedFolders";
 import { refsKey, useAssetRefs, useReferrers } from "@/hooks/useAssetInsight";
 import { deletionTargets, plural, referrerSummary } from "@/lib/insight";
 import { useTranslation } from "react-i18next";
@@ -70,7 +70,7 @@ export function useStageGuard(root: string, changes: ChangeSet | undefined, stag
       }}
       onIgnored={() => {
         setGenerated(null);
-        void checkDeletions(outsideFolders(generated.paths, generated.folders));
+        void checkDeletions(outsideFolders(generated.paths, generated.folders, untrackedPaths(changes, generated.paths)));
       }}
       onError={onError}
     />
