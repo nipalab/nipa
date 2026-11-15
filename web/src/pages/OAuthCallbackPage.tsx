@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link as PrimerLink, Spinner, Stack } from '@primer/react'
+import { Banner, Link as PrimerLink, Spinner, Stack } from '@primer/react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, startSession } from '../api/client'
 import type { MFAChallengeResponse } from '../api/models'
@@ -8,7 +8,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { MFACodeStep } from '../components/MFACodeStep'
 import { ErrorBanner } from '../components/ui'
 import { errorMessage } from '../hooks'
-import { OAUTH_SIGNIN_ERRORS } from '../oauth'
+import { OAUTH_SIGNIN_ERRORS, OAUTH_SIGNIN_NOTICES } from '../oauth'
 import { APP_HOME } from '../routes'
 
 const EXPIRED_CODE =
@@ -21,6 +21,7 @@ export default function OAuthCallbackPage() {
   const code = params.get('code') ?? ''
   const isNew = params.get('new') === '1'
   const oauthError = params.get('oauth_error') ?? ''
+  const notice = OAUTH_SIGNIN_NOTICES[oauthError]
   const fromParam = params.get('from') ?? APP_HOME
   // The destination rides inside the callback URL's query, so only same-origin
   // SPA paths are honored no matter what the browser sends.
@@ -32,6 +33,7 @@ export default function OAuthCallbackPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
+    if (notice) return
     if (oauthError) {
       setError(OAUTH_SIGNIN_ERRORS[oauthError] ?? `Sign-in failed (${oauthError}).`)
       return
@@ -52,7 +54,7 @@ export default function OAuthCallbackPage() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError && err.status === 404 ? EXPIRED_CODE : errorMessage(err))
       })
-  }, [code, isNew, oauthError, from, signIn, navigate])
+  }, [code, isNew, oauthError, notice, from, signIn, navigate])
 
   if (challenge && !error) {
     return (
@@ -71,6 +73,19 @@ export default function OAuthCallbackPage() {
             navigate('/login', { replace: true })
           }}
         />
+      </AuthLayout>
+    )
+  }
+
+  if (notice) {
+    return (
+      <AuthLayout width={420}>
+        <Banner variant="info" title={notice.title}>
+          {notice.text}
+        </Banner>
+        <PrimerLink as={Link} to="/login">
+          Back to sign in
+        </PrimerLink>
       </AuthLayout>
     )
   }

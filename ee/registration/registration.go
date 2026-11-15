@@ -93,6 +93,7 @@ type Registration struct {
 	kick   dispatcherKicker
 	audit  usecase.AuditRecorder
 	limit  *ratelimit.Limiter
+	wait   *Waitlist
 	cfg    Config
 	terms  func() string
 	now    func() time.Time
@@ -123,6 +124,13 @@ func (r *Registration) WithTermsVersion(version func() string) *Registration {
 // WithAudit records the accounts created by self-registration.
 func (r *Registration) WithAudit(rec usecase.AuditRecorder) *Registration {
 	r.audit = rec
+	return r
+}
+
+// WithWaitlist puts addresses turned away by invite-only sign-up on the
+// waitlist instead of dropping them.
+func (r *Registration) WithWaitlist(waitlist *Waitlist) *Registration {
+	r.wait = waitlist
 	return r
 }
 
@@ -192,7 +200,7 @@ func (r *Registration) Register(ctx context.Context, name, email string, acceptT
 		return err
 	}
 	if !invited {
-		return r.declineUninvited(ctx)
+		return r.declineUninvited(ctx, name, email)
 	}
 	token, tokenHash, err := newVerificationToken()
 	if err != nil {
@@ -395,13 +403,31 @@ func (r *Registration) existingAccountDelivery(user *domain.User, now time.Time)
 }
 
 func (r *Registration) delivery(user *domain.User, event, kind, subject, text, htmlBody string, now time.Time) (*domain.EmailDelivery, error) {
-	deliveryID := r.node.Generate()
+	return newDelivery(r.node, r.cfg.BaseURL, outgoingMail{
+		userID: user.ID, ref: user.ID.Base36(), to: user.Email, event: event, kind: kind,
+		subject: subject, text: text, html: htmlBody,
+	}, now)
+}
+
+type outgoingMail struct {
+	userID  snow.ID
+	ref     string
+	to      string
+	event   string
+	kind    string
+	subject string
+	text    string
+	html    string
+}
+
+func newDelivery(node snow.Node, baseURL string, m outgoingMail, now time.Time) (*domain.EmailDelivery, error) {
+	deliveryID := node.Generate()
 	message := mail.Message{
-		To:        []string{user.Email},
-		Subject:   subject,
-		Text:      text,
-		HTML:      htmlBody,
-		MessageID: fmt.Sprintf("<nipa-%s-%s-%s@%s>", kind, user.ID.Base36(), deliveryID.Base36(), r.messageHost()),
+		To:        []string{m.to},
+		Subject:   m.subject,
+		Text:      m.text,
+		HTML:      m.html,
+		MessageID: fmt.Sprintf("<nipa-%s-%s-%s@%s>", m.kind, m.ref, deliveryID.Base36(), messageHost(baseURL)),
 	}
 	body, err := mail.EncodeMessage(message)
 	if err != nil {
@@ -410,10 +436,10 @@ func (r *Registration) delivery(user *domain.User, event, kind, subject, text, h
 	due := now
 	return &domain.EmailDelivery{
 		ID:            deliveryID,
-		Event:         event,
-		UserID:        user.ID,
-		Email:         user.Email,
-		Subject:       subject,
+		Event:         m.event,
+		UserID:        m.userID,
+		Email:         m.to,
+		Subject:       m.subject,
 		Body:          body,
 		State:         domain.EmailDeliveryPending,
 		NextAttemptAt: &due,
@@ -425,8 +451,8 @@ func (r *Registration) verificationURL(token string) string {
 	return base + "/verify?token=" + url.QueryEscape(token)
 }
 
-func (r *Registration) messageHost() string {
-	if parsed, err := url.Parse(r.cfg.BaseURL); err == nil && parsed.Hostname() != "" {
+func messageHost(baseURL string) string {
+	if parsed, err := url.Parse(baseURL); err == nil && parsed.Hostname() != "" {
 		return parsed.Hostname()
 	}
 	return "nipa.local"
@@ -476,11 +502,16 @@ func (r *Registration) invited(ctx context.Context, email string) (bool, error) 
 	return r.cfg.Invited(ctx, email)
 }
 
-// declineUninvited answers like a signup without creating or mailing anything,
-// so the response does not reveal which addresses are registered or invited.
-func (r *Registration) declineUninvited(ctx context.Context) error {
+// declineUninvited answers like a signup without creating an account, so the
+// response does not reveal which addresses are registered or invited. With a
+// waitlist the address is listed and its mailbox told so.
+func (r *Registration) declineUninvited(ctx context.Context, name, email string) error {
 	now := r.now()
-	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		return r.repo.DeleteExpiredEmailVerifications(ctx, now)
 	})
+	if err != nil || r.wait == nil {
+		return err
+	}
+	return r.wait.Join(ctx, name, email, WaitlistSourceRegistration)
 }

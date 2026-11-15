@@ -16,6 +16,13 @@ export const OAUTH_SIGNIN_ERRORS: Record<string, string> = {
   registration_closed: 'Sign-up is by invitation only. Use the email address your invitation was sent to.',
 }
 
+export const OAUTH_SIGNIN_NOTICES: Record<string, { title: string; text: string }> = {
+  waitlisted: {
+    title: 'You are on the waitlist',
+    text: 'Sign-up is by invitation only for now. We added your email address to the waitlist and will email you as soon as you can create your account.',
+  },
+}
+
 export const OAUTH_LINK_ERRORS: Record<string, string> = {
   email_conflict: 'An account with this email already exists.',
   email_required: 'The provider did not share a verified email address.',

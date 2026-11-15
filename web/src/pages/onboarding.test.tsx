@@ -162,6 +162,31 @@ describe('RegisterPage', () => {
     expect(calls[1]?.body).toEqual({ email: 'alice@example.com' })
   })
 
+  it('mentions the waitlist when sign-up is invite-only', async () => {
+    stubAnonymous((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/api/v1/auth/capabilities')) return jsonResponse({ ...CAPABILITIES, invite_only: true })
+      if (url.endsWith('/api/v1/auth/register') && method === 'POST') {
+        return jsonResponse({ status: 'pending_verification', email: 'alice@example.com' }, 202)
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/register')
+    await waitForText(container, 'Sign-up is by invitation only.')
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Alice')
+      setInputValue(inputs[1] as HTMLInputElement, 'alice@example.com')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Create account').click()
+    })
+
+    await waitForText(container, 'on the waitlist')
+    expect(container.textContent).not.toContain('Sign-up is by invitation only.')
+  })
+
   it('explains that registration is disabled on servers without SaaS mode', async () => {
     vi.stubGlobal(
       'fetch',
@@ -389,6 +414,15 @@ describe('OAuthCallbackPage', () => {
     const { container } = await renderApp('/oauth/callback?oauth_error=email_conflict')
     await waitForText(container, 'Sign-in failed')
     expect(container.textContent).toContain('already exists')
+  })
+
+  it('tells a waitlisted social sign-up it is on the waitlist', async () => {
+    stubRoutes()
+
+    const { container } = await renderApp('/oauth/callback?oauth_error=waitlisted')
+    await waitForText(container, 'You are on the waitlist')
+    expect(container.textContent).not.toContain('Sign-in failed')
+    expect(container.textContent).toContain('Back to sign in')
   })
 
   it('returns to the from destination after exchanging the code', async () => {

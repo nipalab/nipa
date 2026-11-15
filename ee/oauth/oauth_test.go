@@ -743,4 +743,28 @@ func TestCallbackInviteOnly(t *testing.T) {
 		_, _, err := run(t, func(context.Context, string) (bool, error) { return false, errors.New("boom") })
 		require.EqualError(t, err, "boom")
 	})
+
+	t.Run("waitlists an uninvited address", func(t *testing.T) {
+		env := newOAuthEnv(t)
+		env.oauth.cfg.InviteOnly = true
+		var joined []string
+		env.oauth.cfg.Waitlist = func(_ context.Context, name, email string) error {
+			joined = append(joined, name+" <"+email+">")
+			return nil
+		}
+		env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true, Name: "Alice"}
+		state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding, "")
+		require.NoError(t, err)
+		target, _, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		require.NoError(t, err)
+		require.Equal(t, "waitlisted", redirectQuery(t, target).Get("oauth_error"))
+		require.Equal(t, []string{"Alice <alice@example.com>"}, joined)
+		require.Empty(t, env.users.users)
+
+		env.oauth.cfg.Waitlist = func(context.Context, string, string) error { return errors.New("down") }
+		state, err = env.oauth.states.Sign("/oauth/callback", 0, testBinding, "")
+		require.NoError(t, err)
+		_, _, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		require.EqualError(t, err, "down")
+	})
 }

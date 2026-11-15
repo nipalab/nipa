@@ -59,8 +59,8 @@ export function AuthLayout({
 }) {
   return (
     <div style={{ maxWidth: width, margin: 'var(--base-size-48) auto 0', padding: '0 var(--base-size-16)' }}>
-      <Stack direction="vertical" gap="spacious" align="center">
-        <Link to="/" aria-label="Nipa home">
+      <Stack direction="vertical" gap="spacious" align="stretch">
+        <Link to="/" aria-label="Nipa home" style={{ alignSelf: 'center' }}>
           <NipaLogo size={48} />
         </Link>
         <Heading as="h1" style={{ fontSize: 24, fontWeight: 300, textAlign: 'center' }}>

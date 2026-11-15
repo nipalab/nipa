@@ -51,6 +51,7 @@ type Config struct {
 	TermsVersion   string
 	InviteOnly     bool
 	Invited        func(ctx context.Context, email string) (bool, error)
+	Waitlist       func(ctx context.Context, name, email string) error
 }
 
 // OAuth runs social login and signup: it resolves the provider profile to a
@@ -214,7 +215,13 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding 
 			}
 		}
 		if !invited {
-			return withQueryParam(base, "oauth_error", "registration_closed"), false, nil
+			if o.cfg.Waitlist == nil {
+				return withQueryParam(base, "oauth_error", "registration_closed"), false, nil
+			}
+			if err := o.cfg.Waitlist(ctx, profile.Name, profile.Email); err != nil {
+				return "", false, err
+			}
+			return withQueryParam(base, "oauth_error", "waitlisted"), false, nil
 		}
 	}
 

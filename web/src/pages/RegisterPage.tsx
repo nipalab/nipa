@@ -59,10 +59,18 @@ export default function RegisterPage() {
 
       {sentTo ? (
         <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
-          <Banner variant="success" title="Check your email">
-            We sent a confirmation link to <strong>{sentTo}</strong>. Open it to choose your password and activate
-            your account.
-          </Banner>
+          {capabilities?.invite_only ? (
+            <Banner variant="success" title="Check your email">
+              We sent an email to <strong>{sentTo}</strong>. If you have an invitation, it holds a link to choose your
+              password and activate your account. Otherwise you are on the waitlist and we will email you as soon as
+              you can sign up.
+            </Banner>
+          ) : (
+            <Banner variant="success" title="Check your email">
+              We sent a confirmation link to <strong>{sentTo}</strong>. Open it to choose your password and activate
+              your account.
+            </Banner>
+          )}
           <ErrorBanner error={resendError} />
           {notice && <Banner variant="success" title={notice} />}
           <Button block onClick={() => void resend(sentTo)} loading={resendBusy}>

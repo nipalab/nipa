@@ -35,6 +35,8 @@ const (
 	AuditUserTermsAccepted        = "user.terms.accepted"
 	AuditSignupInviteCreated      = "signup_invite.created"
 	AuditSignupInviteRevoked      = "signup_invite.revoked"
+	AuditWaitlistRemoved          = "signup_waitlist.removed"
+	AuditWaitlistNotified         = "signup_waitlist.notified"
 
 	AuditUserMFAEnabled                  = "user.mfa.enabled"
 	AuditUserMFADisabled                 = "user.mfa.disabled"
