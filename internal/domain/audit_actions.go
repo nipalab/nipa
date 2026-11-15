@@ -33,6 +33,8 @@ const (
 	AuditUserPasswordChanged      = "user.password.changed"
 	AuditUserEmailChanged         = "user.email.changed"
 	AuditUserTermsAccepted        = "user.terms.accepted"
+	AuditSignupInviteCreated      = "signup_invite.created"
+	AuditSignupInviteRevoked      = "signup_invite.revoked"
 
 	AuditUserMFAEnabled                  = "user.mfa.enabled"
 	AuditUserMFADisabled                 = "user.mfa.disabled"

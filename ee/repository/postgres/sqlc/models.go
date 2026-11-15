@@ -443,6 +443,14 @@ type RefreshToken struct {
 	Mfa              sql.NullString `json:"mfa"`
 }
 
+type SignupInvite struct {
+	ID        int64        `json:"id"`
+	Email     string       `json:"email"`
+	InvitedBy int64        `json:"invited_by"`
+	CreatedAt time.Time    `json:"created_at"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+}
+
 type SnowflakeNodeLease struct {
 	NodeID     int64     `json:"node_id"`
 	Holder     string    `json:"holder"`

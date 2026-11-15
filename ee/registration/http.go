@@ -22,6 +22,7 @@ type Handler struct {
 	auth      *usecase.Auth
 	providers func() []string
 	billing   *BillingCapabilities
+	invites   *SignupInvites
 }
 
 // BillingCapabilities tells the SPA which billing provider runs and which
@@ -161,6 +162,9 @@ func RegisterPublicRoutes(ws *restful.WebService, h *Handler) {
 // WebService.
 func RegisterRoutes(ws *restful.WebService, h *Handler) {
 	tags := []string{"Auth"}
+	if h.invites != nil {
+		registerSignupInviteRoutes(ws, h)
+	}
 
 	ws.Route(
 		ws.GET("/me/terms").
