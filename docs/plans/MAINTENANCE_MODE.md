@@ -562,8 +562,8 @@ only be set from PR 4 on.
 | 3 | Enforce read-only and closed maintenance (done) | 2 | `read_only`/`full` block requests |
 | 4 | Add frozen maintenance for database moves (done) | 3 | `frozen` mode; sessions kept by the CLI and SPA |
 | 5 | Email maintenance announcements (done) | 2 | `notify` sends mail |
-| 6 | Show maintenance in the CLI, daemon and MCP | 3 | clear errors, no retries, status lines, daemon event |
-| 7 | Show maintenance in the web UI | 3 | banner, closed page, admin page, org and project tabs |
+| 6 | Show maintenance in the CLI, daemon and MCP (done) | 3 | clear errors, no retries, status lines, daemon event |
+| 7 | Show maintenance in the web UI (done) | 3 | banner, closed page, admin page, org and project tabs |
 | 8 | Show maintenance in the desktop app | 6 | banner, disabled actions, notification |
 | 9 | Document maintenance operations and database moves | 4 | runbooks, Caddy fallback page |
 
@@ -637,7 +637,7 @@ Done. As built, it differs from the sections above in these points:
 - `nipa_maintenance_rejected_total` ships here. The e2e harness has no metrics, so the
   counter is asserted in the interceptor and filter unit tests, not in `internal/e2e`.
 - Known gaps left for PR 6: the client HTTP chunk transfers retry a maintenance 503
-  like any 5xx (PR 4 added the `domain.Error` mapping).
+  like any 5xx (PR 4 added the `domain.Error` mapping). Fixed in PR 6.
 
 ### PR 4: frozen maintenance for database moves
 
@@ -726,15 +726,77 @@ Done. As built, it differs from the sections above in these points:
 - Tests: gomock usecase and mailer tests, recipient repository tests in both dialects,
   `internal/e2e` (server/org/project recipients, threading, notify off, and a CLI-queued
   row sent by the server's dispatcher) and the `serverapp` command test. The `tests/suite`
-  receiver spec (both editions) was not added.
+  receiver spec (both editions) was not added (PR 6 added it).
 
 ### PR 6: CLI, daemon and MCP
 
 Phase 7 below, minus the parts already shipped in PRs 3 and 4.
 
+Done. As built, it differs from the sections above in these points:
+
+- `client/domain.NewMaintenanceError(info, cause)` builds every client refusal
+  (gRPC, REST chunk 503, CLI pre-check, sign-in probe); a nil cause becomes the
+  gRPC refusal, so `maintenance.FromGRPC` and the daemon's status mapping work
+  on all of them. The unary retry already repeated only rate-limit refusals, so
+  only the HTTP chunk path needed the exclusion (`httpRetryHint` on the
+  header; the body, else the header, gives the window).
+- `Session.reauth` also stops before a password prompt: a maintenance cause or
+  SSH refusal is returned, and `signInPaused` probes `GetMaintenanceStatus`
+  (frozen is the only mode that refuses sign-in). `MakeSureLoggedIn` and
+  `nipa login` do the same. `GetMaintenanceStatus` sends the stored access
+  token when present and never refreshes, so an expired token silently drops
+  the org and project windows.
+- `nipa push` refuses before scanning or uploading when an active window covers
+  the clone (not only the scheduled-window warning); `--dry-run` makes no call.
+  The probe has a 2 s timeout, so an unreachable server delays `nipa status`
+  by at most that.
+- Lines are `maintenance: <scope> <mode> [from <start> (scheduled)] [until
+  ~<end>][: message]`, one per window; `nipa version --server` prints
+  `maintenance: off` when the server answered with none. `--json` outputs
+  carry `maintenance`; the error envelope carries `maintenance` too. Text
+  errors add `estimated end:` and `hint:` lines (`cli.ErrorText`). Exit code
+  stays 1.
+- Daemon: `TeamEvent.maintenance = 9` holds the window (the previous one when
+  ended) and the phases are `scheduled|started|updated|ended` (`updated`
+  added for a mode, message or end change). A failed status call keeps the
+  previous windows. `OpFailure.maintenance = 3` (code 503) is new, for PR 8.
+  `teamWatch.failed` ignores maintenance errors raised outside the poll calls.
+- MCP: `next: retry after <ends_at RFC3339> (an estimate; maintenance ends
+  manually)`, or `retry later` without an end; a domain `Action` still wins.
+- `tests/run.sh` gives every server `MAINTENANCE_FILE: <dir>/maintenance.json`
+  and `MAINTENANCE_POLL_SECONDS: 1` and exports the main one as
+  `NIPA_TEST_MAINTENANCE_FILE`: the frozen spec sets the server window through
+  the file, since a frozen window cannot be ended over REST. The PR 5 receiver
+  spec (scheduled and finished emails, threading) is in the same file.
+
 ### PR 7: web UI
 
 The SPA half of phase 8.
+
+Done. As built, it differs from the sections above in these points:
+
+- The store is a module (`web/src/maintenance.ts`, `useSyncExternalStore`), not a React
+  context, so `api/client.ts` feeds it without a provider: `errorFromResponse` records the
+  window of every maintenance 503 (`noteMaintenance`), and `refresh()` marks the session
+  paused when the refresh is refused (`noteSessionPaused`, cleared by `setSession` or a
+  non-maintenance failure). `App` polls through `MaintenanceWatcher`; the org route is
+  polled too (`GET /orgs/{org}/maintenance`).
+- `frozen` does not close the app while the session works (reads are allowed); the
+  maintenance page replaces the routes once the session is paused. `RequireAuth` shows it
+  instead of the login redirect when `bootstrap()` was refused, and calls `bootstrap()`
+  again (`AuthProvider.restore`) once the polled status no longer closes the app.
+- An org `full` window closes the org's routes; the org and project settings Maintenance
+  tabs stay reachable for org and project windows, `/admin/maintenance` for every window.
+- The Maintenance tabs are shown to org owners and super admins only (the routes refuse
+  project admins). `TermsGate` lets the app through when the terms check is refused for
+  maintenance, so the admin page renders in a closed server.
+- Read-only disabling covers "New merge request" and the merge button in any active window;
+  other writes show the server's message, and `FormDialog` renders maintenance refusals
+  with scope, message and estimate (`MaintenanceErrorBanner`).
+- Start is a `datetime-local` with a "Now" button; empty keeps the server rule (new window
+  starts now, an existing one keeps its start). The form is disabled while
+  `MAINTENANCE_FILE` controls the server window and while the server window is an active
+  `frozen` one (it can only be ended with `nipad maintenance end`).
 
 ### PR 8: desktop app
 

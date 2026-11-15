@@ -8,14 +8,30 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/version"
 )
 
 type fakeVersionClient struct {
-	host   string
-	result *version.Info
-	err    error
+	host       string
+	result     *version.Info
+	err        error
+	windows    *domain.MaintenanceStatus
+	windowsErr error
+	org        string
+	project    string
+}
+
+func (f *fakeVersionClient) GetMaintenanceStatus(_ context.Context, org, project string) (*domain.MaintenanceStatus, error) {
+	f.org, f.project = org, project
+	if f.windowsErr != nil {
+		return nil, f.windowsErr
+	}
+	if f.windows == nil {
+		return &domain.MaintenanceStatus{}, nil
+	}
+	return f.windows, nil
 }
 
 func (f *fakeVersionClient) Connect(_ context.Context, host string) error {

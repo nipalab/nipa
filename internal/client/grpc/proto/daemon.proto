@@ -375,7 +375,7 @@ message WatchEventsRequest {
 
 // TeamEvent is something a teammate did on the server since the last poll.
 message TeamEvent {
-    string kind = 1; // pushed, lock_released, lock_requested, review_requested
+    string kind = 1; // pushed, lock_released, lock_requested, review_requested, maintenance
     string actor = 2; // pushed: newest author; lock_released: former holder; lock_requested: who asked
     string branch = 3; // pushed: the clone's branch
     string commit_id = 4; // pushed: the new head (base36)
@@ -383,6 +383,15 @@ message TeamEvent {
     int32 count = 6; // pushed: number of new commits
     string path = 7; // lock_released: the released path; lock_requested: the held path
     int64 number = 8; // review_requested: merge request number
+    greet.MaintenanceWindow maintenance = 9; // maintenance: the window (the previous one when ended); message is scheduled, started, updated or ended
+}
+
+// MaintenanceState is the server's maintenance status for the clone: the
+// server window and, when the session has access, the org and project ones.
+message MaintenanceState {
+    greet.MaintenanceWindow server = 1;
+    greet.MaintenanceWindow org = 2;
+    greet.MaintenanceWindow project = 3;
 }
 
 // RepoActivity is one poll of the clone's server state. It is sent after the
@@ -392,6 +401,7 @@ message RepoActivity {
     int32 incoming = 2; // commits on the branch the clone does not have yet (capped at 100)
     int32 review_requests = 3; // open merge requests waiting on the caller's review
     string error = 4; // set when the last poll failed; counts keep their previous values
+    MaintenanceState maintenance = 5; // the windows of the last poll; a maintenance refusal of the other calls never sets error
 }
 
 message OpQueued {
@@ -411,8 +421,9 @@ message OpProgress {
 }
 
 message OpFailure {
-    int32 code = 1; // HTTP-style code: 400, 401, 403, 404, 409, 500
+    int32 code = 1; // HTTP-style code: 400, 401, 403, 404, 409, 500, 503
     string message = 2;
+    greet.MaintenanceWindow maintenance = 3; // set when maintenance refused the operation (code 503)
 }
 
 message SyncResult {

@@ -65,12 +65,35 @@ edition.
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
-| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries |
-| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups and Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger); org owner or global admin |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
+| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
+| `/admin/maintenance` | maintenance | super admins (user menu "Maintenance"): server window form (frozen included, locked while `MAINTENANCE_FILE` controls it or the server is frozen) plus the org and project windows; reachable while the server is closed |
 | `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Security (`?tab=security`, linked from the MFA notice emails: the "Two-factor authentication" card), Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
 | `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set an owner quota override, set it to unlimited or remove it; when capabilities carries `billing`, also the plan card (plan, status, interval, renewal/cancel date, seats used/limit, storage packs, past-due warning) and the plan editor (seat and storage-pack steppers, monthly/yearly toggle, Paddle.js price preview, Upgrade → checkout overlay on the free plan, Update plan + Manage billing on a paid plan); linked from the header and profile settings, shows an empty state when the server has no ledger |
+
+## Maintenance
+
+`web/src/maintenance.ts` keeps the known windows (server, per org, per
+project) in a small store: `GET /api/maintenance` every 60 s, plus the org or
+project maintenance route of the current page when signed in, and every 503
+carrying a `maintenance` body (`errorFromResponse`) records its window right
+away. The app shell shows one banner per covering window: scheduled (info,
+dismissible per window, kept in `localStorage` `nipa.maintenance.dismissed`),
+read-only (warning) and closed or frozen (critical), with the message and the
+start and estimated end in local time. An active `full` window replaces the
+routed page with the maintenance page ("Check again", "Manage maintenance"
+for whoever can end it), except `/admin/maintenance` and the org and project
+settings Maintenance tabs of org and project windows. `frozen` keeps the
+pages open while the session works; once a refresh is refused (including
+`bootstrap()` at load) the maintenance page shows instead of the login page,
+and the session is restored when the window ends. `FormDialog` and the login
+page render maintenance refusals with their scope, message and estimate. In
+any active window "New merge request" and the merge button are disabled with
+a note; other writes rely on the server's 503. The window forms (mode,
+message ≤ 500, start, estimated end, an "Email ..." checkbox) report whether
+the announcement email was queued (`notified`).
 
 ## Reserved slugs
 

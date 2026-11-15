@@ -251,13 +251,22 @@ func toolError(err error) error {
 	if domErr.Hint != "" {
 		parts = append(parts, "hint: "+domErr.Hint)
 	}
-	if domErr.Action != "" {
-		parts = append(parts, "next: "+domErr.Action)
+	if action := domErr.Action; action != "" {
+		parts = append(parts, "next: "+action)
+	} else if m := domErr.Maintenance; m != nil {
+		parts = append(parts, "next: "+maintenanceNext(m))
 	}
 	if len(parts) == 0 {
 		return err
 	}
 	return fmt.Errorf("%w (%s)", err, strings.Join(parts, "; "))
+}
+
+func maintenanceNext(m *clientDomain.MaintenanceInfo) string {
+	if m.EndsAt != nil {
+		return "retry after " + m.EndsAt.UTC().Format(time.RFC3339) + " (an estimate; maintenance ends manually)"
+	}
+	return "retry later; maintenance ends manually"
 }
 
 func notConfigured(what string) error {

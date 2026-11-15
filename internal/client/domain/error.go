@@ -17,13 +17,13 @@ type Error struct {
 
 // MaintenanceInfo describes the maintenance window that refused a request.
 type MaintenanceInfo struct {
-	Scope    string
-	Mode     string
-	Message  string
-	StartsAt time.Time
-	EndsAt   *time.Time
-	Org      string
-	Project  string
+	Scope    string     `json:"scope"`
+	Mode     string     `json:"mode"`
+	Message  string     `json:"message,omitempty"`
+	StartsAt time.Time  `json:"starts_at,omitzero"`
+	EndsAt   *time.Time `json:"ends_at,omitempty"`
+	Org      string     `json:"org,omitempty"`
+	Project  string     `json:"project,omitempty"`
 }
 
 // IsMaintenance reports whether err is a request refused by server

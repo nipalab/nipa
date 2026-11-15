@@ -33,6 +33,8 @@ type ErrorBody struct {
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 	Action  string `json:"action,omitempty"`
+
+	Maintenance *clientDomain.MaintenanceInfo `json:"maintenance,omitempty"`
 }
 
 func WriteError(w io.Writer, err error) error {
@@ -43,6 +45,7 @@ func WriteError(w io.Writer, err error) error {
 		body.Message = domErr.Message
 		body.Hint = domErr.Hint
 		body.Action = domErr.Action
+		body.Maintenance = domErr.Maintenance
 	}
 	return WriteJSON(w, ErrorEnvelope{Error: body})
 }

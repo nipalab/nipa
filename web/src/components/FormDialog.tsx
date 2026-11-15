@@ -1,6 +1,8 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Dialog, Stack } from '@primer/react'
+import { isMaintenanceError, type MaintenanceInfo } from '../api/client'
 import { errorMessage } from '../hooks'
+import { MaintenanceErrorBanner } from './MaintenanceBanner'
 import { isSeatLimitError, SeatLimitBanner } from './SeatLimitBanner'
 import { ErrorBanner } from './ui'
 
@@ -27,6 +29,7 @@ export function FormDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [seatLimit, setSeatLimit] = useState(false)
+  const [maintenance, setMaintenance] = useState<MaintenanceInfo | null>(null)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -34,6 +37,7 @@ export function FormDialog({
     setBusy(true)
     setError(null)
     setSeatLimit(false)
+    setMaintenance(null)
     try {
       const result = await onSubmit()
       if (result === false) {
@@ -44,6 +48,7 @@ export function FormDialog({
     } catch (err) {
       setError(errorMessage(err))
       setSeatLimit(isSeatLimitError(err))
+      setMaintenance(isMaintenanceError(err) ? err.maintenance : null)
       setBusy(false)
     }
   }
@@ -53,7 +58,9 @@ export function FormDialog({
       <Dialog.Body>
         <form id={formId} onSubmit={(event) => void submit(event)}>
           <Stack direction="vertical" gap="normal">
-            {error && seatLimit ? (
+            {maintenance ? (
+              <MaintenanceErrorBanner info={maintenance} title="Could not save during maintenance" />
+            ) : error && seatLimit ? (
               <SeatLimitBanner message={error} />
             ) : (
               <ErrorBanner error={error} title="Could not save" />

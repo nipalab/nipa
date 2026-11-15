@@ -343,6 +343,7 @@ describe('ProjectSettingsPage', () => {
     api.listWebhooks.mockResolvedValue([])
     api.listEmailDeliveries.mockResolvedValue({ deliveries: [], next_cursor: '' } as never)
     api.setBranchProtection.mockResolvedValue(branch())
+    api.listOrgs.mockResolvedValue([{ id: 'o1', slug: 'acme', name: 'Acme', role: 'owner' }])
   })
 
   it('refuses users without admin permission', async () => {

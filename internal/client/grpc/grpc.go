@@ -336,6 +336,12 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 				return invoker(ctx, method, req, reply, cc, opts...)
 			})
 		}
+		if method == "/greet.NipaService/GetMaintenanceStatus" {
+			if token, err := c.session.AccessToken(ctx, c.transport.URL()); err == nil && token != "" {
+				ctx = withBearerToken(ctx, token)
+			}
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
 		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
 			method == "/greet.NipaService/BeginLoginSSHKey" ||
 			method == "/greet.NipaService/CompleteLoginSSHKey" ||

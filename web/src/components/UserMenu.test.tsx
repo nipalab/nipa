@@ -102,6 +102,21 @@ describe('UserMenu', () => {
     expect(onSignOut).toHaveBeenCalled()
   })
 
+  it('links super admins to maintenance', async () => {
+    const container = await render({ ...user, is_super_admin: true })
+    await openMenu(container)
+    await act(async () => {
+      item('Maintenance')?.click()
+    })
+    expect(path).toBe('/admin/maintenance')
+  })
+
+  it('hides maintenance from plain admins', async () => {
+    const container = await render({ ...user, is_admin: true })
+    await openMenu(container)
+    expect(item('Maintenance')).toBeUndefined()
+  })
+
   it('renders before the profile has loaded', async () => {
     const container = await render(null)
     await openMenu(container)

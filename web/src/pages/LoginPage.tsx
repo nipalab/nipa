@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Banner, Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
 import { SignInIcon } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { login } from '../api/client'
+import { isMaintenanceError, login, type MaintenanceInfo } from '../api/client'
 import type { MFAChallengeResponse } from '../api/models'
 import { getOnboardingCapabilities } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { AuthAside, AuthCard, AuthLayout } from '../components/AuthLayout'
+import { MaintenanceBanner, MaintenanceErrorBanner } from '../components/MaintenanceBanner'
 import { MFACodeStep } from '../components/MFACodeStep'
 import { SocialButtons } from '../components/SocialButtons'
 import { errorMessage, useAsync } from '../hooks'
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState(false)
+  const [refused, setRefused] = useState<MaintenanceInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [challenge, setChallenge] = useState<MFAChallengeResponse | null>(null)
   const [restartNotice, setRestartNotice] = useState<string | null>(null)
@@ -32,6 +34,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     setUnconfirmed(false)
+    setRefused(null)
     setRestartNotice(null)
     resetResend()
     if (!email.trim() || !password) {
@@ -48,7 +51,9 @@ export default function LoginPage() {
       finish()
     } catch (err) {
       const message = errorMessage(err)
-      if (message === 'email not confirmed') {
+      if (isMaintenanceError(err)) {
+        setRefused(err.maintenance)
+      } else if (message === 'email not confirmed') {
         setUnconfirmed(true)
         setError('Your email address has not been confirmed yet. Open the confirmation link we sent you.')
       } else {
@@ -90,6 +95,7 @@ export default function LoginPage() {
 
   return (
     <AuthLayout title="Sign in to Nipa" footer={Boolean(capabilities)}>
+      {!refused && <MaintenanceBanner />}
       <AuthCard onSubmit={handleSubmit}>
         <FormControl required>
           <FormControl.Label>Username/Email</FormControl.Label>
@@ -113,6 +119,7 @@ export default function LoginPage() {
           />
         </FormControl>
 
+        {refused && <MaintenanceErrorBanner info={refused} title="Sign-in is paused for maintenance" />}
         {shownError && (
           <Banner variant={unconfirmed ? 'warning' : 'critical'} title="Sign in failed">
             <Stack direction="vertical" gap="condensed">

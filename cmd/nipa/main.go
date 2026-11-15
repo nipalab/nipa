@@ -122,7 +122,7 @@ func handleError(err error) {
 	if cli.JSONRequested(os.Args[1:]) {
 		_ = output.WriteError(os.Stderr, err)
 	} else {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, cli.ErrorText(err))
 	}
 	os.Exit(cli.ExitCode(err))
 }

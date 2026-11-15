@@ -67,6 +67,9 @@ func httpRetryHint(res *http.Response) retryHint {
 	if res.StatusCode == http.StatusTooManyRequests {
 		return retryHint{retryable: true, throttled: true, wait: parseRetryAfter(res.Header.Get("Retry-After"), time.Now())}
 	}
+	if res.Header.Get(maintenanceHeader) != "" {
+		return retryHint{}
+	}
 	return retryHint{retryable: retryableStatus(res.StatusCode)}
 }
 

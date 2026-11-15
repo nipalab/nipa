@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 
 	"github.com/nipalab/nipa/internal/client/assetscan"
@@ -43,6 +45,9 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 				}
 				warnImpactSkipped(cmd, checks.ImpactErr)
 				return writePlanReport(cmd, plan, planReport{Violations: checks.Violations, Impact: checks.Impact, Generated: generated})
+			}
+			if err := maintenanceGate(cmd.ErrOrStderr(), c.cloneMaintenance(cmd, root), time.Now()); err != nil {
+				return err
 			}
 			if generate {
 				if message, err = c.generateCommitMessage(cmd, root); err != nil {

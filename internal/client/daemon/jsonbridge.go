@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
+	"github.com/nipalab/nipa/internal/maintenance"
 )
 
 // EnvJSONPort pins the JSON bridge loopback port; 0 picks a free port.
@@ -303,8 +304,9 @@ func loopbackOrigin(origin string) bool {
 }
 
 type jsonError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code        string            `json:"code"`
+	Message     string            `json:"message"`
+	Maintenance *maintenance.Info `json:"maintenance,omitempty"`
 }
 
 func writeJSONError(w http.ResponseWriter, httpStatus int, code codes.Code, message string) {
@@ -315,12 +317,22 @@ func writeJSONError(w http.ResponseWriter, httpStatus int, code codes.Code, mess
 
 func writeGRPCError(w http.ResponseWriter, err error) {
 	st, _ := status.FromError(err)
-	writeJSONError(w, httpStatusFor(st.Code()), st.Code(), st.Message())
+	w.Header().Set("Content-Type", mimeJSON)
+	w.WriteHeader(httpStatusFor(st.Code()))
+	_ = json.NewEncoder(w).Encode(grpcJSONError(err))
 }
 
 func writeStreamError(w http.ResponseWriter, err error) {
+	_ = json.NewEncoder(w).Encode(map[string]jsonError{"error": grpcJSONError(err)})
+}
+
+func grpcJSONError(err error) jsonError {
 	st, _ := status.FromError(err)
-	_ = json.NewEncoder(w).Encode(map[string]jsonError{"error": {Code: st.Code().String(), Message: st.Message()}})
+	body := jsonError{Code: st.Code().String(), Message: st.Message()}
+	if refused, ok := maintenance.FromGRPC(err); ok {
+		body.Maintenance = &refused.Info
+	}
+	return body
 }
 
 func httpStatusFor(code codes.Code) int {

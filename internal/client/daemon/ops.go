@@ -174,14 +174,20 @@ func opResultEvent(result *daemonpb.OpResult) *daemonpb.OpEvent {
 
 func opFailureEvent(err error) *daemonpb.OpEvent {
 	return &daemonpb.OpEvent{Event: &daemonpb.OpEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: opFailure(err),
 	}}
+}
+
+func opFailure(err error) *daemonpb.OpFailure {
+	return &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error(), Maintenance: maintenanceWindowOf(err)}
 }
 
 // failureCode maps an error onto the HTTP-style code OpFailure carries.
 func failureCode(err error) int32 {
 	var domErr *clientDomain.Error
 	switch {
+	case isMaintenance(err):
+		return 503
 	case errors.As(err, &domErr):
 		return int32(domErr.Code)
 	case errors.Is(err, context.Canceled):

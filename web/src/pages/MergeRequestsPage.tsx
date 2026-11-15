@@ -21,6 +21,8 @@ import { Timestamp } from '../components/Timestamp'
 import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 import { errorMessage, useAsync } from '../hooks'
 import { useOrgMembers } from '../orgHooks'
+import { useEffectiveMaintenance } from '../maintenance'
+import { maintenanceTitle } from '../components/MaintenanceBanner'
 
 const STATUS_TABS: { value: string; label: string; Icon: Icon }[] = [
   { value: 'open', label: 'Open', Icon: GitPullRequestIcon },
@@ -51,6 +53,7 @@ export default function MergeRequestsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
   const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const paused = useEffectiveMaintenance(org, project)
   const draftFilter = status === 'draft'
   const listParams = (after?: string) => ({
     ...(draftFilter ? { status: 'open', draft: true } : { status }),
@@ -102,7 +105,12 @@ export default function MergeRequestsPage() {
       heading="Merge requests"
       actions={
         canWrite && (
-          <Button variant="primary" onClick={() => navigate(`/${org}/${project}/merges/new`)}>
+          <Button
+            variant="primary"
+            disabled={paused !== null}
+            title={paused ? `${maintenanceTitle(paused)}. Try again once maintenance ends.` : undefined}
+            onClick={() => navigate(`/${org}/${project}/merges/new`)}
+          >
             New merge request
           </Button>
         )

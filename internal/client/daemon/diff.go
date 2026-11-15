@@ -189,7 +189,7 @@ func sendDiffChunk(stream daemonpb.NipaDaemon_DiffServer, chunk string) error {
 
 func diffFailureEvent(err error) *daemonpb.DiffEvent {
 	return &daemonpb.DiffEvent{Event: &daemonpb.DiffEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: opFailure(err),
 	}}
 }
 

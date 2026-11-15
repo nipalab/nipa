@@ -1,6 +1,8 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, RedirectIfAuthenticated, RequireAuth, useAuth } from './auth'
+import { useRouteTarget } from './components/MaintenanceBanner'
+import { useMaintenancePolling } from './maintenance'
 import { Loading } from './components/ui'
 import { APP_HOME } from './routes'
 import AppShell from './components/AppShell'
@@ -27,6 +29,7 @@ const LocksPage = lazy(() => import('./pages/LocksPage'))
 const ProjectSettingsPage = lazy(() => import('./pages/ProjectSettingsPage'))
 const OrgSettingsPage = lazy(() => import('./pages/OrgSettingsPage'))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage'))
+const AdminMaintenancePage = lazy(() => import('./pages/AdminMaintenancePage'))
 const NewUserPage = lazy(() => import('./pages/NewUserPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const BillingPage = lazy(() => import('./pages/BillingPage'))
@@ -35,6 +38,7 @@ export default function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
+        <MaintenanceWatcher />
         <Suspense fallback={<Loading />}>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
@@ -50,6 +54,7 @@ export default function App() {
                 <Route path="/onboarding" element={<OnboardingPage />} />
                 <Route path="/admin/users" element={<AdminUsersPage />} />
                 <Route path="/admin/users/new" element={<NewUserPage />} />
+                <Route path="/admin/maintenance" element={<AdminMaintenancePage />} />
                 <Route path="/settings/profile" element={<ProfilePage />} />
                 <Route path="/settings/billing" element={<BillingPage />} />
                 <Route path="/:org" element={<OrgProjectsPage />} />
@@ -90,4 +95,11 @@ function RootRedirect() {
     return <Navigate to="/login" state={{ from: APP_HOME }} replace />
   }
   return <Navigate to={APP_HOME} replace />
+}
+
+function MaintenanceWatcher() {
+  const { status } = useAuth()
+  const { org, project } = useRouteTarget()
+  useMaintenancePolling({ org, project, authenticated: status === 'authenticated' })
+  return null
 }

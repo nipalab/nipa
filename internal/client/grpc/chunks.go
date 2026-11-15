@@ -344,8 +344,11 @@ func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retr
 		return retryHint{retryable: ctx.Err() == nil}, err
 	}
 	defer func() { _ = res.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
+	if refused, ok := httpMaintenanceError(res); ok {
+		return retryHint{}, refused
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	switch res.StatusCode {
 	case http.StatusNoContent, http.StatusOK, http.StatusPreconditionFailed:
 		return retryHint{}, nil
@@ -420,6 +423,9 @@ func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte
 	}
 	defer func() { _ = res.Body.Close() }()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
+	if refused, ok := httpMaintenanceError(res); ok {
+		return nil, retryHint{}, refused
+	}
 	if res.StatusCode != http.StatusOK {
 		return nil, httpRetryHint(res), chunkHTTPError(res)
 	}
