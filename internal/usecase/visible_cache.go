@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"container/list"
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ type visibleEntry struct {
 	err    error
 	used   time.Time
 	elem   *list.Element
+	weight int
 }
 
 // visibleChunkCache keeps recent VisibleChunks answers so the download
@@ -73,7 +75,7 @@ func visibleChunksKey(claim domain.Claims, projectID snow.ID, commitIDs, paths [
 // get returns the cached answer for key, computing it once when missing.
 // Concurrent callers of a missing key wait for the same computation; a failed
 // computation is not kept.
-func (c *visibleChunkCache) get(key string, compute func() ([]domain.Hash, error)) ([]domain.Hash, error) {
+func (c *visibleChunkCache) get(ctx context.Context, key string, compute func(context.Context) ([]domain.Hash, error)) ([]domain.Hash, error) {
 	c.mu.Lock()
 	now := c.now()
 	if e, ok := c.entries[key]; ok {
@@ -83,8 +85,7 @@ func (c *visibleChunkCache) get(key string, compute func() ([]domain.Hash, error
 				c.lru.MoveToFront(e.elem)
 			}
 			c.mu.Unlock()
-			<-e.done
-			return e.hashes, e.err
+			return e.wait(ctx)
 		}
 		c.remove(e)
 	}
@@ -92,21 +93,31 @@ func (c *visibleChunkCache) get(key string, compute func() ([]domain.Hash, error
 	c.entries[key] = e
 	c.mu.Unlock()
 
-	e.hashes, e.err = compute()
+	e.hashes, e.err = compute(context.WithoutCancel(ctx))
+	e.weight = len(e.hashes) + 1 + len(key)/32
 
 	c.mu.Lock()
 	switch {
-	case e.err != nil || len(e.hashes) > c.maxHashes:
+	case e.err != nil || e.weight > c.maxHashes:
 		delete(c.entries, key)
 	default:
 		e.used = c.now()
 		e.elem = c.lru.PushFront(e)
-		c.size += len(e.hashes)
+		c.size += e.weight
 		c.evict()
 	}
 	c.mu.Unlock()
 	close(e.done)
-	return e.hashes, e.err
+	return e.wait(ctx)
+}
+
+func (e *visibleEntry) wait(ctx context.Context) ([]domain.Hash, error) {
+	select {
+	case <-e.done:
+		return e.hashes, e.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (c *visibleChunkCache) evict() {
@@ -124,7 +135,7 @@ func (c *visibleChunkCache) remove(e *visibleEntry) {
 	delete(c.entries, e.key)
 	if e.elem != nil {
 		c.lru.Remove(e.elem)
-		c.size -= len(e.hashes)
+		c.size -= e.weight
 		e.elem = nil
 	}
 }

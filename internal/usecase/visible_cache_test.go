@@ -23,28 +23,28 @@ func TestVisibleChunkCache_ReusesUntilIdleTTL(t *testing.T) {
 	clock := &fakeClock{t: time.Unix(1000, 0)}
 	c := newVisibleChunkCache(time.Minute, 100, clock.now)
 	calls := 0
-	compute := func() ([]domain.Hash, error) {
+	compute := func(context.Context) ([]domain.Hash, error) {
 		calls++
 		return []domain.Hash{{byte(calls)}}, nil
 	}
 
-	got, err := c.get("k", compute)
+	got, err := c.get(context.Background(), "k", compute)
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{{1}}, got)
 
 	clock.t = clock.t.Add(50 * time.Second)
-	got, _ = c.get("k", compute)
+	got, _ = c.get(context.Background(), "k", compute)
 	require.Equal(t, []domain.Hash{{1}}, got)
 	clock.t = clock.t.Add(50 * time.Second)
-	got, _ = c.get("k", compute)
+	got, _ = c.get(context.Background(), "k", compute)
 	require.Equal(t, []domain.Hash{{1}}, got, "a hit renews the entry")
 	require.Equal(t, 1, calls)
 
 	clock.t = clock.t.Add(time.Minute)
-	got, _ = c.get("k", compute)
+	got, _ = c.get(context.Background(), "k", compute)
 	require.Equal(t, []domain.Hash{{2}}, got)
 	require.Equal(t, 1, len(c.entries))
-	require.Equal(t, 1, c.size)
+	require.Equal(t, 2, c.size)
 }
 
 func TestVisibleChunkCache_DoesNotKeepErrorsOrOversizedAnswers(t *testing.T) {
@@ -52,12 +52,12 @@ func TestVisibleChunkCache_DoesNotKeepErrorsOrOversizedAnswers(t *testing.T) {
 	c := newVisibleChunkCache(time.Minute, 2, clock.now)
 	boom := errors.New("boom")
 
-	_, err := c.get("k", func() ([]domain.Hash, error) { return nil, boom })
+	_, err := c.get(context.Background(), "k", func(context.Context) ([]domain.Hash, error) { return nil, boom })
 	require.ErrorIs(t, err, boom)
 	require.Empty(t, c.entries)
 
 	big := []domain.Hash{{1}, {2}, {3}}
-	got, err := c.get("big", func() ([]domain.Hash, error) { return big, nil })
+	got, err := c.get(context.Background(), "big", func(context.Context) ([]domain.Hash, error) { return big, nil })
 	require.NoError(t, err)
 	require.Equal(t, big, got)
 	require.Empty(t, c.entries)
@@ -66,23 +66,23 @@ func TestVisibleChunkCache_DoesNotKeepErrorsOrOversizedAnswers(t *testing.T) {
 
 func TestVisibleChunkCache_EvictsLeastRecentlyUsed(t *testing.T) {
 	clock := &fakeClock{t: time.Unix(1000, 0)}
-	c := newVisibleChunkCache(time.Minute, 3, clock.now)
-	two := func() ([]domain.Hash, error) { return []domain.Hash{{1}, {2}}, nil }
-	one := func() ([]domain.Hash, error) { return []domain.Hash{{3}}, nil }
+	c := newVisibleChunkCache(time.Minute, 5, clock.now)
+	two := func(context.Context) ([]domain.Hash, error) { return []domain.Hash{{1}, {2}}, nil }
+	one := func(context.Context) ([]domain.Hash, error) { return []domain.Hash{{3}}, nil }
 
-	_, _ = c.get("a", two)
-	_, _ = c.get("b", one)
-	_, _ = c.get("a", two)
-	_, _ = c.get("c", one)
+	_, _ = c.get(context.Background(), "a", two)
+	_, _ = c.get(context.Background(), "b", one)
+	_, _ = c.get(context.Background(), "a", two)
+	_, _ = c.get(context.Background(), "c", one)
 	require.Contains(t, c.entries, "a")
 	require.Contains(t, c.entries, "c")
 	require.NotContains(t, c.entries, "b")
-	require.Equal(t, 3, c.size)
+	require.Equal(t, 5, c.size)
 
 	clock.t = clock.t.Add(2 * time.Minute)
-	_, _ = c.get("d", one)
+	_, _ = c.get(context.Background(), "d", one)
 	require.Equal(t, []string{"d"}, keysOf(c.entries), "expired entries are dropped on insert")
-	require.Equal(t, 1, c.size)
+	require.Equal(t, 2, c.size)
 }
 
 func keysOf(m map[string]*visibleEntry) []string {
@@ -97,7 +97,7 @@ func TestVisibleChunkCache_ConcurrentMissComputesOnce(t *testing.T) {
 	c := newVisibleChunkCache(time.Minute, 100, time.Now)
 	var calls atomic.Int32
 	release := make(chan struct{})
-	compute := func() ([]domain.Hash, error) {
+	compute := func(context.Context) ([]domain.Hash, error) {
 		calls.Add(1)
 		<-release
 		return []domain.Hash{{9}}, nil
@@ -109,7 +109,7 @@ func TestVisibleChunkCache_ConcurrentMissComputesOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i], _ = c.get("k", compute)
+			results[i], _ = c.get(context.Background(), "k", compute)
 		}()
 	}
 	require.Eventually(t, func() bool { return calls.Load() == 1 }, time.Second, time.Millisecond)
@@ -183,4 +183,57 @@ func TestBranch_WithVisibleChunksCacheHashes(t *testing.T) {
 	require.Equal(t, DefaultVisibleChunksCacheHashes, uc.visible.maxHashes)
 	require.Equal(t, DefaultVisibleChunksCacheHashes, uc.WithVisibleChunksCacheHashes(0).visible.maxHashes)
 	require.Equal(t, 10, uc.WithVisibleChunksCacheHashes(10).visible.maxHashes)
+}
+
+func TestVisibleChunkCache_EmptyEntriesAreBounded(t *testing.T) {
+	c := newVisibleChunkCache(time.Minute, 10, time.Now)
+	empty := func(context.Context) ([]domain.Hash, error) { return nil, nil }
+	for i := 0; i < 100; i++ {
+		_, err := c.get(context.Background(), string(rune('a'+i%26))+string(rune('A'+i/26)), empty)
+		require.NoError(t, err)
+	}
+	require.LessOrEqual(t, len(c.entries), 10)
+	require.LessOrEqual(t, c.size, 10)
+}
+
+func TestVisibleChunkCache_LeaderCancelDoesNotFailWaiters(t *testing.T) {
+	c := newVisibleChunkCache(time.Minute, 100, time.Now)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	compute := func(ctx context.Context) ([]domain.Hash, error) {
+		close(started)
+		<-release
+		return []domain.Hash{{5}}, ctx.Err()
+	}
+	leaderCtx, cancel := context.WithCancel(context.Background())
+	go func() { _, _ = c.get(leaderCtx, "k", compute) }()
+	<-started
+	cancel()
+
+	done := make(chan []domain.Hash, 1)
+	go func() {
+		got, _ := c.get(context.Background(), "k", compute)
+		done <- got
+	}()
+	close(release)
+	require.Equal(t, []domain.Hash{{5}}, <-done)
+}
+
+func TestVisibleChunkCache_WaiterHonoursOwnContext(t *testing.T) {
+	c := newVisibleChunkCache(time.Minute, 100, time.Now)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_, _ = c.get(context.Background(), "k", func(context.Context) ([]domain.Hash, error) {
+			close(started)
+			<-release
+			return nil, nil
+		})
+	}()
+	<-started
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.get(ctx, "k", nil)
+	require.ErrorIs(t, err, context.Canceled)
+	close(release)
 }

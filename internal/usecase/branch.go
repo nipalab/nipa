@@ -755,7 +755,7 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 		return b.visibleChunks(ctx, projectID, commitIDs, paths)
 	}
 	key := visibleChunksKey(claim, projectID, commitIDs, paths)
-	return b.visible.get(key, func() ([]domain.Hash, error) {
+	return b.visible.get(ctx, key, func(ctx context.Context) ([]domain.Hash, error) {
 		return b.visibleChunks(ctx, projectID, commitIDs, paths)
 	})
 }
