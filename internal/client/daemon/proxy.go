@@ -38,6 +38,12 @@ func (s *Server) withMutation(ctx context.Context, root string, fn func(pb.NipaS
 }
 
 func (s *Server) withProxy(ctx context.Context, root string, fn func(pb.NipaServiceClient, *pb.ProjectContext) error) error {
+	return s.withProxyConn(ctx, root, func(_ ProxyConn, client pb.NipaServiceClient, project *pb.ProjectContext) error {
+		return fn(client, project)
+	})
+}
+
+func (s *Server) withProxyConn(ctx context.Context, root string, fn func(ProxyConn, pb.NipaServiceClient, *pb.ProjectContext) error) error {
 	rp, unref, err := s.repos.ref(root)
 	if err != nil {
 		return err
@@ -57,7 +63,13 @@ func (s *Server) withProxy(ctx context.Context, root string, fn func(pb.NipaServ
 	if err != nil {
 		return err
 	}
-	return fn(client, &pb.ProjectContext{Org: nu.Org, Project: nu.Project})
+	return fn(rp.proxy, client, &pb.ProjectContext{Org: nu.Org, Project: nu.Project})
+}
+
+// manifestStreamer is the optional ProxyConn method that reads manifests
+// through StreamTreeManifest, so they are not bound by the gRPC message size.
+type manifestStreamer interface {
+	StreamTreeManifest(ctx context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, *pb.CommitDetail, error)
 }
 
 // ProxyBranchList lists the branches of the repo's project.
@@ -120,13 +132,17 @@ func (s *Server) ProxyBranchDelete(ctx context.Context, req *daemonpb.ProxyBranc
 // ProxyTreeManifest returns a branch tree manifest.
 func (s *Server) ProxyTreeManifest(ctx context.Context, req *daemonpb.ProxyTreeManifestRequest) (*daemonpb.ProxyTreeManifestResponse, error) {
 	var res *pb.GetTreeManifestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withProxyConn(ctx, req.GetRoot(), func(conn ProxyConn, client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.GetTreeManifestRequest{}
 		}
 		request.Context = project
 		var err error
+		if streamer, ok := conn.(manifestStreamer); ok {
+			res, _, err = streamer.StreamTreeManifest(ctx, request)
+			return err
+		}
 		res, err = client.GetTreeManifest(ctx, request)
 		return err
 	})
@@ -158,12 +174,21 @@ func (s *Server) ProxyCommitLog(ctx context.Context, req *daemonpb.ProxyCommitLo
 // ProxyCommitGet returns one commit plus its recursive tree manifest.
 func (s *Server) ProxyCommitGet(ctx context.Context, req *daemonpb.ProxyCommitGetRequest) (*daemonpb.ProxyCommitGetResponse, error) {
 	var res *pb.GetCommitResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withProxyConn(ctx, req.GetRoot(), func(conn ProxyConn, client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.GetCommitRequest{}
 		}
 		request.Context = project
+		if streamer, ok := conn.(manifestStreamer); ok {
+			commitID := request.GetCommitId()
+			manifest, commit, err := streamer.StreamTreeManifest(ctx, &pb.GetTreeManifestRequest{Context: project, CommitId: &commitID, Recursive: true})
+			if err != nil {
+				return err
+			}
+			res = &pb.GetCommitResponse{Commit: commit, RootTree: manifest.GetRootTree()}
+			return nil
+		}
 		var err error
 		res, err = client.GetCommit(ctx, request)
 		return err

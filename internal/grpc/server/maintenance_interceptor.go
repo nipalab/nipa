@@ -33,6 +33,9 @@ type orgRequest interface {
 // ProjectContext, else its org field, else none (server scope only).
 func maintenanceTarget(req any) (org, project string) {
 	switch r := req.(type) {
+	case *pb.PushStreamRequest:
+		c := r.GetHeader().GetContext()
+		return c.GetOrg(), c.GetProject()
 	case projectContextRequest:
 		c := r.GetContext()
 		return c.GetOrg(), c.GetProject()
@@ -67,6 +70,26 @@ func (m *Maintenance) Stream() grpc.StreamServerInterceptor {
 		if err := m.check(info.FullMethod, nil); err != nil {
 			return err
 		}
-		return handler(srv, ss)
+		return handler(srv, &maintenanceStream{ServerStream: ss, m: m, method: info.FullMethod})
 	}
+}
+
+// maintenanceStream checks the first client message of a stream, which names
+// its org and project.
+type maintenanceStream struct {
+	grpc.ServerStream
+	m       *Maintenance
+	method  string
+	checked bool
+}
+
+func (s *maintenanceStream) RecvMsg(msg any) error {
+	if err := s.ServerStream.RecvMsg(msg); err != nil {
+		return err
+	}
+	if s.checked {
+		return nil
+	}
+	s.checked = true
+	return s.m.check(s.method, msg)
 }

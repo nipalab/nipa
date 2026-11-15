@@ -65,7 +65,11 @@ type Push struct {
 	reviews    reviewPushGate
 	hooks      hookPushGate
 	metrics    *obs.Metrics
+	maxFiles   int
 }
+
+// DefaultPushMaxFiles bounds the files plus removed paths one push may carry.
+const DefaultPushMaxFiles = 2_000_000
 
 // reviewPushGate is the subset of the review usecase used by the push flow to
 // mark reviews stale and log the push on the merge request timeline.
@@ -91,6 +95,67 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 func (p *Push) WithFileLocks(locks fileLockGate) *Push {
 	p.fileLocks = locks
 	return p
+}
+
+// WithMaxFiles overrides DefaultPushMaxFiles; zero or less keeps the default.
+func (p *Push) WithMaxFiles(n int) *Push {
+	p.maxFiles = n
+	return p
+}
+
+func (p *Push) MaxFiles() int {
+	if p.maxFiles > 0 {
+		return p.maxFiles
+	}
+	return DefaultPushMaxFiles
+}
+
+// CheckTarget runs the checks that only need the push header, so a streamed
+// push is refused before its file list is received. Push repeats them.
+func (p *Push) CheckTarget(ctx context.Context, projectID snow.ID, branchName, message, baseCommitID string) error {
+	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
+		return domain.NewErrorNoPermission()
+	}
+	if strings.TrimSpace(message) == "" {
+		return domain.NewErrorUser("commit message is required")
+	}
+	branch, err := p.pushBranch(ctx, projectID, branchName)
+	if err != nil {
+		return err
+	}
+	if baseCommitID != "" {
+		return checkBaseCommit(branch, baseCommitID)
+	}
+	return nil
+}
+
+func (p *Push) pushBranch(ctx context.Context, projectID snow.ID, branchName string) (*domain.Branch, error) {
+	branch, err := p.branchRepo.GetBranchByName(ctx, projectID, branchName)
+	if domain.IsErrorNotFound(err) {
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", branchName))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if branch.IsProtected {
+		return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; push through a merge request", branchName))
+	}
+	return branch, nil
+}
+
+func checkBaseCommit(branch *domain.Branch, baseCommitID string) error {
+	baseID, err := snow.ParseBase36(baseCommitID)
+	if err != nil {
+		return domain.NewErrorUser("invalid base commit id")
+	}
+	if branch.CommitID == nil || *branch.CommitID != baseID {
+		current := ""
+		if branch.CommitID != nil {
+			current = branch.CommitID.Base36()
+		}
+		return domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base commit %s, current head is %s", branch.Name, baseCommitID, current))
+	}
+	return nil
 }
 
 // WithReviews enables the review staleness gate on this usecase.
@@ -142,6 +207,9 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	if strings.TrimSpace(message) == "" {
 		return nil, domain.NewErrorUser("commit message is required")
 	}
+	if n := len(files) + len(removed); n > p.MaxFiles() {
+		return nil, tooManyPushFiles(n, p.MaxFiles())
+	}
 	if err := validatePushFiles(files); err != nil {
 		return nil, err
 	}
@@ -157,15 +225,9 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, err
 	}
 
-	branch, err := p.branchRepo.GetBranchByName(ctx, projectID, branchName)
-	if domain.IsErrorNotFound(err) {
-		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", branchName))
-	}
+	branch, err := p.pushBranch(ctx, projectID, branchName)
 	if err != nil {
 		return nil, err
-	}
-	if branch.IsProtected {
-		return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; push through a merge request", branchName))
 	}
 
 	claim, ok := domain.ClaimFromContext(ctx)
@@ -216,16 +278,8 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	}
 
 	if baseCommitID != "" {
-		baseID, err := snow.ParseBase36(baseCommitID)
-		if err != nil {
-			return nil, domain.NewErrorUser("invalid base commit id")
-		}
-		if branch.CommitID == nil || *branch.CommitID != baseID {
-			current := ""
-			if branch.CommitID != nil {
-				current = branch.CommitID.Base36()
-			}
-			return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base commit %s, current head is %s", branchName, baseCommitID, current))
+		if err := checkBaseCommit(branch, baseCommitID); err != nil {
+			return nil, err
 		}
 	} else {
 		headTreeHash, err := p.headTreeHash(ctx, headCommit)
@@ -397,6 +451,7 @@ func (p *Push) headBinaryPaths(ctx context.Context, headCommit *domain.Commit, p
 			d = d[:i]
 		}
 	}
+	subdirs := subdirIndex(dirs)
 	type treeNodeRef struct {
 		dir  string
 		tree *domain.TreeNode
@@ -415,7 +470,7 @@ func (p *Push) headBinaryPaths(ctx context.Context, headCommit *domain.Commit, p
 				result[joinPath(current.dir, file.Name)] = file.IsBinary
 			}
 		}
-		for _, sub := range immediateSubdirs(dirs, current.dir) {
+		for _, sub := range subdirs[current.dir] {
 			child, err := p.branchRepo.GetTreeChildByName(ctx, current.tree.ID, sub)
 			if domain.IsErrorNotFound(err) {
 				continue
@@ -526,6 +581,16 @@ func (p *Push) ensurePathWrites(ctx context.Context, projectID snow.ID, files []
 		}
 	}
 	return nil
+}
+
+func tooManyPushFiles(n, limit int) error {
+	return domain.NewErrorUser(fmt.Sprintf("push has %d files and removed paths, more than the server limit of %d; push in smaller parts", n, limit))
+}
+
+// TooManyFiles is the error a push over the limit gets, for callers that count
+// while receiving.
+func (p *Push) TooManyFiles(n int) error {
+	return tooManyPushFiles(n, p.MaxFiles())
 }
 
 func validatePushFiles(files []*domain.PushFile) error {
@@ -653,6 +718,7 @@ func buildNewTree(ctx context.Context, branchRepo branchRepository, headCommit *
 		addAncestors(d)
 	}
 	b.rebuildDirs[""] = true
+	b.subdirs = subdirIndex(b.rebuildDirs)
 
 	root, err := b.build(ctx, "", b.baseRoot)
 	if err != nil {
@@ -668,6 +734,7 @@ type treeBuilder struct {
 	changed     map[string][]*domain.PushFile
 	removed     map[string]map[string]bool
 	rebuildDirs map[string]bool
+	subdirs     map[string][]string
 	nextID      int64
 }
 
@@ -731,11 +798,14 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		baseChildByName[c.Name] = c
 	}
 
-	for _, sub := range immediateSubdirs(b.rebuildDirs, dirPath) {
+	for _, sub := range b.subdirs[dirPath] {
 		childBase := baseChildByName[sub]
 		child, err := b.build(ctx, joinPath(dirPath, sub), childBase)
 		if err != nil {
 			return nil, err
+		}
+		if len(child.Files) == 0 && len(child.Children) == 0 && len(child.KeepDirs) == 0 {
+			continue
 		}
 		child.Parent = node
 		node.Children = append(node.Children, child)
@@ -744,7 +814,7 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 
 	for _, c := range baseChildren {
 		sub := joinPath(dirPath, c.Name)
-		if b.rebuildDirs[sub] {
+		if b.rebuildDirs[sub] || c.Hash == emptyTreeHash {
 			continue
 		}
 		kept := b.alloc(c.Name)
@@ -754,6 +824,10 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 	}
 	return node, nil
 }
+
+// emptyTreeHash is the hash of a directory with no files and no
+// subdirectories. Pushes do not store such directories.
+var emptyTreeHash = treehash.TreeHash(nil, nil)
 
 func (b *treeBuilder) alloc(name string) *pushTreeNode {
 	b.nextID++
@@ -810,26 +884,22 @@ func joinPath(dirPath, name string) string {
 	return dirPath + "/" + name
 }
 
-func immediateSubdirs(rebuildDirs map[string]bool, dirPath string) []string {
-	prefix := ""
-	if dirPath != "" {
-		prefix = dirPath + "/"
-	}
-	set := map[string]bool{}
-	for d := range rebuildDirs {
-		if !strings.HasPrefix(d, prefix) {
+// subdirIndex maps every directory to the sorted names of its immediate
+// subdirectories in dirs.
+func subdirIndex(dirs map[string]bool) map[string][]string {
+	index := map[string][]string{}
+	for d := range dirs {
+		if d == "" {
 			continue
 		}
-		rest := strings.TrimPrefix(d, prefix)
-		if rest == "" || strings.Contains(rest, "/") {
-			continue
+		parent := ""
+		if i := strings.LastIndex(d, "/"); i >= 0 {
+			parent = d[:i]
 		}
-		set[rest] = true
+		index[parent] = append(index[parent], baseOf(d))
 	}
-	names := make([]string, 0, len(set))
-	for n := range set {
-		names = append(names, n)
+	for _, names := range index {
+		sort.Strings(names)
 	}
-	sort.Strings(names)
-	return names
+	return index
 }

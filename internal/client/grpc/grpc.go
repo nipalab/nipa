@@ -351,13 +351,19 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 }
 
 func (c *Client) invokeAuthed(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return c.callAuthed(ctx, func(authCtx context.Context) error {
+		return invoker(authCtx, method, req, reply, cc, opts...)
+	})
+}
+
+// callAuthed runs call with the bearer token and repeats it once with a
+// refreshed token when the server rejects the first one.
+func (c *Client) callAuthed(ctx context.Context, call func(context.Context) error) error {
 	accToken, err := c.session.AccessToken(ctx, c.transport.URL())
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "unable to get access token")
 	}
-	authCtx := withBearerToken(ctx, accToken)
-
-	err = invoker(authCtx, method, req, reply, cc, opts...)
+	err = call(withBearerToken(ctx, accToken))
 	if status.Code(err) != codes.Unauthenticated {
 		return err
 	}
@@ -366,8 +372,7 @@ func (c *Client) invokeAuthed(ctx context.Context, method string, req, reply any
 	if err != nil {
 		return err
 	}
-	retryCtx := withBearerToken(ctx, accToken)
-	return invoker(retryCtx, method, req, reply, cc, opts...)
+	return call(withBearerToken(ctx, accToken))
 }
 
 func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error) {
@@ -476,10 +481,6 @@ func (c *Client) GetPathCommitLog(ctx context.Context, org, project, rev, path s
 // GetCommitDirManifest returns the files of one directory of a commit: the
 // root's own files for "", otherwise the directory's subtree.
 func (c *Client) GetCommitDirManifest(ctx context.Context, org, project, commitID, dir string) (*serverDomain.TreeNode, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
 	req := &pb.GetTreeManifestRequest{
 		Context:  &pb.ProjectContext{Org: org, Project: project},
 		CommitId: &commitID,
@@ -488,11 +489,7 @@ func (c *Client) GetCommitDirManifest(ctx context.Context, org, project, commitI
 		req.Paths = []string{dir}
 		req.Recursive = true
 	}
-	res, err := client.GetTreeManifest(ctx, req)
-	if err != nil {
-		return nil, toDomainError(err)
-	}
-	return toServerTreeNode(res.GetRootTree()), nil
+	return c.treeManifest(ctx, req)
 }
 
 func (c *Client) CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error) {
@@ -526,90 +523,21 @@ func (c *Client) DeleteBranch(ctx context.Context, org, project, name string) er
 }
 
 func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
-	res, err := client.GetTreeManifest(ctx, &pb.GetTreeManifestRequest{
+	return c.treeManifest(ctx, &pb.GetTreeManifestRequest{
 		Context:   &pb.ProjectContext{Org: org, Project: project},
 		Branch:    branch,
 		Paths:     paths,
 		Recursive: true,
 	})
-	if err != nil {
-		return nil, toDomainError(err)
-	}
-	return toServerTreeNode(res.GetRootTree()), nil
 }
 
 func (c *Client) GetCommitTreeManifest(ctx context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
-	res, err := client.GetTreeManifest(ctx, &pb.GetTreeManifestRequest{
+	return c.treeManifest(ctx, &pb.GetTreeManifestRequest{
 		Context:   &pb.ProjectContext{Org: org, Project: project},
 		CommitId:  &commitID,
 		Paths:     paths,
 		Recursive: true,
 	})
-	if err != nil {
-		return nil, toDomainError(err)
-	}
-	return toServerTreeNode(res.GetRootTree()), nil
-}
-
-func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
-	req := &pb.PushRequest{
-		Context:      &pb.ProjectContext{Org: org, Project: project},
-		Branch:       branch,
-		BaseTreeHash: baseTreeHash,
-		Message:      message,
-		RemovedFiles: removed,
-	}
-	if parent2CommitHash != "" {
-		req.Parent_2CommitHash = &parent2CommitHash
-	}
-	if baseCommitID != "" {
-		req.BaseCommitId = &baseCommitID
-	}
-	for _, f := range files {
-		pf := &pb.PushFile{
-			Path:      f.Path,
-			Mode:      intToPBFileMode(f.Mode),
-			SizeBytes: f.SizeBytes,
-			IsBinary:  f.IsBinary,
-			Encoding:  f.Encoding,
-			FileHash:  f.FileHash.String(),
-		}
-		for _, h := range f.ChunkHashes {
-			pf.ChunkHashes = append(pf.ChunkHashes, h.String())
-		}
-		req.Files = append(req.Files, pf)
-	}
-
-	res, err := client.Push(ctx, req)
-	if err != nil {
-		return nil, toDomainError(err)
-	}
-	commitID, _ := snow.ParseBase36(res.GetCommitId())
-	commitHash, err := decodeHash(res.GetCommitHash())
-	if err != nil {
-		return nil, err
-	}
-	treeHash, err := decodeHash(res.GetTreeHash())
-	if err != nil {
-		return nil, err
-	}
-	return &serverDomain.PushResult{
-		CommitID:   commitID,
-		CommitHash: commitHash,
-		TreeHash:   treeHash,
-	}, nil
 }
 
 func (c *Client) authedContext(ctx context.Context) (context.Context, error) {

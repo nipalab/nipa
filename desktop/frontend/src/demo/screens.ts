@@ -1,6 +1,6 @@
 export type Theme = "dark" | "light";
 
-export type Step = { tab: string } | { button: string } | { text: string } | { type: string } | { wait: number };
+export type Step = { tab: string } | { button: string } | { text: string; exact?: boolean } | { type: string } | { wait: number };
 
 export type Screen = {
   name: string;
@@ -26,13 +26,13 @@ export const screens: Screen[] = [
   {
     name: "files",
     scenario: "default",
-    steps: [{ tab: "Files" }, { text: "Assets" }, { text: "Characters" }, { text: "Hero" }, { button: "Thumbnails" }, { text: "hero_albedo.png" }],
+    steps: [{ tab: "Files" }, { text: "Assets", exact: true }, { text: "Characters", exact: true }, { text: "Hero", exact: true }, { button: "Thumbnails" }, { text: "hero_albedo.png" }],
     settle: 1500,
   },
   {
     name: "files-references",
     scenario: "default",
-    steps: [{ tab: "Files" }, { text: "Assets" }, { text: "Textures" }, { text: "Environment" }, { text: "rock_albedo.png" }],
+    steps: [{ tab: "Files" }, { text: "Assets", exact: true }, { text: "Textures", exact: true }, { text: "Environment", exact: true }, { text: "rock_albedo.png" }],
     settle: 1500,
   },
   { name: "history", scenario: "default", steps: [{ tab: "History" }, { text: "Rebuild hero armor albedo" }], settle: 1500 },
@@ -41,7 +41,7 @@ export const screens: Screen[] = [
   { name: "merge-request-files", scenario: "default", steps: [{ tab: "Merge requests" }, { text: "Rework hero armor textures" }, { tab: "File changes" }, { text: "Movement.cs" }], settle: 1500 },
   { name: "conflicts", scenario: "conflicts", steps: [{ tab: "Conflicts" }, { text: "Damage.cs" }], settle: 1500 },
   { name: "locks", scenario: "default", steps: [{ tab: "Locks" }], settle: 800 },
-  { name: "activity", scenario: "default", steps: [{ tab: "Activity" }, { text: "Today" }], settle: 1000 },
+  { name: "activity", scenario: "default", steps: [{ tab: "Activity" }, { wait: 800 }], settle: 1000 },
   { name: "palette", scenario: "default", steps: [{ button: "Search" }, { type: "hero" }], settle: 1000 },
   { name: "clone", scenario: "default", steps: [{ button: "Clone a repository" }], settle: 1200 },
   { name: "settings", scenario: "default", steps: [{ button: "Settings" }], settle: 800 },

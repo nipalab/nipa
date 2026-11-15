@@ -58,6 +58,7 @@ type Config struct {
 	AllowInsecureDevSecrets         bool    `mapstructure:"ALLOW_INSECURE_DEV_SECRETS"`
 	ChunkPresignTTLSeconds          int     `mapstructure:"CHUNK_PRESIGN_TTL_SECONDS"`
 	ChunkMaxPageSize                int     `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
+	PushMaxFiles                    int     `mapstructure:"PUSH_MAX_FILES"`
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
 	StorageLedgerDefaultQuotaBytes  int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
 	SaaSMode                        bool    `mapstructure:"SAAS_MODE"`
@@ -147,6 +148,7 @@ func LoadConfig() (*Config, error) {
 
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
+	v.SetDefault("PUSH_MAX_FILES", 2_000_000)
 	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)
 	v.SetDefault("HTTP_READ_HEADER_TIMEOUT_SECONDS", DefaultHTTPReadHeaderTimeoutSeconds)
 	v.SetDefault("HTTP_IDLE_TIMEOUT_SECONDS", DefaultHTTPIdleTimeoutSeconds)

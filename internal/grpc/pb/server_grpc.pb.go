@@ -43,6 +43,7 @@ const (
 	NipaService_CreateTag_FullMethodName                       = "/greet.NipaService/CreateTag"
 	NipaService_DeleteTag_FullMethodName                       = "/greet.NipaService/DeleteTag"
 	NipaService_GetTreeManifest_FullMethodName                 = "/greet.NipaService/GetTreeManifest"
+	NipaService_StreamTreeManifest_FullMethodName              = "/greet.NipaService/StreamTreeManifest"
 	NipaService_GetCommitLog_FullMethodName                    = "/greet.NipaService/GetCommitLog"
 	NipaService_GetCommit_FullMethodName                       = "/greet.NipaService/GetCommit"
 	NipaService_WalkCommits_FullMethodName                     = "/greet.NipaService/WalkCommits"
@@ -78,6 +79,7 @@ const (
 	NipaService_RemoveMergeRequestReviewRequest_FullMethodName = "/greet.NipaService/RemoveMergeRequestReviewRequest"
 	NipaService_ListMergeRequestTimeline_FullMethodName        = "/greet.NipaService/ListMergeRequestTimeline"
 	NipaService_Push_FullMethodName                            = "/greet.NipaService/Push"
+	NipaService_PushStream_FullMethodName                      = "/greet.NipaService/PushStream"
 	NipaService_GetChunkUploadUrls_FullMethodName              = "/greet.NipaService/GetChunkUploadUrls"
 	NipaService_GetChunkDownloadUrls_FullMethodName            = "/greet.NipaService/GetChunkDownloadUrls"
 	NipaService_ConfirmChunkUploads_FullMethodName             = "/greet.NipaService/ConfirmChunkUploads"
@@ -126,6 +128,7 @@ type NipaServiceClient interface {
 	CreateTag(ctx context.Context, in *CreateTagRequest, opts ...grpc.CallOption) (*CreateTagResponse, error)
 	DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*DeleteTagResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
+	StreamTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TreeManifestPart], error)
 	GetCommitLog(ctx context.Context, in *GetCommitLogRequest, opts ...grpc.CallOption) (*GetCommitLogResponse, error)
 	GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*GetCommitResponse, error)
 	WalkCommits(ctx context.Context, in *WalkCommitsRequest, opts ...grpc.CallOption) (*WalkCommitsResponse, error)
@@ -161,6 +164,7 @@ type NipaServiceClient interface {
 	RemoveMergeRequestReviewRequest(ctx context.Context, in *RemoveMergeRequestReviewRequestRequest, opts ...grpc.CallOption) (*RemoveMergeRequestReviewRequestResponse, error)
 	ListMergeRequestTimeline(ctx context.Context, in *ListMergeRequestTimelineRequest, opts ...grpc.CallOption) (*ListMergeRequestTimelineResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
+	PushStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushStreamRequest, PushResponse], error)
 	GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(ctx context.Context, in *GetChunkDownloadUrlsRequest, opts ...grpc.CallOption) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(ctx context.Context, in *ConfirmChunkUploadsRequest, opts ...grpc.CallOption) (*ConfirmChunkUploadsResponse, error)
@@ -428,6 +432,25 @@ func (c *nipaServiceClient) GetTreeManifest(ctx context.Context, in *GetTreeMani
 	}
 	return out, nil
 }
+
+func (c *nipaServiceClient) StreamTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TreeManifestPart], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[0], NipaService_StreamTreeManifest_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetTreeManifestRequest, TreeManifestPart]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_StreamTreeManifestClient = grpc.ServerStreamingClient[TreeManifestPart]
 
 func (c *nipaServiceClient) GetCommitLog(ctx context.Context, in *GetCommitLogRequest, opts ...grpc.CallOption) (*GetCommitLogResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -779,6 +802,19 @@ func (c *nipaServiceClient) Push(ctx context.Context, in *PushRequest, opts ...g
 	return out, nil
 }
 
+func (c *nipaServiceClient) PushStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushStreamRequest, PushResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[1], NipaService_PushStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PushStreamRequest, PushResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_PushStreamClient = grpc.ClientStreamingClient[PushStreamRequest, PushResponse]
+
 func (c *nipaServiceClient) GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetChunkUploadUrlsResponse)
@@ -987,6 +1023,7 @@ type NipaServiceServer interface {
 	CreateTag(context.Context, *CreateTagRequest) (*CreateTagResponse, error)
 	DeleteTag(context.Context, *DeleteTagRequest) (*DeleteTagResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
+	StreamTreeManifest(*GetTreeManifestRequest, grpc.ServerStreamingServer[TreeManifestPart]) error
 	GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error)
 	GetCommit(context.Context, *GetCommitRequest) (*GetCommitResponse, error)
 	WalkCommits(context.Context, *WalkCommitsRequest) (*WalkCommitsResponse, error)
@@ -1022,6 +1059,7 @@ type NipaServiceServer interface {
 	RemoveMergeRequestReviewRequest(context.Context, *RemoveMergeRequestReviewRequestRequest) (*RemoveMergeRequestReviewRequestResponse, error)
 	ListMergeRequestTimeline(context.Context, *ListMergeRequestTimelineRequest) (*ListMergeRequestTimelineResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
+	PushStream(grpc.ClientStreamingServer[PushStreamRequest, PushResponse]) error
 	GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(context.Context, *GetChunkDownloadUrlsRequest) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error)
@@ -1121,6 +1159,9 @@ func (UnimplementedNipaServiceServer) DeleteTag(context.Context, *DeleteTagReque
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
+}
+func (UnimplementedNipaServiceServer) StreamTreeManifest(*GetTreeManifestRequest, grpc.ServerStreamingServer[TreeManifestPart]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamTreeManifest not implemented")
 }
 func (UnimplementedNipaServiceServer) GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCommitLog not implemented")
@@ -1226,6 +1267,9 @@ func (UnimplementedNipaServiceServer) ListMergeRequestTimeline(context.Context, 
 }
 func (UnimplementedNipaServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
+}
+func (UnimplementedNipaServiceServer) PushStream(grpc.ClientStreamingServer[PushStreamRequest, PushResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method PushStream not implemented")
 }
 func (UnimplementedNipaServiceServer) GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChunkUploadUrls not implemented")
@@ -1733,6 +1777,17 @@ func _NipaService_GetTreeManifest_Handler(srv interface{}, ctx context.Context, 
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _NipaService_StreamTreeManifest_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetTreeManifestRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaServiceServer).StreamTreeManifest(m, &grpc.GenericServerStream[GetTreeManifestRequest, TreeManifestPart]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_StreamTreeManifestServer = grpc.ServerStreamingServer[TreeManifestPart]
 
 func _NipaService_GetCommitLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetCommitLogRequest)
@@ -2363,6 +2418,13 @@ func _NipaService_Push_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _NipaService_PushStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NipaServiceServer).PushStream(&grpc.GenericServerStream[PushStreamRequest, PushResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_PushStreamServer = grpc.ClientStreamingServer[PushStreamRequest, PushResponse]
 
 func _NipaService_GetChunkUploadUrls_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetChunkUploadUrlsRequest)
@@ -3004,6 +3066,17 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaService_RemoveGroupMember_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamTreeManifest",
+			Handler:       _NipaService_StreamTreeManifest_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "PushStream",
+			Handler:       _NipaService_PushStream_Handler,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "internal/grpc/proto/server.proto",
 }

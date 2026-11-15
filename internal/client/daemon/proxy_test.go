@@ -680,3 +680,59 @@ func TestRepo_CloseClosesProxy(t *testing.T) {
 	require.NoError(t, rp.close())
 	require.True(t, conn.closed)
 }
+
+type streamingProxyConn struct {
+	fakeProxyConn
+	reqs   []*pb.GetTreeManifestRequest
+	tree   *pb.TreeManifest
+	commit *pb.CommitDetail
+	err    error
+}
+
+func (s *streamingProxyConn) StreamTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, *pb.CommitDetail, error) {
+	s.reqs = append(s.reqs, req)
+	if s.err != nil {
+		return nil, nil, s.err
+	}
+	return &pb.GetTreeManifestResponse{Branch: req.GetBranch(), RootTree: s.tree}, s.commit, nil
+}
+
+func TestServer_ProxyTreeManifestStreams(t *testing.T) {
+	conn := &streamingProxyConn{tree: &pb.TreeManifest{Path: "root"}}
+	srv, root := watchedProxyServer(t, conn)
+
+	res, err := srv.ProxyTreeManifest(context.Background(), &daemonpb.ProxyTreeManifestRequest{
+		Root:    root,
+		Request: &pb.GetTreeManifestRequest{Context: &pb.ProjectContext{Org: "evil"}, Branch: "main", Recursive: true},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "root", res.GetResponse().GetRootTree().GetPath())
+	require.Len(t, conn.reqs, 1)
+	require.Equal(t, "default", conn.reqs[0].GetContext().GetOrg())
+	require.True(t, conn.reqs[0].GetRecursive())
+
+	conn.err = status.Error(codes.NotFound, "branch not found")
+	_, err = srv.ProxyTreeManifest(context.Background(), &daemonpb.ProxyTreeManifestRequest{Root: root})
+	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+func TestServer_ProxyCommitGetStreams(t *testing.T) {
+	conn := &streamingProxyConn{tree: &pb.TreeManifest{Path: "root"}, commit: &pb.CommitDetail{CommitId: "abc", Message: "seed"}}
+	srv, root := watchedProxyServer(t, conn)
+
+	res, err := srv.ProxyCommitGet(context.Background(), &daemonpb.ProxyCommitGetRequest{
+		Root:    root,
+		Request: &pb.GetCommitRequest{CommitId: "abc"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "seed", res.GetResponse().GetCommit().GetMessage())
+	require.Equal(t, "root", res.GetResponse().GetRootTree().GetPath())
+	require.Equal(t, "abc", conn.reqs[0].GetCommitId())
+	require.True(t, conn.reqs[0].GetRecursive())
+	require.Empty(t, conn.reqs[0].GetPaths())
+	require.Equal(t, "default", conn.reqs[0].GetContext().GetOrg())
+
+	conn.err = status.Error(codes.NotFound, "commit not found")
+	_, err = srv.ProxyCommitGet(context.Background(), &daemonpb.ProxyCommitGetRequest{Root: root})
+	require.Equal(t, codes.NotFound, status.Code(err))
+}

@@ -245,6 +245,45 @@ func TestPush_PersistsKeptDirs(t *testing.T) {
 	require.Equal(t, got.Nodes[0].ID, *kept.ParentID)
 }
 
+func TestPush_PrunesDirectoriesLeftEmpty(t *testing.T) {
+	uc, perm, repo, pushRepo, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	keep := treehash.FileEntry{Name: "keep.txt", Mode: 0o644, Hash: domain.Hash{3}}
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", CommitID: idPtr(snow.ID(9))}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).
+		Return([]*domain.File{{Name: "keep.txt", Hash: domain.Hash{3}, Mode: 0o644}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{
+		{ID: 101, Name: "a", Hash: domain.Hash{6}},
+		{ID: 103, Name: "legacy-empty", Hash: emptyTreeHash},
+	}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).
+		Return([]*domain.TreeNode{{ID: 102, Name: "b", Hash: domain.Hash{7}}}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{Name: "only.txt", Hash: domain.Hash{8}, Mode: 0o644}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
+
+	var got ApplyPushRequest
+	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req ApplyPushRequest) error {
+			got = req
+			return nil
+		})
+
+	result, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, []string{"a/b/only.txt"}, "", idPtr(snow.ID(9)).Base36())
+	require.NoError(t, err)
+	require.Len(t, got.Nodes, 1, "a/b emptied, a with it, and the stored empty directory is dropped")
+	require.Equal(t, "root", got.Nodes[0].Name)
+	require.Len(t, got.Files, 1)
+	require.Equal(t, treehash.TreeHash([]treehash.FileEntry{keep}, nil), result.TreeHash)
+}
+
 func TestPush_BaseCommitIDMatch(t *testing.T) {
 	uc, perm, repo, pushRepo, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
@@ -544,4 +583,16 @@ func TestPush_MergeParent2LookupScopedToProject(t *testing.T) {
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, parent2Hash.String(), "")
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestSubdirIndex(t *testing.T) {
+	index := subdirIndex(map[string]bool{
+		"": true, "b": true, "a": true, "a/y": true, "a/x": true, "a/x/deep": true, "ab": true,
+	})
+	require.Equal(t, map[string][]string{
+		"":    {"a", "ab", "b"},
+		"a":   {"x", "y"},
+		"a/x": {"deep"},
+	}, index)
+	require.Empty(t, subdirIndex(map[string]bool{"": true}))
 }

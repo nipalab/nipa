@@ -190,32 +190,29 @@ func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifes
 	if err != nil {
 		return nil, handleError(err)
 	}
-
-	paths := req.GetPaths()
-	if len(paths) == 0 && req.GetPath() != "" {
-		paths = []string{req.GetPath()}
+	root, err := n.manifestRoot(ctx, project.ID, req)
+	if err != nil {
+		return nil, handleError(err)
 	}
-	var root *domain.TreeNode
-	if commitID := req.GetCommitId(); commitID != "" {
-		id, err := snow.ParseBase36(commitID)
-		if err != nil {
-			return nil, handleError(domain.NewErrorUser("invalid commit id"))
-		}
-		root, err = n.uc.Branch().GetCommitTreeManifest(ctx, project.ID, id, paths, req.Recursive)
-		if err != nil {
-			return nil, handleError(err)
-		}
-	} else {
-		root, err = n.uc.Branch().GetTreeManifest(ctx, project.ID, req.Branch, paths, req.GetTreeHash(), req.Recursive)
-		if err != nil {
-			return nil, handleError(err)
-		}
-	}
-
 	return &pb.GetTreeManifestResponse{
 		Branch:   req.Branch,
 		RootTree: domainTreeToPB(root),
 	}, nil
+}
+
+func (n *nipaServer) manifestRoot(ctx context.Context, projectID snow.ID, req *pb.GetTreeManifestRequest) (*domain.TreeNode, error) {
+	paths := req.GetPaths()
+	if len(paths) == 0 && req.GetPath() != "" {
+		paths = []string{req.GetPath()}
+	}
+	if commitID := req.GetCommitId(); commitID != "" {
+		id, err := snow.ParseBase36(commitID)
+		if err != nil {
+			return nil, domain.NewErrorUser("invalid commit id")
+		}
+		return n.uc.Branch().GetCommitTreeManifest(ctx, projectID, id, paths, req.Recursive)
+	}
+	return n.uc.Branch().GetTreeManifest(ctx, projectID, req.Branch, paths, req.GetTreeHash(), req.Recursive)
 }
 
 func (n *nipaServer) GetMergeBase(ctx context.Context, req *pb.GetMergeBaseRequest) (*pb.GetMergeBaseResponse, error) {

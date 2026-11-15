@@ -29,7 +29,7 @@ import (
 const EnvJSONPort = "NIPA_DAEMON_JSON_PORT"
 
 const (
-	maxJSONBody       = maxRecvMsgSize
+	maxJSONBody       = 32 << 20
 	jsonRoutePrefix   = "/v1/"
 	jsonShutdownGrace = 2 * time.Second
 	streamErrorGrace  = 250 * time.Millisecond
@@ -65,7 +65,7 @@ type jsonBridge struct {
 func newJSONBridge(listener net.Listener, grpcAddr string) (*jsonBridge, error) {
 	conn, err := grpc.NewClient(grpcAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageBytes), grpc.MaxCallSendMsgSize(MaxMessageBytes)),
 	)
 	if err != nil {
 		return nil, err

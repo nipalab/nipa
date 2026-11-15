@@ -24,7 +24,9 @@ const EnvPort = "NIPA_DAEMON_PORT"
 // for tests that cannot wait for the 15 s minimum.
 const EnvEventInterval = "NIPA_DAEMON_EVENT_INTERVAL"
 
-const maxRecvMsgSize = 32 << 20
+// MaxMessageBytes bounds one loopback gRPC message in either direction;
+// status and push plans of large clones exceed the 4 MiB gRPC default.
+const MaxMessageBytes = 256 << 20
 
 // LoginInput is one sign-in step: a password (with an optional two-factor
 // code) or, when Challenge is set, the code that finishes that challenge.
@@ -153,7 +155,8 @@ func NewServer(opts Options) (*Server, error) {
 	}
 	s.repos.pruneQuiet = opts.PruneQuiet
 	s.grpc = grpc.NewServer(
-		grpc.MaxRecvMsgSize(maxRecvMsgSize),
+		grpc.MaxRecvMsgSize(MaxMessageBytes),
+		grpc.MaxSendMsgSize(MaxMessageBytes),
 		grpc.UnaryInterceptor(s.unaryAuth),
 		grpc.StreamInterceptor(s.streamAuth),
 	)
