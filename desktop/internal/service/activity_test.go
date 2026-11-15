@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/desktop/internal/lang"
 	"github.com/nipalab/nipa/desktop/internal/workspace"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -169,27 +170,27 @@ func TestService_ActivityIgnoredAfterCancel(t *testing.T) {
 }
 
 func TestNotificationFor(t *testing.T) {
-	n, ok := notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Actor: "A", Message: "m", Branch: "main", Count: 1, CommitID: "c"}, workspace.NotifySettings{Pushes: true})
+	n, ok := notificationFor(lang.English, "game", "/r", TeamEvent{Kind: daemon.EventPushed, Actor: "A", Message: "m", Branch: "main", Count: 1, CommitID: "c"}, workspace.NotifySettings{Pushes: true})
 	require.True(t, ok)
 	require.Equal(t, "game: new commit on main", n.Title)
 	require.Equal(t, "A: m", n.Body)
 	require.Equal(t, "push:/r:c", n.ID)
 	require.Equal(t, Navigation{Root: "/r", Tab: "history"}, n.Target)
 
-	n, _ = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventPushed, Branch: "main", Count: 4}, workspace.NotifySettings{Pushes: true})
+	n, _ = notificationFor(lang.English, "game", "/r", TeamEvent{Kind: daemon.EventPushed, Branch: "main", Count: 4}, workspace.NotifySettings{Pushes: true})
 	require.Equal(t, "game: 4 new commits on main", n.Title)
 
 	for _, kind := range []string{daemon.EventLockReleased, daemon.EventLockRequested, daemon.EventReviewRequested, "other"} {
-		_, ok := notificationFor("game", "/r", TeamEvent{Kind: kind}, workspace.NotifySettings{Pushes: true})
+		_, ok := notificationFor(lang.English, "game", "/r", TeamEvent{Kind: kind}, workspace.NotifySettings{Pushes: true})
 		require.False(t, ok, kind)
 	}
 
-	n, ok = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd", Message: "need it"}, workspace.NotifySettings{LockRequests: true})
+	n, ok = notificationFor(lang.English, "game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd", Message: "need it"}, workspace.NotifySettings{LockRequests: true})
 	require.True(t, ok)
 	require.Equal(t, "game: release requested", n.Title)
 	require.Equal(t, "Bob asked you to release hero.psd: need it", n.Body)
 	require.Equal(t, Navigation{Root: "/r", Tab: "locks"}, n.Target)
-	n, _ = notificationFor("game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd"}, workspace.NotifySettings{LockRequests: true})
+	n, _ = notificationFor(lang.English, "game", "/r", TeamEvent{Kind: daemon.EventLockRequested, Actor: "Bob", Path: "hero.psd"}, workspace.NotifySettings{LockRequests: true})
 	require.Equal(t, "Bob asked you to release hero.psd", n.Body)
 }
 
@@ -238,4 +239,27 @@ func TestService_ResetClearsActivity(t *testing.T) {
 	require.NoError(t, h.svc.ServiceShutdown())
 	require.Empty(t, waitFor(t, rec.lists))
 	require.Empty(t, h.svc.Activity())
+}
+
+func TestNotificationsAreLocalized(t *testing.T) {
+	n, ok := notificationFor(lang.Japanese, "game", "/r", TeamEvent{Kind: daemon.EventLockReleased, Actor: "Bob", Path: "hero.psd"}, workspace.NotifySettings{Locks: true})
+	require.True(t, ok)
+	require.Equal(t, "game: ロックが解除されました", n.Title)
+	require.Equal(t, "Bob が hero.psd を解除しました", n.Body)
+}
+
+type languageUI struct{ state map[string]string }
+
+func (u languageUI) UI() (map[string]string, error) { return u.state, nil }
+func (u languageUI) SaveUI(map[string]string) error { return nil }
+
+func TestLanguageFollowsTheStoredChoice(t *testing.T) {
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANG", "ko_KR.UTF-8")
+	svc := &Service{}
+	require.Equal(t, lang.Korean, svc.language())
+	svc.Layout = languageUI{state: map[string]string{lang.SettingKey: "id"}}
+	require.Equal(t, lang.Indonesian, svc.language())
+	svc.Layout = languageUI{state: map[string]string{lang.SettingKey: "system"}}
+	require.Equal(t, lang.Korean, svc.language())
 }

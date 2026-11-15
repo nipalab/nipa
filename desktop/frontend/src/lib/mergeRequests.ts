@@ -1,5 +1,6 @@
 import type { Activity, DiffLine, FileDiff, Person, Review, Thread, TimelineEvent } from "@/api/desktop";
 import type { LineAnchor } from "@/components/changes/TextDiff";
+import { translate } from "@/i18n";
 
 export type ConversationItem = { kind: "event"; at: string; event: TimelineEvent } | { kind: "review"; at: string; review: Review } | { kind: "thread"; at: string; thread: Thread };
 
@@ -40,53 +41,53 @@ export function fileThreads(threads: Thread[], path: string, oldPath = ""): { in
 }
 
 const blockers: Record<string, string> = {
-  draft: "It is a draft. Mark it ready for review first.",
-  changes_requested: "A reviewer requested changes.",
-  insufficient_approvals: "It needs more approvals.",
-  required_reviewers: "A required reviewer has not approved yet.",
-  status_checks: "Required status checks have not passed.",
+  draft: translate("mergeRequests.itIsADraftMark"),
+  changes_requested: translate("mergeRequests.aReviewerRequestedChanges"),
+  insufficient_approvals: translate("mergeRequests.itNeedsMoreApprovals"),
+  required_reviewers: translate("mergeRequests.aRequiredReviewerHasNot"),
+  status_checks: translate("mergeRequests.requiredStatusChecksHaveNot"),
 };
 
 export function blockedReason(blockedBy: string): string {
-  return blockers[blockedBy] ?? (blockedBy ? `Blocked: ${blockedBy.replace(/_/g, " ")}` : "");
+  return blockers[blockedBy] ?? (blockedBy ? translate("mergeRequests.blocked", { value: blockedBy.replace(/_/g, " ") }) : "");
 }
 
 const statuses: Record<string, string> = {
-  mergeable: "Ready to merge",
-  behind_target: "The target branch moved on. A fast-forward is not possible; pick another strategy.",
-  up_to_date: "Nothing to merge: the target already has these changes.",
-  invalid: "The source or target branch is gone.",
+  mergeable: translate("mergeRequests.readyToMerge"),
+  behind_target: translate("mergeRequests.theTargetBranchMovedOn"),
+  up_to_date: translate("mergeRequests.nothingToMergeTheTarget"),
+  invalid: translate("mergeRequests.theSourceOrTargetBranch"),
 };
 
 export const mergeabilityText = (status: string) => statuses[status] ?? status;
 
 export const strategies = [
-  { id: "merge", label: "Merge commit", hint: "Keeps every commit and adds a merge commit" },
-  { id: "squash", label: "Squash", hint: "One commit with the request's title" },
-  { id: "rebase", label: "Rebase", hint: "Replays the commits on the target" },
-  { id: "ff", label: "Fast-forward", hint: "Only when the target has not moved" },
+  { id: "merge", label: translate("mergeRequests.mergeCommit"), hint: translate("mergeRequests.keepsEveryCommitAndAdds") },
+  { id: "squash", label: translate("mergeRequests.squash"), hint: translate("mergeRequests.oneCommitWithTheRequestS") },
+  { id: "rebase", label: translate("mergeRequests.rebase"), hint: translate("mergeRequests.replaysTheCommitsOnThe") },
+  { id: "ff", label: "Fast-forward", hint: translate("mergeRequests.onlyWhenTheTargetHas") },
 ] as const;
 
 export type Strategy = (typeof strategies)[number]["id"];
 
 const events: Record<string, string> = {
-  opened: "opened this request",
-  pushed: "pushed new commits",
-  review_dismissed: "dismissed a review",
-  review_requested: "asked for a review from",
-  review_request_removed: "removed the review request for",
-  merged: "merged this request",
-  closed: "closed this request",
-  reopened: "reopened this request",
-  ready_for_review: "marked this request ready for review",
+  opened: translate("mergeRequests.openedThisRequest"),
+  pushed: translate("mergeRequests.pushedNewCommits"),
+  review_dismissed: translate("mergeRequests.dismissedAReview"),
+  review_requested: translate("mergeRequests.askedForAReviewFrom"),
+  review_request_removed: translate("mergeRequests.removedTheReviewRequestFor"),
+  merged: translate("mergeRequests.mergedThisRequest"),
+  closed: translate("mergeRequests.closedThisRequest"),
+  reopened: translate("mergeRequests.reopenedThisRequest"),
+  ready_for_review: translate("mergeRequests.markedThisRequestReadyFor"),
 };
 
 export const eventText = (kind: string) => events[kind] ?? kind.replace(/_/g, " ");
 
 export const reviewText: Record<string, string> = {
-  approved: "approved these changes",
-  changes_requested: "requested changes",
-  commented: "reviewed",
+  approved: translate("mergeRequests.approvedTheseChanges"),
+  changes_requested: translate("mergeRequests.requestedChanges"),
+  commented: translate("mergeRequests.reviewedVerb"),
 };
 
 // personNames maps user ids to display names from what the request already

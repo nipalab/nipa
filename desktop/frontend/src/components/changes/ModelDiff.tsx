@@ -9,8 +9,11 @@ import { clipName, loadModel, renderableFormats, sceneStats, type LoadedModel } 
 import { createStage, type Shading, type Stage, type StageMode } from "@/lib/modelStage";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate , locale } from "@/i18n";
 
 export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
+  const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "model"),
@@ -20,12 +23,12 @@ export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Loading model…
+        <Loader2 className="size-4 animate-spin" /> {t("modelDiff.loadingModel")}
       </div>
     );
   }
-  if (query.isError) return <MetaDiff diff={diff} detail={`The model could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
-  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail="There is no preview for this model." />;
+  if (query.isError) return <MetaDiff diff={diff} detail={translate("modelDiff.theModelCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
+  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail={translate("modelDiff.thereIsNoPreviewFor")} />;
   return <ModelCompareView compare={query.data} />;
 }
 
@@ -54,6 +57,7 @@ function useLoadedSide(side: ModelSide | null): SideState {
 }
 
 export function ModelCompareView({ compare }: { compare: ModelCompare }) {
+  const { t } = useTranslation();
   const { old, new: next } = compare;
   const oldState = useLoadedSide(old);
   const newState = useLoadedSide(next);
@@ -104,58 +108,58 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
   const anyRenderable = renderable(old) || renderable(next);
   const notices: ReactNode[] = [];
   for (const [label, side, state] of [
-    ["Before", old, oldState],
-    ["After", next, newState],
+    [t("modelDiff.before"), old, oldState],
+    [t("modelDiff.after"), next, newState],
   ] as const) {
     if (!side) continue;
-    if (side.tooLarge) notices.push(<Notice key={`${label}-big`}>{label}: the model and its files are too large to show ({formatBytes(side.size)}); only statistics are compared.</Notice>);
-    else if (!renderableFormats.includes(side.format)) notices.push(<Notice key={`${label}-fmt`}>{label}: {side.format.toUpperCase()} models cannot be shown yet.</Notice>);
-    if (state.error) notices.push(<Notice key={`${label}-err`}>{label}: {state.error}</Notice>);
-    if (side.missing?.length) notices.push(<Notice key={`${label}-missing`}>{label}: missing {side.missing.join(", ")}</Notice>);
+    if (side.tooLarge) notices.push(<Notice key={`${label}-big`}>{t("modelDiff.tooLarge", { label, size: formatBytes(side.size) })}</Notice>);
+    else if (!renderableFormats.includes(side.format)) notices.push(<Notice key={`${label}-fmt`}>{t("modelDiff.format", { label, format: side.format.toUpperCase() })}</Notice>);
+    if (state.error) notices.push(<Notice key={`${label}-err`}>{t("modelDiff.error", { label, error: state.error })}</Notice>);
+    if (side.missing?.length) notices.push(<Notice key={`${label}-missing`}>{t("modelDiff.missing", { label, files: side.missing.join(", ") })}</Notice>);
   }
-  if (stageError) notices.push(<Notice key="stage">3D preview is not available here: {stageError}</Notice>);
+  if (stageError) notices.push(<Notice key="stage">{t("modelDiff.noStage", { error: stageError })}</Notice>);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 text-xs">
         {both && (
-          <Group label="Compare mode">
-            <ToolButton active={mode === "side"} label="Side by side" onClick={() => setMode("side")}>
+          <Group label={t("modelDiff.compareMode")}>
+            <ToolButton active={mode === "side"} label={t("modelDiff.sideBySide")} onClick={() => setMode("side")}>
               <Columns2 className="size-3.5" />
             </ToolButton>
-            <ToolButton active={mode === "overlay"} label="Overlay" onClick={() => setMode("overlay")}>
+            <ToolButton active={mode === "overlay"} label={t("modelDiff.overlay")} onClick={() => setMode("overlay")}>
               <Layers className="size-3.5" />
             </ToolButton>
           </Group>
         )}
-        <Group label="Shading">
-          <ToolButton active={shading === "shaded"} label="Shaded" onClick={() => setShading("shaded")}>
+        <Group label={t("modelDiff.shading")}>
+          <ToolButton active={shading === "shaded"} label={t("modelDiff.shaded")} onClick={() => setShading("shaded")}>
             <Box className="size-3.5" />
           </ToolButton>
-          <ToolButton active={shading === "wireframe"} label="Wireframe" onClick={() => setShading("wireframe")}>
+          <ToolButton active={shading === "wireframe"} label={t("modelDiff.wireframe")} onClick={() => setShading("wireframe")}>
             <Grid3x3 className="size-3.5" />
           </ToolButton>
-          <ToolButton active={shading === "both"} label="Shaded with wireframe" onClick={() => setShading("both")}>
-            <span className="font-mono text-[10px]">S+W</span>
+          <ToolButton active={shading === "both"} label={t("modelDiff.shadedWithWireframe")} onClick={() => setShading("both")}>
+            <span className="font-mono text-[10px]">{t("modelDiff.sW")}</span>
           </ToolButton>
         </Group>
         {clips.length > 0 && (
           <div className="flex items-center gap-1">
-            <select aria-label="Animation" value={animation} onChange={(e) => setAnimation(e.target.value)} className="h-6 rounded border border-border bg-card px-1 text-foreground">
-              <option value="">Bind pose</option>
+            <select aria-label={t("modelDiff.animation")} value={animation} onChange={(e) => setAnimation(e.target.value)} className="h-6 rounded border border-border bg-card px-1 text-foreground">
+              <option value="">{t("modelDiff.bindPose")}</option>
               {clips.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
             </select>
-            <ToolButton label={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)}>
+            <ToolButton label={playing ? translate("modelDiff.pause") : translate("modelDiff.play")} onClick={() => setPlaying((p) => !p)}>
               {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
             </ToolButton>
           </div>
         )}
         <div className="ml-auto">
-          <ToolButton label="Reset view" onClick={() => stageRef.current?.resetView()}>
+          <ToolButton label={t("modelDiff.resetView")} onClick={() => stageRef.current?.resetView()}>
             <RotateCcw className="size-3.5" />
           </ToolButton>
         </div>
@@ -164,24 +168,24 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
         <div ref={boxRef} className="absolute inset-0" data-testid="model-stage" />
         {both && mode === "side" && (
           <>
-            <PaneLabel className="left-2">Before</PaneLabel>
-            <PaneLabel className="left-[calc(50%+0.5rem)]">After</PaneLabel>
+            <PaneLabel className="left-2">{t("modelDiff.before")}</PaneLabel>
+            <PaneLabel className="left-[calc(50%+0.5rem)]">{t("modelDiff.after")}</PaneLabel>
             <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-border" />
           </>
         )}
-        {both && mode === "overlay" && <PaneLabel className="left-2">After · Before as orange wireframe</PaneLabel>}
-        {!both && (oldState.model || newState.model) && <PaneLabel className="left-2">{newState.model ? (old ? "After" : "Added") : next ? "Before" : "Deleted"}</PaneLabel>}
+        {both && mode === "overlay" && <PaneLabel className="left-2">{t("modelDiff.afterBeforeAsOrange")}</PaneLabel>}
+        {!both && (oldState.model || newState.model) && <PaneLabel className="left-2">{newState.model ? (old ? translate("modelDiff.after") : translate("modelDiff.added")) : next ? translate("modelDiff.before") : translate("modelDiff.deleted")}</PaneLabel>}
         {(oldState.loading || newState.loading) && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Building scene…
+            <Loader2 className="size-4 animate-spin" /> {t("modelDiff.buildingScene")}
           </div>
         )}
-        {!anyRenderable && <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">No 3D preview for this model.</div>}
+        {!anyRenderable && <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">{t("modelDiff.no3DPreviewForThis")}</div>}
       </div>
       <div className="flex max-h-48 shrink-0 flex-wrap items-start gap-x-8 gap-y-2 overflow-auto border-t border-border px-4 py-2 text-[11px]">
         <StatsTable old={old} next={next} oldStats={oldStats} newStats={newStats} />
-        <NameChanges title="Materials" old={oldStats?.materials} next={newStats?.materials} />
-        <NameChanges title="Animations" old={oldStats?.animations} next={newStats?.animations} />
+        <NameChanges title={t("modelDiff.materials")} old={oldStats?.materials} next={newStats?.materials} />
+        <NameChanges title={t("modelDiff.animations")} old={oldStats?.animations} next={newStats?.animations} />
         {notices.length > 0 && <div className="flex flex-col gap-1">{notices}</div>}
       </div>
     </div>
@@ -195,14 +199,14 @@ function PaneLabel({ className, children }: { className: string; children: React
 type StatRow = { label: string; value: (s: ModelStats) => number };
 
 const statRows: StatRow[] = [
-  { label: "Vertices", value: (s) => s.vertices },
-  { label: "Triangles", value: (s) => s.triangles },
-  { label: "Meshes", value: (s) => s.meshes },
-  { label: "Materials", value: (s) => s.materials?.length ?? 0 },
-  { label: "Textures", value: (s) => s.textures },
-  { label: "Bones", value: (s) => s.joints },
-  { label: "Animations", value: (s) => s.animations?.length ?? 0 },
-  { label: "Morph targets", value: (s) => s.morphTargets },
+  { label: translate("modelDiff.vertices"), value: (s) => s.vertices },
+  { label: translate("modelDiff.triangles"), value: (s) => s.triangles },
+  { label: translate("modelDiff.meshes"), value: (s) => s.meshes },
+  { label: translate("modelDiff.materials"), value: (s) => s.materials?.length ?? 0 },
+  { label: translate("modelDiff.textures"), value: (s) => s.textures },
+  { label: translate("modelDiff.bones"), value: (s) => s.joints },
+  { label: translate("modelDiff.animations"), value: (s) => s.animations?.length ?? 0 },
+  { label: translate("modelDiff.morphTargets"), value: (s) => s.morphTargets },
 ];
 
 export function boundsSize(s: ModelStats | null): string {
@@ -212,26 +216,27 @@ export function boundsSize(s: ModelStats | null): string {
 
 function Delta({ value }: { value: number }) {
   if (value === 0) return null;
-  return <span className={value > 0 ? "text-success" : "text-danger"}>{value > 0 ? `+${value.toLocaleString()}` : `−${(-value).toLocaleString()}`}</span>;
+  return <span className={value > 0 ? "text-success" : "text-danger"}>{value > 0 ? translate("modelDiff.text", { toLocaleString: value.toLocaleString(locale()) }) : translate("modelDiff.text2", { toLocaleString: (-value).toLocaleString(locale()) })}</span>;
 }
 
 function StatsTable({ old, next, oldStats, newStats }: { old: ModelSide | null; next: ModelSide | null; oldStats: ModelStats | null; newStats: ModelStats | null }) {
+  const { t } = useTranslation();
   const both = !!oldStats && !!newStats;
   const cell = (s: ModelStats | null, f: (s: ModelStats) => string) => (s ? f(s) : "—");
   const generator = oldStats?.generator || newStats?.generator;
   return (
-    <table aria-label="Model details">
+    <table aria-label={t("modelDiff.modelDetails")}>
       <thead>
         <tr className="text-muted-foreground">
           <th />
-          <th className="px-3 text-left font-medium">Before</th>
-          <th className="px-3 text-left font-medium">After</th>
-          {both && <th className="px-3 text-left font-medium">Change</th>}
+          <th className="px-3 text-left font-medium">{t("modelDiff.before")}</th>
+          <th className="px-3 text-left font-medium">{t("modelDiff.after")}</th>
+          {both && <th className="px-3 text-left font-medium">{t("modelDiff.change")}</th>}
         </tr>
       </thead>
       <tbody className="font-mono">
         <tr>
-          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">File size</th>
+          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{t("modelDiff.fileSize")}</th>
           <td className="px-3">{old ? formatBytes(old.size) : "—"}</td>
           <td className="px-3">{next ? formatBytes(next.size) : "—"}</td>
           {both && <td />}
@@ -239,8 +244,8 @@ function StatsTable({ old, next, oldStats, newStats }: { old: ModelSide | null; 
         {statRows.map((r) => (
           <tr key={r.label}>
             <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{r.label}</th>
-            <td className="px-3">{cell(oldStats, (s) => r.value(s).toLocaleString())}</td>
-            <td className="px-3">{cell(newStats, (s) => r.value(s).toLocaleString())}</td>
+            <td className="px-3">{cell(oldStats, (s) => r.value(s).toLocaleString(locale()))}</td>
+            <td className="px-3">{cell(newStats, (s) => r.value(s).toLocaleString(locale()))}</td>
             {both && (
               <td className="px-3">
                 <Delta value={r.value(newStats!) - r.value(oldStats!)} />
@@ -249,14 +254,14 @@ function StatsTable({ old, next, oldStats, newStats }: { old: ModelSide | null; 
           </tr>
         ))}
         <tr>
-          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">Bounds</th>
+          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{t("modelDiff.bounds")}</th>
           <td className="px-3">{boundsSize(oldStats)}</td>
           <td className={cn("px-3", both && boundsSize(oldStats) !== boundsSize(newStats) && "font-semibold text-warning")}>{boundsSize(newStats)}</td>
           {both && <td />}
         </tr>
         {generator && (
           <tr>
-            <th className="pr-3 text-left font-sans font-normal text-muted-foreground">Exported by</th>
+            <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{t("modelDiff.exportedBy")}</th>
             <td className="px-3">{oldStats?.generator || "—"}</td>
             <td className="px-3">{newStats?.generator || "—"}</td>
             {both && <td />}
@@ -275,7 +280,7 @@ function NameChanges({ title, old, next }: { title: string; old?: string[] | nul
   return (
     <div>
       <p className="mb-1 text-muted-foreground">{title}</p>
-      <ul aria-label={`${title} changes`}>
+      <ul aria-label={translate("modelDiff.changes", { title })}>
         {added.map((n) => (
           <li key={`+${n}`} className="text-success">
             + {n}

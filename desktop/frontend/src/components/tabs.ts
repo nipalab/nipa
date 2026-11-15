@@ -1,17 +1,18 @@
 import { Activity, FileDiff, Folders, GitMerge, GitPullRequest, History, Info, Lock, Tags } from "lucide-react";
+import { translate } from "@/i18n";
 
 export type TabId = "files" | "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "activity" | "details";
 
 export const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
-  { id: "files", label: "Files", Icon: Folders },
-  { id: "changes", label: "Changes", Icon: FileDiff },
-  { id: "conflicts", label: "Conflicts", Icon: GitMerge },
-  { id: "history", label: "History", Icon: History },
-  { id: "branches", label: "Branches & tags", Icon: Tags },
-  { id: "mrs", label: "Merge requests", Icon: GitPullRequest },
-  { id: "locks", label: "Locks", Icon: Lock },
-  { id: "activity", label: "Activity", Icon: Activity },
-  { id: "details", label: "Details", Icon: Info },
+  { id: "files", label: translate("tabs.files"), Icon: Folders },
+  { id: "changes", label: translate("tabs.changes"), Icon: FileDiff },
+  { id: "conflicts", label: translate("tabs.conflicts"), Icon: GitMerge },
+  { id: "history", label: translate("tabs.history"), Icon: History },
+  { id: "branches", label: translate("tabs.branchesTags"), Icon: Tags },
+  { id: "mrs", label: translate("tabs.mergeRequests"), Icon: GitPullRequest },
+  { id: "locks", label: translate("tabs.locks"), Icon: Lock },
+  { id: "activity", label: translate("tabs.activity"), Icon: Activity },
+  { id: "details", label: translate("tabs.details"), Icon: Info },
 ];
 
 // hasOpenConflicts tells whether the Conflicts tab is shown: a merge or

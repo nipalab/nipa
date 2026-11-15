@@ -153,3 +153,40 @@ body {
   background-image: conic-gradient(var(--muted) 25%, transparent 0 50%, var(--muted) 0 75%, transparent 0);
   background-size: 16px 16px;
 }
+
+/* Translated text: CJK scripts have no letter case or word spacing, and need
+   a font that has the glyphs. */
+:lang(ja) body {
+  font-family: var(--font-sans), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+}
+
+:lang(zh-CN) body {
+  font-family: var(--font-sans), "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+}
+
+:lang(ko) body {
+  font-family: var(--font-sans), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", sans-serif;
+}
+
+:lang(ja) .uppercase,
+:lang(zh-CN) .uppercase,
+:lang(ko) .uppercase {
+  text-transform: none;
+}
+
+:lang(ja) [class*="tracking-"],
+:lang(zh-CN) [class*="tracking-"],
+:lang(ko) [class*="tracking-"] {
+  letter-spacing: normal;
+}
+
+:lang(ja) body,
+:lang(zh-CN) body {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+:lang(ko) body {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}

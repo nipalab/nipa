@@ -1,11 +1,12 @@
 import type { Commit, Tag } from "@/api/desktop";
+import { translate } from "@/i18n";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|tga|tiff?|webp|dds|ktx2|exr|hdr|psd|psb)$/i;
 
 export const isImagePath = (path: string) => IMAGE_EXT.test(path);
 
 export function commitTitle(message: string): string {
-  return message.split("\n", 1)[0].trim() || "(no message)";
+  return message.split("\n", 1)[0].trim() || translate("history.noMessage");
 }
 
 export function commitBody(message: string): string {
@@ -21,7 +22,7 @@ export function filterCommits(commits: Commit[], query: string): Commit[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return commits;
   return commits.filter((c) => {
-    const text = `${c.author} ${c.email} ${c.message} ${c.id} ${c.hash}`.toLowerCase();
+    const text = translate("history.text", { author: c.author, email: c.email, message: c.message, id: c.id, hash: c.hash }).toLowerCase();
     return words.every((w) => text.includes(w));
   });
 }

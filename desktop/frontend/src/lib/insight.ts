@@ -1,15 +1,16 @@
 import type { AssetReferences, ChangeSet, Origin, OriginInput } from "@/api/desktop";
+import { plural, translate , locale } from "@/i18n";
 
 export const REFERRER_PREVIEW = 3;
 
-export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+export { plural };
 
 // referrerSummary names how many files use an asset and the first few of them.
 export function referrerSummary(usedBy: string[], max = REFERRER_PREVIEW): string {
   if (usedBy.length === 0) return "";
   const shown = usedBy.slice(0, max).join(", ");
-  const more = usedBy.length > max ? ` and ${usedBy.length - max} more` : "";
-  return `Used by ${plural(usedBy.length, "file")}: ${shown}${more}.`;
+  const more = usedBy.length > max ? translate("insight.andMore", { max: usedBy.length - max }) : "";
+  return translate("insight.usedBy", { value: plural(usedBy.length, "file"), shown, more });
 }
 
 // unresolvedRefs lists the references the graph could not map to a file:
@@ -26,16 +27,16 @@ export function deletionTargets(changes: ChangeSet, paths: string[]): string[] {
 }
 
 export const originStatusText: Record<string, string> = {
-  recorded: "The file matches the recorded version.",
-  modified: "The file changed after it was recorded and is not marked as edited by a person.",
-  edited: "A person edited the file after it was generated.",
-  missing: "No origin record.",
+  recorded: translate("insight.theFileMatchesTheRecorded"),
+  modified: translate("insight.theFileChangedAfterIt"),
+  edited: translate("insight.aPersonEditedTheFile"),
+  missing: translate("insight.noOriginRecord"),
 };
 
 export const sourceNames: Record<string, string> = {
-  "png-text": "PNG metadata",
-  c2pa: "C2PA manifest (not verified)",
-  manual: "Entered by hand",
+  "png-text": translate("insight.pNGMetadata"),
+  c2pa: translate("insight.c2PAManifestNotVerified"),
+  manual: translate("insight.enteredByHand"),
 };
 
 export type OriginForm = Omit<OriginInput, "path">;
@@ -53,8 +54,8 @@ export const emptyOriginForm = (origin?: Origin): OriginForm => ({
 // validateOrigin mirrors the service checks so the form can explain them
 // before anything is sent.
 export function validateOrigin(form: OriginForm): string {
-  if (!form.tool.trim()) return "Enter the tool that made the file.";
-  if (form.seed.trim() && !/^\d+$/.test(form.seed.trim())) return "The seed must be a whole number.";
+  if (!form.tool.trim()) return translate("insight.enterTheToolThatMade");
+  if (form.seed.trim() && !/^\d+$/.test(form.seed.trim())) return translate("insight.theSeedMustBeA");
   return "";
 }
 
@@ -63,7 +64,7 @@ export function recordedDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
-    : d.toLocaleDateString(undefined, {
+    : d.toLocaleDateString(locale(), {
         year: "numeric",
         month: "short",
         day: "numeric",

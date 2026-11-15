@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/nipalab/nipa/desktop/internal/lang"
 	"slices"
 	"testing"
 
@@ -57,20 +58,20 @@ func TestService_WatchedLockNotifications(t *testing.T) {
 	w := &memWatches{paths: map[string][]string{"/w": {"\x00art/a.psd", "\x00art/b.psd", "\x00audio/x.wav", "feature\x00art/a.psd"}}}
 	s := &Service{Watches: w}
 
-	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: "pushed", Path: "art"}))
-	got := s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Actor: "Bob", Path: "art"})
+	require.Nil(t, s.watchedLockNotifications(lang.English, "g", "/w", TeamEvent{Kind: "pushed", Path: "art"}))
+	got := s.watchedLockNotifications(lang.English, "g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Actor: "Bob", Path: "art"})
 	require.Len(t, got, 2)
 	require.Equal(t, "g: art/a.psd is free", got[0].Title)
 	require.Equal(t, Navigation{Root: "/w", Tab: "locks", Path: "art/a.psd", Action: "lock"}, got[0].Target)
 	require.Len(t, w.paths["/w"], 4)
-	feature := s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Branch: "feature", Path: "art/a.psd"})
+	feature := s.watchedLockNotifications(lang.English, "g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Branch: "feature", Path: "art/a.psd"})
 	require.Len(t, feature, 1)
 	require.Equal(t, LockWatch{Branch: "feature", Path: "art/a.psd"}, feature[0].watch)
 	require.Equal(t, "feature", feature[0].Target.Branch)
 
 	w.err = errors.New("disk")
-	require.Nil(t, s.watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
-	require.Nil(t, (&Service{}).watchedLockNotifications("g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
+	require.Nil(t, s.watchedLockNotifications(lang.English, "g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
+	require.Nil(t, (&Service{}).watchedLockNotifications(lang.English, "g", "/w", TeamEvent{Kind: daemon.EventLockReleased, Path: "x"}))
 }
 
 func TestService_ActivityNotifiesWatchedLock(t *testing.T) {

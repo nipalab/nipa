@@ -176,6 +176,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   updated branches × 30 commits, open and merged merge requests and the
   current locks, merged and ordered by `mergeFeed`, with range, person and
   kind filters and rows that open History, a merge request or Locks),
+  localization (`frontend/src/i18n`: `i18next` flat catalogs `locales/{en,id,ja,zh-CN,ko}.json`,
+  English is the source, `_one`/`_other` plurals, `nipa.language` in the `ui` map =
+  `system` or a code, Settings > Interface changes it and reloads; components use
+  `useTranslation`, everything else `translate`/`plural`/`locale()`; `main.tsx`
+  loads `App` after the settings hydrate; `i18n/lint.test.ts` rejects hard-coded
+  JSX text and unknown keys, `catalogs.test.ts` missing keys and changed
+  placeholders; new UI text must land in every catalog; `internal/lang` does the
+  same for the tray and notifications through `service.LanguageOf`),
   simple mode and the first-run tour (`lib/mode.ts`: `nipa.mode`/`nipa.tour`
   in the `ui` map; `tour/ModePrompt.tsx` asks once, `visibleTabs(conflicts,
   simple)` keeps Files/Changes/History/Locks, `labels()` renames Update/Push to

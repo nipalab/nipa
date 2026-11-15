@@ -1,3 +1,4 @@
+
 export const GENERATED_TRAILER = "Nipa-Generated";
 
 export function addTrailer(text: string, key: string, value: string): string {

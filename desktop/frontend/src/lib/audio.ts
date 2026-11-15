@@ -1,4 +1,5 @@
-export type Rgb = [number, number, number];
+
+import { translate } from "@/i18n";export type Rgb = [number, number, number];
 
 const stops: Rgb[] = [
   [0, 0, 4],
@@ -69,7 +70,7 @@ export function formatTime(seconds: number): string {
   return `${m}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
-export const formatDb = (v: number | null | undefined, unit = "dBFS") => (v === null || v === undefined ? "−∞" : `${v.toFixed(1)} ${unit}`);
+export const formatDb = (v: number | null | undefined, unit = "dBFS") => (v === null || v === undefined ? "−∞" : translate("audio.text", { value: v.toFixed(1), unit }));
 
 export type Side = "old" | "new";
 

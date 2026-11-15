@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type FileLock, type FileLockState, type LockResult, type LockStatus } from "@/api/desktop";
 import { errorMessage } from "@/lib/utils";
+import { translate } from "@/i18n";
 
 const POLL_MS = 30_000;
 
@@ -25,8 +26,8 @@ export type Notify = (message: string, tone?: "error" | "success") => void;
 export function describeLockResult(r: LockResult): string | null {
   if (r.failed.length === 0) return null;
   const [first] = r.failed;
-  const more = r.failed.length > 1 ? ` (+${r.failed.length - 1} more)` : "";
-  return `Could not lock ${first.path}: ${first.message}${more}`;
+  const more = r.failed.length > 1 ? translate("useLocks.more", { value: r.failed.length - 1 }) : "";
+  return translate("useLocks.couldNotLock", { path: first.path, message: first.message, more });
 }
 
 // useLockActions locks and releases files and refreshes the lock picture.
@@ -39,17 +40,17 @@ export function useLockActions(root: string, notify: Notify) {
       void refresh();
       const failure = describeLockResult(r);
       if (failure) notify(failure);
-      else if (r.locked.length > 0) notify(r.locked.length === 1 ? `Locked ${r.locked[0]}` : `Locked ${r.locked.length} files`, "success");
+      else if (r.locked.length > 0) notify(r.locked.length === 1 ? translate("useLocks.locked", { value: r.locked[0] }) : translate("useLocks.lockedFiles", { count: r.locked.length }), "success");
     },
-    onError: (err) => notify(`Locking failed: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("useLocks.lockingFailed", { value: errorMessage(err) })),
   });
   const unlock = useMutation({
     mutationFn: (l: FileLock) => desktop.unlock(root, l.global ? "" : l.branch, l.path),
     onSuccess: (_, l) => {
       void refresh();
-      notify(`Released ${l.path}`, "success");
+      notify(translate("useLocks.released", { path: l.path }), "success");
     },
-    onError: (err) => notify(`Releasing failed: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("useLocks.releasingFailed", { value: errorMessage(err) })),
   });
   return { lock, unlock, refresh };
 }

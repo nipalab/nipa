@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type UpdateState } from "@/api/desktop";
+import { translate } from "@/i18n";
 
 export const updateKey = ["update"] as const;
 
@@ -28,22 +29,22 @@ export function describeUpdate(s: UpdateState): { text: string; action: UpdateAc
   const next = s.release?.version ?? "";
   switch (s.phase) {
     case "checking":
-      return { text: "Checking for updates…", action: null, actionLabel: "" };
+      return { text: translate("useUpdates.checkingForUpdates"), action: null, actionLabel: "" };
     case "available":
       return s.inPlace
-        ? { text: `Nipa ${next} is available.`, action: "install", actionLabel: "Download" }
-        : { text: `Nipa ${next} is available.`, action: "open", actionLabel: "Get it from the website" };
+        ? { text: translate("useUpdates.nipaIsAvailable", { next }), action: "install", actionLabel: translate("useUpdates.download") }
+        : { text: translate("useUpdates.nipaIsAvailable", { next }), action: "open", actionLabel: translate("useUpdates.getItFromTheWebsite") };
     case "downloading":
-      return { text: `Downloading Nipa ${next}… ${downloadPercent(s)}%`, action: null, actionLabel: "" };
+      return { text: translate("useUpdates.downloadingNipa", { next, value: downloadPercent(s) }), action: null, actionLabel: "" };
     case "ready":
-      return { text: `Nipa ${next} is ready.`, action: "restart", actionLabel: "Restart to update" };
+      return { text: translate("useUpdates.nipaIsReady", { next }), action: "restart", actionLabel: translate("useUpdates.restartToUpdate") };
     case "upToDate":
-      return { text: `Nipa ${s.current} is up to date.`, action: "check", actionLabel: "Check now" };
+      return { text: translate("useUpdates.nipaIsUpToDate", { current: s.current }), action: "check", actionLabel: translate("useUpdates.checkNow") };
     case "error":
       return s.release
-        ? { text: `Could not download Nipa ${next}: ${s.error}`, action: s.inPlace ? "install" : "open", actionLabel: "Try again" }
-        : { text: `Could not check for updates: ${s.error}`, action: "check", actionLabel: "Try again" };
+        ? { text: translate("useUpdates.couldNotDownloadNipa", { next, error: s.error }), action: s.inPlace ? "install" : "open", actionLabel: translate("useUpdates.tryAgain") }
+        : { text: translate("useUpdates.couldNotCheckForUpdates", { error: s.error }), action: "check", actionLabel: translate("useUpdates.tryAgain") };
     default:
-      return { text: `Nipa ${s.current}`, action: "check", actionLabel: "Check now" };
+      return { text: translate("useUpdates.nipa", { current: s.current }), action: "check", actionLabel: translate("useUpdates.checkNow") };
   }
 }

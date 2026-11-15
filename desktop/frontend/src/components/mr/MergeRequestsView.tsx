@@ -13,13 +13,15 @@ import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const filters = [
-  ["open", "Open"],
-  ["draft", "Drafts"],
-  ["merged", "Merged"],
-  ["closed", "Closed"],
-  ["", "All"],
+  ["open", translate("mergeRequestsView.open2")],
+  ["draft", translate("mergeRequestsView.drafts")],
+  ["merged", translate("mergeRequestsView.merged")],
+  ["closed", translate("mergeRequestsView.closed")],
+  ["", translate("mergeRequestsView.all")],
 ] as const;
 
 type Filter = (typeof filters)[number][0];
@@ -29,6 +31,7 @@ const isFilter = (v: unknown): v is Filter => filters.some(([id]) => id === v);
 type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number }; create?: number };
 
 export function MergeRequestsView({ root, branch, notify, open, create }: MergeRequestsViewProps) {
+  const { t } = useTranslation();
   const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
   const [status, setStatus] = usePersistedState<Filter>(repoSetting(root, "mrs.status"), "open", { valid: isFilter });
   const [searchInput, setSearchInput] = useState("");
@@ -64,7 +67,7 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
     <div className="flex h-full min-h-0">
       <aside className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
         <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2">
-          <div className="flex rounded-md border border-border p-0.5 text-[11px]" role="group" aria-label="Status">
+          <div className="flex rounded-md border border-border p-0.5 text-[11px]" role="group" aria-label={t("mergeRequestsView.status")}>
             {filters.map(([id, label]) => (
               <button
                 key={label}
@@ -80,21 +83,21 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
               </button>
             ))}
           </div>
-          <Button size="sm" variant="ghost" className="ml-auto" aria-label="Refresh merge requests" disabled={list.isFetching} onClick={() => void list.refetch()}>
+          <Button size="sm" variant="ghost" className="ml-auto" aria-label={t("mergeRequestsView.refreshMergeRequests")} disabled={list.isFetching} onClick={() => void list.refetch()}>
             <RefreshCw className={cn(list.isFetching && "animate-spin")} />
           </Button>
           <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
             <Plus />
-            New
+            {t("mergeRequestsView.new")}
           </Button>
         </div>
         <form onSubmit={applySearch} className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2 text-[12px]">
           <Search className="size-3.5 text-muted-foreground" />
-          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search titles and descriptions" aria-label="Search merge requests" className="min-w-0 flex-1 bg-transparent outline-none" />
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder={t("mergeRequestsView.searchTitlesAndDescriptions")} aria-label={t("mergeRequestsView.searchMergeRequests")} className="min-w-0 flex-1 bg-transparent outline-none" />
         </form>
         {list.isPending ? (
           <Centered>
-            <Loader2 className="size-4 animate-spin" /> Loading merge requests…
+            <Loader2 className="size-4 animate-spin" /> {t("mergeRequestsView.loadingMergeRequests")}
           </Centered>
         ) : list.isError ? (
           <Centered>
@@ -104,10 +107,10 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
         ) : items.length === 0 ? (
           <Centered>
             <GitPullRequest className="size-5" />
-            {search ? "No merge requests match" : "No merge requests here yet"}
+            {search ? translate("mergeRequestsView.noMergeRequestsMatch") : translate("mergeRequestsView.noMergeRequestsHereYet")}
           </Centered>
         ) : (
-          <ol className="min-h-0 flex-1 overflow-auto" aria-label="Merge requests">
+          <ol className="min-h-0 flex-1 overflow-auto" aria-label={t("mergeRequestsView.mergeRequests")}>
             {items.map((mr) => (
               <Row key={mr.number} mr={mr} selected={mr.number === current} onSelect={() => setSelected(mr.number)} />
             ))}
@@ -115,16 +118,16 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
               <li className="px-3 py-2">
                 <Button size="sm" className="w-full justify-center" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
                   {list.isFetchingNextPage && <Loader2 className="animate-spin" />}
-                  Load more
+                  {t("mergeRequestsView.loadMore")}
                 </Button>
               </li>
             )}
           </ol>
         )}
-        <PaneResizer size={listSize} label="Resize merge request list" />
+        <PaneResizer size={listSize} label={t("mergeRequestsView.resizeMergeRequestList")} />
       </aside>
       <section className="min-w-0 flex-1">
-        {current !== null ? <MergeRequestDetail key={current} root={root} number={current} notify={notify} /> : <Centered>Select a merge request</Centered>}
+        {current !== null ? <MergeRequestDetail key={current} root={root} number={current} notify={notify} /> : <Centered>{t("mergeRequestsView.selectAMergeRequest")}</Centered>}
       </section>
       {creating && (
         <NewMergeRequestDialog
@@ -144,6 +147,7 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
 }
 
 function Row({ mr, selected, onSelect }: { mr: MergeRequest; selected: boolean; onSelect: () => void }) {
+  const { t } = useTranslation();
   return (
     <li>
       <button type="button" onClick={onSelect} aria-current={selected} className={cn("w-full space-y-1 border-b border-border/60 px-3 py-2 text-left hover:bg-muted", selected && "bg-muted")}>
@@ -158,12 +162,12 @@ function Row({ mr, selected, onSelect }: { mr: MergeRequest; selected: boolean; 
           <span className="truncate font-mono">{mr.target}</span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
             {mr.approvals > 0 && (
-              <span className="flex items-center gap-0.5 text-success" title={`${mr.approvals} approvals`}>
+              <span className="flex items-center gap-0.5 text-success" title={translate("mergeRequestsView.approvals", { approvals: mr.approvals })}>
                 <CheckCircle2 className="size-3" />
                 {mr.approvals}
               </span>
             )}
-            {mr.changesRequested > 0 && <XCircle className="size-3 text-danger" aria-label="Changes requested" />}
+            {mr.changesRequested > 0 && <XCircle className="size-3 text-danger" aria-label={t("mergeRequestsView.changesRequested")} />}
             <span title={mr.updatedAt}>{timeAgo(mr.updatedAt || mr.createdAt)}</span>
           </span>
         </span>
@@ -175,6 +179,7 @@ function Row({ mr, selected, onSelect }: { mr: MergeRequest; selected: boolean; 
 type NewProps = { root: string; branch: string; notify: Notify; onClose: () => void; onCreated: (mr: MergeRequest) => void };
 
 function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: NewProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root) });
   const names = (branches.data ?? []).map((b) => b.name);
@@ -198,10 +203,10 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
       desktop.createMergeRequest(root, { source, target: into, title, description: generated.finalize(description), draft, reviewers: reviewers.map((p) => p.id), assignees: assignees.map((p) => p.id) }),
     onSuccess: (mr) => {
       void queryClient.invalidateQueries({ queryKey: ["mrs", root] });
-      notify(`Opened !${mr.number}`, "success");
+      notify(translate("mergeRequestsView.opened", { number: mr.number }), "success");
       onCreated(mr);
     },
-    onError: (err) => notify(`Could not open the merge request: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("mergeRequestsView.couldNotOpenTheMerge", { value: errorMessage(err) })),
   });
 
   const submit = (e: FormEvent) => {
@@ -213,13 +218,13 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
     <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <form role="dialog" aria-modal="true" aria-labelledby="new-mr-title" onSubmit={submit} className="w-full max-w-lg space-y-3 rounded-lg border border-border bg-card p-5 text-[12px] shadow-xl">
         <h2 id="new-mr-title" className="text-sm font-semibold">
-          New merge request
+          {t("mergeRequestsView.newMergeRequest")}
         </h2>
         {branches.isError && <p className="text-danger">{errorMessage(branches.error)}</p>}
         <div className="flex items-end gap-2">
           <label className="flex-1 space-y-1">
-            <span className="text-muted-foreground">From</span>
-            <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source branch" className={select}>
+            <span className="text-muted-foreground">{t("mergeRequestsView.from")}</span>
+            <select value={source} onChange={(e) => setSource(e.target.value)} aria-label={t("mergeRequestsView.sourceBranch")} className={select}>
               {!names.includes(source) && <option value={source}>{source}</option>}
               {names.map((n) => (
                 <option key={n} value={n}>
@@ -230,9 +235,9 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
           </label>
           <ArrowRight className="mb-2 size-4 text-muted-foreground" />
           <label className="flex-1 space-y-1">
-            <span className="text-muted-foreground">Into</span>
-            <select value={into} onChange={(e) => setTarget(e.target.value)} aria-label="Target branch" className={select}>
-              <option value="">Choose a branch</option>
+            <span className="text-muted-foreground">{t("mergeRequestsView.into")}</span>
+            <select value={into} onChange={(e) => setTarget(e.target.value)} aria-label={t("mergeRequestsView.targetBranch")} className={select}>
+              <option value="">{t("mergeRequestsView.chooseABranch")}</option>
               {names
                 .filter((n) => n !== source)
                 .map((n) => (
@@ -248,47 +253,47 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
             <div className="flex items-center gap-2 text-[11px]">
               <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => void generated.run(() => desktop.generateMergeRequest(root, source, into))} disabled={generated.busy || !into || !source}>
                 {generated.busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                {generated.busy ? "Generating…" : "Generate title and description"}
+                {generated.busy ? t("mergeRequestsView.generating") : t("mergeRequestsView.generate")}
               </Button>
-              {generated.model && !generated.busy && <span className="min-w-0 truncate text-muted-foreground">Drafted by {generated.model}; review it before opening</span>}
+              {generated.model && !generated.busy && <span className="min-w-0 truncate text-muted-foreground">{t("mergeRequestsView.draftedBy", { model: generated.model })}</span>}
             </div>
             {generated.error && (
               <p role="alert" className="text-[11px] text-danger">
-                Could not generate a description: {generated.error}
+                {t("mergeRequestsView.generateFailed", { error: generated.error })}
               </p>
             )}
           </div>
         )}
         <label className="block space-y-1">
-          <span className="text-muted-foreground">Title</span>
-          <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" className="w-full rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
+          <span className="text-muted-foreground">{t("mergeRequestsView.title")}</span>
+          <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t("mergeRequestsView.title")} className="w-full rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
         </label>
         <label className="block space-y-1">
-          <span className="text-muted-foreground">Description</span>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Description" rows={4} className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
+          <span className="text-muted-foreground">{t("mergeRequestsView.description")}</span>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} aria-label={t("mergeRequestsView.description")} rows={4} className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
         </label>
         <div className="flex gap-2">
           <div className="flex-1 space-y-1">
-            <span className="text-muted-foreground">Reviewers</span>
-            <MemberPicker root={root} label="Reviewers" selected={reviewers} onChange={setReviewers} />
+            <span className="text-muted-foreground">{t("mergeRequestsView.reviewers")}</span>
+            <MemberPicker root={root} label={t("mergeRequestsView.reviewers")} selected={reviewers} onChange={setReviewers} />
           </div>
           <div className="flex-1 space-y-1">
-            <span className="text-muted-foreground">Assignees</span>
-            <MemberPicker root={root} label="Assignees" selected={assignees} onChange={setAssignees} />
+            <span className="text-muted-foreground">{t("mergeRequestsView.assignees")}</span>
+            <MemberPicker root={root} label={t("mergeRequestsView.assignees")} selected={assignees} onChange={setAssignees} />
           </div>
         </div>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} />
-          Open as a draft (cannot be merged until marked ready)
+          {t("mergeRequestsView.openAsADraftCannot")}
         </label>
-        <p className="text-[11px] text-muted-foreground">Push your changes to {source || "the source branch"} first; the request compares what is on the server. Changed binary files are locked for the request.</p>
+        <p className="text-[11px] text-muted-foreground">{t("mergeRequestsView.pushFirst", { source: source || t("mergeRequestsView.theSourceBranch") })}</p>
         <div className="flex justify-end gap-2">
           <Button type="button" size="sm" onClick={onClose}>
-            Cancel
+            {t("mergeRequestsView.cancel")}
           </Button>
           <Button type="submit" size="sm" variant="primary" disabled={create.isPending || !title.trim() || !into || !source}>
             {create.isPending && <Loader2 className="animate-spin" />}
-            Open merge request
+            {t("mergeRequestsView.open")}
           </Button>
         </div>
       </form>

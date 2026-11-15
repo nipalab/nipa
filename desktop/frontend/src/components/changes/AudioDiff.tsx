@@ -8,8 +8,11 @@ import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { createPlayer, drawWaveform, formatDb, formatTime, spectrogramPixels, type AudioContextLike, type Player, type Side } from "@/lib/audio";
 import { formatBytes } from "@/lib/diff";
 import { base64ToBytes, cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate , locale } from "@/i18n";
 
 export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
+  const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "audio"),
@@ -19,12 +22,12 @@ export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Analysing audio…
+        <Loader2 className="size-4 animate-spin" /> {t("audioDiff.analysingAudio")}
       </div>
     );
   }
-  if (query.isError) return <MetaDiff diff={diff} detail={`The audio could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
-  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail="There is no preview for this audio file." />;
+  if (query.isError) return <MetaDiff diff={diff} detail={translate("audioDiff.theAudioCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
+  if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail={translate("audioDiff.thereIsNoPreviewFor")} />;
   return <AudioCompareView compare={query.data} />;
 }
 
@@ -32,13 +35,14 @@ type View = "wave" | "spectrum" | "both";
 
 const defaultContext = (): AudioContextLike => {
   const Ctor = (globalThis as { AudioContext?: new () => AudioContext }).AudioContext;
-  if (!Ctor) throw new Error("This system has no audio output for previews.");
+  if (!Ctor) throw new Error(translate("audioDiff.thisSystemHasNoAudio"));
   return new Ctor() as unknown as AudioContextLike;
 };
 
 const playable = (side: AudioSide | null) => !!side && !!side.playback;
 
 export function AudioCompareView({ compare, makeContext = defaultContext }: { compare: AudioCompare; makeContext?: () => AudioContextLike }) {
+  const { t } = useTranslation();
   const { old, new: next } = compare;
   const sides = useMemo(() => [old, next].filter((s): s is AudioSide => !!s), [old, next]);
   const both = !!old?.stats && !!next?.stats;
@@ -117,12 +121,12 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
   };
 
   const notices: string[] = [];
-  for (const [label, s] of [["Before", old], ["After", next]] as const) {
+  for (const [label, s] of [[translate("audioDiff.before"), old], [translate("audioDiff.after"), next]] as const) {
     if (!s) continue;
-    if (s.error) notices.push(`${label}: ${s.error}`);
-    if (s.stats?.truncated) notices.push(`${label}: only the first ${formatTime(s.stats.duration)} were analysed.`);
-    if (s.playbackTruncated) notices.push(`${label}: playback stops early, the file is too long to load whole.`);
-    if (s.stats?.clipped) notices.push(`${label}: ${s.stats.clipped.toLocaleString()} samples at full scale (clipping).`);
+    if (s.error) notices.push(translate("audioDiff.text", { label, error: s.error }));
+    if (s.stats?.truncated) notices.push(translate("audioDiff.onlyTheFirstWere", { label, value: formatTime(s.stats.duration) }));
+    if (s.playbackTruncated) notices.push(translate("audioDiff.playbackStopsEarlyThe", { label }));
+    if (s.stats?.clipped) notices.push(translate("audioDiff.samplesAtFullScale", { label, toLocaleString: s.stats.clipped.toLocaleString(locale()) }));
   }
   if (playError) notices.push(playError);
   const canPlay = (playable(old) || playable(next)) && !playError;
@@ -130,35 +134,35 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5 text-[11px]">
-        <ToolButton label={playing ? "Pause" : "Play"} onClick={toggle}>
+        <ToolButton label={playing ? translate("audioDiff.pause") : translate("audioDiff.play")} onClick={toggle}>
           {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
         </ToolButton>
-        <ToolButton label="Stop" onClick={stop}>
+        <ToolButton label={t("audioDiff.stop")} onClick={stop}>
           <Square className="size-3" />
         </ToolButton>
-        <span className="font-mono tabular-nums text-muted-foreground" aria-label="Playback position">
+        <span className="font-mono tabular-nums text-muted-foreground" aria-label={t("audioDiff.playbackPosition")}>
           {formatTime(position)} / {formatTime(span)}
         </span>
         {playable(old) && playable(next) && (
-          <Group label="Listen to">
-            <ToolButton active={listen === "old"} label="Listen to before" onClick={() => setListen("old")}>
-              <span className="px-1">A · Before</span>
+          <Group label={t("audioDiff.listenTo")}>
+            <ToolButton active={listen === "old"} label={t("audioDiff.listenToBefore")} onClick={() => setListen("old")}>
+              <span className="px-1">{t("audioDiff.aBefore")}</span>
             </ToolButton>
-            <ToolButton active={listen === "new"} label="Listen to after" onClick={() => setListen("new")}>
-              <span className="px-1">B · After</span>
+            <ToolButton active={listen === "new"} label={t("audioDiff.listenToAfter")} onClick={() => setListen("new")}>
+              <span className="px-1">{t("audioDiff.bAfter")}</span>
             </ToolButton>
           </Group>
         )}
         <div className="ml-auto">
-          <Group label="View">
-            <ToolButton active={view === "wave"} label="Waveform" onClick={() => setView("wave")}>
+          <Group label={t("audioDiff.view")}>
+            <ToolButton active={view === "wave"} label={t("audioDiff.waveform")} onClick={() => setView("wave")}>
               <AudioLines className="size-3.5" />
             </ToolButton>
-            <ToolButton active={view === "spectrum"} label="Spectrogram" onClick={() => setView("spectrum")}>
-              <span className="px-1">Spectrum</span>
+            <ToolButton active={view === "spectrum"} label={t("audioDiff.spectrogram")} onClick={() => setView("spectrum")}>
+              <span className="px-1">{t("audioDiff.spectrum")}</span>
             </ToolButton>
-            <ToolButton active={view === "both"} label="Waveform and spectrogram" onClick={() => setView("both")}>
-              <span className="px-1">Both</span>
+            <ToolButton active={view === "both"} label={t("audioDiff.waveformAndSpectrogram")} onClick={() => setView("both")}>
+              <span className="px-1">{t("audioDiff.both")}</span>
             </ToolButton>
           </Group>
         </div>
@@ -169,7 +173,7 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
           return (
             <Lane
               key={which}
-              label={which === "old" ? (next ? "Before" : "Deleted") : old ? "After" : "Added"}
+              label={which === "old" ? (next ? translate("audioDiff.before") : translate("audioDiff.deleted")) : old ? translate("audioDiff.after") : translate("audioDiff.added")}
               side={s}
               view={view}
               span={span}
@@ -198,6 +202,7 @@ const WAVE_WIDTH = 1200;
 const LANE_HEIGHT = 88;
 
 function Lane({ label, side, view, span, position, audible, onSeek }: { label: string; side: AudioSide; view: View; span: number; position: number; audible: boolean; onSeek?: (to: number) => void }) {
+  const { t } = useTranslation();
   const stats = side.stats;
   const width = span > 0 && stats ? (stats.duration / span) * 100 : 100;
   const click = (e: MouseEvent<HTMLDivElement>) => {
@@ -210,7 +215,7 @@ function Lane({ label, side, view, span, position, audible, onSeek }: { label: s
     <section aria-label={label} className={cn("rounded-md border border-border bg-background", audible && "ring-1 ring-accent")}>
       <header className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px]">
         <span className="font-medium">{label}</span>
-        <span className="truncate text-muted-foreground">{stats ? `${stats.codec} · ${(stats.sampleRate / 1000).toLocaleString()} kHz · ${channelName(stats.channels)}` : side.path}</span>
+        <span className="truncate text-muted-foreground">{stats ? translate("audioDiff.kHz", { codec: stats.codec, toLocaleString: (stats.sampleRate / 1000).toLocaleString(locale()), value: channelName(stats.channels) }) : side.path}</span>
       </header>
       {stats ? (
         <div className="relative" style={{ width: `${width}%` }} onClick={click} data-testid={`lane-${label}`}>
@@ -221,15 +226,16 @@ function Lane({ label, side, view, span, position, audible, onSeek }: { label: s
           )}
         </div>
       ) : (
-        <p className="p-3 text-[11px] text-muted-foreground">No waveform for this version.</p>
+        <p className="p-3 text-[11px] text-muted-foreground">{t("audioDiff.noWaveformForThisVersion")}</p>
       )}
     </section>
   );
 }
 
-const channelName = (n: number) => (n === 1 ? "mono" : n === 2 ? "stereo" : `${n} channels`);
+const channelName = (n: number) => (n === 1 ? translate("channels.mono") : n === 2 ? translate("channels.stereo") : translate("audioDiff.channels", { n }));
 
 function Waveform({ peaks }: { peaks: (number[] | null)[] }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLCanvasElement>(null);
   const rows = Math.max(1, peaks.length);
   useEffect(() => {
@@ -239,10 +245,11 @@ function Waveform({ peaks }: { peaks: (number[] | null)[] }) {
     ctx.clearRect(0, 0, WAVE_WIDTH, LANE_HEIGHT * rows);
     peaks.forEach((p, c) => drawWaveform(ctx, p ?? [], WAVE_WIDTH, LANE_HEIGHT, color, c * LANE_HEIGHT));
   }, [peaks, rows]);
-  return <canvas ref={ref} width={WAVE_WIDTH} height={LANE_HEIGHT * rows} className="block w-full text-accent" style={{ height: rows > 2 ? 40 * rows : 64 * rows }} aria-label="Waveform" />;
+  return <canvas ref={ref} width={WAVE_WIDTH} height={LANE_HEIGHT * rows} className="block w-full text-accent" style={{ height: rows > 2 ? 40 * rows : 64 * rows }} aria-label={t("audioDiff.waveform")} />;
 }
 
 function Spectrogram({ side }: { side: AudioSide }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLCanvasElement>(null);
   const { specColumns: cols, specRows: rows } = side;
   useEffect(() => {
@@ -253,9 +260,9 @@ function Spectrogram({ side }: { side: AudioSide }) {
   }, [side, cols, rows]);
   return (
     <div className="relative">
-      <canvas ref={ref} width={Math.max(1, cols)} height={Math.max(1, rows)} className="block h-24 w-full" aria-label="Spectrogram" />
-      <span className="pointer-events-none absolute right-1 top-0.5 font-mono text-[10px] text-white/70">{Math.round(side.specMaxHz).toLocaleString()} Hz</span>
-      <span className="pointer-events-none absolute bottom-0.5 right-1 font-mono text-[10px] text-white/70">{Math.round(side.specMinHz).toLocaleString()} Hz</span>
+      <canvas ref={ref} width={Math.max(1, cols)} height={Math.max(1, rows)} className="block h-24 w-full" aria-label={t("audioDiff.spectrogram")} />
+      <span className="pointer-events-none absolute right-1 top-0.5 font-mono text-[10px] text-white/70">{Math.round(side.specMaxHz).toLocaleString(locale())} Hz</span>
+      <span className="pointer-events-none absolute bottom-0.5 right-1 font-mono text-[10px] text-white/70">{Math.round(side.specMinHz).toLocaleString(locale())} Hz</span>
     </div>
   );
 }
@@ -263,36 +270,37 @@ function Spectrogram({ side }: { side: AudioSide }) {
 type StatRow = { label: string; text: (s: AudioStats) => string; value?: (s: AudioStats) => number | null; unit?: string };
 
 const statRows: StatRow[] = [
-  { label: "Duration", text: (s) => formatTime(s.duration), value: (s) => s.duration, unit: "s" },
-  { label: "Sample rate", text: (s) => `${s.sampleRate.toLocaleString()} Hz` },
-  { label: "Channels", text: (s) => channelName(s.channels) },
-  { label: "Encoding", text: (s) => s.codec },
-  { label: "Peak", text: (s) => formatDb(s.peakDb), value: (s) => s.peakDb, unit: "dB" },
+  { label: translate("audioDiff.duration"), text: (s) => formatTime(s.duration), value: (s) => s.duration, unit: "s" },
+  { label: translate("audioDiff.sampleRate"), text: (s) => translate("audioDiff.hz", { toLocaleString: s.sampleRate.toLocaleString(locale()) }) },
+  { label: translate("audioDiff.channels2"), text: (s) => channelName(s.channels) },
+  { label: translate("audioDiff.encoding"), text: (s) => s.codec },
+  { label: translate("audioDiff.peak"), text: (s) => formatDb(s.peakDb), value: (s) => s.peakDb, unit: "dB" },
   { label: "RMS", text: (s) => formatDb(s.rmsDb), value: (s) => s.rmsDb, unit: "dB" },
-  { label: "Loudness", text: (s) => formatDb(s.loudness, "LUFS"), value: (s) => s.loudness, unit: "LU" },
+  { label: translate("audioDiff.loudness"), text: (s) => formatDb(s.loudness, "LUFS"), value: (s) => s.loudness, unit: "LU" },
 ];
 
 function Change({ value, unit }: { value: number; unit: string }) {
   if (Math.abs(value) < 0.05) return null;
-  return <span className={value > 0 ? "text-warning" : "text-accent"}>{`${value > 0 ? "+" : "−"}${Math.abs(value).toFixed(unit === "s" ? 2 : 1)} ${unit}`}</span>;
+  return <span className={value > 0 ? "text-warning" : "text-accent"}>{translate("audioDiff.text2", { value: value > 0 ? "+" : "−", value2: Math.abs(value).toFixed(unit === "s" ? 2 : 1), unit })}</span>;
 }
 
 function StatsTable({ old, next }: { old: AudioSide | null; next: AudioSide | null }) {
+  const { t } = useTranslation();
   const [a, b] = [old?.stats ?? null, next?.stats ?? null];
   const both = !!a && !!b;
   return (
-    <table aria-label="Audio details">
+    <table aria-label={t("audioDiff.audioDetails")}>
       <thead>
         <tr className="text-muted-foreground">
           <th />
-          <th className="px-3 text-left font-medium">Before</th>
-          <th className="px-3 text-left font-medium">After</th>
-          {both && <th className="px-3 text-left font-medium">Change</th>}
+          <th className="px-3 text-left font-medium">{t("audioDiff.before")}</th>
+          <th className="px-3 text-left font-medium">{t("audioDiff.after")}</th>
+          {both && <th className="px-3 text-left font-medium">{t("audioDiff.change")}</th>}
         </tr>
       </thead>
       <tbody className="font-mono">
         <tr>
-          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">File size</th>
+          <th className="pr-3 text-left font-sans font-normal text-muted-foreground">{t("audioDiff.fileSize")}</th>
           <td className="px-3">{old ? formatBytes(old.size) : "—"}</td>
           <td className="px-3">{next ? formatBytes(next.size) : "—"}</td>
           {both && <td />}

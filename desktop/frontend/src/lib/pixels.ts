@@ -1,4 +1,5 @@
 import type { Pixels } from "@/lib/imageCompare";
+import { translate } from "@/i18n";
 
 // loadPixels decodes an image URL into raw RGBA pixels through a canvas.
 export function loadPixels(src: string): Promise<Pixels> {
@@ -10,14 +11,14 @@ export function loadPixels(src: string): Promise<Pixels> {
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
-        reject(new Error("Canvas is not available"));
+        reject(new Error(translate("pixels.canvasIsNotAvailable")));
         return;
       }
       ctx.drawImage(img, 0, 0);
       const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
       resolve({ width: canvas.width, height: canvas.height, data });
     };
-    img.onerror = () => reject(new Error("The preview could not be decoded"));
+    img.onerror = () => reject(new Error(translate("pixels.thePreviewCouldNotBe")));
     img.src = src;
   });
 }

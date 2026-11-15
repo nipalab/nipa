@@ -1,5 +1,6 @@
 import { Box, Boxes, File, FileText, Film, Image, Music, Sheet, Type } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { translate } from "@/i18n";
 
 const icons = { text: FileText, image: Image, model: Box, audio: Music, video: Film, font: Type, table: Sheet, scene: Boxes };
 
@@ -9,11 +10,11 @@ export function FileIcon({ kind, className }: { kind: string; className?: string
 }
 
 const statuses: Record<string, { letter: string; label: string; className: string }> = {
-  added: { letter: "A", label: "Added", className: "text-success" },
-  untracked: { letter: "U", label: "New, not tracked yet", className: "text-success" },
-  modified: { letter: "M", label: "Modified", className: "text-warning" },
-  deleted: { letter: "D", label: "Deleted", className: "text-danger" },
-  renamed: { letter: "R", label: "Renamed", className: "text-accent" },
+  added: { letter: "A", label: translate("fileIcon.added"), className: "text-success" },
+  untracked: { letter: "U", label: translate("fileIcon.newNotTrackedYet"), className: "text-success" },
+  modified: { letter: "M", label: translate("fileIcon.modified"), className: "text-warning" },
+  deleted: { letter: "D", label: translate("fileIcon.deleted"), className: "text-danger" },
+  renamed: { letter: "R", label: translate("fileIcon.renamed"), className: "text-accent" },
 };
 
 export function StatusLetter({ status }: { status: string }) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { desktop } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 export type SyncAction = {
   target: { branch?: string; tag?: string };
@@ -65,6 +66,7 @@ export function useSyncGuard(root: string, hasChanges: boolean | undefined, shel
 }
 
 function SyncGuardDialog({ pending, onCancel, onContinue, onShelve }: { pending: Pending; onCancel: () => void; onContinue: () => void; onShelve: () => void }) {
+  const { t } = useTranslation();
   const { files, verb } = pending;
   const more = files.length - SHOWN;
   return (
@@ -72,28 +74,28 @@ function SyncGuardDialog({ pending, onCancel, onContinue, onShelve }: { pending:
       <div role="alertdialog" aria-modal="true" aria-labelledby="sync-guard-title" className="w-full max-w-md space-y-3 rounded-lg border border-border bg-card p-5 shadow-xl">
         <h2 id="sync-guard-title" className="flex items-center gap-2 text-sm font-semibold">
           <AlertTriangle className="size-4 text-warning" />
-          Your changes would be replaced
+          {t("syncGuard.yourChangesWouldBeReplaced")}
         </h2>
         <p className="text-xs text-muted-foreground">
-          {verb} replaces your local changes to {files.length} file{files.length === 1 ? "" : "s"}. Shelve them to keep a copy you can apply later.
+          {t("syncGuard.replaces", { verb, count: files.length })}
         </p>
-        <ul aria-label="Changes that would be replaced" className="max-h-40 overflow-y-auto rounded-md border border-border px-2 py-1 font-mono text-[11px]">
+        <ul aria-label={t("syncGuard.changesThatWouldBeReplaced")} className="max-h-40 overflow-y-auto rounded-md border border-border px-2 py-1 font-mono text-[11px]">
           {files.slice(0, SHOWN).map((f) => (
             <li key={f} className="truncate" title={f}>
               {f}
             </li>
           ))}
-          {more > 0 && <li className="text-muted-foreground">and {more} more</li>}
+          {more > 0 && <li className="text-muted-foreground">{t("syncGuard.more", { count: more })}</li>}
         </ul>
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           <Button size="sm" onClick={onCancel} autoFocus>
-            Cancel
+            {t("syncGuard.cancel")}
           </Button>
           <Button size="sm" variant="ghost" className="text-danger" onClick={onContinue}>
-            Continue anyway
+            {t("syncGuard.continueAnyway")}
           </Button>
           <Button size="sm" variant="primary" onClick={onShelve}>
-            Shelve and continue
+            {t("syncGuard.shelveAndContinue")}
           </Button>
         </div>
       </div>

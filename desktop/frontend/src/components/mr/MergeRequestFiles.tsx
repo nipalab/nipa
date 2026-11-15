@@ -10,6 +10,8 @@ import { fileThreads, threadAt } from "@/lib/mergeRequests";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 
@@ -27,6 +29,7 @@ type MergeRequestFilesProps = {
 };
 
 export function MergeRequestFiles({ root, base, head, focus = "", threads, busy, canComment, onComment, onReply, onResolve }: MergeRequestFilesProps) {
+  const { t } = useTranslation();
   const filesSize = useResizableWidth("mr-files", { initial: 256, min: 160, max: 560 });
   const files = useQuery({ queryKey: ["commit", root, head, "vs", base], queryFn: () => desktop.revisionFiles(root, base, head), enabled: !!base && !!head, staleTime: Infinity });
   const [picked, setPicked] = useState(focus);
@@ -46,11 +49,11 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
     return out;
   }, [threads, files.data]);
 
-  if (!base || !head) return <Centered>The branches of this request are gone, so its changes cannot be shown.</Centered>;
+  if (!base || !head) return <Centered>{t("mergeRequestFiles.theBranchesOfThisRequest")}</Centered>;
   if (files.isPending) {
     return (
       <Centered>
-        <Loader2 className="size-4 animate-spin" /> Loading changes…
+        <Loader2 className="size-4 animate-spin" /> {t("mergeRequestFiles.loadingChanges")}
       </Centered>
     );
   }
@@ -61,7 +64,7 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
       </Centered>
     );
   }
-  if (list.length === 0) return <Centered>No file changes.</Centered>;
+  if (list.length === 0) return <Centered>{t("mergeRequestFiles.noFileChanges")}</Centered>;
 
   const { inline, outdated } = selected ? fileThreads(threads, selected.path, selected.oldPath) : { inline: [], outdated: [] };
   const comments: LineComments | undefined = selected && {
@@ -77,8 +80,8 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
           {writing && (
             <div className="mx-2 my-1 rounded-md border border-border bg-card p-2">
               <CommentBox
-                label={`Comment on line ${anchor.newLine || anchor.oldLine}`}
-                placeholder="Leave a comment on this line"
+                label={translate("mergeRequestFiles.commentOnLine", { oldLine: anchor.newLine || anchor.oldLine })}
+                placeholder={t("mergeRequestFiles.leaveACommentOnThis")}
                 busy={busy}
                 autoFocus
                 onCancel={() => setDrafting(null)}
@@ -98,7 +101,7 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
   return (
     <div className="flex h-full min-h-0">
       <div className="relative shrink-0" ref={filesSize.ref} style={{ width: filesSize.width }}>
-        <ul className="h-full overflow-auto border-r border-border py-1" aria-label="Changed files">
+        <ul className="h-full overflow-auto border-r border-border py-1" aria-label={t("mergeRequestFiles.changedFiles")}>
           {list.map((f) => (
             <li key={f.path}>
               <button
@@ -114,7 +117,7 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
                 <FileIcon kind={f.kind} />
                 <span className="min-w-0 flex-1 truncate">{f.path}</span>
                 {counts.get(f.path) ? (
-                  <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" aria-label={`${counts.get(f.path)} threads`}>
+                  <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" aria-label={translate("mergeRequestFiles.threads", { value: counts.get(f.path) })}>
                     <MessageSquare className="size-3" />
                     {counts.get(f.path)}
                   </span>
@@ -124,14 +127,14 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
             </li>
           ))}
         </ul>
-        <PaneResizer size={filesSize} label="Resize file list" />
+        <PaneResizer size={filesSize} label={t("mergeRequestFiles.resizeFileList")} />
       </div>
       {selected && (
         <div className="flex min-w-0 flex-1 flex-col">
           {outdated.length > 0 && (
             <details className="shrink-0 border-b border-border px-4 py-2 text-[12px]">
               <summary className="cursor-pointer text-muted-foreground">
-                {outdated.length} outdated thread{outdated.length === 1 ? "" : "s"} on lines that changed since
+                {t("mergeRequestFiles.outdated", { count: outdated.length })}
               </summary>
               <div className="mt-2 max-h-60 space-y-2 overflow-auto">
                 {outdated.map((t) => (
@@ -141,7 +144,7 @@ export function MergeRequestFiles({ root, base, head, focus = "", threads, busy,
             </details>
           )}
           {selected.old?.binary || selected.new?.binary ? (
-            <p className="shrink-0 border-b border-border px-4 py-1.5 text-[11px] text-muted-foreground">Binary files take comments in the conversation, not on lines.</p>
+            <p className="shrink-0 border-b border-border px-4 py-1.5 text-[11px] text-muted-foreground">{t("mergeRequestFiles.binaryFilesTakeCommentsIn")}</p>
           ) : null}
           <div className="min-h-0 flex-1">
             <DiffViewer root={root} diff={selected} layout={layout} onLayout={setLayout} comments={comments} />

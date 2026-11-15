@@ -27,6 +27,8 @@ import { commitTitle, shortId } from "@/lib/history";
 import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "@/lib/palette";
 import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 export type PaletteMode = "all" | "switch" | "lock";
 export type Go = (root: string, intent: Omit<Intent, "seq">) => void;
@@ -63,6 +65,7 @@ type PaletteProps = {
 };
 
 export function CommandPalette({ repos, current, initialMode = "all", onClose, onGo, onSettings, onShortcuts }: PaletteProps) {
+  const { t } = useTranslation();
   const simple = useSimple();
   const [mode, setMode] = useState<PaletteMode>(current ? initialMode : "all");
   const [query, setQuery] = useState("");
@@ -136,8 +139,8 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           icon: icon(GitBranch),
           title: b.name,
           hits: match?.positions,
-          detail: here ? "Current branch" : b.default ? "Default branch" : undefined,
-          hint: here ? undefined : "Switch",
+          detail: here ? translate("commandPalette.currentBranch") : b.default ? translate("commandPalette.defaultBranch") : undefined,
+          hint: here ? undefined : translate("commandPalette.switch"),
           run: () => go(root, here ? { tab: "branches" } : { tab: "branches", action: "switch", target: b.name }),
         });
       }
@@ -153,7 +156,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           title: hit.path,
           hits: match.positions,
           dimUntil: codePoints(hit.path) - codePoints(hit.name),
-          hint: "Lock",
+          hint: translate("commandPalette.lock"),
           run: () => go(root, { tab: "locks", action: "lock", path: hit.path }),
         });
       }
@@ -163,28 +166,28 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     const actions: Omit<Item, "section">[] = [];
     if (root) {
       actions.push(
-        { key: "update", icon: icon(ArrowDownToLine), title: labels(simple).update, detail: "Get the latest version of the branch", hint: shortcutHint("update"), run: () => go(root, { tab: "", action: "update" }) },
-        { key: "push", icon: icon(ArrowUpFromLine), title: `${labels(simple).push}…`, detail: `Write the ${simple ? "submit" : "push"} message`, hint: shortcutHint("focusMessage"), run: () => go(root, { tab: "changes", action: "focus-message" }) },
+        { key: "update", icon: icon(ArrowDownToLine), title: labels(simple).update, detail: translate("commandPalette.getTheLatestVersionOf"), hint: shortcutHint("update"), run: () => go(root, { tab: "", action: "update" }) },
+        { key: "push", icon: icon(ArrowUpFromLine), title: translate("commandPalette.text", { push: labels(simple).push }), detail: translate("commandPalette.writeTheMessage", { simple: simple ? "submit" : "push" }), hint: shortcutHint("focusMessage"), run: () => go(root, { tab: "changes", action: "focus-message" }) },
         ...(simple
           ? []
           : [
-              { key: "switch", icon: icon(GitBranch), title: "Switch branch…", run: () => enter("switch") },
-              { key: "new-mr", icon: icon(GitPullRequestCreate), title: "New merge request", run: () => go(root, { tab: "mrs", action: "new-mr" }) },
+              { key: "switch", icon: icon(GitBranch), title: translate("commandPalette.switchBranch"), run: () => enter("switch") },
+              { key: "new-mr", icon: icon(GitPullRequestCreate), title: translate("commandPalette.newMergeRequest"), run: () => go(root, { tab: "mrs", action: "new-mr" }) },
             ]),
-        { key: "lock", icon: icon(Lock), title: "Lock file…", run: () => enter("lock") },
-        { key: "refresh", icon: icon(RefreshCw), title: "Refresh", hint: shortcutHint("refresh"), run: () => go(root, { tab: "", action: "refresh" }) },
+        { key: "lock", icon: icon(Lock), title: translate("commandPalette.lockFile"), run: () => enter("lock") },
+        { key: "refresh", icon: icon(RefreshCw), title: translate("commandPalette.refresh"), hint: shortcutHint("refresh"), run: () => go(root, { tab: "", action: "refresh" }) },
       );
       visibleTabs(hasOpenConflicts(changes.data), simple)
         .forEach((t, i) =>
-          actions.push({ key: `tab:${t.id}`, icon: icon(t.Icon), title: `Go to ${t.label}`, hint: i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined, run: () => go(root, { tab: t.id }) }),
+          actions.push({ key: `tab:${t.id}`, icon: icon(t.Icon), title: translate("commandPalette.goTo", { label: t.label }), hint: i < 9 ? shortcutHint("tab").replace("1–9", String(i + 1)) : undefined, run: () => go(root, { tab: t.id }) }),
         );
     }
     actions.push(
-      { key: "settings", icon: icon(Settings), title: "Settings", hint: shortcutHint("settings"), run: () => {
+      { key: "settings", icon: icon(Settings), title: translate("commandPalette.settings"), hint: shortcutHint("settings"), run: () => {
           onClose();
           onSettings();
         } },
-      { key: "shortcuts", icon: icon(Keyboard), title: "Keyboard shortcuts", hint: shortcutHint("help"), run: () => {
+      { key: "shortcuts", icon: icon(Keyboard), title: translate("commandPalette.keyboardShortcuts"), hint: shortcutHint("help"), run: () => {
           onClose();
           onShortcuts();
         } },
@@ -221,8 +224,8 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           icon: icon(ref.kind === "branch" ? GitBranch : Tag),
           title: ref.name,
           hits: match.positions,
-          detail: here ? "Current branch" : ref.kind === "tag" ? "Tag" : undefined,
-          hint: here ? undefined : ref.kind === "tag" ? "Check out" : "Switch",
+          detail: here ? translate("commandPalette.currentBranch") : ref.kind === "tag" ? translate("commandPalette.tag") : undefined,
+          hint: here ? undefined : ref.kind === "tag" ? translate("commandPalette.checkOut") : translate("commandPalette.switch"),
           run: () =>
             go(root, here ? { tab: "branches" } : ref.kind === "tag" ? { tab: "branches", action: "checkout-tag", target: ref.name } : { tab: "branches", action: "switch", target: ref.name }),
         });
@@ -230,16 +233,16 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
 
       const number = simple ? null : mrNumber(q);
       if (number !== null) {
-        out.push({ key: `mr:${number}`, section: "Merge requests", icon: icon(GitPullRequest), title: `Open merge request #${number}`, run: () => go(root, { tab: "mrs", number }) });
+        out.push({ key: `mr:${number}`, section: "Merge requests", icon: icon(GitPullRequest), title: translate("commandPalette.openMergeRequest", { number }), run: () => go(root, { tab: "mrs", number }) });
       } else {
         for (const mr of simple ? [] : (mrs.data?.items ?? []).slice(0, 5)) {
           out.push({
             key: `mr:${mr.number}`,
             section: "Merge requests",
             icon: icon(GitPullRequest),
-            title: `#${mr.number} ${mr.title}`,
-            hits: fuzzyMatch(q, `#${mr.number} ${mr.title}`)?.positions,
-            detail: `${mr.source} → ${mr.target} · ${mr.draft ? "draft" : mr.status}`,
+            title: translate("commandPalette.text2", { number: mr.number, title: mr.title }),
+            hits: fuzzyMatch(q, translate("commandPalette.text2", { number: mr.number, title: mr.title }))?.positions,
+            detail: translate("commandPalette.text3", { source: mr.source, target: mr.target, draft: mr.draft ? "draft" : mr.status }),
             run: () => go(root, { tab: "mrs", number: mr.number }),
           });
         }
@@ -254,7 +257,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           section: "Commits",
           icon: icon(GitCommitHorizontal),
           title: commitTitle(c.message),
-          detail: `${shortId(c.id)} · ${c.author}`,
+          detail: translate("commandPalette.text4", { value: shortId(c.id), author: c.author }),
           run: () => go(root, { tab: "history", commit: c.id }),
         });
       }
@@ -306,8 +309,8 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
   };
 
   const placeholder =
-    mode === "switch" ? "Switch to branch…" : mode === "lock" ? "Find the file to lock…" : root ? "Search files, branches, merge requests, commits and actions" : "Search files and actions";
-  const empty = mode === "lock" && !q ? "Type part of the file's name" : loading ? "Searching…" : "No results";
+    mode === "switch" ? translate("commandPalette.switchToBranch") : mode === "lock" ? translate("commandPalette.findTheFileToLock") : root ? translate("commandPalette.searchFilesBranchesMergeRequests") : translate("commandPalette.searchFilesAndActions");
+  const empty = mode === "lock" && !q ? translate("commandPalette.typePartOfTheFileS") : loading ? translate("commandPalette.searching2") : translate("commandPalette.noResults");
 
   let lastSection: Section | null = null;
   return (
@@ -315,12 +318,12 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t("commandPalette.commandPalette")}
         onMouseDown={(e) => e.target !== input.current && e.preventDefault()}
         className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl">
         <div className="flex items-center gap-2 border-b border-border px-3">
           {mode !== "all" ? (
-            <button type="button" onClick={() => enter("all")} aria-label="Back to all commands" className="text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => enter("all")} aria-label={t("commandPalette.backToAllCommands")} className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-4" />
             </button>
           ) : (
@@ -333,7 +336,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             role="combobox"
-            aria-label="Command"
+            aria-label={t("commandPalette.command")}
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
@@ -341,9 +344,9 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
             spellCheck={false}
             className="h-11 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
           />
-          {loading && q !== "" && <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Searching" />}
+          {loading && q !== "" && <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label={t("commandPalette.searching")} />}
         </div>
-        <div id={listId} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div id={listId} role="listbox" aria-label={t("commandPalette.results")} className="min-h-0 flex-1 overflow-y-auto py-1">
           {items.length === 0 && <p className="px-4 py-6 text-center text-xs text-muted-foreground">{empty}</p>}
           {items.map((item, i) => {
             const header = item.section !== lastSection && mode === "all";
@@ -352,7 +355,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
               <div key={item.key}>
                 {header && (
                   <div role="presentation" className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {item.section}
+                    {translate(`commandPalette.section.${item.section}`)}
                   </div>
                 )}
                 <div
@@ -376,9 +379,9 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           })}
         </div>
         <div className="flex gap-3 border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
-          <span>↑↓ to move</span>
-          <span>Enter to choose</span>
-          <span>Esc to {mode === "all" ? "close" : "go back"}</span>
+          <span>{t("commandPalette.toMove")}</span>
+          <span>{t("commandPalette.enterToChoose")}</span>
+          <span>{mode === "all" ? t("commandPalette.escClose") : t("commandPalette.escBack")}</span>
         </div>
       </div>
     </div>

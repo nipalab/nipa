@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 export type FileAction = { id: string; label: string; Icon: LucideIcon; run: () => void; disabled?: boolean; title?: string };
 
 export function ActionBar({ actions }: { actions: FileAction[] }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap gap-1" role="toolbar" aria-label="File actions">
+    <div className="flex flex-wrap gap-1" role="toolbar" aria-label={t("fileMenu.fileActions")}>
       {actions.map((a) => (
         <Button key={a.id} size="sm" variant="ghost" onClick={a.run} disabled={a.disabled} title={a.title ?? a.label}>
           <a.Icon />

@@ -1,4 +1,5 @@
-// Every keyboard shortcut of the app lives here: the palette, the "?" sheet
+
+import { translate } from "@/i18n";// Every keyboard shortcut of the app lives here: the palette, the "?" sheet
 // and the handlers all read this map, so a key is bound in exactly one place.
 
 export type ShortcutId =
@@ -35,25 +36,25 @@ export type Shortcut = {
 const digits = Array.from({ length: 9 }, (_, i) => String(i + 1));
 
 export const shortcuts: Shortcut[] = [
-  { id: "palette", label: "Search and run commands", group: "General", chords: [{ key: "k", mod: true }], whileTyping: true },
-  { id: "help", label: "Show keyboard shortcuts", group: "General", chords: [{ key: "?" }] },
-  { id: "sidebar", label: "Show or hide the sidebar", group: "General", chords: [{ key: "b", mod: true }], whileTyping: true },
-  { id: "settings", label: "Open settings", group: "General", chords: [{ key: ",", mod: true }], whileTyping: true },
+  { id: "palette", label: translate("shortcuts.searchAndRunCommands"), group: "General", chords: [{ key: "k", mod: true }], whileTyping: true },
+  { id: "help", label: translate("shortcuts.showKeyboardShortcuts"), group: "General", chords: [{ key: "?" }] },
+  { id: "sidebar", label: translate("shortcuts.showOrHideTheSidebar"), group: "General", chords: [{ key: "b", mod: true }], whileTyping: true },
+  { id: "settings", label: translate("shortcuts.openSettings"), group: "General", chords: [{ key: ",", mod: true }], whileTyping: true },
   {
     id: "tab",
-    label: "Go to tab 1–9",
+    label: translate("shortcuts.goToTab19"),
     group: "Repository",
     chords: digits.map((key) => ({ key, mod: true })),
     whileTyping: true,
     display: ["Mod", "1–9"],
   },
-  { id: "update", label: "Update (get the latest version)", group: "Repository", chords: [{ key: "u", mod: true, shift: true }], whileTyping: true },
-  { id: "refresh", label: "Refresh", group: "Repository", chords: [{ key: "r", mod: true }, { key: "F5" }], whileTyping: true },
-  { id: "focusMessage", label: "Write the push message", group: "Changes", chords: [{ key: "m", mod: true, shift: true }], whileTyping: true },
-  { id: "push", label: "Push (in the push message)", group: "Changes", chords: [{ key: "Enter", mod: true }], whileTyping: true },
-  { id: "stage", label: "Stage or unstage the selected file", group: "Changes", chords: [{ key: " " }] },
-  { id: "next", label: "Next file", group: "Changes", chords: [{ key: "j" }, { key: "ArrowDown" }] },
-  { id: "previous", label: "Previous file", group: "Changes", chords: [{ key: "k" }, { key: "ArrowUp" }] },
+  { id: "update", label: translate("shortcuts.updateGetTheLatestVersion"), group: "Repository", chords: [{ key: "u", mod: true, shift: true }], whileTyping: true },
+  { id: "refresh", label: translate("shortcuts.refresh"), group: "Repository", chords: [{ key: "r", mod: true }, { key: "F5" }], whileTyping: true },
+  { id: "focusMessage", label: translate("shortcuts.writeThePushMessage"), group: "Changes", chords: [{ key: "m", mod: true, shift: true }], whileTyping: true },
+  { id: "push", label: translate("shortcuts.pushInThePushMessage"), group: "Changes", chords: [{ key: "Enter", mod: true }], whileTyping: true },
+  { id: "stage", label: translate("shortcuts.stageOrUnstageTheSelected"), group: "Changes", chords: [{ key: " " }] },
+  { id: "next", label: translate("shortcuts.nextFile"), group: "Changes", chords: [{ key: "j" }, { key: "ArrowDown" }] },
+  { id: "previous", label: translate("shortcuts.previousFile"), group: "Changes", chords: [{ key: "k" }, { key: "ArrowUp" }] },
 ];
 
 export const shortcutGroups: ShortcutGroup[] = ["General", "Repository", "Changes"];

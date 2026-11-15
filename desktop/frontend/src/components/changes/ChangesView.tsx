@@ -23,6 +23,8 @@ import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
+import { useTranslation } from "react-i18next";
+import { plural, translate } from "@/i18n";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 const POLL_MS = 30_000;
@@ -60,6 +62,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
 }
 
 export function ChangesView({ root, op, message, onMessage, onPush, onShelve, onApplyShelf, onCancelOp, onError, notify, onOpenFile, focusMessage }: ChangesViewProps) {
+  const { t } = useTranslation();
   const simple = useSimple();
   const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
@@ -111,7 +114,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
   const warnings = useMemo(() => {
     const map = new Map<string, string>();
     for (const w of meta.data ?? []) {
-      for (const p of [w.path, w.related]) if (!map.has(p)) map.set(p, `${w.path}: ${w.message}`);
+      for (const p of [w.path, w.related]) if (!map.has(p)) map.set(p, translate("changesView.text", { path: w.path, message: w.message }));
     }
     return map;
   }, [meta.data]);
@@ -158,15 +161,15 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
     setLayoutState(next);
   };
 
-  if (changes.isPending) return <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Reading working copy…" />;
+  if (changes.isPending) return <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title={t("changesView.readingWorkingCopy")} />;
   if (changes.isError) {
-    return <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not read changes" detail={errorMessage(changes.error)} />;
+    return <Centered icon={<AlertTriangle className="size-5 text-danger" />} title={t("changesView.couldNotReadChanges")} detail={errorMessage(changes.error)} />;
   }
 
   const c = changes.data;
   const busy = working;
   const empty = c.staged.length === 0 && c.unstaged.length === 0;
-  const blocked = c.detached ? `HEAD is at tag ${c.detached}. Switch to a branch to push.` : undefined;
+  const blocked = c.detached ? translate("changesView.hEADIsAtTag", { detached: c.detached }) : undefined;
   const openConflicts = c.conflicts.filter((p) => !c.resolved.includes(p)).length;
   const lockIssue = stagedLockIssue(c, lockStates, lockPaths, lock.isPending);
   const selectFirst = (paths: string[]) => {
@@ -180,12 +183,12 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
     <div className="flex h-full min-h-0">
       <div className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
         {c.detached && (
-          <Banner icon={<Tag className="size-3.5 text-accent" />} text={`Viewing tag ${c.detached}`} />
+          <Banner icon={<Tag className="size-3.5 text-accent" />} text={translate("changesView.viewingTag", { detached: c.detached })} />
         )}
         {openConflicts > 0 && (
           <Banner
             icon={<AlertTriangle className="size-3.5 text-warning" />}
-            text={`${openConflicts} conflicted file${openConflicts === 1 ? "" : "s"}: resolve them in the Conflicts tab.`}
+            text={translate("changesView.conflictedFiles", { count: openConflicts })}
           />
         )}
         {!empty && (meta.data ?? []).length > 0 && (
@@ -196,17 +199,17 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
         )}
         {!empty && onShelve && (
           <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1">
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setShelving([])} title="Put changes aside and restore the files">
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setShelving([])} title={t("changesView.putChangesAsideAndRestore")}>
               <Archive />
-              Shelve…
+              {t("changesView.shelve")}
             </Button>
           </div>
         )}
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <CheckCircle2 className="size-6 text-success" />
-            <p className="text-sm font-medium">No local changes</p>
-            <p className="max-w-xs text-xs text-muted-foreground">Edit a file in this folder with your usual program and save it. It shows up here, ready to review and {simple ? "submit" : "push"}.</p>
+            <p className="text-sm font-medium">{t("changesView.noLocalChanges")}</p>
+            <p className="max-w-xs text-xs text-muted-foreground">{t("changesView.emptyHint", { verb: simple ? t("changesView.verbSubmit") : t("changesView.verbPush") })}</p>
           </div>
         ) : (
           <FileList
@@ -240,7 +243,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
           onGenerate={llm.data?.configured ? () => desktop.generateCommitMessage(root) : undefined}
           focus={focusMessage}
         />
-        <PaneResizer size={listSize} label="Resize file list" />
+        <PaneResizer size={listSize} label={t("changesView.resizeFileList")} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -248,15 +251,15 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
           {shelfPick ? (
             <ShelfPreview root={root} pick={shelfPick} files={shelfFiles} layout={layout} onLayout={setLayout} onClose={() => setShelfPick(null)} />
           ) : !selected ? (
-            <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="Select a changed file to see what changed." />
+            <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title={t("changesView.nothingToCompare")} detail={translate("changesView.selectAChangedFileTo")} />
           ) : diff.isPending ? (
-            <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading diff…" />
+            <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title={t("changesView.loadingDiff")} />
           ) : diff.isError ? (
-            <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not load the diff" detail={errorMessage(diff.error)} />
+            <Centered icon={<AlertTriangle className="size-5 text-danger" />} title={t("changesView.couldNotLoadTheDiff")} detail={errorMessage(diff.error)} />
           ) : diff.data ? (
             <DiffViewer root={root} diff={diff.data} layout={layout} onLayout={setLayout} />
           ) : (
-            <Centered icon={<CheckCircle2 className="size-6 text-success" />} title="No changes" detail="This file matches the last synced version." />
+            <Centered icon={<CheckCircle2 className="size-6 text-success" />} title={t("changesView.noChanges")} detail={translate("changesView.thisFileMatchesTheLast")} />
           )}
         </div>
         {selected && !shelfPick && <InsightPanel key={selected.path} root={root} path={selected.path} onOpenFile={onOpenFile} />}
@@ -264,9 +267,9 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
 
       {discarding && (
         <ConfirmDialog
-          title="Discard changes?"
-          message={`${discarding.path} goes back to the last synced version. Your edits are lost.`}
-          confirmLabel="Discard"
+          title={t("changesView.discardChanges")}
+          message={translate("changesView.goesBackToThe", { path: discarding.path })}
+          confirmLabel={translate("changesView.discard")}
           onCancel={() => setDiscarding(null)}
           onConfirm={() => {
             discard.mutate([discarding.path]);
@@ -303,59 +306,60 @@ type ShelfPreviewProps = {
 };
 
 function ShelfPreview({ root, pick, files, layout, onLayout, onClose }: ShelfPreviewProps) {
+  const { t } = useTranslation();
   const diff = files.data?.find((f) => f.path === pick.path);
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-[11px]">
         <Archive className="size-3.5 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">
-          Shelved version of <span className="font-mono">{pick.path}</span>
+          {t("changesView.shelvedVersionOf")} <span className="font-mono">{pick.path}</span>
         </span>
-        <button type="button" onClick={onClose} aria-label="Close shelf preview" className="text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onClose} aria-label={t("changesView.closeShelfPreview")} className="text-muted-foreground hover:text-foreground">
           <X className="size-3.5" />
         </button>
       </div>
       <div className="min-h-0 flex-1">
         {files.isPending ? (
-          <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title="Loading shelf…" />
+          <Centered icon={<Loader2 className="size-5 animate-spin text-muted-foreground" />} title={t("changesView.loadingShelf")} />
         ) : files.isError ? (
-          <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not read the shelf" detail={errorMessage(files.error)} />
+          <Centered icon={<AlertTriangle className="size-5 text-danger" />} title={t("changesView.couldNotReadTheShelf")} detail={errorMessage(files.error)} />
         ) : diff ? (
           <DiffViewer root={root} diff={diff} layout={layout} onLayout={onLayout} />
         ) : (
-          <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title="Nothing to compare" detail="This file is not in the shelf any more." />
+          <Centered icon={<FileDiffIcon className="size-6 text-muted-foreground" />} title={t("changesView.nothingToCompare")} detail={translate("changesView.thisFileIsNotIn")} />
         )}
       </div>
     </div>
   );
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function stagedLockIssue(c: ChangeSet, states: Map<string, FileLockState>, lockPaths: (paths: string[]) => void, busy: boolean): LockIssue | undefined {
   const staged = c.staged.flatMap((f) => states.get(f.path) ?? []);
   const theirs = staged.filter((s) => s.state === "theirs");
   if (theirs.length > 0) {
     const [first] = theirs;
-    const more = theirs.length > 1 ? ` (+${theirs.length - 1} more)` : "";
-    return { message: `${first.path} is locked by ${first.heldByName || "someone else"}${more}. Unstage it or ask them to release the lock.` };
+    const more = theirs.length > 1 ? translate("changesView.more", { value: theirs.length - 1 }) : "";
+    return { message: translate("changesView.isLockedBy", { path: first.path, value: first.heldByName || translate("changesView.someoneElse"), more }) };
   }
   const needed = staged.filter((s) => s.state === "needed");
   if (needed.length === 0) return undefined;
   return {
-    message: `${plural(needed.length, "staged file")} ${needed.length === 1 ? "needs" : "need"} a lock before you can push.`,
-    action: { label: `Lock ${plural(needed.length, "file")}`, onClick: () => lockPaths(needed.map((s) => s.path)), busy },
+    message: translate("changesView.aLockBeforeYou", { value: plural(needed.length, "stagedFile"), count: needed.length }),
+    action: { label: translate("changesView.lock", { value: plural(needed.length, "file") }), onClick: () => lockPaths(needed.map((s) => s.path)), busy },
   };
 }
 
 const metaKinds: Record<string, string> = {
-  "missing-meta": "Missing .meta",
-  "orphan-meta": "Orphan .meta",
-  "meta-not-staged": ".meta not staged",
-  "guid-changed": "GUID changed",
+  "missing-meta": translate("changesView.missingMeta"),
+  "orphan-meta": translate("changesView.orphanMeta"),
+  "meta-not-staged": translate("changesView.metaNotStaged"),
+  "guid-changed": translate("changesView.gUIDChanged"),
 };
 
 function MetaWarnings({ warnings, onSelect }: { warnings: MetaWarning[]; onSelect: (warning: MetaWarning) => void }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(warnings.length <= 3);
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
@@ -363,12 +367,12 @@ function MetaWarnings({ warnings, onSelect }: { warnings: MetaWarning[]; onSelec
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left">
         <AlertTriangle className="size-3.5 shrink-0 text-warning" />
         <span className="flex-1">
-          {warnings.length} Unity .meta warning{warnings.length === 1 ? "" : "s"}
+          {t("changesView.metaWarnings", { count: warnings.length })}
         </span>
         <Chevron className="size-3.5 text-muted-foreground" />
       </button>
       {open && (
-        <ul className="max-h-40 overflow-y-auto px-3 pb-2" aria-label="Unity .meta warnings">
+        <ul className="max-h-40 overflow-y-auto px-3 pb-2" aria-label={t("changesView.unityMetaWarnings")}>
           {warnings.map((w) => (
             <li key={`${w.kind}:${w.path}`}>
               <button type="button" onClick={() => onSelect(w)} className="w-full rounded px-1 py-0.5 text-left hover:bg-background" title={w.path}>

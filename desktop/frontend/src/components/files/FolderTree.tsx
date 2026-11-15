@@ -4,6 +4,8 @@ import type { Repo } from "@/api/desktop";
 import type { Row } from "@/lib/files";
 import { cn } from "@/lib/utils";
 import { useDirectory } from "./useDirectory";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type TreeProps = {
   repo: Repo;
@@ -17,9 +19,10 @@ type TreeProps = {
 // FolderTree lists folders only; a folder's children are fetched the first
 // time it is expanded.
 export function FolderTree(props: TreeProps) {
+  const { t } = useTranslation();
   const { repo, current, onSelect } = props;
   return (
-    <nav aria-label="Folders" className="h-full overflow-auto py-1">
+    <nav aria-label={t("folderTree.folders")} className="h-full overflow-auto py-1">
       <ul role="tree">
         <li role="treeitem" aria-expanded aria-selected={current === ""}>
           <button
@@ -38,12 +41,13 @@ export function FolderTree(props: TreeProps) {
 }
 
 function Children({ path, depth, ...props }: TreeProps & { path: string; depth: number }) {
+  const { t } = useTranslation();
   const dir = useDirectory(props.repo, path);
   const folders = dir.rows.filter((r) => r.isDir);
   if (dir.loading) {
     return (
       <div className="flex items-center gap-1.5 py-1 text-[11px] text-muted-foreground" style={{ paddingLeft: depth * 12 + 8 }}>
-        <Loader2 className="size-3 animate-spin" /> Loading…
+        <Loader2 className="size-3 animate-spin" /> {t("folderTree.loading")}
       </div>
     );
   }
@@ -58,6 +62,7 @@ function Children({ path, depth, ...props }: TreeProps & { path: string; depth: 
 }
 
 function Node({ row, depth, ...props }: TreeProps & { row: Row; depth: number }) {
+  const { t } = useTranslation();
   const { current, expanded, onToggle, onSelect, onMenu } = props;
   const open = expanded.has(row.path);
   const onContextMenu = (e: MouseEvent) => {
@@ -71,7 +76,7 @@ function Node({ row, depth, ...props }: TreeProps & { row: Row; depth: number })
           type="button"
           onContextMenu={onContextMenu}
           onClick={(e) => onMenu(row, e.clientX, e.clientY)}
-          title={`${row.path} is not in this clone's checkout`}
+          title={translate("folderTree.isNotInThis", { path: row.path })}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[12px] text-muted-foreground/60 hover:bg-muted"
           style={{ paddingLeft: depth * 12 + 20 }}
         >
@@ -84,13 +89,13 @@ function Node({ row, depth, ...props }: TreeProps & { row: Row; depth: number })
   return (
     <li role="treeitem" aria-expanded={open} aria-selected={current === row.path}>
       <div className={cn("flex items-center hover:bg-muted", current === row.path && "bg-muted font-medium")} style={{ paddingLeft: depth * 12 }}>
-        <button type="button" aria-label={open ? `Collapse ${row.name}` : `Expand ${row.name}`} onClick={() => onToggle(row.path)} className="p-1 text-muted-foreground hover:text-foreground">
+        <button type="button" aria-label={open ? translate("folderTree.collapse", { name: row.name }) : translate("folderTree.expand", { name: row.name })} onClick={() => onToggle(row.path)} className="p-1 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
         <button type="button" onClick={() => onSelect(row.path)} onContextMenu={onContextMenu} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pr-2 text-left text-[12px]">
           <Folder className={cn("size-3.5 shrink-0 text-accent", row.status && "text-success")} aria-hidden />
           <span className="truncate">{row.name}</span>
-          {row.childrenChanged && <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-label="Changes inside" />}
+          {row.childrenChanged && <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-label={t("folderTree.changesInside")} />}
         </button>
       </div>
       {open && <Children {...props} path={row.path} depth={depth + 1} />}

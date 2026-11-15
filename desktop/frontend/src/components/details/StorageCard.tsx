@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/diff";
 import { errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { plural, translate , locale } from "@/i18n";
 
 export const SPARSE_HINT_BYTES = 20 * 1024 ** 3;
 
@@ -19,38 +21,39 @@ type StorageCardProps = {
 
 export function describeCleanUp(res: CleanUpResult): [string, "error" | "success" | undefined] {
   if (res.skipped) {
-    if (res.reason === "pending") return ["A merge or revert is in progress. Finish or abort it, then clean up.", "error"];
-    return ["Repository is busy, try again", "error"];
+    if (res.reason === "pending") return [translate("storageCard.aMergeOrRevertIs"), "error"];
+    return [translate("storageCard.repositoryIsBusyTryAgain"), "error"];
   }
-  if (res.bytes === 0) return ["Nothing to clean up", "success"];
-  return [`Freed ${formatBytes(res.bytes)} (${res.objects.toLocaleString()} object${res.objects === 1 ? "" : "s"})`, "success"];
+  if (res.bytes === 0) return [translate("storageCard.nothingToCleanUp"), "success"];
+  return [translate("storageCard.freed", { size: formatBytes(res.bytes), count: res.objects }), "success"];
 }
 
 export function StorageCard({ root, busy, notify, onEditSparse }: StorageCardProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const usage = useQuery({ queryKey: diskUsageKey(root), queryFn: () => desktop.diskUsage(root) });
   const clean = useMutation({
     mutationFn: () => desktop.cleanUp(root),
     onSuccess: (res) => notify(...describeCleanUp(res)),
-    onError: (err) => notify(`Clean up failed: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("storageCard.cleanUpFailed", { value: errorMessage(err) })),
     onSettled: () => void queryClient.invalidateQueries({ queryKey: diskUsageKey(root) }),
   });
 
-  if (usage.isError) return <p className="text-danger">Could not read the disk usage: {errorMessage(usage.error)}</p>;
-  if (!usage.data) return <p className="text-muted-foreground">Measuring disk usage…</p>;
+  if (usage.isError) return <p className="text-danger">{t("storageCard.readFailed", { error: errorMessage(usage.error) })}</p>;
+  if (!usage.data) return <p className="text-muted-foreground">{t("storageCard.measuringDiskUsage")}</p>;
   const u = usage.data;
   const large = u.sparse.length === 0 && u.workingBytes > SPARSE_HINT_BYTES;
   return (
     <div className="space-y-3">
-      <h2 className="font-medium">Storage</h2>
+      <h2 className="font-medium">{t("storageCard.storage")}</h2>
       <dl className="grid grid-cols-3 gap-3">
-        <Figure label="Project files" value={formatBytes(u.workingBytes)} hint={`${u.workingFiles.toLocaleString()} file${u.workingFiles === 1 ? "" : "s"}`} />
-        <Figure label="Local cache" value={formatBytes(u.cacheBytes)} />
-        <Figure label="Cached objects" value={u.cacheObjects.toLocaleString()} />
+        <Figure label={t("storageCard.projectFiles")} value={formatBytes(u.workingBytes)} hint={plural(u.workingFiles, "file")} />
+        <Figure label={t("storageCard.localCache")} value={formatBytes(u.cacheBytes)} />
+        <Figure label={t("storageCard.cachedObjects")} value={u.cacheObjects.toLocaleString(locale())} />
       </dl>
       {u.pins.length > 0 && (
         <div>
-          <p className="mb-1 text-muted-foreground">Kept in the cache for your locked files</p>
+          <p className="mb-1 text-muted-foreground">{t("storageCard.keptInTheCacheFor")}</p>
           <div className="flex flex-wrap gap-1">
             {u.pins.map((p) => (
               <Badge key={p}>{p}</Badge>
@@ -60,16 +63,16 @@ export function StorageCard({ root, busy, notify, onEditSparse }: StorageCardPro
       )}
       {large && (
         <p role="note" className="flex flex-wrap items-center gap-1 text-muted-foreground">
-          This full checkout is over {formatBytes(SPARSE_HINT_BYTES)}.
+          {t("storageCard.largeCheckout", { size: formatBytes(SPARSE_HINT_BYTES) })}
           <button type="button" className="inline-flex items-center gap-1 text-accent hover:underline disabled:opacity-50" onClick={onEditSparse} disabled={busy}>
             <FolderTree className="size-3.5" />
-            Check out only the folders you need
+            {t("storageCard.checkOutOnlyTheFolders")}
           </button>
         </p>
       )}
-      <Button size="sm" onClick={() => clean.mutate()} disabled={busy || clean.isPending} title="Remove cached content this clone no longer needs">
+      <Button size="sm" onClick={() => clean.mutate()} disabled={busy || clean.isPending} title={t("storageCard.removeCachedContentThisClone")}>
         <Eraser />
-        {clean.isPending ? "Cleaning up…" : "Clean up"}
+        {clean.isPending ? translate("storageCard.cleaningUp") : translate("storageCard.cleanUp")}
       </Button>
     </div>
   );

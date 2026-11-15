@@ -7,6 +7,8 @@ import { labels, useSimple } from "@/lib/mode";
 import { hasPushIssues, hasPushReport } from "@/hooks/usePushChecks";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
 import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
+import { Trans, useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 export type LockIssue = { message: string; action?: { label: string; onClick: () => void; busy?: boolean } };
 
@@ -27,6 +29,7 @@ type CommitBoxProps = {
 };
 
 export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSelectPath, op, busy, message, onMessage, onPush, onCancel, onGenerate, focus }: CommitBoxProps) {
+  const { t } = useTranslation();
   const draft = useDraft(message, (d) => onMessage(d.text));
   const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -56,8 +59,8 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
             submit();
           }
         }}
-        placeholder={`Describe your change (${shortcutHint("push")} to ${verb.toLowerCase()})`}
-        aria-label={`${verb} message`}
+        placeholder={translate("commitBox.describeYourChangeTo", { value: shortcutHint("push"), toLowerCase: verb.toLowerCase() })}
+        aria-label={translate("commitBox.message", { verb })}
         rows={3}
         disabled={!!op}
         className="no-drag w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
@@ -66,14 +69,14 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
         <div className="flex items-center gap-2 text-[11px]">
           <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => void draft.run(onGenerate)} disabled={draft.busy || busy || stagedCount === 0}>
             {draft.busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {draft.busy ? "Generating…" : "Generate"}
+            {draft.busy ? translate("commitBox.generating") : translate("commitBox.generate")}
           </Button>
-          {draft.model && !draft.busy && <span className="min-w-0 truncate text-muted-foreground">Drafted by {draft.model}; review it before pushing</span>}
+          {draft.model && !draft.busy && <span className="min-w-0 truncate text-muted-foreground">{t("commitBox.draftedBy", { model: draft.model })}</span>}
         </div>
       )}
       {!op && draft.error && (
         <p role="alert" className="text-[11px] text-danger">
-          Could not generate a message: {draft.error}
+          {t("commitBox.generateFailed", { error: draft.error })}
         </p>
       )}
       {op ? <Progress op={op} onCancel={onCancel} /> : null}
@@ -81,7 +84,7 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
       {!op && (
         <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason ?? lockIssue?.message}>
           <ArrowUpFromLine />
-          {anyway ? `${verb} anyway` : stagedCount > 0 ? `${verb} ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : verb}
+          {anyway ? translate("commitBox.anyway", { verb }) : stagedCount > 0 ? translate("commitBox.withCount", { verb, count: stagedCount }) : verb}
         </Button>
       )}
       {!op && blockedReason && <p className="text-[11px] text-muted-foreground">{blockedReason}</p>}
@@ -99,39 +102,40 @@ export function CommitBox({ stagedCount, blockedReason, lockIssue, checks, onSel
           )}
         </div>
       )}
-      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to {verb.toLowerCase()}.</p>}
+      {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">{t("commitBox.tickFiles", { verb: verb.toLowerCase() })}</p>}
     </div>
   );
 }
 
 function ChecksBlock({ checks, onSelect }: { checks: PushChecks; onSelect?: (paths: string[]) => void }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const Chevron = open ? ChevronDown : ChevronRight;
   const issues = checks.violations.length + checks.broken.length + checks.newlyUnused.length;
   const select = (...paths: string[]) => onSelect?.(paths.filter(Boolean));
   return (
-    <div className="rounded-md border border-warning/40 bg-warning/10 text-[11px]" role="region" aria-label="Checks">
+    <div className="rounded-md border border-warning/40 bg-warning/10 text-[11px]" role="region" aria-label={t("commitBox.checks")}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left">
         <AlertTriangle className="size-3 shrink-0 text-warning" />
-        <span className="flex-1 font-medium">{issues > 0 ? `Checks: ${issues} warning${issues === 1 ? "" : "s"}` : "Checks"}</span>
+        <span className="flex-1 font-medium">{issues > 0 ? translate("commitBox.checksWarnings", { count: issues }) : translate("commitBox.checks")}</span>
         <Chevron className="size-3 text-muted-foreground" />
       </button>
       {open && (
         <div className="max-h-48 space-y-2 overflow-y-auto px-2 pb-2">
           {checks.violations.length > 0 && (
-            <CheckGroup title="Over budget">
+            <CheckGroup title={t("commitBox.overBudget")}>
               {checks.violations.map((v) => (
                 <CheckRow key={`${v.path}:${v.limit}`} title={v.path} onClick={() => select(v.path)}>
                   <span className="block truncate font-mono">{v.path}</span>
                   <span className="block text-muted-foreground">
-                    <span className="font-medium text-warning">{v.limit}</span> (rule {v.rule}): {v.message}
+                    <Trans i18nKey="commitBox.ruleLimit" values={{ limit: v.limit, rule: v.rule, message: v.message }} components={[<span className="font-medium text-warning" />]} />
                   </span>
                 </CheckRow>
               ))}
             </CheckGroup>
           )}
           {checks.broken.length + checks.newlyUnused.length > 0 && (
-            <CheckGroup title="Broken references / No longer used">
+            <CheckGroup title={t("commitBox.brokenReferencesNoLonger")}>
               {checks.broken.map((b) => (
                 <CheckRow key={`${b.from}:${b.raw}`} title={b.from} onClick={() => select(b.from, b.target)}>
                   <span className="block truncate font-mono">{b.from}</span>
@@ -143,12 +147,12 @@ function ChecksBlock({ checks, onSelect }: { checks: PushChecks; onSelect?: (pat
               {checks.newlyUnused.map((p) => (
                 <CheckRow key={`unused:${p}`} title={p} onClick={() => select(p)}>
                   <span className="block truncate font-mono">{p}</span>
-                  <span className="block text-muted-foreground">No longer used by any scene or asset</span>
+                  <span className="block text-muted-foreground">{t("commitBox.noLongerUsedByAny")}</span>
                 </CheckRow>
               ))}
             </CheckGroup>
           )}
-          {checks.truncated && <p className="text-muted-foreground">Reference scan stopped after {checks.scanned} files; the list may be incomplete.</p>}
+          {checks.truncated && <p className="text-muted-foreground">{t("commitBox.scanStopped", { count: checks.scanned })}</p>}
           {checks.warnings.map((w) => (
             <p key={w} className="text-muted-foreground">
               {w}
@@ -180,14 +184,15 @@ function CheckRow({ title, onClick, children }: { title: string; onClick: () => 
 }
 
 export function Progress({ op, onCancel }: { op: OpState; onCancel: () => void }) {
+  const { t } = useTranslation();
   const { label, percent } = describeProgress(op);
   return (
     <div className="space-y-1.5" role="status" aria-live="polite">
       <div className="flex items-center gap-2 text-[11px]">
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={onCancel} disabled={op.cancelling} aria-label={`Cancel ${op.op}`}>
+        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={onCancel} disabled={op.cancelling} aria-label={translate("commitBox.cancel2", { op: op.op })}>
           <X />
-          Cancel
+          {t("commitBox.cancel")}
         </Button>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-muted">

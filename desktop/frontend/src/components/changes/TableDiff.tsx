@@ -11,6 +11,8 @@ import { ColumnResizer } from "@/components/ui/resize-handle";
 import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { changedColumns, columnChanges, filterRows, isChange, nextChange, visibleColumns } from "@/lib/table";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { plural, translate , locale } from "@/i18n";
 
 type Mode = "table" | "text";
 
@@ -21,6 +23,7 @@ export function TableDiff(props: TableDiffProps) {
 }
 
 function FileTableDiff({ root, diff, layout, comments }: TableDiffProps) {
+  const { t } = useTranslation();
   const hasText = (diff.hunks ?? []).length > 0;
   const [mode, setMode] = useState<Mode>(comments && hasText ? "text" : "table");
   const [sheet, setSheet] = useState("");
@@ -34,11 +37,11 @@ function FileTableDiff({ root, diff, layout, comments }: TableDiffProps) {
     placeholderData: (prev, prevQuery) => (base.every((v, i) => prevQuery?.queryKey[i] === v) ? keepPreviousData(prev) : undefined),
   });
   const switcher = hasText && (
-    <Group label="Table view">
-      <ToolButton active={mode === "table"} label="Table" onClick={() => setMode("table")}>
+    <Group label={t("tableDiff.tableView")}>
+      <ToolButton active={mode === "table"} label={t("tableDiff.table")} onClick={() => setMode("table")}>
         <Table2 className="size-3.5" />
       </ToolButton>
-      <ToolButton active={mode === "text"} label="Text" onClick={() => setMode("text")}>
+      <ToolButton active={mode === "text"} label={t("tableDiff.text")} onClick={() => setMode("text")}>
         <FileText className="size-3.5" />
       </ToolButton>
     </Group>
@@ -56,12 +59,12 @@ function FileTableDiff({ root, diff, layout, comments }: TableDiffProps) {
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Comparing table…
+        <Loader2 className="size-4 animate-spin" /> {t("tableDiff.comparingTable")}
       </div>
     );
   }
-  if (query.isError) return <MetaDiff diff={diff} detail={`The table could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
-  if (!query.data) return <MetaDiff diff={diff} detail="There is no table preview for this file." />;
+  if (query.isError) return <MetaDiff diff={diff} detail={translate("tableDiff.theTableCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
+  if (!query.data) return <MetaDiff diff={diff} detail={translate("tableDiff.thereIsNoTablePreview")} />;
   return <TableCompareView compare={query.data} toolbar={switcher || null} storageKey={`table:${diff.path}`} onSheet={setSheet} />;
 }
 
@@ -76,6 +79,7 @@ const hasChanges = (c: TableCompare) => c.rowsAdded + c.rowsRemoved + c.rowsChan
 type ViewProps = { compare: TableCompare; toolbar?: ReactNode; storageKey?: string; onSheet?: (name: string) => void };
 
 export function TableCompareView({ compare, toolbar = null, storageKey = "table", onSheet }: ViewProps) {
+  const { t } = useTranslation();
   const columns = compare.columns ?? [];
   const sizes = useColumnWidths(compare.sheet ? `${storageKey}#${compare.sheet}` : storageKey, NO_DEFAULTS, 48);
   const ids = useMemo(() => columnIds(columns), [columns]);
@@ -124,17 +128,17 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
         {toolbar}
         <Summary compare={compare} />
         {!compare.error && (
-          <span className="text-muted-foreground">{key ? `Rows matched by ${columnLabel(key, compare.keyColumn)}` : "Rows matched by content"}</span>
+          <span className="text-muted-foreground">{key ? translate("tableDiff.rowsMatchedBy", { value: columnLabel(key, compare.keyColumn) }) : translate("tableDiff.rowsMatchedByContent")}</span>
         )}
         <label className="ml-auto flex items-center gap-1.5">
           <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
-          Only changed rows
+          {t("tableDiff.onlyChangedRows")}
         </label>
       </div>
       {(compare.sheets ?? []).length > 0 && <SheetTabs compare={compare} onSheet={onSheet} />}
       {compare.error ? (
         <div className="p-4 text-[11px]">
-          <Notice>{`This file cannot be compared as a table: ${compare.error}.`}</Notice>
+          <Notice>{translate("tableDiff.thisFileCannotBeCompared", { error: compare.error })}</Notice>
         </div>
       ) : (
         <>
@@ -145,18 +149,18 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
                 type="search"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Filter rows"
-                aria-label="Filter rows"
+                placeholder={t("tableDiff.filterRows")}
+                aria-label={t("tableDiff.filterRows")}
                 className="h-6 w-40 bg-transparent outline-none placeholder:text-muted-foreground"
               />
             </div>
             <select
               value={filterColumn}
               onChange={(e) => setColumn(Number(e.target.value))}
-              aria-label="Filter column"
+              aria-label={t("tableDiff.filterColumn")}
               className="h-6 max-w-40 rounded-md border border-border bg-card px-1"
             >
-              <option value={-1}>All columns</option>
+              <option value={-1}>{t("tableDiff.allColumns")}</option>
               {columns.map((c, i) => (
                 <option key={i} value={i}>
                   {columnLabel(c, i)}
@@ -165,34 +169,34 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
             </select>
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={onlyChangedColumns} onChange={(e) => setOnlyChangedColumns(e.target.checked)} className="size-3.5 accent-[var(--accent)]" />
-              Changed columns only
+              {t("tableDiff.changedColumnsOnly")}
             </label>
-            {filtered && <span className="text-muted-foreground">{`${rows.length.toLocaleString()} of ${count(all.length, "row")}`}</span>}
+            {filtered && <span className="text-muted-foreground">{translate("tableDiff.of", { toLocaleString: rows.length.toLocaleString(locale()), value: count(all.length, "row") })}</span>}
             <div className="ml-auto flex items-center gap-1.5">
               <span className="text-muted-foreground" aria-live="polite">
-                {changeRows.length === 0 ? "No changes" : position > 0 ? `${position} of ${count(changeRows.length, "change")}` : count(changeRows.length, "change")}
+                {changeRows.length === 0 ? translate("tableDiff.noChanges") : position > 0 ? translate("tableDiff.of2", { position, value: count(changeRows.length, "change") }) : count(changeRows.length, "change")}
               </span>
-              <Group label="Changes">
-                <ToolButton label="Previous change" onClick={() => jump(-1)}>
+              <Group label={t("tableDiff.changes")}>
+                <ToolButton label={t("tableDiff.previousChange")} onClick={() => jump(-1)}>
                   <ChevronUp className="size-3.5" />
                 </ToolButton>
-                <ToolButton label="Next change" onClick={() => jump(1)}>
+                <ToolButton label={t("tableDiff.nextChange")} onClick={() => jump(1)}>
                   <ChevronDown className="size-3.5" />
                 </ToolButton>
               </Group>
             </div>
           </div>
-          <div ref={parent} className="min-h-0 flex-1 overflow-auto bg-card text-[12px]" role="table" aria-label="Table changes" aria-rowcount={rows.length + 1}>
+          <div ref={parent} className="min-h-0 flex-1 overflow-auto bg-card text-[12px]" role="table" aria-label={t("tableDiff.tableChanges")} aria-rowcount={rows.length + 1}>
             <div style={{ width }} className="sticky top-0 z-10 flex border-b border-border bg-sidebar font-medium" role="row">
               <div className="sticky left-0 z-[1] shrink-0 bg-sidebar px-2 py-1 text-[11px] text-muted-foreground" style={{ width: GUTTER }} role="columnheader">
-                Row
+                {t("tableDiff.row")}
               </div>
               {order.map((i) => (
                 <ColumnHeader key={i} column={columns[i]} index={i} id={ids[i]} width={widths[i]} sizes={sizes} changes={counts[i]} sticky={i === keyIndex} />
               ))}
             </div>
             {rows.length === 0 ? (
-              <p className="p-4 text-[11px] text-muted-foreground">{text.trim() ? "No rows match the filter." : onlyChanges ? "No rows changed." : "The table is empty."}</p>
+              <p className="p-4 text-[11px] text-muted-foreground">{text.trim() ? translate("tableDiff.noRowsMatchTheFilter") : onlyChanges ? translate("tableDiff.noRowsChanged") : translate("tableDiff.theTableIsEmpty")}</p>
             ) : (
               <div style={{ height: virtualizer.getTotalSize(), width, position: "relative" }}>
                 {virtualizer.getVirtualItems().map((item) => (
@@ -221,15 +225,16 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
 const sheetTone: Record<string, string> = { added: "bg-success", removed: "bg-danger", changed: "bg-warning" };
 
 function sheetTitle(s: TableSheet): string {
-  if (s.status === "added" || s.status === "removed") return `${s.name}: sheet ${s.status}`;
-  if (s.status === "same") return `${s.name}: no changes`;
-  const parts = [s.rowsAdded && `+${count(s.rowsAdded, "row")}`, s.rowsRemoved && `−${count(s.rowsRemoved, "row")}`, s.rowsChanged && `${count(s.rowsChanged, "row")} changed (${count(s.cellsChanged, "cell")})`];
-  return `${s.name}: ${parts.filter(Boolean).join(", ") || "columns changed"}`;
+  if (s.status === "added" || s.status === "removed") return translate("tableDiff.sheet", { name: s.name, status: s.status });
+  if (s.status === "same") return translate("tableDiff.noChanges2", { name: s.name });
+  const parts = [s.rowsAdded && translate("tableDiff.text2", { value: count(s.rowsAdded, "row") }), s.rowsRemoved && translate("tableDiff.text3", { value: count(s.rowsRemoved, "row") }), s.rowsChanged && translate("tableDiff.changed", { value: count(s.rowsChanged, "row"), value2: count(s.cellsChanged, "cell") })];
+  return translate("tableDiff.text4", { name: s.name, value: parts.filter(Boolean).join(", ") || translate("tableDiff.columnsChanged") });
 }
 
 function SheetTabs({ compare, onSheet }: { compare: TableCompare; onSheet?: (name: string) => void }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-border px-2 pt-1 text-[11px]" role="tablist" aria-label="Sheets">
+    <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-border px-2 pt-1 text-[11px]" role="tablist" aria-label={t("tableDiff.sheets")}>
       {(compare.sheets ?? []).map((s) => {
         const selected = s.name === compare.sheet;
         return (
@@ -246,8 +251,8 @@ function SheetTabs({ compare, onSheet }: { compare: TableCompare; onSheet?: (nam
               s.status === "removed" && "line-through",
             )}
           >
-            {s.name || "Sheet"}
-            {s.status !== "same" && <span className={cn("size-1.5 rounded-full", sheetTone[s.status])} aria-label={`Sheet ${s.status}`} />}
+            {s.name || translate("tableDiff.sheet3")}
+            {s.status !== "same" && <span className={cn("size-1.5 rounded-full", sheetTone[s.status])} aria-label={translate("tableDiff.sheet2", { status: s.status })} />}
           </button>
         );
       })}
@@ -256,7 +261,7 @@ function SheetTabs({ compare, onSheet }: { compare: TableCompare; onSheet?: (nam
 }
 
 const letters = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : letters(Math.floor(i / 26) - 1) + letters(i % 26));
-const columnLabel = (c: TableColumn, i: number) => c.name || `column ${letters(i)}`;
+const columnLabel = (c: TableColumn, i: number) => c.name || translate("tableDiff.column", { value: letters(i) });
 
 export function columnIds(columns: TableColumn[]): string[] {
   const seen = new Map<string, number>();
@@ -264,13 +269,14 @@ export function columnIds(columns: TableColumn[]): string[] {
     const base = c.name || letters(i);
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
-    return n === 1 ? base : `${base} #${n}`;
+    return n === 1 ? base : translate("tableDiff.text5", { base, n });
   });
 }
 
 type HeaderProps = { column: TableColumn; index: number; id: string; width: number; sizes: ReturnType<typeof useColumnWidths>; changes: number; sticky: boolean };
 
 function ColumnHeader({ column, index, id, width, sizes, changes, sticky }: HeaderProps) {
+  const { t } = useTranslation();
   const added = column.old < 0;
   const removed = column.new < 0;
   const renamed = !added && !removed && column.oldName !== column.name && column.oldName !== "";
@@ -278,16 +284,16 @@ function ColumnHeader({ column, index, id, width, sizes, changes, sticky }: Head
     <div className={cn("relative shrink-0", sticky && "sticky z-[1] bg-sidebar")} style={{ width, left: sticky ? GUTTER : undefined }}>
       <div
         role="columnheader"
-        title={renamed ? `${column.oldName} → ${column.name}` : column.name}
+        title={renamed ? translate("tableDiff.text6", { oldName: column.oldName, name: column.name }) : column.name}
         className={cn("flex items-center gap-1 border-l border-border px-2 py-1", added && "bg-success/15 text-success", removed && "bg-danger/15 text-danger line-through")}
       >
         <span className="truncate">
           {column.name || <span className="text-muted-foreground">{letters(index)}</span>}
-          {renamed && <span className="ml-1 font-normal text-warning">(was {column.oldName})</span>}
+          {renamed && <span className="ml-1 font-normal text-warning">{t("tableDiff.was", { name: column.oldName })}</span>}
         </span>
         {changes > 0 && (
-          <span className="ml-auto shrink-0 rounded bg-warning/15 px-1 text-[10px] font-normal text-warning" title={`${count(changes, "changed cell")} in this column`}>
-            {changes.toLocaleString()}
+          <span className="ml-auto shrink-0 rounded bg-warning/15 px-1 text-[10px] font-normal text-warning" title={translate("tableDiff.inThisColumn", { value: count(changes, "changedCell") })}>
+            {changes.toLocaleString(locale())}
           </span>
         )}
       </div>
@@ -318,6 +324,7 @@ type RowProps = {
 };
 
 function Row({ row, columns, order, widths, total, top, height, stickyColumn, current }: RowProps) {
+  const { t } = useTranslation();
   const changed = new Set(row.changed ?? []);
   const overlay = <span className={cn("pointer-events-none absolute inset-0", stickyTone[row.status])} />;
   return (
@@ -333,7 +340,7 @@ function Row({ row, columns, order, widths, total, top, height, stickyColumn, cu
         <span>{row.oldLine || "·"}</span>
         <span>→</span>
         <span>{row.newLine || "·"}</span>
-        {row.moved && <ArrowDownUp className="size-3 text-accent" aria-label="Moved" />}
+        {row.moved && <ArrowDownUp className="size-3 text-accent" aria-label={t("tableDiff.moved")} />}
       </div>
       {order.map((i) => {
         const c = columns[i];
@@ -344,7 +351,7 @@ function Row({ row, columns, order, widths, total, top, height, stickyColumn, cu
           <div
             key={i}
             role="cell"
-            title={isChanged ? `${row.old?.[i] ?? ""} → ${value}` : value}
+            title={isChanged ? translate("tableDiff.text7", { value: row.old?.[i] ?? "", value2: value }) : value}
             className={cn(
               "flex shrink-0 flex-col justify-center overflow-hidden border-l border-border/60 px-2",
               sticky && "sticky z-[1] bg-card",
@@ -364,19 +371,20 @@ function Row({ row, columns, order, widths, total, top, height, stickyColumn, cu
   );
 }
 
-const count = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const count = plural;
 
 function Summary({ compare: c }: { compare: TableCompare }) {
+  const { t } = useTranslation();
   const parts: { text: string; tone: string }[] = [];
-  if (c.rowsAdded) parts.push({ text: `+${count(c.rowsAdded, "row")}`, tone: "text-success" });
-  if (c.rowsRemoved) parts.push({ text: `−${count(c.rowsRemoved, "row")}`, tone: "text-danger" });
-  if (c.rowsChanged) parts.push({ text: `${c.rowsChanged.toLocaleString()} changed (${count(c.cellsChanged, "cell")})`, tone: "text-warning" });
-  if (c.rowsMoved) parts.push({ text: `${c.rowsMoved.toLocaleString()} moved`, tone: "text-accent" });
-  if (c.columnsAdded) parts.push({ text: `+${count(c.columnsAdded, "column")}`, tone: "text-success" });
-  if (c.columnsRemoved) parts.push({ text: `−${count(c.columnsRemoved, "column")}`, tone: "text-danger" });
-  if (parts.length === 0 && !c.error) parts.push({ text: "No cell changes", tone: "text-muted-foreground" });
+  if (c.rowsAdded) parts.push({ text: translate("tableDiff.text2", { value: count(c.rowsAdded, "row") }), tone: "text-success" });
+  if (c.rowsRemoved) parts.push({ text: translate("tableDiff.text3", { value: count(c.rowsRemoved, "row") }), tone: "text-danger" });
+  if (c.rowsChanged) parts.push({ text: translate("tableDiff.changed2", { toLocaleString: c.rowsChanged.toLocaleString(locale()), value: count(c.cellsChanged, "cell") }), tone: "text-warning" });
+  if (c.rowsMoved) parts.push({ text: translate("tableDiff.moved2", { toLocaleString: c.rowsMoved.toLocaleString(locale()) }), tone: "text-accent" });
+  if (c.columnsAdded) parts.push({ text: translate("tableDiff.text2", { value: count(c.columnsAdded, "column") }), tone: "text-success" });
+  if (c.columnsRemoved) parts.push({ text: translate("tableDiff.text3", { value: count(c.columnsRemoved, "column") }), tone: "text-danger" });
+  if (parts.length === 0 && !c.error) parts.push({ text: translate("tableDiff.noCellChanges"), tone: "text-muted-foreground" });
   return (
-    <span className="flex gap-3 font-medium" aria-label="Table summary">
+    <span className="flex gap-3 font-medium" aria-label={t("tableDiff.tableSummary")}>
       {parts.map((p) => (
         <span key={p.text} className={p.tone}>
           {p.text}

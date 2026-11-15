@@ -9,13 +9,15 @@ import { AISection, aiFormValid, type AIForm } from "@/components/settings/AISec
 import { llmSettingsKey, useLLMSettings } from "@/hooks/useGenerate";
 import { setMode, startTour, useMode } from "@/lib/mode";
 import { errorMessage } from "@/lib/utils";
+import { Trans, useTranslation } from "react-i18next";
+import { changeLanguage, LANGUAGE_NAMES, LANGUAGES, storedLanguage, translate, type LanguageSetting } from "@/i18n";
 
 export const pollOptions: { seconds: number; label: string }[] = [
-  { seconds: 30, label: "30 seconds" },
-  { seconds: 60, label: "1 minute" },
-  { seconds: 300, label: "5 minutes" },
-  { seconds: 900, label: "15 minutes" },
-  { seconds: 3600, label: "1 hour" },
+  { seconds: 30, label: translate("settingsDialog.30Seconds") },
+  { seconds: 60, label: translate("settingsDialog.1Minute") },
+  { seconds: 300, label: translate("settingsDialog.5Minutes") },
+  { seconds: 900, label: translate("settingsDialog.15Minutes") },
+  { seconds: 3600, label: translate("settingsDialog.1Hour") },
 ];
 
 type SettingsDialogProps = {
@@ -25,6 +27,7 @@ type SettingsDialogProps = {
 };
 
 export function SettingsDialog({ onClose, notify, canReplayTour = true }: SettingsDialogProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -44,21 +47,21 @@ export function SettingsDialog({ onClose, notify, canReplayTour = true }: Settin
       <div role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-full w-full max-w-lg flex-col rounded-lg border border-border bg-card shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 id="settings-title" className="text-sm font-semibold">
-            Settings
+            {t("settingsDialog.settings")}
           </h2>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close settings">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("settingsDialog.closeSettings")}>
             <X />
           </Button>
         </div>
         {settings.isError || workers.isError || llm.isError ? (
           <p role="alert" className="p-5 text-xs text-danger">
-            Could not load settings: {errorMessage(settings.error ?? workers.error ?? llm.error)}
+            {t("settingsDialog.loadFailed", { error: errorMessage(settings.error ?? workers.error ?? llm.error) })}
           </p>
         ) : settings.data && workers.data !== undefined && llm.data ? (
           <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} canReplayTour={canReplayTour} />
         ) : (
           <p role="status" className="p-5 text-xs text-muted-foreground">
-            Loading settings…
+            {t("settingsDialog.loadingSettings")}
           </p>
         )}
       </div>
@@ -76,6 +79,7 @@ type FormProps = {
 };
 
 function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, canReplayTour }: FormProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Settings>(initial);
   const [workers, setWorkers] = useState(initialWorkers > 0 ? String(initialWorkers) : "");
@@ -108,7 +112,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
         setDraft(saved);
         return;
       }
-      notify("Settings saved", "success");
+      notify(translate("settingsDialog.settingsSaved"), "success");
       onClose();
     },
   });
@@ -118,10 +122,10 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["daemon"] });
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
-      notify("Background service restarted", "success");
+      notify(translate("settingsDialog.backgroundServiceRestarted"), "success");
       onClose();
     },
-    onError: (err) => notify(`Could not restart the background service: ${errorMessage(err)}`),
+    onError: (err) => notify(translate("settingsDialog.couldNotRestartTheBackground", { value: errorMessage(err) })),
   });
 
   const browse = async (i: number) => {
@@ -141,25 +145,25 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 text-[12px]">
-        <Section title="Appearance">
+        <Section title={t("settingsDialog.appearance")}>
           <div className="flex items-center justify-between">
-            <span>Theme</span>
+            <span>{t("settingsDialog.theme")}</span>
             <ThemeToggle />
           </div>
         </Section>
 
-        <Section title="Background">
-          <Check label="Keep Nipa running in the tray when the window is closed" checked={draft.keepInTray} onChange={(v) => set({ keepInTray: v })} />
-          <Check label="Start Nipa when I log in" checked={draft.startAtLogin} onChange={(v) => set({ startAtLogin: v })} />
+        <Section title={t("settingsDialog.background")}>
+          <Check label={t("settingsDialog.keepNipaRunningInThe")} checked={draft.keepInTray} onChange={(v) => set({ keepInTray: v })} />
+          <Check label={t("settingsDialog.startNipaWhenILog")} checked={draft.startAtLogin} onChange={(v) => set({ startAtLogin: v })} />
         </Section>
 
-        <Section title="Notifications">
-          <Check label="Teammates push to my branch" checked={draft.notify.pushes} onChange={(v) => set({ notify: { ...draft.notify, pushes: v } })} />
-          <Check label="A lock is released" checked={draft.notify.locks} onChange={(v) => set({ notify: { ...draft.notify, locks: v } })} />
-          <Check label="Someone asks me to release a lock" checked={draft.notify.lockRequests} onChange={(v) => set({ notify: { ...draft.notify, lockRequests: v } })} />
-          <Check label="Someone asks for my review" checked={draft.notify.reviews} onChange={(v) => set({ notify: { ...draft.notify, reviews: v } })} />
+        <Section title={t("settingsDialog.notifications")}>
+          <Check label={t("settingsDialog.teammatesPushToMyBranch")} checked={draft.notify.pushes} onChange={(v) => set({ notify: { ...draft.notify, pushes: v } })} />
+          <Check label={t("settingsDialog.aLockIsReleased")} checked={draft.notify.locks} onChange={(v) => set({ notify: { ...draft.notify, locks: v } })} />
+          <Check label={t("settingsDialog.someoneAsksMeToRelease")} checked={draft.notify.lockRequests} onChange={(v) => set({ notify: { ...draft.notify, lockRequests: v } })} />
+          <Check label={t("settingsDialog.someoneAsksForMyReview")} checked={draft.notify.reviews} onChange={(v) => set({ notify: { ...draft.notify, reviews: v } })} />
           <div className="flex items-center justify-between gap-3 pt-1">
-            <label htmlFor={ids.poll}>Check the server every</label>
+            <label htmlFor={ids.poll}>{t("settingsDialog.checkTheServerEvery")}</label>
             <select
               id={ids.poll}
               value={draft.pollSeconds}
@@ -175,67 +179,66 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
           </div>
         </Section>
 
-        <Section title="Transfers">
+        <Section title={t("settingsDialog.transfers")}>
           <div className="flex items-center justify-between gap-3">
-            <label htmlFor={ids.workers}>Uploads at once</label>
+            <label htmlFor={ids.workers}>{t("settingsDialog.uploadsAtOnce")}</label>
             <input
               id={ids.workers}
               inputMode="numeric"
               value={workers}
               onChange={(e) => setWorkers(e.target.value)}
-              placeholder="Automatic"
+              placeholder={t("settingsDialog.automatic")}
               aria-invalid={!workersValid}
               className="w-28 rounded-md border border-border bg-background px-2 py-1 text-right outline-none focus:border-accent aria-[invalid=true]:border-danger"
             />
           </div>
-          <p className="text-muted-foreground">Leave empty to tune it automatically. Shared with the nipa command line.</p>
-          {!workersValid && <p className="text-danger">Enter a number from 1 to 64, or leave it empty.</p>}
+          <p className="text-muted-foreground">{t("settingsDialog.leaveEmptyToTuneIt")}</p>
+          {!workersValid && <p className="text-danger">{t("settingsDialog.enterANumberFrom1")}</p>}
           {restartHint && (
             <div role="status" className="flex items-center justify-between gap-3 rounded-md bg-accent-soft px-3 py-2">
-              <span>Restart the background service to use the new upload setting.</span>
+              <span>{t("settingsDialog.restartTheBackgroundServiceTo")}</span>
               <Button type="button" size="sm" onClick={() => restart.mutate()} disabled={restart.isPending}>
                 <RotateCw />
-                Restart
+                {t("settingsDialog.restart")}
               </Button>
             </div>
           )}
         </Section>
 
-        <Section title="Interface">
+        <Section title={t("settingsDialog.interface")}>
           <InterfaceSection onTour={onClose} canReplay={canReplayTour} />
         </Section>
 
-        <Section title="AI assistance">
+        <Section title={t("settingsDialog.aIAssistance")}>
           <AISection value={ai} onChange={(patch) => setAI((f) => ({ ...f, ...patch }))} keySaved={initialLLM.keySaved} configured={initialLLM.configured} notify={notify} />
         </Section>
 
-        <Section title="Updates">
+        <Section title={t("settingsDialog.updates")}>
           <UpdatesSection auto={!draft.manualUpdates} onAuto={(v) => set({ manualUpdates: !v })} notify={notify} />
         </Section>
 
-        <Section title="External tools">
-          <p className="text-muted-foreground">Open files with these programs instead of the system default, for example .blend with Blender.</p>
+        <Section title={t("settingsDialog.externalTools")}>
+          <p className="text-muted-foreground">{t("settingsDialog.openFilesWithThesePrograms")}</p>
           <p className="text-muted-foreground">
-            To open text files at a line, write a command with <code className="font-mono">{"{file}"}</code> and <code className="font-mono">{"{line}"}</code>, for example{" "}
-            <code className="font-mono">{"code --goto {file}:{line}"}</code>. Quote program paths that contain spaces.
+            <Trans i18nKey="settingsDialog.toolTemplateHelp" components={[<code key="a" className="font-mono">{null}</code>, <code key="b" className="font-mono">{null}</code>, <code key="c" className="font-mono">{null}</code>]} />
           </p>
           {draft.tools.map((tool, i) => (
             <div key={i} className="flex items-center gap-2">
               <input
-                aria-label={`Extension ${i + 1}`}
+                aria-label={translate("settingsDialog.extension", { value: i + 1 })}
                 value={tool.extension}
                 onChange={(e) => setTool(i, { extension: e.target.value })}
-                placeholder=".blend"
+                placeholder={t("settingsDialog.blend")}
                 className="w-20 rounded-md border border-border bg-background px-2 py-1 font-mono outline-none focus:border-accent"
               />
               <input
-                aria-label={`Program ${i + 1}`}
+                aria-label={translate("settingsDialog.program", { value: i + 1 })}
                 value={tool.command}
                 onChange={(e) => setTool(i, { command: e.target.value })}
-                placeholder="/usr/bin/blender"
+                placeholder={t("settingsDialog.usrBinBlender")}
                 className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono outline-none focus:border-accent"
               />
-              <Button type="button" variant="ghost" size="icon" onClick={() => browse(i)} aria-label={`Choose program ${i + 1}`} title="Choose a program">
+              <Button type="button" variant="ghost" size="icon" onClick={() => browse(i)} aria-label={translate("settingsDialog.chooseProgram", { value: i + 1 })} title={t("settingsDialog.chooseAProgram")}>
                 <FolderOpen />
               </Button>
               <Button
@@ -243,8 +246,8 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
                 variant="ghost"
                 size="icon"
                 onClick={() => set({ tools: draft.tools.filter((_, j) => j !== i) })}
-                aria-label={`Remove tool ${i + 1}`}
-                title="Remove"
+                aria-label={translate("settingsDialog.removeTool", { value: i + 1 })}
+                title={t("settingsDialog.remove")}
               >
                 <X />
               </Button>
@@ -252,7 +255,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
           ))}
           <Button type="button" size="sm" onClick={() => set({ tools: [...draft.tools, { extension: "", command: "" }] })}>
             <Plus />
-            Add a program
+            {t("settingsDialog.addAProgram")}
           </Button>
         </Section>
 
@@ -264,10 +267,10 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
       </div>
       <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
         <Button type="button" size="sm" onClick={onClose}>
-          {restartHint ? "Close" : "Cancel"}
+          {restartHint ? translate("settingsDialog.close") : translate("settingsDialog.cancel")}
         </Button>
         <Button type="submit" size="sm" variant="primary" disabled={!valid || save.isPending}>
-          Save
+          {t("settingsDialog.save")}
         </Button>
       </div>
     </form>
@@ -276,7 +279,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
 
 export function pollChoices(current: number): { seconds: number; label: string }[] {
   if (pollOptions.some((o) => o.seconds === current)) return pollOptions;
-  return [...pollOptions, { seconds: current, label: `${current} seconds` }].sort((a, b) => a.seconds - b.seconds);
+  return [...pollOptions, { seconds: current, label: translate("settingsDialog.seconds", { current }) }].sort((a, b) => a.seconds - b.seconds);
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -298,28 +301,49 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 }
 
 function InterfaceSection({ onTour, canReplay }: { onTour: () => void; canReplay: boolean }) {
+  const { t } = useTranslation();
   const mode = useMode();
   const simple = mode === "simple";
+  const [language, setLanguage] = useState<LanguageSetting>(storedLanguage);
   return (
     <>
+      <label className="flex items-center gap-2">
+        <span className="font-medium">{t("settingsDialog.language")}</span>
+        <select
+          value={language}
+          onChange={(e) => {
+            const next = e.target.value as LanguageSetting;
+            setLanguage(next);
+            void changeLanguage(next);
+          }}
+          className="h-7 rounded-md border border-border bg-background px-2 text-xs"
+        >
+          <option value="system">{t("settingsDialog.languageSystem")}</option>
+          {LANGUAGES.map((code) => (
+            <option key={code} value={code}>
+              {LANGUAGE_NAMES[code]}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="flex items-start gap-2">
         <input type="checkbox" className="mt-0.5" checked={simple} onChange={(e) => setMode(e.target.checked ? "simple" : "full")} />
         <span>
-          Simple mode
-          <span className="block text-muted-foreground">Fewer tabs and plain words, for art, audio and design work. Branches, tags, merge requests and revert are hidden.</span>
+          {t("settingsDialog.simpleMode")}
+          <span className="block text-muted-foreground">{t("settingsDialog.fewerTabsAndPlainWords")}</span>
         </span>
       </label>
       <Button
         type="button"
         size="sm"
         disabled={!canReplay}
-        title={canReplay ? undefined : "Open or clone a project first"}
+        title={canReplay ? undefined : translate("settingsDialog.openOrCloneAProject")}
         onClick={() => {
           startTour();
           onTour();
         }}
       >
-        Replay the quick tour
+        {t("settingsDialog.replayTheQuickTour")}
       </Button>
     </>
   );

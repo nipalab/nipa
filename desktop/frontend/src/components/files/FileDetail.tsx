@@ -16,6 +16,8 @@ import { timeAgo } from "@/lib/time";
 import { errorMessage } from "@/lib/utils";
 import { AssetInsight } from "./AssetInsight";
 import { ActionBar, type FileAction } from "./FileMenu";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 const VERSIONS = 20;
 
@@ -33,6 +35,7 @@ type DetailProps = {
 };
 
 export function FileDetail({ root, branch, row, locks, actions, busy, onRestore, onShowCommit, onOpenFile, onClose }: DetailProps) {
+  const { t } = useTranslation();
   const info = useQuery({ queryKey: ["file", root, row.path, "info", branch], queryFn: () => desktop.fileInfo(root, branch, row.path), retry: false });
   const onDisk = row.status !== "missing" && row.status !== "deleted";
   const view = useQuery({ queryKey: ["file", root, row.path, "view"], queryFn: () => desktop.fileView(root, row.path), enabled: onDisk, retry: false });
@@ -55,7 +58,7 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
           </h2>
           {row.status && <StatusLetter status={row.status} />}
           {onClose && (
-            <button type="button" onClick={onClose} title="Close" aria-label="Close file details" className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
+            <button type="button" onClick={onClose} title={t("fileDetail.close")} aria-label={t("fileDetail.closeFileDetails")} className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
               <X className="size-3.5" />
             </button>
           )}
@@ -64,10 +67,10 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
       </header>
       <div className="h-[45%] min-h-48 shrink-0 border-b border-border">
         {!onDisk ? (
-          <Centered>{row.status === "missing" ? "The file is missing from disk. Get a version below or discard the change." : "The file is deleted in this clone."}</Centered>
+          <Centered>{row.status === "missing" ? translate("fileDetail.theFileIsMissingFrom") : translate("fileDetail.theFileIsDeletedIn")}</Centered>
         ) : view.isPending ? (
           <Centered>
-            <Loader2 className="size-4 animate-spin" /> Loading…
+            <Loader2 className="size-4 animate-spin" /> {t("fileDetail.loading")}
           </Centered>
         ) : view.isError ? (
           <Centered>
@@ -76,34 +79,34 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
         ) : view.data ? (
           <Viewer root={root} view={view.data} />
         ) : (
-          <Centered>The file is not on disk.</Centered>
+          <Centered>{t("fileDetail.theFileIsNotOn")}</Centered>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-4 py-3 text-[12px]">
-          <Term label="Path">
+          <Term label={t("fileDetail.path")}>
             <span className="select-text break-all font-mono text-[11px]">{row.path}</span>
           </Term>
-          <Term label="Kind">{kindName(row)}</Term>
-          <Term label="Size">{formatBytes(row.size)}</Term>
-          <Term label="Status">{statusName(row.status)}</Term>
-          <Term label="Lock">
+          <Term label={t("fileDetail.kind")}>{kindName(row)}</Term>
+          <Term label={t("fileDetail.size")}>{formatBytes(row.size)}</Term>
+          <Term label={t("fileDetail.status")}>{statusName(row.status)}</Term>
+          <Term label={t("fileDetail.lock")}>
             {lock ? (
               <span className="flex items-center gap-1">
                 <Lock className="size-3" />
-                {lock.mine ? "Locked by you" : `Locked by ${lock.heldByName || lock.heldBy}`}
-                {lock.path !== row.path && <span className="text-muted-foreground">(folder {lock.path})</span>}
+                {lock.mine ? t("fileDetail.lockedByYou") : t("fileDetail.lockedBy", { name: lock.heldByName || lock.heldBy })}
+                {lock.path !== row.path && <span className="text-muted-foreground">{t("fileDetail.lockFolder", { path: lock.path })}</span>}
               </span>
             ) : (
-              <span className="text-muted-foreground">Not locked</span>
+              <span className="text-muted-foreground">{t("fileDetail.notLocked")}</span>
             )}
           </Term>
-          <Term label="Last change">
+          <Term label={t("fileDetail.lastChange")}>
             {info.isPending ? (
-              <span className="text-muted-foreground">Loading…</span>
+              <span className="text-muted-foreground">{t("fileDetail.loading")}</span>
             ) : last ? (
               <span className="min-w-0">
-                <button type="button" className="text-left hover:underline" onClick={() => onShowCommit(last.id)} title="Show this commit in History">
+                <button type="button" className="text-left hover:underline" onClick={() => onShowCommit(last.id)} title={t("fileDetail.showThisCommitInHistory")}>
                   {commitTitle(last.message)}
                 </button>
                 <span className="block text-[11px] text-muted-foreground">
@@ -111,7 +114,7 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
                 </span>
               </span>
             ) : (
-              <span className="text-muted-foreground">{info.data?.lastCommitError ? "Not available offline" : row.tracked ? "Unknown" : "Not pushed yet"}</span>
+              <span className="text-muted-foreground">{info.data?.lastCommitError ? translate("fileDetail.notAvailableOffline") : row.tracked ? translate("fileDetail.unknown") : translate("fileDetail.notPushedYet")}</span>
             )}
           </Term>
         </dl>
@@ -120,9 +123,9 @@ export function FileDetail({ root, branch, row, locks, actions, busy, onRestore,
       </div>
       {confirm && (
         <ConfirmDialog
-          title="Replace your changes?"
-          message={`${row.name} has changes that are not pushed. Getting the version from ${shortId(confirm.id)} "${commitTitle(confirm.message)}" overwrites them.`}
-          confirmLabel="Get this version"
+          title={t("fileDetail.replaceYourChanges")}
+          message={translate("fileDetail.hasChangesThatAre", { name: row.name, value: shortId(confirm.id), value2: commitTitle(confirm.message) })}
+          confirmLabel={translate("fileDetail.getThisVersion")}
           onCancel={() => setConfirm(null)}
           onConfirm={() => {
             const commit = confirm;
@@ -155,35 +158,36 @@ function Viewer({ root, view }: { root: string; view: NonNullable<Awaited<Return
 }
 
 function Versions({ root, branch, path, busy, onRestore, onShowCommit }: { root: string; branch: string; path: string; busy: boolean; onRestore: (c: Commit) => void; onShowCommit: (id: string) => void }) {
+  const { t } = useTranslation();
   const versions = useQuery({ queryKey: ["file", root, path, "versions", branch], queryFn: () => desktop.history(root, { branch, path, limit: VERSIONS }), retry: false });
   const image = isImagePath(path);
   return (
-    <section aria-label="Versions" className="border-t border-border px-4 py-3">
+    <section aria-label={t("fileDetail.versions")} className="border-t border-border px-4 py-3">
       <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold">
         <HistoryIcon className="size-3.5" />
-        Versions
+        {t("fileDetail.versions")}
       </h3>
       {versions.isPending ? (
-        <p className="text-[11px] text-muted-foreground">Loading versions…</p>
+        <p className="text-[11px] text-muted-foreground">{t("fileDetail.loadingVersions")}</p>
       ) : versions.isError ? (
-        <p className="text-[11px] text-muted-foreground">Versions are not available: {errorMessage(versions.error)}</p>
+        <p className="text-[11px] text-muted-foreground">{t("fileDetail.versionsUnavailable", { error: errorMessage(versions.error) })}</p>
       ) : versions.data.commits.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No pushed versions yet.</p>
+        <p className="text-[11px] text-muted-foreground">{t("fileDetail.noPushedVersionsYet")}</p>
       ) : (
         <ol className="space-y-1">
           {versions.data.commits.map((c, i) => (
             <li key={c.id} className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted">
               {image && <VersionThumb root={root} path={path} commit={c.id} />}
-              <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onShowCommit(c.id)} title="Show this commit in History">
+              <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onShowCommit(c.id)} title={t("fileDetail.showThisCommitInHistory")}>
                 <span className="block truncate text-[12px]">{commitTitle(c.message)}</span>
                 <span className="block truncate text-[11px] text-muted-foreground">
                   {c.author || c.email} · {timeAgo(c.date)} · <span className="font-mono">{shortId(c.id)}</span>
-                  {i === 0 && " · latest"}
+                  {i === 0 && translate("fileDetail.latest")}
                 </span>
               </button>
-              <Button size="sm" disabled={busy} onClick={() => onRestore(c)} title="Write this version over the file in your clone">
+              <Button size="sm" disabled={busy} onClick={() => onRestore(c)} title={t("fileDetail.writeThisVersionOverThe")}>
                 <RotateCcw />
-                Get this version
+                {t("fileDetail.getThisVersion")}
               </Button>
             </li>
           ))}
@@ -203,7 +207,7 @@ function VersionThumb({ root, path, commit }: { root: string; path: string; comm
   const info = thumb.data?.new;
   return (
     <span className="checkerboard flex size-9 shrink-0 items-center justify-center overflow-hidden rounded">
-      {info && !info.hdr && info.src ? <img src={info.src} alt={`Version ${shortId(commit)}`} className="max-h-full max-w-full object-contain" /> : <ImageIcon className="size-3.5 text-muted-foreground" />}
+      {info && !info.hdr && info.src ? <img src={info.src} alt={translate("fileDetail.version", { value: shortId(commit) })} className="max-h-full max-w-full object-contain" /> : <ImageIcon className="size-3.5 text-muted-foreground" />}
     </span>
   );
 }

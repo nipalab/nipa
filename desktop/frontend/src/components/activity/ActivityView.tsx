@@ -10,6 +10,8 @@ import { feedGroups, feedPeople, feedRanges, feedSince, feedText, filterFeed, gr
 import { repoSetting } from "@/lib/settings";
 import { shortId } from "@/lib/history";
 import { cn, errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate , locale } from "@/i18n";
 
 export const activityKey = (root: string, range: FeedRange) => ["activity", root, range] as const;
 
@@ -25,6 +27,7 @@ const ACTIVITY_POLL_MS = 60_000;
 // ActivityView is the project timeline: pushes of recently updated branches,
 // merge requests opened or merged, and locks taken, grouped by day.
 export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLocks }: Props) {
+  const { t } = useTranslation();
   const [range, setRange] = usePersistedState<FeedRange>(repoSetting(root, "activity.range"), "week", { valid: isFeedRange });
   const [person, setPerson] = useState("");
   const [groups, setGroups] = useState<ReadonlySet<FeedGroup>>(() => new Set(feedGroups.map((g) => g.id)));
@@ -46,7 +49,7 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
     return (
       <Centered>
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <p className="text-sm font-medium">Loading activity…</p>
+        <p className="text-sm font-medium">{t("activityView.loadingActivity")}</p>
       </Centered>
     );
   }
@@ -54,11 +57,11 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
     return (
       <Centered>
         <AlertTriangle className="size-5 text-danger" />
-        <p className="text-sm font-medium">Could not load activity</p>
+        <p className="text-sm font-medium">{t("activityView.couldNotLoadActivity")}</p>
         <p className="max-w-sm text-xs text-muted-foreground">{errorMessage(feed.error)}</p>
         <Button size="sm" onClick={() => void feed.refetch()}>
           <RefreshCw />
-          Try again
+          {t("activityView.tryAgain")}
         </Button>
       </Centered>
     );
@@ -67,22 +70,22 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-[12px]">
-        <select value={range} onChange={(e) => setRange(e.target.value as FeedRange)} aria-label="Time range" className="rounded-md border border-border bg-background px-2 py-1">
+        <select value={range} onChange={(e) => setRange(e.target.value as FeedRange)} aria-label={t("activityView.timeRange")} className="rounded-md border border-border bg-background px-2 py-1">
           {feedRanges.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
             </option>
           ))}
         </select>
-        <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person" className="rounded-md border border-border bg-background px-2 py-1">
-          <option value="">Everyone</option>
+        <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label={t("activityView.person")} className="rounded-md border border-border bg-background px-2 py-1">
+          <option value="">{t("activityView.everyone")}</option>
           {people.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
         </select>
-        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Show">
+        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label={t("activityView.show")}>
           {feedGroups.map((g) => (
             <button
               key={g.id}
@@ -95,20 +98,20 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
             </button>
           ))}
         </div>
-        <Button size="sm" className="ml-auto" onClick={() => void feed.refetch()} title="Refresh activity" aria-label="Refresh activity" disabled={feed.isFetching}>
+        <Button size="sm" className="ml-auto" onClick={() => void feed.refetch()} title={t("activityView.refreshActivity")} aria-label={t("activityView.refreshActivity")} disabled={feed.isFetching}>
           <RefreshCw className={cn(feed.isFetching && "animate-spin")} />
         </Button>
       </div>
       {(feed.data.truncated || feed.data.partial) && (
         <p role="status" className="shrink-0 border-b border-border bg-muted px-4 py-1.5 text-[11px] text-muted-foreground">
-          {feed.data.partial ? "Some activity could not be loaded. " : ""}
-          {feed.data.truncated ? "This is the most recent part of a busy period; choose a shorter range to see all of it." : ""}
+          {feed.data.partial ? translate("activityView.someActivityCouldNotBe") : ""}
+          {feed.data.truncated ? translate("activityView.thisIsTheMostRecent") : ""}
         </p>
       )}
       {days.length === 0 ? (
         <Centered>
-          <p className="text-sm font-medium">{events.length === 0 ? "Nothing has happened in this period" : "Nothing matches these filters"}</p>
-          <p className="max-w-sm text-xs text-muted-foreground">{events.length === 0 ? "Try a longer range, or check back after your team pushes." : "Choose another person or show more kinds of activity."}</p>
+          <p className="text-sm font-medium">{events.length === 0 ? translate("activityView.nothingHasHappenedInThis") : translate("activityView.nothingMatchesTheseFilters")}</p>
+          <p className="max-w-sm text-xs text-muted-foreground">{events.length === 0 ? translate("activityView.tryALongerRangeOr") : translate("activityView.chooseAnotherPersonOrShow")}</p>
         </Centered>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -127,8 +130,8 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
                         </span>
                         {e.kind === "commit" && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{shortId(e.commitId)}</span>}
                         {e.branch && <Badge className="shrink-0 font-mono">{e.branch}</Badge>}
-                        <time dateTime={e.time} title={new Date(e.time).toLocaleString()} className="w-12 shrink-0 text-right text-[11px] text-muted-foreground">
-                          {new Date(e.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <time dateTime={e.time} title={new Date(e.time).toLocaleString(locale())} className="w-12 shrink-0 text-right text-[11px] text-muted-foreground">
+                          {new Date(e.time).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                         </time>
                       </button>
                     </li>
@@ -144,8 +147,9 @@ export function ActivityView({ root, onOpenCommit, onOpenMergeRequest, onOpenLoc
 }
 
 function KindIcon({ kind }: { kind: string }) {
+  const { t } = useTranslation();
   const cls = "size-3.5 shrink-0 text-muted-foreground";
-  return kind === "commit" ? <GitCommit className={cls} aria-label="Push" /> : kind === "lock" ? <Lock className={cls} aria-label="Lock" /> : kind === "mr_merged" ? <GitMerge className={cls} aria-label="Merged" /> : <GitPullRequest className={cls} aria-label="Opened" />;
+  return kind === "commit" ? <GitCommit className={cls} aria-label={t("activityView.push")} /> : kind === "lock" ? <Lock className={cls} aria-label={t("activityView.lock")} /> : kind === "mr_merged" ? <GitMerge className={cls} aria-label={t("activityView.merged")} /> : <GitPullRequest className={cls} aria-label={t("activityView.opened")} />;
 }
 
 function Centered({ children }: { children: ReactNode }) {

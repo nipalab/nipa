@@ -31,16 +31,19 @@ import { commitTitle, shortId } from "@/lib/history";
 import { blockedReason, conversation, eventText, mergeabilityText, reviewText, strategies, threadSnippet, type Strategy } from "@/lib/mergeRequests";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { Trans, useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Tab = "conversation" | "commits" | "files";
 const STRATEGY_KEY = "nipa.mergeStrategy";
 
 export function MergeRequestStatus({ mr }: { mr: MergeRequest }) {
+  const { t } = useTranslation();
   if (mr.status === "merged") {
     return (
       <Badge className="text-accent">
         <GitMerge />
-        Merged
+        {t("mergeRequestDetail.merged")}
       </Badge>
     );
   }
@@ -48,7 +51,7 @@ export function MergeRequestStatus({ mr }: { mr: MergeRequest }) {
     return (
       <Badge className="text-danger">
         <GitPullRequestClosed />
-        Closed
+        {t("mergeRequestDetail.closed")}
       </Badge>
     );
   }
@@ -56,14 +59,14 @@ export function MergeRequestStatus({ mr }: { mr: MergeRequest }) {
     return (
       <Badge>
         <GitPullRequestDraft />
-        Draft
+        {t("mergeRequestDetail.draft")}
       </Badge>
     );
   }
   return (
     <Badge className="text-success">
       <GitPullRequest />
-      Open
+      {t("mergeRequestDetail.open")}
     </Badge>
   );
 }
@@ -71,6 +74,7 @@ export function MergeRequestStatus({ mr }: { mr: MergeRequest }) {
 type DetailProps = { root: string; number: number; notify: Notify };
 
 export function MergeRequestDetail({ root, number, notify }: DetailProps) {
+  const { t } = useTranslation();
   const mr = useMergeRequest(root, number, notify);
   const [tab, setTab] = useState<Tab>("conversation");
   const [focusPath, setFocusPath] = useState("");
@@ -80,7 +84,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
   if (mr.detail.isPending) {
     return (
       <Centered>
-        <Loader2 className="size-4 animate-spin" /> Loading merge request…
+        <Loader2 className="size-4 animate-spin" /> {t("mergeRequestDetail.loadingMergeRequest")}
       </Centered>
     );
   }
@@ -107,22 +111,22 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
           <span className="font-mono">{request.source}</span>
           <ArrowRight className="size-3" />
           <span className="font-mono">{request.target}</span>
-          <span title={request.createdAt}>opened {timeAgo(request.createdAt)}</span>
+          <span title={request.createdAt}>{t("mergeRequestDetail.opened", { when: timeAgo(request.createdAt) })}</span>
           {request.approvals > 0 && (
             <span className="text-success">
-              {request.approvals} approval{request.approvals === 1 ? "" : "s"}
+              {t("mergeRequestDetail.approvals", { count: request.approvals })}
             </span>
           )}
-          {request.changesRequested > 0 && <span className="text-danger">changes requested</span>}
+          {request.changesRequested > 0 && <span className="text-danger">{t("mergeRequestDetail.changesRequested")}</span>}
         </div>
         <PeopleBar root={root} request={request} outstanding={mr.detail.data.outstanding} activity={activity} busy={mr.busy} onAssign={(ids) => mr.assign.mutateAsync(ids)} onRequestReview={(person) => mr.askReview.mutate(person)} />
       </header>
-      <nav role="tablist" aria-label="Merge request" className="flex shrink-0 gap-1 border-b border-border px-4">
+      <nav role="tablist" aria-label={t("mergeRequestDetail.mergeRequest")} className="flex shrink-0 gap-1 border-b border-border px-4">
         {(
           [
-            ["conversation", "Conversation", MessageSquare],
-            ["commits", "Commits", GitCommit],
-            ["files", "File changes", FileDiff],
+            ["conversation", translate("mergeRequestDetail.conversation"), MessageSquare],
+            ["commits", translate("mergeRequestDetail.commits"), GitCommit],
+            ["files", translate("mergeRequestDetail.fileChanges"), FileDiff],
           ] as const
         ).map(([id, label, Icon]) => (
           <button
@@ -178,6 +182,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
 }
 
 function TitleRow({ request, busy, onSave }: { request: MergeRequest; busy: boolean; onSave: (title: string, description: string) => Promise<unknown> }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(request.title);
   const [description, setDescription] = useState(request.description);
@@ -191,7 +196,7 @@ function TitleRow({ request, busy, onSave }: { request: MergeRequest; busy: bool
           <Button
             size="sm"
             variant="ghost"
-            aria-label="Edit title and description"
+            aria-label={t("mergeRequestDetail.editTitleAndDescription")}
             onClick={() => {
               setTitle(request.title);
               setDescription(request.description);
@@ -212,20 +217,20 @@ function TitleRow({ request, busy, onSave }: { request: MergeRequest; busy: bool
         void onSave(title, description).then(() => setEditing(false), () => undefined);
       }}
     >
-      <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] outline-none focus:border-accent" />
+      <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t("mergeRequestDetail.title")} className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] outline-none focus:border-accent" />
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        aria-label="Description"
+        aria-label={t("mergeRequestDetail.description")}
         rows={4}
         className="w-full resize-y rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none focus:border-accent"
       />
       <div className="flex justify-end gap-2">
         <Button type="button" size="sm" onClick={() => setEditing(false)}>
-          Cancel
+          {t("mergeRequestDetail.cancel")}
         </Button>
         <Button type="submit" size="sm" variant="primary" disabled={busy || !title.trim()}>
-          Save
+          {t("mergeRequestDetail.save")}
         </Button>
       </div>
     </form>
@@ -237,6 +242,7 @@ type Actions = ReturnType<typeof useMergeRequest>;
 type ConversationProps = { root: string; detail: Detail; activity?: Activity; activityError: unknown; mr: Actions; base: string; head: string; onOpenFile: (path: string) => void };
 
 function Conversation({ root, detail, activity, activityError, mr, base, head, onOpenFile }: ConversationProps) {
+  const { t } = useTranslation();
   const { request } = detail;
   const open = request.status === "open";
   const me = useLockStatus(root).data?.userId;
@@ -246,7 +252,7 @@ function Conversation({ root, detail, activity, activityError, mr, base, head, o
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-3xl space-y-3 p-4">
         <section className="rounded-md border border-border bg-card p-3 text-[12px]">
-          {request.description ? <p className="select-text whitespace-pre-wrap break-words">{request.description}</p> : <p className="text-muted-foreground">No description.</p>}
+          {request.description ? <p className="select-text whitespace-pre-wrap break-words">{request.description}</p> : <p className="text-muted-foreground">{t("mergeRequestDetail.noDescription")}</p>}
         </section>
         {!activity ? (
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -256,18 +262,18 @@ function Conversation({ root, detail, activity, activityError, mr, base, head, o
               </>
             ) : (
               <>
-                <Loader2 className="size-3.5 animate-spin" /> Loading activity…
+                <Loader2 className="size-3.5 animate-spin" /> {t("mergeRequestDetail.loadingActivity")}
               </>
             )}
           </p>
         ) : (
-          <ol className="space-y-2" aria-label="Activity">
+          <ol className="space-y-2" aria-label={t("mergeRequestDetail.activity")}>
             {conversation(activity).map((item) => (
               <li key={`${item.kind}-${item.kind === "event" ? item.event.id : item.kind === "review" ? item.review.id : item.thread.id}`}>
                 {item.kind === "event" ? (
                   <p className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
                     <CircleDot className="size-3" />
-                    <span className="font-medium text-foreground">{item.event.actor.name || "Someone"}</span> {eventText(item.event.kind)}
+                    <span className="font-medium text-foreground">{item.event.actor.name || translate("mergeRequestDetail.someone")}</span> {eventText(item.event.kind)}
                     {item.event.subject.name && <span className="font-medium text-foreground">{item.event.subject.name}</span>}
                     {item.event.commitId && <span className="font-mono">{shortId(item.event.commitId)}</span>}
                     <span title={item.event.createdAt}>· {timeAgo(item.event.createdAt)}</span>
@@ -278,7 +284,7 @@ function Conversation({ root, detail, activity, activityError, mr, base, head, o
                       {item.review.state === "approved" ? <CheckCircle2 className="size-3.5 text-success" /> : item.review.state === "changes_requested" ? <XCircle className="size-3.5 text-danger" /> : <MessageSquare className="size-3.5" />}
                       <span className="font-medium text-foreground">{item.review.reviewer.name}</span> {reviewText[item.review.state] ?? item.review.state}
                       <span title={item.review.createdAt}>· {timeAgo(item.review.createdAt)}</span>
-                      {item.review.dismissed ? <Badge>dismissed</Badge> : item.review.stale ? <Badge title="New commits were pushed after this review">outdated</Badge> : null}
+                      {item.review.dismissed ? <Badge>{t("mergeRequestDetail.dismissed")}</Badge> : item.review.stale ? <Badge title={t("mergeRequestDetail.newCommitsWerePushedAfter")}>{t("mergeRequestDetail.outdated")}</Badge> : null}
                     </p>
                     {item.review.body && <p className="mt-1 select-text whitespace-pre-wrap break-words">{item.review.body}</p>}
                   </div>
@@ -298,7 +304,7 @@ function Conversation({ root, detail, activity, activityError, mr, base, head, o
         )}
         {activity && activity.checks.length > 0 && <Checks checks={activity.checks} />}
         {open && <ReviewBox busy={mr.busy} isAuthor={!!me && me === request.authorId} onSubmit={(state, body) => mr.review.mutateAsync({ state, body })} />}
-        {open && <CommentBox label="Comment" placeholder="Add to the conversation" busy={mr.busy} onSubmit={(body) => mr.comment.mutateAsync({ body })} />}
+        {open && <CommentBox label={t("mergeRequestDetail.comment")} placeholder={t("mergeRequestDetail.addToTheConversation")} busy={mr.busy} onSubmit={(body) => mr.comment.mutateAsync({ body })} />}
         <MergeBox detail={detail} mr={mr} />
       </div>
     </div>
@@ -306,9 +312,10 @@ function Conversation({ root, detail, activity, activityError, mr, base, head, o
 }
 
 function Checks({ checks }: { checks: Check[] }) {
+  const { t } = useTranslation();
   return (
-    <section className="rounded-md border border-border bg-card text-[12px]" aria-label="Status checks">
-      <h3 className="border-b border-border px-3 py-1.5 text-[11px] font-semibold">Status checks</h3>
+    <section className="rounded-md border border-border bg-card text-[12px]" aria-label={t("mergeRequestDetail.statusChecks")}>
+      <h3 className="border-b border-border px-3 py-1.5 text-[11px] font-semibold">{t("mergeRequestDetail.statusChecks")}</h3>
       <ul className="divide-y divide-border">
         {checks.map((c) => (
           <li key={c.name} className="flex items-center gap-2 px-3 py-1.5">
@@ -318,7 +325,7 @@ function Checks({ checks }: { checks: Check[] }) {
             {c.reporter && <span className="text-muted-foreground">· {c.reporter}</span>}
             {c.url && (
               <a href={c.url} target="_blank" rel="noreferrer" className="ml-auto flex items-center gap-1 text-accent hover:underline">
-                Details <ExternalLink className="size-3" />
+                {t("mergeRequestDetail.details")} <ExternalLink className="size-3" />
               </a>
             )}
           </li>
@@ -329,6 +336,7 @@ function Checks({ checks }: { checks: Check[] }) {
 }
 
 function ReviewBox({ busy, isAuthor, onSubmit }: { busy: boolean; isAuthor: boolean; onSubmit: (state: ReviewState, body: string) => Promise<unknown> }) {
+  const { t } = useTranslation();
   const [body, setBody] = useState("");
   const send = (state: ReviewState) =>
     void onSubmit(state, body).then(
@@ -336,28 +344,28 @@ function ReviewBox({ busy, isAuthor, onSubmit }: { busy: boolean; isAuthor: bool
       () => undefined,
     );
   return (
-    <section className="space-y-2 rounded-md border border-border bg-card p-3" aria-label="Review">
-      <h3 className="text-[11px] font-semibold">Your review</h3>
-      {isAuthor && <p className="text-[11px] text-muted-foreground">You cannot approve or request changes on your own merge request.</p>}
+    <section className="space-y-2 rounded-md border border-border bg-card p-3" aria-label={t("mergeRequestDetail.review")}>
+      <h3 className="text-[11px] font-semibold">{t("mergeRequestDetail.yourReview")}</h3>
+      {isAuthor && <p className="text-[11px] text-muted-foreground">{t("mergeRequestDetail.youCannotApproveOrRequest")}</p>}
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        aria-label="Review comment"
-        placeholder="Summarize your review"
+        aria-label={t("mergeRequestDetail.reviewComment")}
+        placeholder={t("mergeRequestDetail.summarizeYourReview")}
         rows={2}
         className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-[12px] outline-none focus:border-accent"
       />
       <div className="flex justify-end gap-2">
         <Button size="sm" disabled={busy || !body.trim()} onClick={() => send("commented")}>
-          Comment
+          {t("mergeRequestDetail.comment")}
         </Button>
         <Button size="sm" disabled={busy || !body.trim() || isAuthor} onClick={() => send("changes_requested")}>
           <XCircle />
-          Request changes
+          {t("mergeRequestDetail.requestChanges")}
         </Button>
         <Button size="sm" variant="primary" disabled={busy || !body.trim() || isAuthor} onClick={() => send("approved")}>
           <CheckCircle2 />
-          Approve
+          {t("mergeRequestDetail.approve")}
         </Button>
       </div>
     </section>
@@ -365,6 +373,7 @@ function ReviewBox({ busy, isAuthor, onSubmit }: { busy: boolean; isAuthor: bool
 }
 
 function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
+  const { t } = useTranslation();
   const { request, mergeability } = detail;
   const [strategy, setStrategyState] = useState<Strategy>(() => (strategies.find((s) => s.id === readSetting(STRATEGY_KEY))?.id ?? "merge") as Strategy);
   const [deleteSource, setDeleteSource] = useState(false);
@@ -378,7 +387,7 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
     return (
       <p className="flex items-center gap-2 rounded-md border border-border bg-card p-3 text-[12px]">
         <GitMerge className="size-4 text-accent" />
-        Merged into <span className="font-mono">{request.target}</span>
+        <Trans i18nKey="mergeRequestDetail.mergedInto" values={{ target: request.target }} components={[<span key="t" className="font-mono">{null}</span>]} />
         {request.mergeCommitId && <span className="font-mono text-muted-foreground">{shortId(request.mergeCommitId)}</span>}
       </p>
     );
@@ -387,9 +396,9 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
     return (
       <div className="flex items-center gap-2 rounded-md border border-border bg-card p-3 text-[12px]">
         <GitPullRequestClosed className="size-4 text-danger" />
-        <span className="mr-auto">This request was closed without merging.</span>
+        <span className="mr-auto">{t("mergeRequestDetail.thisRequestWasClosedWithout")}</span>
         <Button size="sm" disabled={mr.busy} onClick={() => mr.reopen.mutate(undefined)}>
-          Reopen
+          {t("mergeRequestDetail.reopen")}
         </Button>
       </div>
     );
@@ -398,18 +407,18 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
   const behindForFF = mergeability.status === "behind_target" && strategy === "ff";
   const canMerge = !blocked && (mergeability.status === "mergeable" || (mergeability.status === "behind_target" && strategy !== "ff"));
   return (
-    <section className="space-y-2 rounded-md border border-border bg-card p-3 text-[12px]" aria-label="Merge">
+    <section className="space-y-2 rounded-md border border-border bg-card p-3 text-[12px]" aria-label={t("mergeRequestDetail.merge")}>
       <p className={cn("flex items-center gap-2 font-medium", canMerge ? "text-success" : "text-warning")}>
         {canMerge ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}
-        {blocked || (behindForFF ? mergeabilityText("behind_target") : mergeability.status === "behind_target" ? "The target moved on; this strategy can still merge." : mergeabilityText(mergeability.status))}
+        {blocked || (behindForFF ? mergeabilityText("behind_target") : mergeability.status === "behind_target" ? translate("mergeRequestDetail.theTargetMovedOnThis") : mergeabilityText(mergeability.status))}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">Strategy</span>
+          <span className="text-muted-foreground">{t("mergeRequestDetail.strategy")}</span>
           <select
             value={strategy}
             onChange={(e) => setStrategy(e.target.value as Strategy)}
-            aria-label="Merge strategy"
+            aria-label={t("mergeRequestDetail.mergeStrategy")}
             className="rounded-md border border-border bg-background px-1.5 py-1 text-[12px]"
             title={strategies.find((s) => s.id === strategy)?.hint}
           >
@@ -422,32 +431,32 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={deleteSource} onChange={(e) => setDeleteSource(e.target.checked)} />
-          Delete <span className="font-mono">{request.source}</span> after merging
+          <Trans i18nKey="mergeRequestDetail.deleteSource" values={{ source: request.source }} components={[<span key="s" className="font-mono">{null}</span>]} />
         </label>
         <span className="ml-auto flex gap-2">
           {request.draft ? (
             <Button size="sm" disabled={mr.busy} onClick={() => mr.draft.mutate(false)}>
-              Mark ready for review
+              {t("mergeRequestDetail.markReadyForReview")}
             </Button>
           ) : (
             <Button size="sm" variant="ghost" disabled={mr.busy} onClick={() => mr.draft.mutate(true)}>
-              Mark as draft
+              {t("mergeRequestDetail.markAsDraft")}
             </Button>
           )}
           <Button size="sm" variant="ghost" disabled={mr.busy} onClick={() => setClosing(true)}>
-            Close
+            {t("mergeRequestDetail.close")}
           </Button>
           <Button size="sm" variant="primary" disabled={mr.busy || !canMerge} onClick={() => mr.merge.mutate({ strategy, deleteSource })}>
             {mr.merge.isPending ? <Loader2 className="animate-spin" /> : <GitMerge />}
-            Merge
+            {t("mergeRequestDetail.merge")}
           </Button>
         </span>
       </div>
       {closing && (
         <ConfirmDialog
-          title={`Close !${request.number}?`}
-          message="The request is closed without merging. Its locks are released; you can reopen it later."
-          confirmLabel="Close request"
+          title={translate("mergeRequestDetail.close2", { number: request.number })}
+          message={translate("mergeRequestDetail.theRequestIsClosedWithout")}
+          confirmLabel={translate("mergeRequestDetail.closeRequest")}
           onCancel={() => setClosing(false)}
           onConfirm={() => {
             setClosing(false);
@@ -460,11 +469,12 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
 }
 
 function Commits({ root, number }: { root: string; number: number }) {
+  const { t } = useTranslation();
   const commits = useQuery({ queryKey: ["mr", root, number, "commits"], queryFn: () => desktop.mergeRequestCommits(root, number) });
   if (commits.isPending) {
     return (
       <Centered>
-        <Loader2 className="size-4 animate-spin" /> Loading commits…
+        <Loader2 className="size-4 animate-spin" /> {t("mergeRequestDetail.loadingCommits")}
       </Centered>
     );
   }
@@ -475,9 +485,9 @@ function Commits({ root, number }: { root: string; number: number }) {
       </Centered>
     );
   }
-  if (commits.data.length === 0) return <Centered>No commits.</Centered>;
+  if (commits.data.length === 0) return <Centered>{t("mergeRequestDetail.noCommits")}</Centered>;
   return (
-    <ol className="h-full divide-y divide-border overflow-auto" aria-label="Commits">
+    <ol className="h-full divide-y divide-border overflow-auto" aria-label={t("mergeRequestDetail.commits")}>
       {commits.data.map((c) => (
         <li key={c.id} className="flex items-center gap-2 px-4 py-2 text-[12px]">
           <GitCommit className="size-3.5 shrink-0 text-muted-foreground" />

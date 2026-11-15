@@ -5,6 +5,8 @@ import type { RemoteListing } from "@/api/desktop";
 import { formatBytes } from "@/lib/diff";
 import { coveredByAncestor, hasSelectedDescendant, isCovered, toggleFolder } from "@/lib/sparse";
 import { cn, errorMessage } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type Loader = (path: string) => Promise<RemoteListing>;
 
@@ -18,27 +20,28 @@ type SparsePickerProps = {
 // SparsePicker chooses between a full checkout (null) and a set of folders,
 // browsing the server's tree one directory at a time.
 export function SparsePicker({ load, cacheKey, value, onChange }: SparsePickerProps) {
+  const { t } = useTranslation();
   const selection = value ?? [];
   return (
     <div className="space-y-2 text-[12px]">
-      <div className="flex gap-4" role="radiogroup" aria-label="Checkout">
+      <div className="flex gap-4" role="radiogroup" aria-label={t("sparsePicker.checkout")}>
         <label className="flex items-center gap-1.5">
           <input type="radio" checked={value === null} onChange={() => onChange(null)} className="accent-[var(--accent)]" />
-          Everything
+          {t("sparsePicker.everything")}
         </label>
         <label className="flex items-center gap-1.5">
           <input type="radio" checked={value !== null} onChange={() => onChange(value ?? [])} className="accent-[var(--accent)]" />
-          Only some folders
+          {t("sparsePicker.onlySomeFolders")}
         </label>
       </div>
       {value !== null && (
-        <div className="max-h-64 overflow-auto rounded-md border border-border bg-background p-1" role="tree" aria-label="Folders">
+        <div className="max-h-64 overflow-auto rounded-md border border-border bg-background p-1" role="tree" aria-label={t("sparsePicker.folders")}>
           <Level path="" depth={0} load={load} cacheKey={cacheKey} selection={selection} onToggle={(p) => onChange(toggleFolder(selection, p))} />
         </div>
       )}
       {value !== null && (
         <p className="text-[11px] text-muted-foreground">
-          {selection.length === 0 ? "Tick the folders to download." : `${selection.length} folder${selection.length === 1 ? "" : "s"} selected.`} Other files stay on the server and can be added later.
+          {t("sparsePicker.hint", { selection: selection.length === 0 ? t("sparsePicker.tickFolders") : t("sparsePicker.foldersSelected", { count: selection.length }) })}
         </p>
       )}
     </div>
@@ -48,12 +51,13 @@ export function SparsePicker({ load, cacheKey, value, onChange }: SparsePickerPr
 type LevelProps = { path: string; depth: number; load: Loader; cacheKey: unknown[]; selection: string[]; onToggle: (path: string) => void };
 
 function Level({ path, depth, load, cacheKey, selection, onToggle }: LevelProps) {
+  const { t } = useTranslation();
   const listing = useQuery({ queryKey: [...cacheKey, "tree", path], queryFn: () => load(path), staleTime: 60_000 });
   const pad = { paddingLeft: depth * 16 + 6 };
   if (listing.isPending) {
     return (
       <div className="flex items-center gap-1.5 py-1 text-muted-foreground" style={pad}>
-        <Loader2 className="size-3 animate-spin" /> Loading…
+        <Loader2 className="size-3 animate-spin" /> {t("sparsePicker.loading")}
       </div>
     );
   }
@@ -72,13 +76,13 @@ function Level({ path, depth, load, cacheKey, selection, onToggle }: LevelProps)
       ))}
       {files > 0 && (
         <p className="py-0.5 text-[11px] text-muted-foreground" style={pad}>
-          {files} file{files === 1 ? "" : "s"} · {formatBytes(fileBytes)}
-          {depth === 0 ? " at the top level (only with Everything)" : ""}
+          {t("sparsePicker.files", { count: files, size: formatBytes(fileBytes) })}
+          {depth === 0 ? t("sparsePicker.topLevel") : ""}
         </p>
       )}
       {dirs.length === 0 && files === 0 && (
         <p className="py-0.5 text-[11px] text-muted-foreground" style={pad}>
-          Empty
+          {t("sparsePicker.empty")}
         </p>
       )}
     </>
@@ -94,7 +98,7 @@ function FolderRow({ name, path, depth, load, cacheKey, selection, onToggle }: O
   return (
     <div role="treeitem" aria-expanded={open} aria-selected={checked}>
       <div className="flex items-center gap-1 rounded py-0.5 hover:bg-muted" style={{ paddingLeft: depth * 16 }}>
-        <button type="button" onClick={() => setOpen(!open)} aria-label={`${open ? "Collapse" : "Expand"} ${path}`} className="text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={() => setOpen(!open)} aria-label={translate("sparsePicker.text", { open: open ? translate("sparsePicker.collapse") : translate("sparsePicker.expand"), path })} className="text-muted-foreground hover:text-foreground">
           <Chevron className="size-3.5" />
         </button>
         <label className={cn("flex min-w-0 flex-1 items-center gap-1.5", inherited && "text-muted-foreground")}>

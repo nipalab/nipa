@@ -205,8 +205,8 @@ func main() {
 		}
 	}
 	updateTray := func(list []service.RepoActivity) {
-		systray.SetTooltip(tray.Tooltip(list))
-		systray.SetMenu(trayMenu(tray.Menu(list), act))
+		systray.SetTooltip(tray.Tooltip(service.LanguageOf(svc), list))
+		systray.SetMenu(trayMenu(tray.Menu(service.LanguageOf(svc), list), act))
 	}
 	updateTray(nil)
 	svc.ActivityHook = updateTray

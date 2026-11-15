@@ -14,6 +14,7 @@ import { VideoDiff } from "@/components/changes/VideoDiff";
 import { useTextTools } from "@/hooks/useTextTools";
 import { hasEmbeddedThumbnail } from "@/lib/files";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const ModelDiff = lazy(() => import("@/components/changes/ModelDiff").then((m) => ({ default: m.ModelDiff })));
 
@@ -49,6 +50,7 @@ type DiffViewerProps = {
 };
 
 export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewerProps) {
+  const { t } = useTranslation();
   const Viewer = viewerFor(diff);
   const tools = useTextTools(root, diff, Viewer === TextDiff);
   return (
@@ -64,7 +66,7 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
           ) : null}
           {diff.path}
         </span>
-        {diff.similarity ? <span className="text-[11px] text-muted-foreground">{diff.similarity}% similar</span> : null}
+        {diff.similarity ? <span className="text-[11px] text-muted-foreground">{t("diffViewer.similar", { percent: diff.similarity })}</span> : null}
         {(diff.additions > 0 || diff.deletions > 0) && (
           <span className="font-mono text-[11px]">
             <span className="text-success">+{diff.additions}</span> <span className="text-danger">−{diff.deletions}</span>
@@ -73,9 +75,9 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
         <StatusLetter status={diff.untracked ? "untracked" : diff.status} />
         <BlameToggle tools={tools} />
         {(Viewer === TextDiff || ((Viewer === TableDiff || Viewer === SceneDiff) && (diff.hunks ?? []).length > 0)) && (
-          <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label="Diff layout">
-            <LayoutButton active={layout === "unified"} label="Unified" onClick={() => onLayout("unified")} Icon={Rows3} />
-            <LayoutButton active={layout === "split"} label="Split" onClick={() => onLayout("split")} Icon={Columns2} />
+          <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label={t("diffViewer.diffLayout")}>
+            <LayoutButton active={layout === "unified"} label={t("diffViewer.unified")} onClick={() => onLayout("unified")} Icon={Rows3} />
+            <LayoutButton active={layout === "split"} label={t("diffViewer.split")} onClick={() => onLayout("split")} Icon={Columns2} />
           </div>
         )}
       </div>

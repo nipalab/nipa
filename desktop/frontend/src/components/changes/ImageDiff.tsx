@@ -9,15 +9,17 @@ import { tonemap, unpackHdr, type ToneMap } from "@/lib/hdr";
 import { diffLayers, type LayerStatus } from "@/lib/layers";
 import { drawPixels, loadPixels } from "@/lib/pixels";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { translate , locale } from "@/i18n";
 
 export type CompareMode = "side" | "swipe" | "onion" | "difference" | "blink";
 
 const modes: { id: CompareMode; label: string; Icon: typeof Columns2 }[] = [
-  { id: "side", label: "Side by side", Icon: Columns2 },
-  { id: "swipe", label: "Swipe", Icon: SquareSplitHorizontal },
-  { id: "onion", label: "Onion skin", Icon: Layers },
-  { id: "difference", label: "Difference", Icon: Flame },
-  { id: "blink", label: "Blink", Icon: Repeat },
+  { id: "side", label: translate("imageDiff.sideBySide"), Icon: Columns2 },
+  { id: "swipe", label: translate("imageDiff.swipe"), Icon: SquareSplitHorizontal },
+  { id: "onion", label: translate("imageDiff.onionSkin"), Icon: Layers },
+  { id: "difference", label: translate("imageDiff.difference"), Icon: Flame },
+  { id: "blink", label: translate("imageDiff.blink"), Icon: Repeat },
 ];
 
 const modeKey = "nipa.imageMode";
@@ -53,6 +55,7 @@ const sameKey = (a: readonly unknown[] | undefined, b: unknown[]) => !!a && b.ev
 export type Surface = { level: number; face: number };
 
 export function ImageDiff({ root, diff }: { root: string; diff: FileDiff }) {
+  const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const [picked, setPicked] = useState({ path: diff.path, level: 0, face: 0 });
   const surface = picked.path === diff.path ? picked : { level: 0, face: 0 };
@@ -65,14 +68,14 @@ export function ImageDiff({ root, diff }: { root: string; diff: FileDiff }) {
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Decoding image…
+        <Loader2 className="size-4 animate-spin" /> {t("imageDiff.decodingImage")}
       </div>
     );
   }
-  if (query.isError) return <MetaDiff diff={diff} detail={`The preview failed: ${String((query.error as Error)?.message ?? query.error)}`} />;
+  if (query.isError) return <MetaDiff diff={diff} detail={translate("imageDiff.thePreviewFailed", { value: String((query.error as Error)?.message ?? query.error) })} />;
   const data = query.data;
   if (!data || data.unsupported || (!data.old && !data.new)) {
-    return <MetaDiff diff={diff} detail={data?.unsupported || "There is no preview for this image."} />;
+    return <MetaDiff diff={diff} detail={data?.unsupported || translate("imageDiff.thereIsNoPreviewFor")} />;
   }
   return <ImageCompareView compare={data} surface={surface} onSurface={(sel) => setPicked({ path: diff.path, ...sel })} />;
 }
@@ -121,14 +124,15 @@ function readMode(): CompareMode {
 const faceNames = ["+X", "−X", "+Y", "−Y", "+Z", "−Z"];
 
 function faceLabel(face: number, cube: boolean): string {
-  if (!cube) return `Layer ${face}`;
+  if (!cube) return translate("imageDiff.layer", { face });
   const name = faceNames[face % 6];
-  return face >= 6 ? `Layer ${Math.floor(face / 6)} ${name}` : name;
+  return face >= 6 ? translate("imageDiff.layer2", { value: Math.floor(face / 6), name }) : name;
 }
 
 type CompareProps = { compare: ImageCompare; surface?: Surface; onSurface?: (s: Surface) => void };
 
 export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onSurface }: CompareProps) {
+  const { t } = useTranslation();
   const { old, new: next, stats } = compare;
   const both = !!old && !!next;
   const [storedMode, setStoredMode] = useState<CompareMode>(readMode);
@@ -218,47 +222,47 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
   if (mode === "side") {
     stage = (
       <div className="grid h-full grid-cols-2 divide-x divide-border">
-        <Pane label="Before" frame={frame} pan={pan}>
-          {layer(old!, oldView, "Before")}
+        <Pane label={t("imageDiff.before")} frame={frame} pan={pan}>
+          {layer(old!, oldView, translate("imageDiff.before"))}
         </Pane>
-        <Pane label="After" frame={frame} pan={pan}>
-          {layer(next!, newView, "After")}
+        <Pane label={t("imageDiff.after")} frame={frame} pan={pan}>
+          {layer(next!, newView, translate("imageDiff.after"))}
         </Pane>
       </div>
     );
   } else if (mode === "swipe") {
     stage = (
       <Pane frame={frame} pan={pan}>
-        {layer(old!, oldView, "Before")}
-        {layer(next!, newView, "After", { clipPath: `inset(0 0 0 ${swipe}%)` })}
+        {layer(old!, oldView, translate("imageDiff.before"))}
+        {layer(next!, newView, translate("imageDiff.after"), { clipPath: `inset(0 0 0 ${swipe}%)` })}
         <div className="pointer-events-none absolute inset-y-0 w-px bg-accent" style={{ left: `${swipe}%` }} />
       </Pane>
     );
   } else if (mode === "onion") {
     stage = (
       <Pane frame={frame} pan={pan}>
-        {layer(old!, oldView, "Before")}
-        {layer(next!, newView, "After", { opacity: opacity / 100 })}
+        {layer(old!, oldView, translate("imageDiff.before"))}
+        {layer(next!, newView, translate("imageDiff.after"), { opacity: opacity / 100 })}
       </Pane>
     );
   } else if (mode === "difference") {
     stage = (
       <Pane frame={frame} pan={pan}>
-        <PixelCanvas pixels={heat?.pixels ?? null} label="Difference" className="absolute inset-0 size-full" pixelated={scale * width > 1.5 * (heat?.pixels.width ?? width)} />
+        <PixelCanvas pixels={heat?.pixels ?? null} label={t("imageDiff.difference")} className="absolute inset-0 size-full" pixelated={scale * width > 1.5 * (heat?.pixels.width ?? width)} />
         {stats && !stats.sizeChanged && stats.boundsWidth > 0 && <Bounds stats={stats} width={width} height={height} />}
       </Pane>
     );
   } else if (mode === "blink") {
     stage = (
-      <Pane label={blinkNew ? "After" : "Before"} frame={frame} pan={pan}>
-        {blinkNew ? layer(next!, newView, "After") : layer(old!, oldView, "Before")}
+      <Pane label={blinkNew ? translate("imageDiff.after") : translate("imageDiff.before")} frame={frame} pan={pan}>
+        {blinkNew ? layer(next!, newView, translate("imageDiff.after")) : layer(old!, oldView, translate("imageDiff.before"))}
       </Pane>
     );
   } else {
     const info = (next ?? old)!;
     stage = (
-      <Pane label={next ? "Added" : "Deleted"} frame={frame} pan={pan}>
-        {layer(info, next ? newView : oldView, next ? "After" : "Before")}
+      <Pane label={next ? translate("imageDiff.added") : translate("imageDiff.deleted")} frame={frame} pan={pan}>
+        {layer(info, next ? newView : oldView, next ? translate("imageDiff.after") : translate("imageDiff.before"))}
       </Pane>
     );
   }
@@ -267,7 +271,7 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 text-xs">
         {both && (
-          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Compare mode">
+          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label={t("imageDiff.compareMode")}>
             {modes.map(({ id, label, Icon }) => (
               <ToolButton key={id} active={mode === id} label={label} onClick={() => chooseMode(id)}>
                 <Icon className="size-3.5" />
@@ -275,58 +279,58 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
             ))}
           </div>
         )}
-        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Channels">
+        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label={t("imageDiff.channels")}>
           {(["r", "g", "b", "a"] as const).map((c) => (
-            <ToolButton key={c} active={channels[c]} label={`${c.toUpperCase()} channel`} onClick={() => setChannels((ch) => ({ ...ch, [c]: !ch[c] }))}>
+            <ToolButton key={c} active={channels[c]} label={translate("imageDiff.channel", { toUpperCase: c.toUpperCase() })} onClick={() => setChannels((ch) => ({ ...ch, [c]: !ch[c] }))}>
               <span className="font-mono text-[11px] font-semibold">{c.toUpperCase()}</span>
             </ToolButton>
           ))}
         </div>
-        {mode === "swipe" && <Slider label="Swipe position" value={swipe} onChange={setSwipe} />}
-        {mode === "onion" && <Slider label="After opacity" value={opacity} onChange={setOpacity} />}
-        {mode === "difference" && <Slider label="Tolerance" value={tolerance} max={255} onChange={setTolerance} />}
+        {mode === "swipe" && <Slider label={t("imageDiff.swipePosition")} value={swipe} onChange={setSwipe} />}
+        {mode === "onion" && <Slider label={t("imageDiff.afterOpacity")} value={opacity} onChange={setOpacity} />}
+        {mode === "difference" && <Slider label={t("imageDiff.tolerance")} value={tolerance} max={255} onChange={setTolerance} />}
         {mode === "difference" && heat && heat.total > 0 && (
-          <span className="whitespace-nowrap text-muted-foreground">{formatPercent(heat.changed / heat.total)} above tolerance</span>
+          <span className="whitespace-nowrap text-muted-foreground">{t("imageDiff.aboveTolerance", { percent: formatPercent(heat.changed / heat.total) })}</span>
         )}
         <div className="ml-auto flex items-center gap-0.5">
           {stats &&
             (stats.sizeChanged ? (
-              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium">Resized</span>
+              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium">{t("imageDiff.resized")}</span>
             ) : (
-              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium" title={`${stats.changedPixels.toLocaleString()} of ${stats.totalPixels.toLocaleString()} pixels`}>
-                {formatPercent(stats.changedRatio)} changed
+              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium" title={t("imageDiff.pixelsTitle", { changed: stats.changedPixels.toLocaleString(locale()), total: stats.totalPixels.toLocaleString(locale()) })}>
+                {t("imageDiff.percentChanged", { percent: formatPercent(stats.changedRatio) })}
               </span>
             ))}
-          <ToolButton label="Zoom out" onClick={() => zoomTo(stepZoom(scale, -1))}>
+          <ToolButton label={t("imageDiff.zoomOut")} onClick={() => zoomTo(stepZoom(scale, -1))}>
             <ZoomOut className="size-3.5" />
           </ToolButton>
-          <span className="w-12 text-center font-mono tabular-nums" aria-label="Zoom level">
+          <span className="w-12 text-center font-mono tabular-nums" aria-label={t("imageDiff.zoomLevel")}>
             {Math.round(scale * 100)}%
           </span>
-          <ToolButton label="Zoom in" onClick={() => zoomTo(stepZoom(scale, 1))}>
+          <ToolButton label={t("imageDiff.zoomIn")} onClick={() => zoomTo(stepZoom(scale, 1))}>
             <ZoomIn className="size-3.5" />
           </ToolButton>
-          <ToolButton label="Actual size" onClick={() => zoomTo(1)}>
+          <ToolButton label={t("imageDiff.actualSize")} onClick={() => zoomTo(1)}>
             <span className="font-mono text-[11px]">1:1</span>
           </ToolButton>
-          <ToolButton label="Fit" active={zoom === null} onClick={fit}>
+          <ToolButton label={t("imageDiff.fit")} active={zoom === null} onClick={fit}>
             <Maximize className="size-3.5" />
           </ToolButton>
         </div>
       </div>
       {(levels > 1 || faces > 1 || hdr) && (
-        <div className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3 text-xs" role="toolbar" aria-label="Texture">
+        <div className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3 text-xs" role="toolbar" aria-label={t("imageDiff.texture")}>
           {levels > 1 && (
             <Picker
-              label="Mip level"
+              label={t("imageDiff.mipLevel")}
               value={surface.level}
               onChange={(level) => onSurface?.({ ...surface, level })}
-              options={Array.from({ length: levels }, (_, l) => [l, `Mip ${l} · ${Math.max(1, baseWidth >> l)}×${Math.max(1, baseHeight >> l)}`])}
+              options={Array.from({ length: levels }, (_, l) => [l, translate("imageDiff.mip", { l, value: Math.max(1, baseWidth >> l), value2: Math.max(1, baseHeight >> l) })])}
             />
           )}
           {faces > 1 && (
             <Picker
-              label={cube ? "Face" : "Layer"}
+              label={cube ? translate("imageDiff.face") : translate("imageDiff.layer3")}
               value={surface.face}
               onChange={(face) => onSurface?.({ ...surface, face })}
               options={Array.from({ length: faces }, (_, f) => [f, faceLabel(f, cube)])}
@@ -334,13 +338,13 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
           )}
           {hdr && (
             <>
-              <Slider label="Exposure" value={exposure} min={-8} max={8} step={0.25} onChange={setExposure} />
-              <button type="button" className="w-16 whitespace-nowrap font-mono tabular-nums text-muted-foreground hover:text-foreground" title="Reset exposure" onClick={() => setExposure(0)}>
+              <Slider label={t("imageDiff.exposure")} value={exposure} min={-8} max={8} step={0.25} onChange={setExposure} />
+              <button type="button" className="w-16 whitespace-nowrap font-mono tabular-nums text-muted-foreground hover:text-foreground" title={t("imageDiff.resetExposure")} onClick={() => setExposure(0)}>
                 {exposure > 0 ? "+" : ""}
                 {exposure.toFixed(2)} EV
               </button>
               <Picker
-                label="Tone map"
+                label={t("imageDiff.toneMap")}
                 value={curve}
                 onChange={setCurve}
                 options={[
@@ -355,7 +359,7 @@ export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onS
       )}
       {(old?.thumbnail || next?.thumbnail) && (
         <p role="note" className="shrink-0 border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
-          Thumbnail only: this is the preview image saved inside the file, not a render of the asset.
+          {t("imageDiff.thumbnailOnlyThisIsThe")}
         </p>
       )}
       <div ref={stageRef} className="min-h-0 flex-1">
@@ -403,10 +407,11 @@ function PixelCanvas({ pixels, label, className, pixelated }: { pixels: Pixels |
 }
 
 function Bounds({ stats, width, height }: { stats: ImageStats; width: number; height: number }) {
+  const { t } = useTranslation();
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   return (
     <div
-      aria-label="Changed region"
+      aria-label={t("imageDiff.changedRegion")}
       className="pointer-events-none absolute border border-dashed border-accent"
       style={{ left: pct(stats.boundsX, width), top: pct(stats.boundsY, height), width: pct(stats.boundsWidth, width), height: pct(stats.boundsHeight, height) }}
     />
@@ -468,25 +473,26 @@ function useDisplayPixels(info: ImageInfo | null, exposure: number, curve: ToneM
 type Row = { label: string; value: (i: ImageInfo) => string; show?: (i: ImageInfo) => boolean };
 
 const rows: Row[] = [
-  { label: "Dimensions", value: (i) => `${i.width} × ${i.height}` },
-  { label: "Format", value: (i) => i.format.toUpperCase() },
-  { label: "Encoding", value: (i) => i.encoding || "—", show: (i) => !!i.encoding },
-  { label: "Mip levels", value: (i) => String(i.levels), show: (i) => i.levels > 1 },
-  { label: "Faces", value: (i) => String(i.faces), show: (i) => i.faces > 1 },
-  { label: "Bit depth", value: (i) => (i.bitDepth ? `${i.bitDepth}-bit` : "—") },
-  { label: "Alpha", value: (i) => (i.hasAlpha ? "Yes" : "No") },
-  { label: "File size", value: (i) => formatBytes(i.size) },
+  { label: translate("imageDiff.dimensions"), value: (i) => translate("imageDiff.text", { width: i.width, height: i.height }) },
+  { label: translate("imageDiff.format"), value: (i) => i.format.toUpperCase() },
+  { label: translate("imageDiff.encoding"), value: (i) => i.encoding || "—", show: (i) => !!i.encoding },
+  { label: translate("imageDiff.mipLevels"), value: (i) => String(i.levels), show: (i) => i.levels > 1 },
+  { label: translate("imageDiff.faces"), value: (i) => String(i.faces), show: (i) => i.faces > 1 },
+  { label: translate("imageDiff.bitDepth"), value: (i) => (i.bitDepth ? `${i.bitDepth}-bit` : "—") },
+  { label: translate("imageDiff.alpha"), value: (i) => (i.hasAlpha ? translate("imageDiff.yes") : translate("imageDiff.no")) },
+  { label: translate("imageDiff.fileSize"), value: (i) => formatBytes(i.size) },
 ];
 
 function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInfo | null; stats: ImageStats | null }) {
+  const { t } = useTranslation();
   return (
     <div className="flex shrink-0 flex-wrap items-start gap-x-8 gap-y-2 border-t border-border px-4 py-2 text-[11px]">
-      <table aria-label="Image details">
+      <table aria-label={t("imageDiff.imageDetails")}>
         <thead>
           <tr className="text-muted-foreground">
             <th />
-            <th className="px-3 text-left font-medium">Before</th>
-            <th className="px-3 text-left font-medium">After</th>
+            <th className="px-3 text-left font-medium">{t("imageDiff.before")}</th>
+            <th className="px-3 text-left font-medium">{t("imageDiff.after")}</th>
           </tr>
         </thead>
         <tbody>
@@ -504,18 +510,18 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
         </tbody>
       </table>
       {(!!old?.layers?.length || !!next?.layers?.length) && <LayerList old={old?.layers ?? []} next={next?.layers ?? []} />}
-      {stats && stats.sizeChanged && <p className="text-muted-foreground">Dimensions changed, so pixels are not compared.</p>}
+      {stats && stats.sizeChanged && <p className="text-muted-foreground">{t("imageDiff.dimensionsChangedSoPixelsAre")}</p>}
       {stats && !stats.sizeChanged && (
         <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5">
-          <dt className="text-muted-foreground">Changed pixels</dt>
+          <dt className="text-muted-foreground">{t("imageDiff.changedPixels")}</dt>
           <dd className="font-mono">
-            {stats.changedPixels.toLocaleString()} ({formatPercent(stats.changedRatio)})
+            {stats.changedPixels.toLocaleString(locale())} ({formatPercent(stats.changedRatio)})
           </dd>
-          <dt className="text-muted-foreground">Largest change</dt>
+          <dt className="text-muted-foreground">{t("imageDiff.largestChange")}</dt>
           <dd className="font-mono">{stats.maxDelta} / 255</dd>
-          <dt className="text-muted-foreground">Changed region</dt>
+          <dt className="text-muted-foreground">{t("imageDiff.changedRegion")}</dt>
           <dd className="font-mono">
-            {stats.boundsWidth > 0 ? `${stats.boundsWidth} × ${stats.boundsHeight} at ${stats.boundsX}, ${stats.boundsY}` : "none"}
+            {stats.boundsWidth > 0 ? translate("imageDiff.at", { boundsWidth: stats.boundsWidth, boundsHeight: stats.boundsHeight, boundsX: stats.boundsX, boundsY: stats.boundsY }) : "none"}
           </dd>
         </dl>
       )}
@@ -524,21 +530,22 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
 }
 
 const statusStyle: Record<LayerStatus, { letter: string; className: string; label: string }> = {
-  added: { letter: "A", className: "text-success", label: "Added" },
-  removed: { letter: "D", className: "text-danger", label: "Removed" },
-  changed: { letter: "M", className: "text-warning", label: "Changed" },
-  unchanged: { letter: "", className: "", label: "Unchanged" },
+  added: { letter: "A", className: "text-success", label: translate("imageDiff.added") },
+  removed: { letter: "D", className: "text-danger", label: translate("imageDiff.removed") },
+  changed: { letter: "M", className: "text-warning", label: translate("imageDiff.changed") },
+  unchanged: { letter: "", className: "", label: translate("imageDiff.unchanged") },
 };
 
 function LayerList({ old, next }: { old: ImageLayer[]; next: ImageLayer[] }) {
+  const { t } = useTranslation();
   const rows = diffLayers(old, next);
   const changed = rows.filter((r) => r.status !== "unchanged").length;
   return (
     <div className="min-w-56 max-w-md">
       <p className="mb-1 text-muted-foreground">
-        Layers · {changed === 0 ? "no layer changes" : `${changed} changed`}
+        {t("imageDiff.layersSummary", { summary: changed === 0 ? t("imageDiff.noLayerChanges") : t("imageDiff.layersChanged", { count: changed }) })}
       </p>
-      <ul aria-label="Layers" className="max-h-28 overflow-auto">
+      <ul aria-label={t("imageDiff.layers")} className="max-h-28 overflow-auto">
         {rows.map((r, i) => {
           const style = statusStyle[r.status];
           return (
@@ -548,7 +555,7 @@ function LayerList({ old, next }: { old: ImageLayer[]; next: ImageLayer[] }) {
               </span>
               {r.layer.kind === "group" ? <Folder className="size-3 shrink-0 text-muted-foreground" /> : null}
               <span className="truncate">{r.layer.name}</span>
-              {!r.layer.visible && <EyeOff className="size-3 shrink-0 text-muted-foreground" aria-label="Hidden" />}
+              {!r.layer.visible && <EyeOff className="size-3 shrink-0 text-muted-foreground" aria-label={t("imageDiff.hidden")} />}
               {r.changes.length > 0 && <span className="truncate text-muted-foreground">{r.changes.join(", ")}</span>}
             </li>
           );
