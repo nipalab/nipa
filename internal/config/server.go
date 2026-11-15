@@ -12,7 +12,22 @@ import (
 const (
 	DefaultHTTPReadHeaderTimeoutSeconds = 30
 	DefaultHTTPIdleTimeoutSeconds       = 300
+	DefaultMaintenancePollSeconds       = 5
 )
+
+// MaintenancePollInterval is how often the stored maintenance windows and the
+// MAINTENANCE_FILE override are reloaded. Values below one second become one.
+func (c *Config) MaintenancePollInterval() time.Duration {
+	if c.MaintenancePollSeconds < 1 {
+		return time.Second
+	}
+	return time.Duration(c.MaintenancePollSeconds) * time.Second
+}
+
+// MaintenanceFilePath is the override file path, empty when unset.
+func (c *Config) MaintenanceFilePath() string {
+	return strings.TrimSpace(c.MaintenanceFile)
+}
 
 // HTTPReadHeaderTimeout bounds how long a client may take to send the request
 // headers. Zero or negative keeps the default.

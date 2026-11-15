@@ -32,6 +32,13 @@ func main() {
 		fmt.Println("nipad " + version.Resolve().String())
 		return
 	}
+	if handled, err := serverapp.RunMaintenanceCommand(os.Args[1:], openMaintenanceDB, os.Stdout); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "nipad: maintenance: "+err.Error())
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -124,7 +131,7 @@ func main() {
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
-	snowUser, err := snow.NewNode(cfg.SnowflakeNodeID)
+	snowUser, err := snow.NewServerNode(cfg.SnowflakeNodeID)
 	if err != nil {
 		panic(err)
 	}
@@ -160,6 +167,9 @@ func main() {
 		panic(fmt.Errorf("rate limit: %w", err))
 	}
 
+	maintenanceRepository := sqlite.NewMaintenanceRepository(dbConn)
+	maintenanceService, maintenancePoller := serverapp.NewMaintenance(cfg, maintenanceRepository, metrics)
+
 	reg := serverapp.NewRegistry(serverapp.BuildUsecases(usecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
 		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
@@ -181,7 +191,7 @@ func main() {
 		Email:              emailRepository,
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
-		Maintenance:        sqlite.NewMaintenanceRepository(dbConn),
+		Maintenance:        maintenanceRepository,
 	}, serverapp.UsecaseDeps{
 		Config:              cfg,
 		DB:                  dbConn,
@@ -192,6 +202,7 @@ func main() {
 		WebhookDispatcher:   webhookDispatcher,
 		EmailDispatcher:     emailDispatcher,
 		RateLimiter:         rateLimiter,
+		Maintenance:         maintenanceService,
 		MFAEnabledByDefault: mfaEnabledByDefault,
 	}))
 
@@ -199,7 +210,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)); err != nil {
+	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies), serverapp.WithMaintenance(maintenanceService, maintenancePoller)); err != nil {
 		panic(err)
 	}
 }
@@ -218,6 +229,22 @@ func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 	default:
 		return nil, fmt.Errorf("unknown CHUNK_STORAGE %q", cfg.ChunkStorage)
 	}
+}
+
+// openMaintenanceDB opens the database for `nipad maintenance` without
+// migrating it.
+func openMaintenanceDB(cfg *config.Config) (usecase.Repositories, *sql.DB, error) {
+	conn, err := createDatabaseConnection(cfg.DatabaseDSN)
+	if err != nil {
+		return usecase.Repositories{}, nil, err
+	}
+	return usecase.Repositories{
+		Org:         sqlite.NewOrgRepository(conn),
+		Project:     sqlite.NewProjectRepository(conn),
+		PBAC:        sqlite.NewPBACRepository(conn),
+		Audit:       sqlite.NewAuditRepository(conn),
+		Maintenance: sqlite.NewMaintenanceRepository(conn),
+	}, conn, nil
 }
 
 func createDatabaseConnection(dsn string) (*sql.DB, error) {

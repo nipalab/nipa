@@ -580,7 +580,26 @@ org + project, org + server, ties, and org deletion.
 
 ### PR 2: admin API and `nipad maintenance` command
 
-Phase 3 below.
+Phase 3 below. As built, it differs from the sections above in these points:
+
+- A `PUT` without `starts_at` keeps the start of an existing window (only a new
+  window starts now), so editing the message of a scheduled window does not
+  activate it.
+- Status answers read the in-memory snapshot, not the database. After a write
+  the usecase rebuilds the snapshot from `MaintenanceList` and keeps a current
+  file override (no poller dependency in the usecase).
+- `MaintenanceMailer` is `Announce(ctx, notice, window, recipients)`; the usecase
+  loads the recipients in the window's transaction.
+- `maintenance.Service.OnPublish(func(*Snapshot, time.Time))` feeds the gauges;
+  `serverapp.NewMaintenance(cfg, repo, metrics)` builds the service and poller
+  for both mains, the harnesses and the subcommand.
+- `RunMaintenanceCommand(args, open MaintenanceOpener, out)`: the opener takes
+  the loaded config, the command builds node 255 itself.
+  `snow.NewServerNode` is the refusal of 255 for both mains.
+- `Org.IsOrgMember` was added for the org status read. Refused status reads
+  answer 403; ending a missing window answers 404.
+- `frozen` can already be stored for the server window; PR 3 must not enforce
+  it until PR 4 lands (or refuse it until then).
 
 ### PR 3: enforce read-only and closed maintenance
 

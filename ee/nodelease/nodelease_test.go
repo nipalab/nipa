@@ -21,6 +21,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	postgresmigrations "github.com/nipalab/nipa/ee/db/migrations/postgres"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 var testDSN string
@@ -221,17 +222,32 @@ func TestAcquireExhausted(t *testing.T) {
 
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO snowflake_node_leases (node_id, holder, acquired_at, expires_at)
-		 SELECT g, 'filler', now(), now() + interval '1 hour' FROM generate_series(0, 254) AS g`)
+		 SELECT g, 'filler', now(), now() + interval '1 hour' FROM generate_series(0, 253) AS g`)
 	require.NoError(t, err)
 
 	mgr := newTestManager(t, db, "instance-a", time.Minute, nil)
 	_, err = mgr.Acquire(ctx)
 	require.NoError(t, err)
-	require.Equal(t, int64(255), mgr.NodeID())
+	require.Equal(t, int64(254), mgr.NodeID())
 
 	second := newTestManager(t, db, "instance-b", time.Minute, nil)
 	_, err = second.Acquire(ctx)
 	require.ErrorIs(t, err, ErrNoNodeID)
+}
+
+func TestAcquireNeverClaimsReservedCLINode(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO snowflake_node_leases (node_id, holder, acquired_at, expires_at)
+		 SELECT g, 'filler', now(), now() + interval '1 hour' FROM generate_series(0, 254) AS g`)
+	require.NoError(t, err)
+
+	mgr := newTestManager(t, db, "instance-a", time.Minute, nil)
+	_, err = mgr.Acquire(ctx)
+	require.ErrorIs(t, err, ErrNoNodeID)
+	require.Equal(t, int64(255), snow.ReservedCLINode)
 }
 
 func TestReleaseFreesNode(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	grpcserver "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/maintenance"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/version"
@@ -56,6 +57,8 @@ type runOptions struct {
 	publicRoutes []func(*restful.WebService)
 	webServices  []*restful.WebService
 	marketing    http.Handler
+	maintenance  *maintenance.Service
+	maintPoller  *maintenance.Poller
 }
 
 // WithReadiness configures the check behind /readyz (typically a database
@@ -144,6 +147,16 @@ func WithMarketingUI(handler http.Handler) Option {
 	}
 }
 
+// WithMaintenance loads the maintenance state once before serving and keeps
+// it fresh with the poller, which runs as a dispatcher. svc must be the
+// service the usecases were built with (UsecaseDeps.Maintenance).
+func WithMaintenance(svc *maintenance.Service, poller *maintenance.Poller) Option {
+	return func(o *runOptions) {
+		o.maintenance = svc
+		o.maintPoller = poller
+	}
+}
+
 // Run serves the REST API, the gRPC service and the embedded web UI on the
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
@@ -196,6 +209,10 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 	}
 	apiApp := api.NewAPI(reg, apiOpts...)
 	container := apiApp.SetupRoute()
+	if ro.maintPoller != nil {
+		loadMaintenance(ro.maintenance, ro.maintPoller)
+		dispatchers = append(dispatchers, ro.maintPoller)
+	}
 	for _, dispatcher := range dispatchers {
 		if dispatcher != nil {
 			dispatcher.Start()
@@ -325,6 +342,20 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		_ = metricsServer.Close()
 	}
 	return err
+}
+
+func loadMaintenance(svc *maintenance.Service, poller *maintenance.Poller) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := poller.Poll(ctx); err != nil {
+		slog.Warn("initial maintenance load failed", "error", err)
+	}
+	if svc == nil {
+		return
+	}
+	snap := svc.Snapshot()
+	w, _ := svc.For("", "")
+	slog.Info("maintenance state loaded", "server_mode", w.Mode, "source", snap.Source, "org_windows", len(snap.Orgs), "project_windows", len(snap.Projects))
 }
 
 // newHTTPServer builds the multiplexed HTTP/1.1 + h2c server. Only header

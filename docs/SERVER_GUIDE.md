@@ -115,7 +115,9 @@ Generate secrets, for example, with `openssl rand -base64 48`.
 | `HTTP_READ_HEADER_TIMEOUT_SECONDS` | `30` | Time a client gets to send request headers. |
 | `HTTP_IDLE_TIMEOUT_SECONDS` | `300` | Idle keep-alive (and stream-less h2c) connections are closed after this; clients reconnect. No read/write timeout is set, so long transfers are never cut. |
 | `HASHER_WORKERS` | `4` in the sample (`0` → `1`) | Password hashing concurrency. |
-| `SNOWFLAKE_NODE_ID` | `0` | Record id node. The server is single-instance; leave `0`. |
+| `SNOWFLAKE_NODE_ID` | `0` | Record id node. The server is single-instance; leave `0`. `255` is reserved for `nipad maintenance` and refused. |
+| `MAINTENANCE_FILE` | empty | Path of a maintenance override file. While it exists it replaces the server maintenance window: an empty file means `full`, otherwise JSON `{"mode", "message", "ends_at"}`. |
+| `MAINTENANCE_POLL_SECONDS` | `5` | How often the stored maintenance windows and the override file are reloaded (values below `1` become `1`). |
 
 ### Optional services
 
@@ -232,6 +234,42 @@ and those slugs (or a user account); the client guide continues from there:
 ```sh
 nipa clone http://localhost:6745/acme/rocket ./rocket
 ```
+
+## Maintenance windows
+
+A server, an organization or a project can be put into maintenance without
+stopping the server. The modes are `read_only`, `full` (closed) and `frozen`
+(server only, for moving the database). Windows are stored in the database,
+so every instance picks them up within `MAINTENANCE_POLL_SECONDS`.
+
+> Windows can be set and read, but requests are not refused and `--notify`
+> sends no email yet. `nipad-ee maintenance` takes the same arguments.
+
+From the server host, with the same `config.yaml` as the server (the command
+opens the database directly, never migrates it, and records its changes in the
+audit log as `system` with `via: cli`):
+
+```sh
+./bin/nipad maintenance status
+./bin/nipad maintenance set read_only -m "Storage upgrade" --end 2026-11-20T23:00:00Z
+./bin/nipad maintenance set full --org acme --start 2026-11-21T22:00:00Z
+./bin/nipad maintenance set read_only --project acme/rocket --notify
+./bin/nipad maintenance end --project acme/rocket
+./bin/nipad maintenance end
+```
+
+`--start` defaults to now (or the stored start of an existing window),
+`--end` is an estimate shown to users and never ends a window, and `frozen`
+is only accepted for the server. While `MAINTENANCE_FILE` exists, the server
+window cannot be changed (`409`). If the command answers `schema too old,
+start the server once`, start the new server version first so it migrates.
+
+Over HTTP: `GET /api/maintenance` (public, server window only),
+`GET|PUT|DELETE /api/v1/admin/maintenance` (super admin),
+`GET|PUT|DELETE /api/v1/orgs/{org}/maintenance` and
+`GET|PUT|DELETE /api/v1/orgs/{org}/projects/{project}/maintenance` (reading:
+org members / project readers; writing: org owners or super admins). The `PUT`
+body is `{"mode", "message", "starts_at", "ends_at", "notify"}`.
 
 ## Data, backups and upgrades
 

@@ -143,3 +143,17 @@ func TestQuotaReconcileJob_StopDeadline(t *testing.T) {
 type reconcileFunc func(context.Context) (int, error)
 
 func (f reconcileFunc) ReconcileQuotas(ctx context.Context) (int, error) { return f(ctx) }
+
+func TestOpenMaintenanceDBFailsWithoutDatabase(t *testing.T) {
+	_, _, err := openMaintenanceDB(&config.Config{DatabaseDSN: "postgres://nipa:nipa@127.0.0.1:1/nipa?sslmode=disable&connect_timeout=1"})
+	require.Error(t, err)
+}
+
+func TestResolveSnowflakeNodeRefusesReservedCLINode(t *testing.T) {
+	_, _, err := resolveSnowflakeNode(&config.Config{SnowflakeNodeID: 255, SnowflakeNodeIDSet: true}, nil)
+	require.ErrorContains(t, err, "reserved")
+	node, lease, err := resolveSnowflakeNode(&config.Config{SnowflakeNodeID: 3, SnowflakeNodeIDSet: true}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, node)
+	require.Nil(t, lease)
+}

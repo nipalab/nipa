@@ -253,6 +253,23 @@ func (o *Org) IsOrgOwner(ctx context.Context, orgID snow.ID) (bool, error) {
 	return role == domain.OrgRoleOwner, nil
 }
 
+// IsOrgMember reports whether the caller belongs to the org with any role.
+// Global admins count as members.
+func (o *Org) IsOrgMember(ctx context.Context, orgID snow.ID) (bool, error) {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return false, nil
+	}
+	if claim.IsSuperAdmin || claim.IsAdmin {
+		return true, nil
+	}
+	_, err := o.repo.MemberRole(ctx, orgID, claim.UserID)
+	if domain.IsErrorNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (o *Org) requireOrgOwner(ctx context.Context, orgID snow.ID) error {
 	owner, err := o.IsOrgOwner(ctx, orgID)
 	if err != nil {

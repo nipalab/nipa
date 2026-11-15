@@ -140,3 +140,20 @@ func TestServiceApplyResumeHooks(t *testing.T) {
 	require.NoError(t, svc.Apply(ctx, NewSnapshot(nil, testNow)))
 	require.Equal(t, 2, calls, "leaving a non-frozen mode runs no hook")
 }
+
+func TestServiceOnPublish(t *testing.T) {
+	svc := NewService().WithClock(fixedClock(testNow))
+	var got []*Snapshot
+	svc.OnPublish(func(snap *Snapshot, now time.Time) {
+		require.Equal(t, testNow, now)
+		got = append(got, snap)
+	})
+	snap := NewSnapshot([]Window{serverWindow(1, ReadOnly, testNow)}, testNow)
+	require.NoError(t, svc.Apply(context.Background(), snap))
+	require.Equal(t, []*Snapshot{snap}, got)
+
+	svc.OnResume(func(context.Context) error { return errors.New("no") })
+	require.NoError(t, svc.Apply(context.Background(), NewSnapshot([]Window{serverWindow(1, Frozen, testNow)}, testNow)))
+	require.Error(t, svc.Apply(context.Background(), NewSnapshot(nil, testNow)))
+	require.Len(t, got, 2, "a refused snapshot is not published")
+}

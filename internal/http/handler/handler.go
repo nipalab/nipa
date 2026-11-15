@@ -25,6 +25,7 @@ type usecaseContainer interface {
 	ServiceToken() *usecase.ServiceToken
 	EmailDelivery() *usecase.EmailDelivery
 	Audit() *usecase.Audit
+	Maintenance() *usecase.Maintenance
 }
 
 type Handler struct {

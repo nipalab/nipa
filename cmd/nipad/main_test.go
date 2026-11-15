@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,4 +29,16 @@ func TestGuardSecretsDevGeneratesEphemeralKeys(t *testing.T) {
 	cfg = &config.Config{AllowInsecureDevSecrets: true, JWTKey: "secret"}
 	require.NoError(t, guardSecrets(cfg))
 	require.Equal(t, "secret", cfg.JWTKey)
+}
+
+func TestOpenMaintenanceDB(t *testing.T) {
+	repos, conn, err := openMaintenanceDB(&config.Config{DatabaseDSN: filepath.Join(t.TempDir(), "nipa.db")})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.NotNil(t, repos.Org)
+	require.NotNil(t, repos.Project)
+	require.NotNil(t, repos.PBAC)
+	require.NotNil(t, repos.Audit)
+	require.NotNil(t, repos.Maintenance)
+	require.NoError(t, conn.Ping())
 }

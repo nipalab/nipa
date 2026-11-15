@@ -137,6 +137,7 @@ type handlerRegistry struct {
 	serviceToken  *usecase.ServiceToken
 	emailDelivery *usecase.EmailDelivery
 	audit         *usecase.Audit
+	maintenance   *usecase.Maintenance
 }
 
 func (r *handlerRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceToken }
@@ -171,6 +172,7 @@ func (r *handlerRegistry) Webhook() *usecase.Webhook { return r.webhook }
 func (r *handlerRegistry) OrgInvitation() *usecase.OrgInvitation { return r.orgInvitation }
 func (r *handlerRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 func (r *handlerRegistry) Audit() *usecase.Audit                 { return r.audit }
+func (r *handlerRegistry) Maintenance() *usecase.Maintenance     { return r.maintenance }
 
 type stubPasswordHasher struct{}
 

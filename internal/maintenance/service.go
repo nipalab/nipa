@@ -78,6 +78,7 @@ type Service struct {
 	snap  atomic.Pointer[Snapshot]
 	clock func() time.Time
 	hooks []func(context.Context) error
+	pub   []func(*Snapshot, time.Time)
 }
 
 func NewService() *Service {
@@ -135,6 +136,14 @@ func (s *Service) OnResume(hook func(context.Context) error) {
 	s.hooks = append(s.hooks, hook)
 }
 
+// OnPublish registers a callback run after every published snapshot, e.g. to
+// export it as metrics.
+func (s *Service) OnPublish(fn func(snap *Snapshot, now time.Time)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pub = append(s.pub, fn)
+}
+
 // Apply publishes snap. When it would leave frozen mode the resume hooks run
 // first; if one fails the frozen snapshot stays and the error is returned.
 func (s *Service) Apply(ctx context.Context, snap *Snapshot) error {
@@ -149,5 +158,8 @@ func (s *Service) Apply(ctx context.Context, snap *Snapshot) error {
 		}
 	}
 	s.snap.Store(snap)
+	for _, fn := range s.pub {
+		fn(snap, now)
+	}
 	return nil
 }

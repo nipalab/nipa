@@ -123,3 +123,25 @@ func TestMetrics_ObserveRateLimit(t *testing.T) {
 	var nilMetrics *Metrics
 	require.NotPanics(t, func() { nilMetrics.ObserveRateLimit("x", "y") })
 }
+
+func TestMetrics_Maintenance(t *testing.T) {
+	m := NewMetrics()
+	m.SetMaintenanceServerMode("read_only", 1)
+	m.SetMaintenanceServerMode("off", 0)
+	m.SetMaintenanceWindows("project", "full", 2)
+	m.ObserveMaintenancePollError()
+	require.Equal(t, 1.0, testutil.ToFloat64(m.maintenanceMode.WithLabelValues("read_only")))
+	require.Equal(t, 2.0, testutil.ToFloat64(m.maintenanceWindows.WithLabelValues("project", "full")))
+	require.Equal(t, 1.0, testutil.ToFloat64(m.maintenancePollErrs))
+	body := scrapeMetrics(t, m)
+	require.Contains(t, body, `nipa_maintenance_server_mode{mode="read_only"} 1`)
+	require.Contains(t, body, `nipa_maintenance_windows{mode="full",scope="project"} 2`)
+	require.Contains(t, body, "nipa_maintenance_poll_errors_total 1")
+
+	var nilMetrics *Metrics
+	require.NotPanics(t, func() {
+		nilMetrics.SetMaintenanceServerMode("off", 1)
+		nilMetrics.SetMaintenanceWindows("org", "full", 1)
+		nilMetrics.ObserveMaintenancePollError()
+	})
+}

@@ -51,7 +51,7 @@ func TestRateLimitMiddlewareExemptAndChunkScope(t *testing.T) {
 	rl := testRateLimit(ratelimit.ScopeGlobalIP, 1)
 	h := rl.Middleware(okHandler)
 	for i := 0; i < 5; i++ {
-		for _, p := range []string{"/healthz", "/readyz", "/metrics", "/version", "/debug/pprof/heap"} {
+		for _, p := range []string{"/healthz", "/readyz", "/metrics", "/version", "/api/maintenance", "/debug/pprof/heap"} {
 			assert.Equal(t, 200, serve(h, p, "").Code, p)
 		}
 	}

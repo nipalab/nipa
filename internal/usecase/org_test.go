@@ -436,3 +436,30 @@ func TestOrg_AddMember_SeatGate(t *testing.T) {
 		require.NoError(t, org.UpdateMemberRole(ctx, 1, 7, domain.OrgRoleOwner))
 	})
 }
+
+func TestOrg_IsOrgMember(t *testing.T) {
+	org, repo := newTestOrg(t)
+
+	ok, err := org.IsOrgMember(context.Background(), 1)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	ok, err = org.IsOrgMember(permissionCtx(2, withAdmin()), 1)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(3)).Return(domain.OrgRoleMember, nil)
+	ok, err = org.IsOrgMember(permissionCtx(3), 1)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(4)).Return("", domain.NewErrorNotFound("x"))
+	ok, err = org.IsOrgMember(permissionCtx(4), 1)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(5)).Return("", errors.New("db"))
+	ok, err = org.IsOrgMember(permissionCtx(5), 1)
+	require.Error(t, err)
+	require.False(t, ok)
+}
