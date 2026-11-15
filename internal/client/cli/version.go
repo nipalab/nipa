@@ -52,7 +52,7 @@ func (c *Cli) setupVersionCmd() *cobra.Command {
 			if probeErr == nil && windows == nil {
 				cmd.Printf("maintenance: off\n")
 			}
-			writeMaintenance(cmd.OutOrStderr(), windows)
+			writeMaintenance(cmd.OutOrStdout(), windows)
 			if local.Version != remote.Version {
 				cmd.PrintErrf("note: client and server versions differ\n")
 			}

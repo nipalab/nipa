@@ -16,8 +16,16 @@ const RESERVED = new Set(['dashboard', 'onboarding', 'admin', 'settings', 'login
 const NON_PROJECT = new Set(['settings', 'new'])
 const DISMISSED_KEY = 'nipa.maintenance.dismissed'
 
+function safeDecode(part: string): string {
+  try {
+    return decodeURIComponent(part)
+  } catch {
+    return part
+  }
+}
+
 export function routeTarget(pathname: string): { org?: string; project?: string } {
-  const [org, project] = pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part))
+  const [org, project] = pathname.split('/').filter(Boolean).slice(0, 2).map(safeDecode)
   if (!org || RESERVED.has(org)) return {}
   if (!project || NON_PROJECT.has(project)) return { org }
   return { org, project }

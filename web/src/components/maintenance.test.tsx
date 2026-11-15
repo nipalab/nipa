@@ -69,6 +69,11 @@ describe('routeTarget', () => {
     expect(routeTarget('/acme/new')).toEqual({ org: 'acme' })
     expect(routeTarget('/acme/my%20game/tree/main')).toEqual({ org: 'acme', project: 'my game' })
   })
+
+  it('survives malformed escapes', () => {
+    expect(routeTarget('/acme/game/blob/main/report%')).toEqual({ org: 'acme', project: 'game' })
+    expect(routeTarget('/acme/%E0%A4%A')).toEqual({ org: 'acme', project: '%E0%A4%A' })
+  })
 })
 
 describe('MaintenanceBanner', () => {

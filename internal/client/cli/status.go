@@ -37,7 +37,7 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), out)
 			}
 			writeStatus(cmd, st)
-			writeMaintenance(cmd.OutOrStderr(), windows)
+			writeMaintenance(cmd.OutOrStdout(), windows)
 			return nil
 		},
 	}
