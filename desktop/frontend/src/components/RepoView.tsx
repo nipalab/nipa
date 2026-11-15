@@ -188,7 +188,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const localChanges = changes.data ? changes.data.staged.length + changes.data.unstaged.length > 0 : undefined;
   const syncGuard = useSyncGuard(repo.root, localChanges, shelveThen);
   const guarded = (action: SyncAction) => void syncGuard.guard(action);
-  const switchTo = (branch: string) =>
+  const switchTo = (branch: string) => {
+    if (maintenance.sync) return notify(maintenance.sync);
     guarded({
       target: { branch },
       verb: translate("repoView.switchingTo", { branch }),
@@ -198,7 +199,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         operation.run("switch", () => desktop.switchBranch(repo.root, branch));
       },
     });
-  const checkoutTag = (name: string) =>
+  };
+  const checkoutTag = (name: string) => {
+    if (maintenance.sync) return notify(maintenance.sync);
     guarded({
       target: { tag: name },
       verb: translate("repoView.checkingOutTag", { name }),
@@ -208,6 +211,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         operation.run("switch", () => desktop.checkoutTag(repo.root, name));
       },
     });
+  };
   const revert = (mode: "continue" | "skip" | "abort") => operation.run("revert", () => desktop.revert(repo.root, { mode }));
   const merge = (source: string) => operation.run("merge", () => desktop.merge(repo.root, source));
   const abortMerge = () => operation.run("merge", () => desktop.abortMerge(repo.root));
@@ -266,11 +270,9 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
         return;
       case "switch":
         if (op) return busyNote();
-        if (maintenance.sync) return notify(maintenance.sync);
         return switchTo(target);
       case "checkout-tag":
         if (op) return busyNote();
-        if (maintenance.sync) return notify(maintenance.sync);
         return checkoutTag(target);
     }
   });
