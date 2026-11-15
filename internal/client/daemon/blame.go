@@ -90,6 +90,6 @@ func blameResult(res *usecase.BlameResult) *daemonpb.BlameResult {
 
 func blameFailureEvent(err error) *daemonpb.BlameEvent {
 	return &daemonpb.BlameEvent{Event: &daemonpb.BlameEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: opFailure(err),
 	}}
 }

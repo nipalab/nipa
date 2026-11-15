@@ -480,6 +480,7 @@ subdirectory.
 | `push`, `merge` or `revert` refuses while detached at a tag | `nipa switch <branch>` to re-attach first. |
 | `nipa update` did nothing on a large clone | Expected: unchanged files are skipped using the stat cache. Use `nipa status --no-cache` / `nipa diff --no-cache` to force a rehash. |
 | Diff viewer does not open | `--ext-diff` is required, and a command must be configured via `NIPA_EXTERNAL_DIFF` or `diffExternal`. |
+| `... is in maintenance (read-only\|closed\|frozen): <message>` | An operator paused the server, the organization or the project. The error prints the estimated end and what still works (read-only: reads; frozen: reads while the session lasts, no sign-in). Nothing is retried and the stored session is kept; run the command again once maintenance ends. `nipa status` and `nipa version --server` show active and scheduled windows, `nipa push` refuses before any work during a window and warns when one starts within 24 h. |
 
 ## Where to go next
 

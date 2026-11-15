@@ -195,10 +195,14 @@ func (l *Auth) loginInteractively(ctx context.Context, host string) error {
 	l.WarnIfCleartext(address)
 	if l.resolveSigners != nil {
 		if signers, err := l.resolveSigners(); err == nil && len(signers) > 0 {
-			if err := l.LoginWithSSHKey(ctx, host, "", signers); err == nil {
-				return nil
+			err := l.LoginWithSSHKey(ctx, host, "", signers)
+			if err == nil || domain.IsMaintenance(err) {
+				return err
 			}
 		}
+	}
+	if err := signInPaused(ctx, l.loginExecutor); err != nil {
+		return err
 	}
 
 	username, password, err := l.userInput.PromptUsernameAndPassword()

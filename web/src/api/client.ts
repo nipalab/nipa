@@ -1,3 +1,4 @@
+import { noteMaintenance, noteSessionPaused } from '../maintenance'
 import type { LoginRequest, MFAChallengeResponse, TokenResponse } from './models'
 
 export type SessionEvent = 'login' | 'logout'
@@ -54,6 +55,7 @@ export function getAccessToken(): string | null {
 
 export function setSession(tokens: TokenResponse): void {
   accessToken = tokens.access_token
+  noteSessionPaused(false)
 }
 
 export function clearSession(): void {
@@ -138,10 +140,14 @@ async function refresh(): Promise<TokenResponse> {
     try {
       return await refreshOnce()
     } catch (err) {
-      if (isMaintenanceError(err)) throw err
+      if (isMaintenanceError(err)) {
+        noteSessionPaused(true)
+        throw err
+      }
       lastError = err
     }
   }
+  noteSessionPaused(false)
   throw lastError
 }
 
@@ -223,6 +229,7 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
     const message = parsed.error ?? parsed.message
     const maintenance =
       res.status === 503 && (marked !== null || parsed.maintenance) ? parsed.maintenance : undefined
+    noteMaintenance(maintenance)
     if (message) {
       return new ApiError(message, res.status, maintenance)
     }

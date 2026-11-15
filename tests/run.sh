@@ -278,6 +278,8 @@ PUBLIC_BASE_URL: 'http://127.0.0.1:$port'
 EMAIL_MAX_ATTEMPTS: 2
 EMAIL_RETRY_BACKOFF_SECONDS: 1
 EMAIL_POLL_SECONDS: 1
+MAINTENANCE_FILE: '$dir/maintenance.json'
+MAINTENANCE_POLL_SECONDS: 1
 $saas_lines
 $rate_limit_lines
 EOF
@@ -430,6 +432,10 @@ run_suite() {
 	export NIPA_TEST_RATELIMIT=1
 	export NIPA_TEST_RATELIMIT_HOST="$RATELIMIT_HOST"
 	export NIPA_TEST_MFAOFF_HOST="$MFAOFF_HOST"
+	# The maintenance specs put the server in maintenance through its
+	# MAINTENANCE_FILE override (a frozen window cannot be ended over REST).
+	export NIPA_TEST_MAINTENANCE_FILE="$TMP_DIR/server-$edition/maintenance.json"
+	rm -f "$NIPA_TEST_MAINTENANCE_FILE"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"

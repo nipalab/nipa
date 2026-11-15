@@ -57,6 +57,9 @@ type chunkTestServer struct {
 	getAttempts      map[string]int
 	failGets         map[string]int
 	failGetStatus    int
+	maintenanceBody  string
+	maintStatus      *pb.GetMaintenanceStatusResponse
+	maintAuth        []string
 	truncateGets     map[string]int
 	hookBeforeGet    func()
 	downloadSizes    []int
@@ -115,6 +118,15 @@ func (s *chunkTestServer) storedChunk(hash string) ([]byte, bool) {
 	defer s.mu.Unlock()
 	data, ok := s.stored[hash]
 	return data, ok
+}
+
+func (s *chunkTestServer) GetMaintenanceStatus(ctx context.Context, _ *pb.GetMaintenanceStatusRequest) (*pb.GetMaintenanceStatusResponse, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	s.maintAuth = md.Get("authorization")
+	if s.maintStatus == nil {
+		return &pb.GetMaintenanceStatusResponse{}, nil
+	}
+	return s.maintStatus, nil
 }
 
 func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUploadUrlsRequest) (*pb.GetChunkUploadUrlsResponse, error) {
@@ -244,6 +256,12 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 			if s.retryAfter != "" {
 				w.Header().Set("Retry-After", s.retryAfter)
 			}
+			if s.maintenanceBody != "" {
+				w.Header().Set("X-Nipa-Maintenance", "server;read_only")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, s.maintenanceBody)
+				return
+			}
 			http.Error(w, "put failed", s.failPutStatus)
 			return
 		}
@@ -291,6 +309,12 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		if failNow {
 			if s.retryAfter != "" {
 				w.Header().Set("Retry-After", s.retryAfter)
+			}
+			if s.maintenanceBody != "" {
+				w.Header().Set("X-Nipa-Maintenance", "server;read_only")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, s.maintenanceBody)
+				return
 			}
 			http.Error(w, "get failed", failStatus)
 			return

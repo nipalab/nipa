@@ -152,13 +152,23 @@ func isRefreshRejection(err error) bool {
 }
 
 func (s *Session) reauth(ctx context.Context, host string, cause error) (string, error) {
-	if token, ok := s.trySSHReauth(ctx, host); ok {
+	if domain.IsMaintenance(cause) {
+		return "", cause
+	}
+	token, ok, err := s.trySSHReauth(ctx, host)
+	if err != nil {
+		return "", err
+	}
+	if ok {
 		return token, nil
 	}
 
 	passwordLogin, ok := s.login.(loginExecutor)
 	if !ok || s.input == nil {
 		return "", cause
+	}
+	if err := signInPaused(ctx, s.login); err != nil {
+		return "", err
 	}
 
 	username, password, err := s.input.PromptUsernameAndPassword()
@@ -183,29 +193,32 @@ func (s *Session) reauth(ctx context.Context, host string, cause error) (string,
 	return loginResult.AccessToken, nil
 }
 
-func (s *Session) trySSHReauth(ctx context.Context, host string) (string, bool) {
+func (s *Session) trySSHReauth(ctx context.Context, host string) (string, bool, error) {
 	if s.resolveSigners == nil {
-		return "", false
+		return "", false, nil
 	}
 	sshLogin, ok := s.login.(sshLoginExecutor)
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	stored, err := s.storage.LoadToken(host)
 	if err != nil {
-		return "", false
+		return "", false, nil
 	}
 	signers, err := s.resolveSigners()
 	if err != nil || len(signers) == 0 {
-		return "", false
+		return "", false, nil
 	}
 	loginResult, err := loginWithSSHKey(ctx, sshLogin, host, stored.Email, signers)
 	if err != nil {
-		return "", false
+		if domain.IsMaintenance(err) {
+			return "", false, err
+		}
+		return "", false, nil
 	}
 	loginResult.Email = stored.Email
 	if err := s.storage.SaveToken(loginResult); err != nil {
-		return "", false
+		return "", false, nil
 	}
-	return loginResult.AccessToken, true
+	return loginResult.AccessToken, true, nil
 }

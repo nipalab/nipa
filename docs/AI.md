@@ -111,7 +111,10 @@ already has a `Nipa-Agent:` line, and entirely with `--no-agent-trailer`.
 
 Results are the structured content of the tool call and use the same JSON
 shapes as the CLI `--json` payloads. Failures set `isError` and carry the
-message plus any `hint:` and `next:` guidance from the underlying error.
+message plus any `hint:` and `next:` guidance from the underlying error. A
+server maintenance refusal reads like `project acme/game is in maintenance
+(read-only): <message> (hint: read-only commands still work; next: retry after
+<ends_at>)`; the end is an estimate, maintenance ends manually.
 
 ### Read tools
 

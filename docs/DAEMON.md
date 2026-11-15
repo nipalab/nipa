@@ -88,7 +88,9 @@ interceptors stay the single auth point.
 - Errors map the gRPC code to an HTTP status (`InvalidArgument` 400,
   `Unauthenticated` 401, `PermissionDenied` 403, `NotFound` 404,
   `FailedPrecondition`/`Aborted`/`AlreadyExists` 409, `ResourceExhausted` 429,
-  `Unimplemented` 501, `Unavailable` 503) with body `{"code","message"}`.
+  `Unimplemented` 501, `Unavailable` 503) with body `{"code","message"}`. A
+  server maintenance refusal (503, also as a stream `error` line) adds
+  `maintenance: {scope, mode, message, starts_at, ends_at, org, project}`.
 - A non-loopback `Host` or `Origin` is rejected with 403 (DNS-rebinding
   guard); non-POST is 405, an unknown method 404.
 
@@ -161,7 +163,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored; `show` with one revision compares it with its first parent, or an empty tree for a root commit — the GUI's commit view); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
 | `ReadBlob` | **server-streaming** | one file version (`BlobRef`: `working` default, `snapshot` = last synced side of a working diff, offline, or `revision` + branch/tag/commit/HEAD); `BlobInfo` (size, binary, hex hash, kind) then decoded content in 64 KiB chunks; revision chunks are downloaded into `.nipa/objects` first. Paths are repo-relative, `.nipa/` and symlinks leaving the clone are refused |
 | `Preview` | **server-streaming** | `old`/`new` `BlobRef`s + optional texture `level`/`face` → per side `ImagePreview` (dims, format, encoding, depth, alpha, levels/faces/cube and the decoded level/face, PSD `layers`, `hdr`) + downscaled PNG chunks (`max_size`, default 2048; HDR sides are `preview.PackHDR` RGBE PNGs twice as wide), then `ImageDiffStats` from `preview.CompareImages` when both sides are given; non-image or unsupported formats fail with 415 and the decoder's reason. `.blend`/`.uasset`/`.umap` sides decode their embedded thumbnail (`preview.DecodeThumbnail` over the first 64 MiB) and set `ImagePreview.thumbnail`; a file without one is a 415 naming it |
-| `WatchEvents` | **server-streaming** | team activity for one watched root, polled from the server every `interval_seconds` (default 60, clamped to 15–3600; `NIPA_DAEMON_EVENT_INTERVAL` overrides it for tests): `incoming` (commits on the clone's branch it does not have, up to 100), `review_requests` (open merge requests with a pending review request for the caller) and `events` since the previous poll (`pushed` with author/message/count, `lock_released` for someone else's lock, `lock_requested` when a teammate asked the caller to release a lock they hold (first request or one that notified the holder again), `review_requested`). The first poll is a baseline without events; later ones are sent only when something changed. A failed poll sends `error` once and keeps the counts. Ends on unwatch or shutdown |
+| `WatchEvents` | **server-streaming** | team activity for one watched root, polled from the server every `interval_seconds` (default 60, clamped to 15–3600; `NIPA_DAEMON_EVENT_INTERVAL` overrides it for tests): `incoming` (commits on the clone's branch it does not have, up to 100), `review_requests` (open merge requests with a pending review request for the caller) and `events` since the previous poll (`pushed` with author/message/count, `lock_released` for someone else's lock, `lock_requested` when a teammate asked the caller to release a lock they hold (first request or one that notified the holder again), `review_requested`). The first poll is a baseline without events; later ones are sent only when something changed. A failed poll sends `error` once and keeps the counts. Every poll also asks `GetMaintenanceStatus` for the clone's project: `maintenance` (`MaintenanceState{server, org, project}` of `greet.MaintenanceWindow`) carries the current windows, a change appends a `maintenance` event (`message` = `scheduled`, `started`, `updated` or `ended`, `maintenance` = the window, the previous one when ended), and a maintenance refusal of the other poll calls never sets `error` (counts are kept). Ends on unwatch or shutdown |
 | `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
 | `ListFiles` | unary | one directory level of the clone (snapshot rows of that level + working-copy status, untracked files and folders included); see below |
 | `SearchFiles` | unary | tracked files whose path holds the query's characters in order, ranked; see below |
@@ -258,7 +260,7 @@ message OpEvent {
     Started  started;     // phase began
     Progress progress;    // objects done/total, bytes done/total, phase
     Result   result;      // terminal success payload (per-op message)
-    Failure  failure;     // terminal domain.Error
+    Failure  failure;     // terminal domain.Error; a maintenance refusal is code 503 with `maintenance` (the window)
   }
 }
 ```

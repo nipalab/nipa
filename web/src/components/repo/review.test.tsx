@@ -628,6 +628,19 @@ describe('MergeRequestOverview', () => {
     expect(mergeButton.disabled).toBe(true)
   })
 
+  it('pauses merging during maintenance', async () => {
+    const { storeProject, resetMaintenance } = await import('../../maintenance')
+    storeProject('acme/game', { mode: 'read_only', active: true, message: '' })
+    try {
+      const request = { ...base.request, mergeability: { status: 'mergeable' } }
+      const { container } = await render(<MergeRequestOverview {...base} org="acme" project="game" request={request} />)
+      expect(container.textContent).toContain('Merging is paused: project acme/game is read-only for maintenance.')
+      expect((container.querySelector('.nipa-merge-actions button') as HTMLButtonElement).disabled).toBe(true)
+    } finally {
+      await act(async () => resetMaintenance())
+    }
+  })
+
   it('enables a diverged merge for non-fast-forward strategies and forwards the choice', async () => {
     const onMerge = vi.fn()
     const request = { ...base.request, mergeability: { status: 'behind_target' } }

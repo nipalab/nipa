@@ -17,6 +17,7 @@ import { FormDialog } from '../components/FormDialog'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { EmailSettings } from '../components/repo/EmailSettings'
+import { ProjectMaintenanceTab } from '../components/MaintenanceSettings'
 import { BranchProtectionSettings, type ProtectionRule } from '../components/repo/BranchProtectionSettings'
 import { ProjectGeneralSettings } from '../components/repo/ProjectGeneralSettings'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -28,7 +29,8 @@ import { SettingsLayout } from '../components/SettingsLayout'
 import { UserGroupPicker, type PickerEntry } from '../components/UserGroupPicker'
 import { EmptyState, ErrorBanner, Loading, Mono, NoPermission } from '../components/ui'
 import { useAction, useAsync } from '../hooks'
-import { useOrgMembers } from '../orgHooks'
+import { useOrgMembers, useOrgRole } from '../orgHooks'
+import { useAuth } from '../auth'
 
 const SETTINGS_TABS = [
   { key: 'general', label: 'General' },
@@ -37,6 +39,7 @@ const SETTINGS_TABS = [
   { key: 'webhooks', label: 'Webhooks' },
   { key: 'tokens', label: 'Service tokens' },
   { key: 'email', label: 'Email deliveries' },
+  { key: 'maintenance', label: 'Maintenance' },
 ] as const
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
@@ -68,8 +71,12 @@ export default function ProjectSettingsPage() {
   const [defaultDialog, setDefaultDialog] = useState<{ editing: PermissionEntry | null } | null>(null)
   const [searchParams] = useSearchParams()
 
+  const { me } = useAuth()
+  const { role } = useOrgRole(org)
+  const canMaintain = Boolean(me?.is_super_admin || role === 'owner')
   const requestedTab = searchParams.get('tab')
-  const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'general'
+  const tab: SettingsTab =
+    isSettingsTab(requestedTab) && (requestedTab !== 'maintenance' || canMaintain) ? requestedTab : 'general'
   const base = `/${org}/${project}/settings`
 
   const shell = { org, project, active: 'settings' as const, rev: defaultBranch, canAdmin, heading: 'Settings' }
@@ -159,15 +166,22 @@ export default function ProjectSettingsPage() {
 
   return (
     <RepoPageShell {...shell}>
-      <ErrorBanner
-        error={actionError ?? rulesError ?? defaultsError ?? membersError}
-        onDismiss={actionError ? clearError : undefined}
-      />
+      {tab !== 'maintenance' && (
+        <ErrorBanner
+          error={actionError ?? rulesError ?? defaultsError ?? membersError}
+          onDismiss={actionError ? clearError : undefined}
+        />
+      )}
 
       <SettingsLayout
         label="Repository settings"
         active={tab}
-        items={SETTINGS_TABS.map((item) => ({ key: item.key, label: item.label, to: `${base}?tab=${item.key}` }))}
+        items={SETTINGS_TABS.map((item) => ({
+          key: item.key,
+          label: item.label,
+          to: `${base}?tab=${item.key}`,
+          hidden: item.key === 'maintenance' && !canMaintain,
+        }))}
       >
         <Stack direction="vertical" gap="spacious">
           {tab === 'general' && <ProjectGeneralSettings org={org} project={project} />}
@@ -202,6 +216,7 @@ export default function ProjectSettingsPage() {
           {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
           {tab === 'tokens' && <ServiceTokenSettings org={org} project={project} />}
           {tab === 'email' && <EmailSettings org={org} project={project} />}
+          {tab === 'maintenance' && <ProjectMaintenanceTab org={org} project={project} />}
         </Stack>
       </SettingsLayout>
 

@@ -55,6 +55,12 @@ import type {
   EmailDeliveryListResponse,
   EmailDeliveryResponse,
   WebhookResponse,
+  AdminMaintenanceResponse,
+  MaintenanceStatusResponse,
+  MaintenanceWindow,
+  OrgMaintenanceResponse,
+  ProjectMaintenanceResponse,
+  SetMaintenanceInput,
 } from './models'
 
 function projectBase(org: string, project: string): string {
@@ -1052,4 +1058,50 @@ export function listAuditEntries(filters: AuditListFilters = {}): Promise<AuditL
   }
   const query = params.toString()
   return apiJson(`/api/v1/admin/audit${query ? `?${query}` : ''}`)
+}
+
+export async function getMaintenance(): Promise<MaintenanceStatusResponse> {
+  const res = await fetch('/api/maintenance', { credentials: 'same-origin' })
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as MaintenanceStatusResponse
+}
+
+function orgMaintenancePath(org: string): string {
+  return `/api/v1/orgs/${encodeURIComponent(org)}/maintenance`
+}
+
+export function getAdminMaintenance(): Promise<AdminMaintenanceResponse> {
+  return apiJson('/api/v1/admin/maintenance')
+}
+
+export function setServerMaintenance(input: SetMaintenanceInput): Promise<MaintenanceWindow> {
+  return apiJson('/api/v1/admin/maintenance', { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function endServerMaintenance(): Promise<void> {
+  return apiJson('/api/v1/admin/maintenance', { method: 'DELETE' })
+}
+
+export function getOrgMaintenance(org: string): Promise<OrgMaintenanceResponse> {
+  return apiJson(orgMaintenancePath(org))
+}
+
+export function setOrgMaintenance(org: string, input: SetMaintenanceInput): Promise<MaintenanceWindow> {
+  return apiJson(orgMaintenancePath(org), { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function endOrgMaintenance(org: string): Promise<void> {
+  return apiJson(orgMaintenancePath(org), { method: 'DELETE' })
+}
+
+export function getProjectMaintenance(org: string, project: string): Promise<ProjectMaintenanceResponse> {
+  return apiJson(`${projectBase(org, project)}/maintenance`)
+}
+
+export function setProjectMaintenance(org: string, project: string, input: SetMaintenanceInput): Promise<MaintenanceWindow> {
+  return apiJson(`${projectBase(org, project)}/maintenance`, { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function endProjectMaintenance(org: string, project: string): Promise<void> {
+  return apiJson(`${projectBase(org, project)}/maintenance`, { method: 'DELETE' })
 }

@@ -1689,6 +1689,37 @@ paused webhook/email delivered after `maintenance end`, a failing resume hook
 keeps frozen, kept session, `VACUUM INTO` copy starts frozen), the REST
 `maintenance frozen` subtest (`total_changes()`), `ee/e2e/maintenance_test.go`
 (read workload on a `default_transaction_read_only=on` pool).
+Client surfaces (PR 6): `client/domain` holds `NewMaintenanceError(info,
+cause)` (nil cause = the gRPC refusal, so `maintenance.FromGRPC` works on
+every maintenance error), `MaintenanceHint` and `MaintenanceStatus`/
+`MaintenanceWindow` (`Refusal`, `NextStart`, `Describe`). The chunk HTTP
+transfers read a 503 with `X-Nipa-Maintenance` (`httpMaintenanceError`, body
+or header) and never retry it (`httpRetryHint`); unary calls only repeat rate
+limit refusals. `Transport/Client.GetMaintenanceStatus(org, project)` sends
+the stored access token when there is one (no refresh, never a prompt).
+`Session.reauth` returns a maintenance cause or SSH refusal and, before a
+password prompt, `signInPaused` (`usecase/maintenance.go`) probes the server
+window and returns the refusal while it is frozen; `Auth.loginInteractively`
+and `nipa login` do the same. CLI (`cli/maintenance.go`): `cloneMaintenance`
+(2 s timeout, failures ignored) feeds one `maintenance: <Describe>` line per
+window to `nipa status` (also `maintenance` in `--json`) and `nipa version
+--server` (`maintenance: off` when none, `maintenance` in JSON);
+`maintenanceGate` makes `nipa push` (not `--dry-run`) refuse before any work
+during an active window and print `maintenance starts in <d>` within 24 h;
+`cmd/nipa` prints errors through `cli.ErrorText` (estimated end + `hint:`)
+and `output.WriteError` adds `maintenance`; exit code 1. Daemon:
+`teamWatch.pollMaintenance` (`daemon/maintenance.go`) asks
+`GetMaintenanceStatus` every poll, fills `RepoActivity.maintenance`
+(`MaintenanceState`), appends `maintenance` `TeamEvent`s
+(`scheduled|started|updated|ended` in `message`, the window in
+`maintenance`) and a refusal of the other poll calls never sets `error`;
+`OpFailure` is 503 with `maintenance` (`opFailure`); the JSON bridge adds
+`maintenance` (Info) to error bodies and stream error lines. MCP `toolError`
+adds `next: retry after <ends_at>`. Suite: `tests/suite/maintenance_test.go`
+(project read-only/closed, org-owner rights, frozen session through the
+`MAINTENANCE_FILE` that `tests/run.sh` configures as
+`NIPA_TEST_MAINTENANCE_FILE`, daemon events and bridge, MCP hint, the
+announcement emails).
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
@@ -2315,6 +2346,17 @@ and `nipa mcp` stay silent.
   400 shown under the field, previews stay undiscounted). `FormDialog` renders a seat-limit 402 as
   `SeatLimitBanner` (link to `/settings/billing`). The app has no CSP; adding
   one must allow Paddle.js and its checkout frames.
+- Maintenance (`docs/WEB_UI.md` "Maintenance"): `web/src/maintenance.ts` is a
+  module store (public status polled every 60 s plus the current org/project
+  route when signed in; `errorFromResponse` records every maintenance 503 and
+  `refresh()` marks the session paused). `AppShell` renders
+  `MaintenanceBanner` and `MaintenanceGate` (an active `full` window, or
+  `frozen` once the session is paused, shows `pages/MaintenancePage.tsx`
+  except on `/admin/maintenance` and the settings Maintenance tabs);
+  `RequireAuth` shows it instead of the login redirect when `bootstrap()` was
+  refused and restores the session once it ends. Window forms live in
+  `components/MaintenanceForm.tsx` (admin page, org and project settings tabs
+  for org owners and super admins).
 - Keep `web/src/api/endpoints.ts` in sync with the REST handlers under
   `internal/http/`. `npm run lint` (tsc), `npm test` (vitest) and `make web`
   must stay green; the built SPA is embedded via `web/server/webui.go`.

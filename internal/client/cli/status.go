@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
@@ -26,10 +27,17 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var windows *domain.MaintenanceStatus
+			if root, err := localrepo.FindRepoRoot(); err == nil {
+				windows = c.cloneMaintenance(cmd, root)
+			}
 			if jsonRequested(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), output.NewStatus(st))
+				out := output.NewStatus(st)
+				out.Maintenance = windows
+				return output.WriteJSON(cmd.OutOrStdout(), out)
 			}
 			writeStatus(cmd, st)
+			writeMaintenance(cmd.OutOrStderr(), windows)
 			return nil
 		},
 	}

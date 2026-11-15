@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/version"
@@ -8,8 +9,9 @@ import (
 )
 
 type versionPair struct {
-	Client version.Info `json:"client"`
-	Server version.Info `json:"server"`
+	Client      version.Info              `json:"client"`
+	Server      version.Info              `json:"server"`
+	Maintenance *domain.MaintenanceStatus `json:"maintenance,omitempty"`
 }
 
 func (c *Cli) setupVersionCmd() *cobra.Command {
@@ -38,11 +40,19 @@ func (c *Cli) setupVersionCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			windows, probeErr := c.useCase.Version().Maintenance(cmd.Context(), url)
+			if probeErr != nil || len(windows.Windows()) == 0 {
+				windows = nil
+			}
 			if jsonRequested(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), versionPair{Client: local, Server: *remote})
+				return output.WriteJSON(cmd.OutOrStdout(), versionPair{Client: local, Server: *remote, Maintenance: windows})
 			}
 			cmd.Printf("client: %s\n", local)
 			cmd.Printf("server: %s\n", *remote)
+			if probeErr == nil && windows == nil {
+				cmd.Printf("maintenance: off\n")
+			}
+			writeMaintenance(cmd.OutOrStderr(), windows)
 			if local.Version != remote.Version {
 				cmd.PrintErrf("note: client and server versions differ\n")
 			}

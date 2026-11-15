@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/grpc/pb"
@@ -148,9 +149,15 @@ type teamWatch struct {
 	incoming int32
 	requests int32
 	err      string
+
+	maint       *daemonpb.MaintenanceState
+	maintPrimed bool
 }
 
 func (w *teamWatch) failed(err error) *daemonpb.RepoActivity {
+	if isMaintenance(err) {
+		return nil
+	}
 	msg := err.Error()
 	if st, ok := status.FromError(err); ok {
 		msg = st.Message()
@@ -159,27 +166,32 @@ func (w *teamWatch) failed(err error) *daemonpb.RepoActivity {
 		return nil
 	}
 	w.err = msg
-	return &daemonpb.RepoActivity{Incoming: w.incoming, ReviewRequests: w.requests, Error: msg}
+	return &daemonpb.RepoActivity{Incoming: w.incoming, ReviewRequests: w.requests, Error: msg, Maintenance: w.maint}
 }
 
 func (w *teamWatch) poll(ctx context.Context, client pb.NipaServiceClient, project *pb.ProjectContext, in pollInput) (*daemonpb.RepoActivity, error) {
 	act := &daemonpb.RepoActivity{}
-	head, err := w.pollBranch(ctx, client, project, in, act)
+	maintEvents, maintChanged := w.pollMaintenance(ctx, client, project)
+	act.Maintenance = w.maint
+	head, locks, reviews, err := w.pollTeam(ctx, client, project, in, act)
 	if err != nil {
-		return nil, err
+		if !isMaintenance(err) {
+			return nil, err
+		}
+		act.Events = maintEvents
+		act.Incoming, act.ReviewRequests = w.incoming, w.requests
+		changed := !w.primed || maintChanged || w.err != ""
+		w.err = ""
+		if !changed {
+			return nil, nil
+		}
+		return act, nil
 	}
-	locks, err := w.pollLocks(ctx, client, project, in, act)
-	if err != nil {
-		return nil, err
-	}
-	reviews, err := w.pollReviews(ctx, client, project, in, act)
-	if err != nil {
-		return nil, err
-	}
+	act.Events = append(maintEvents, act.Events...)
 	if len(act.Events) > maxTeamEvents {
 		act.Events = act.Events[:maxTeamEvents]
 	}
-	changed := !w.primed || len(act.Events) > 0 || w.err != "" || act.Incoming != w.incoming || act.ReviewRequests != w.requests
+	changed := !w.primed || maintChanged || len(act.Events) > 0 || w.err != "" || act.Incoming != w.incoming || act.ReviewRequests != w.requests
 	w.primed, w.head, w.locks, w.reviews, w.err = true, head, locks, reviews, ""
 	w.asked = w.nextAsk
 	w.incoming, w.requests = act.Incoming, act.ReviewRequests
@@ -187,6 +199,38 @@ func (w *teamWatch) poll(ctx context.Context, client pb.NipaServiceClient, proje
 		return nil, nil
 	}
 	return act, nil
+}
+
+// pollMaintenance refreshes the remembered windows and returns the events of
+// their changes; a failed status call keeps the previous windows.
+func (w *teamWatch) pollMaintenance(ctx context.Context, client pb.NipaServiceClient, project *pb.ProjectContext) ([]*daemonpb.TeamEvent, bool) {
+	state, ok := pollMaintenance(ctx, client, project)
+	if !ok {
+		return nil, false
+	}
+	var events []*daemonpb.TeamEvent
+	if w.maintPrimed {
+		events = maintenanceEvents(w.maint, state)
+	}
+	changed := !proto.Equal(w.maint, state)
+	w.maint, w.maintPrimed = state, true
+	return events, changed
+}
+
+func (w *teamWatch) pollTeam(ctx context.Context, client pb.NipaServiceClient, project *pb.ProjectContext, in pollInput, act *daemonpb.RepoActivity) (string, map[string]*pb.FileLockDetail, map[int64]bool, error) {
+	head, err := w.pollBranch(ctx, client, project, in, act)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	locks, err := w.pollLocks(ctx, client, project, in, act)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	reviews, err := w.pollReviews(ctx, client, project, in, act)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return head, locks, reviews, nil
 }
 
 func (w *teamWatch) pollBranch(ctx context.Context, client pb.NipaServiceClient, project *pb.ProjectContext, in pollInput, act *daemonpb.RepoActivity) (string, error) {

@@ -613,3 +613,46 @@ export function formatPermission(mask: number): string {
   if (mask & PERMISSION_ADMIN) parts.push('admin')
   return parts.length > 0 ? parts.join(',') : 'none'
 }
+
+export type MaintenanceMode = 'read_only' | 'full' | 'frozen'
+
+export interface MaintenanceWindow {
+  mode: MaintenanceMode
+  active: boolean
+  message: string
+  starts_at?: string
+  ends_at?: string
+  org?: string
+  project?: string
+  notified?: boolean
+}
+
+export interface MaintenanceStatusResponse {
+  server: MaintenanceWindow | null
+  source: string
+}
+
+export interface AdminMaintenanceResponse extends MaintenanceStatusResponse {
+  orgs: MaintenanceWindow[]
+  projects: MaintenanceWindow[]
+}
+
+export interface OrgMaintenanceResponse {
+  server: MaintenanceWindow | null
+  org: MaintenanceWindow | null
+  projects?: MaintenanceWindow[]
+}
+
+export interface ProjectMaintenanceResponse {
+  server: MaintenanceWindow | null
+  org: MaintenanceWindow | null
+  project: MaintenanceWindow | null
+}
+
+export interface SetMaintenanceInput {
+  mode: MaintenanceMode
+  message: string
+  starts_at?: string
+  ends_at?: string
+  notify: boolean
+}

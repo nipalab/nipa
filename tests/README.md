@@ -28,7 +28,10 @@ surfaces are covered too: email notifications, the admin audit log, users/
 orgs/projects/branches/browser admin routes, signed chunk URLs, storage
 quota, rate limiting and project service tokens (lifecycle, per-scope route
 allowlist, commit ancestry, CI checks, webhook management, audit tagging,
-expiry and creator demotion/deletion).
+expiry and creator demotion/deletion), and maintenance mode (project
+read-only/closed windows across CLI, `nipa serve` and `nipa mcp`, a frozen
+server through the `MAINTENANCE_FILE` override that `run.sh` configures and
+exports as `NIPA_TEST_MAINTENANCE_FILE`, and the announcement emails).
 
 The enterprise run additionally enables the SaaS onboarding stack
 (`SAAS_MODE`) and covers it through the REST surface: registration with the

@@ -1,6 +1,8 @@
 import { Link as PrimerLink } from '@primer/react'
 import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { MaintenanceGate } from '../pages/MaintenancePage'
+import { MaintenanceBanner, useRouteTarget } from './MaintenanceBanner'
 import { APP_HOME } from '../routes'
 import { NipaLogo } from './NipaLogo'
 import { TermsGate } from './TermsGate'
@@ -8,6 +10,7 @@ import { UserMenu } from './UserMenu'
 
 export default function AppShell() {
   const { me, signOut } = useAuth()
+  const { org, project } = useRouteTarget()
 
   return (
     <div>
@@ -32,9 +35,12 @@ export default function AppShell() {
         <div style={{ flex: 1 }} />
         <UserMenu me={me} onSignOut={signOut} />
       </header>
-      <TermsGate>
-        <Outlet />
-      </TermsGate>
+      <MaintenanceBanner org={org} project={project} />
+      <MaintenanceGate>
+        <TermsGate>
+          <Outlet />
+        </TermsGate>
+      </MaintenanceGate>
     </div>
   )
 }

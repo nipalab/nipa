@@ -16,6 +16,7 @@ import {
   TriangleDownIcon,
   XCircleFillIcon,
   XCircleIcon,
+  ToolsIcon,
   XIcon,
 } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
@@ -48,6 +49,8 @@ import { errorMessage } from '../../hooks'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
 import { MemberPanel } from './MemberPicker'
+import { useEffectiveMaintenance } from '../../maintenance'
+import { maintenanceTitle } from '../MaintenanceBanner'
 
 const Markdown = lazy(() => import('./Markdown').then((module) => ({ default: module.Markdown })))
 
@@ -414,6 +417,7 @@ export function MergeRequestOverview({
   const [reviewChoice, setReviewChoice] = useState<ReviewState>('commented')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const confirm = useConfirmAction()
+  const paused = useEffectiveMaintenance(org, project)
 
   const open = request?.status === 'open'
   const isAuthor = Boolean(me && request && request.created_by === me)
@@ -1043,10 +1047,19 @@ export function MergeRequestOverview({
             hint={status.hint}
           />
 
+          {paused && (
+            <MergeSection
+              icon={<ToolsIcon />}
+              tone="muted"
+              title={`Merging is paused: ${maintenanceTitle(paused).toLowerCase()}.`}
+              hint="Try again once maintenance ends."
+            />
+          )}
+
           {canWrite && (
             <div className="nipa-merge-actions">
               <ButtonGroup>
-                <Button variant="primary" disabled={!mergeable || pending} onClick={() => onMerge(strategy, deleteSource)}>
+                <Button variant="primary" disabled={!mergeable || pending || paused !== null} onClick={() => onMerge(strategy, deleteSource)}>
                   {MERGE_STRATEGIES.find((entry) => entry.value === strategy)?.button ?? 'Merge'}
                 </Button>
                 <ActionMenu>

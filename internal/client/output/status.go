@@ -11,6 +11,8 @@ type Status struct {
 	Untracked []string    `json:"untracked"`
 	Missing   []string    `json:"missing"`
 	Conflicts []string    `json:"conflicts"`
+
+	Maintenance *clientDomain.MaintenanceStatus `json:"maintenance,omitempty"`
 }
 
 type StatusHead struct {

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Heading, Stack } from '@primer/react'
+import { isMaintenanceError } from '../api/client'
 import { acceptTerms, getTermsStatus } from '../api/endpoints'
 import { errorMessage, useAsync } from '../hooks'
 import { TermsCheckbox } from './TermsCheckbox'
@@ -8,8 +9,15 @@ import { ErrorBanner, Loading } from './ui'
 // TermsGate holds the app back until the signed-in user accepted the current
 // terms. Servers that do not ask (free edition) answer 404 and pass through;
 // any other failure keeps the app blocked behind a retry.
+function termsOrSkip() {
+  return getTermsStatus().catch((err: unknown) => {
+    if (isMaintenanceError(err)) return null
+    throw err
+  })
+}
+
 export function TermsGate({ children }: { children: ReactNode }) {
-  const { data: status, loading, error: loadError, reload } = useAsync(getTermsStatus, [])
+  const { data: status, loading, error: loadError, reload } = useAsync(termsOrSkip, [])
   const [accepted, setAccepted] = useState(false)
   const [checked, setChecked] = useState(false)
   const [busy, setBusy] = useState(false)

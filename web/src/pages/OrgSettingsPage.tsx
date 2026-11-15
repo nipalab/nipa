@@ -23,6 +23,7 @@ import {
   PersonIcon,
   SearchIcon,
   ShieldIcon,
+  ToolsIcon,
 } from '@primer/octicons-react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
@@ -41,6 +42,7 @@ import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
+import { OrgMaintenanceTab } from '../components/MaintenanceSettings'
 import { OrgNav } from '../components/OrgNav'
 import { PickedSubject } from '../components/PickedSubject'
 import { SettingsLayout, type SettingsNavItem } from '../components/SettingsLayout'
@@ -50,25 +52,31 @@ import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../compone
 import { useAction, useAsync } from '../hooks'
 import { useOrgMembers, useOrgRole } from '../orgHooks'
 
-type OrgTab = 'members' | 'groups' | 'storage'
+type OrgTab = 'members' | 'groups' | 'storage' | 'maintenance'
 
 function isOrgTab(value: string | null): value is OrgTab {
-  return value === 'members' || value === 'groups' || value === 'storage'
+  return value === 'members' || value === 'groups' || value === 'storage' || value === 'maintenance'
 }
 
 export default function OrgSettingsPage() {
   const { org = '' } = useParams()
   const [params] = useSearchParams()
-  const { canManage, loading: roleLoading } = useOrgRole(org)
+  const { me } = useAuth()
+  const { canManage, role, loading: roleLoading } = useOrgRole(org)
+  const canMaintain = Boolean(me?.is_super_admin || role === 'owner')
   const { data: storage, reload: reloadStorage } = useAsync(() => getOrgStorage(org), [org])
 
   const requested = params.get('tab')
-  const tab: OrgTab = isOrgTab(requested) && (requested !== 'storage' || storage !== null) ? requested : 'members'
+  const tab: OrgTab =
+    isOrgTab(requested) && (requested !== 'storage' || storage !== null) && (requested !== 'maintenance' || canMaintain)
+      ? requested
+      : 'members'
   const base = `/${org}/settings`
   const items: SettingsNavItem[] = [
     { key: 'members', label: 'Members', to: base, icon: PersonIcon },
     { key: 'groups', label: 'Groups', to: `${base}?tab=groups`, icon: PeopleIcon },
     { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: storage === null },
+    { key: 'maintenance', label: 'Maintenance', to: `${base}?tab=maintenance`, icon: ToolsIcon, hidden: !canMaintain },
   ]
   const title = `${org} settings`
 
@@ -87,6 +95,7 @@ export default function OrgSettingsPage() {
         {tab === 'members' && <MembersTab org={org} />}
         {tab === 'groups' && <GroupsTab org={org} />}
         {tab === 'storage' && storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
+        {tab === 'maintenance' && <OrgMaintenanceTab org={org} />}
       </SettingsLayout>
     </Page>
   )

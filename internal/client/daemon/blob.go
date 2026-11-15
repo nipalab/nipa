@@ -310,6 +310,6 @@ func blobFailureEvent(err error) *daemonpb.BlobEvent {
 
 func previewFailureEvent(err error) *daemonpb.PreviewEvent {
 	return &daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: opFailure(err),
 	}}
 }

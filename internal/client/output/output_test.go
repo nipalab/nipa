@@ -45,3 +45,11 @@ func TestNewStatus(t *testing.T) {
 	require.NoError(t, WriteJSON(&buf, st))
 	require.JSONEq(t, `{"staged":["a"],"deleted":[],"modified":[],"untracked":[],"missing":[],"conflicts":["c"]}`, buf.String())
 }
+
+func TestWriteError_Maintenance(t *testing.T) {
+	var buf bytes.Buffer
+	err := &clientDomain.Error{Code: 503, Message: "server is in maintenance (read-only)", Hint: "read-only commands still work",
+		Maintenance: &clientDomain.MaintenanceInfo{Scope: "server", Mode: "read_only"}}
+	require.NoError(t, WriteError(&buf, err))
+	require.JSONEq(t, `{"error":{"code":503,"message":"server is in maintenance (read-only)","hint":"read-only commands still work","maintenance":{"scope":"server","mode":"read_only"}}}`, buf.String())
+}

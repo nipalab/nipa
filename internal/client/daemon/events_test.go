@@ -32,6 +32,18 @@ type teamService struct {
 	reqErr    error
 	logAsked  []string
 	listAsked []string
+	maint     *pb.GetMaintenanceStatusResponse
+	maintAsk  []*pb.ProjectContext
+}
+
+func (s *teamService) GetMaintenanceStatus(_ context.Context, req *pb.GetMaintenanceStatusRequest, _ ...grpc.CallOption) (*pb.GetMaintenanceStatusResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maintAsk = append(s.maintAsk, req.GetContext())
+	if s.maint == nil {
+		return nil, status.Error(codes.Unimplemented, "unknown method")
+	}
+	return s.maint, nil
 }
 
 func (s *teamService) GetCommitLog(_ context.Context, req *pb.GetCommitLogRequest, _ ...grpc.CallOption) (*pb.GetCommitLogResponse, error) {

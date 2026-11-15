@@ -130,6 +130,6 @@ func hunksToPB(hunks []diff.Hunk) []*pb.DiffHunkDetail {
 
 func diffFileFailureEvent(err error) *daemonpb.DiffFileEvent {
 	return &daemonpb.DiffFileEvent{Event: &daemonpb.DiffFileEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: opFailure(err),
 	}}
 }

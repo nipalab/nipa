@@ -1,5 +1,5 @@
 import { ActionList, ActionMenu, Text } from '@primer/react'
-import { CreditCardIcon, HomeIcon, PeopleIcon, PersonIcon, SignOutIcon, TriangleDownIcon } from '@primer/octicons-react'
+import { CreditCardIcon, HomeIcon, PeopleIcon, PersonIcon, SignOutIcon, ToolsIcon, TriangleDownIcon } from '@primer/octicons-react'
 import { useNavigate } from 'react-router-dom'
 import type { UserResponse } from '../api/models'
 import { APP_HOME } from '../routes'
@@ -68,6 +68,14 @@ export function UserMenu({ me, onSignOut }: { me: UserResponse | null; onSignOut
                   </ActionList.LeadingVisual>
                   Users
                 </ActionList.Item>
+                {me?.is_super_admin && (
+                  <ActionList.Item onSelect={() => navigate('/admin/maintenance')}>
+                    <ActionList.LeadingVisual>
+                      <ToolsIcon />
+                    </ActionList.LeadingVisual>
+                    Maintenance
+                  </ActionList.Item>
+                )}
               </ActionList.Group>
             </>
           )}
