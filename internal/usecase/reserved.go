@@ -8,6 +8,8 @@ var reservedOrgSlugs = map[string]struct{}{
 	"api":         {},
 	"assets":      {},
 	"auth":        {},
+	"blog":        {},
+	"blogs":       {},
 	"contact":     {},
 	"dashboard":   {},
 	"debug":       {},
