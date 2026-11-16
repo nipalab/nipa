@@ -21,6 +21,7 @@ export const RESERVED_ORG_SLUGS = new Set([
   'pricing',
   'privacy',
   'readyz',
+  'refunds',
   'register',
   'screenshots',
   'settings',

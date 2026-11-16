@@ -22,6 +22,7 @@ var reservedOrgSlugs = map[string]struct{}{
 	"pricing":     {},
 	"privacy":     {},
 	"readyz":      {},
+	"refunds":     {},
 	"register":    {},
 	"screenshots": {},
 	"settings":    {},
