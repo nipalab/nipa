@@ -65,6 +65,26 @@ func TestAppContext_ReadJson(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAppContext_ReadJsonMalformedIsUserError(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{"email":"a@b.c"?}`))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	ctx, err := newAppContext(restful.NewRequest(req), restful.NewResponse(recorder))
+	require.NoError(t, err)
+
+	err = ctx.ReadJson(&struct {
+		Email string `json:"email"`
+	}{})
+	var apiErr *domain.Error
+	require.ErrorAs(t, err, &apiErr)
+	require.Equal(t, http.StatusBadRequest, apiErr.Code)
+	require.Equal(t, "invalid request body", apiErr.Message)
+
+	ctx.HandleError(err)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "invalid request body")
+}
+
 func TestAppContext_WriteJson(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	resp := restful.NewResponse(recorder)
