@@ -1,0 +1,15 @@
+.git
+.github
+**/node_modules
+bin
+dist
+coverage*
+*.db
+*.db-*
+chunks
+config.yaml
+.env
+.env.*
+desktop
+plugins
+web/server/dist

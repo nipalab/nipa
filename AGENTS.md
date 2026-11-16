@@ -1921,6 +1921,16 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `SQLITE_BUSY_SNAPSHOT` when another connection commits in between, and the
   busy handler is not invoked for that case.
 
+Docker image of the free server (`docs/DOCKER.md`): the root `Dockerfile`
+builds the SPA and `cmd/nipad` on `$BUILDPLATFORM` (cross-compiled, no
+emulation) into `gcr.io/distroless/static-debian12:nonroot`, with
+`/app/config.yaml` derived from `config.yaml.sample` (data in the `/data`
+volume, uid 65532) and no baked signing keys. `.github/workflows/docker.yml`
+builds and smoke-tests it on `v*` tags (and PRs touching it), then pushes
+`linux/amd64,linux/arm64` to `ghcr.io/nipalab/nipad` and, when the
+`DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets exist, `docker.io/nipalab/nipad`;
+`latest` and `major.minor` skip prerelease tags.
+
 ## Deployment (zero-downtime SaaS)
 
 `docs/DEPLOY.md` is the runbook for running the SaaS on a VPS without Docker:

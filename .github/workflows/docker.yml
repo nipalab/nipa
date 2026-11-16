@@ -1,0 +1,132 @@
+name: Docker image
+
+# Builds the free nipad server image for linux/amd64 and linux/arm64 and pushes
+# it to ghcr.io/nipalab/nipad, plus docker.io/nipalab/nipad when the
+# DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets are set. `latest` and the
+# major.minor tag only move on non-prerelease tags. Pull requests that touch
+# the image only build and smoke-test it.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v0.1.0
+        required: true
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+env:
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  GHCR_IMAGE: ghcr.io/nipalab/nipad
+  DOCKERHUB_IMAGE: docker.io/nipalab/nipad
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      PUBLISH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG || github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          echo "revision=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG:-$(git describe --tags --match 'v*' --always)}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: nipad:smoke
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            REVISION=${{ steps.version.outputs.revision }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker run -d --name nipad -p 6745:6745 \
+            -e JWT_KEY="$(openssl rand -base64 48)" \
+            -e CHUNK_URL_SIGNING_KEY="$(openssl rand -base64 48)" \
+            nipad:smoke
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:6745/readyz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:6745/readyz
+          curl -fsS http://127.0.0.1:6745/version | tee version.json
+          grep -q "\"version\":\"$VERSION\"" version.json
+          curl -fsS http://127.0.0.1:6745/ | grep -qi '<html'
+          docker exec nipad /usr/local/bin/nipad -version
+          docker rm -f nipad
+          if docker run --rm nipad:smoke >missing.log 2>&1; then
+            echo "::error::nipad started without signing keys"; exit 1
+          fi
+          grep -q 'JWT_KEY' missing.log
+
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true' && env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_IMAGE || '' }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }},enable=${{ env.TAG != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.TAG != '' }}
+            type=raw,value=latest,enable=${{ env.TAG != '' && !contains(env.TAG, '-') }}
+            type=ref,event=pr
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            REVISION=${{ steps.version.outputs.revision }}
+          provenance: ${{ env.PUBLISH == 'true' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
