@@ -431,6 +431,7 @@ func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledg
 	case "cloud":
 		return storageusage.NewLedger(dbConn, storageusage.Config{
 			DefaultQuotaBytes: ledgerDefaultQuotaBytes(cfg),
+			BillingURL:        cfg.BillingPageURL(),
 		}), nil
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)

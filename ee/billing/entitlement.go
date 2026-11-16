@@ -21,6 +21,8 @@ type Config struct {
 	FreeQuotaBytes    int64
 	SeatIncludedBytes int64
 	StoragePackBytes  int64
+	// BillingURL is where an owner adds seats; seat limit errors name it.
+	BillingURL string
 }
 
 // Entitlement is what an owner may use. A QuotaBytes of zero is unlimited,

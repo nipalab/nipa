@@ -48,6 +48,11 @@ func TestAdmit_RefusesAtTheFreeLimit(t *testing.T) {
 	})
 	require.Equal(t, 402, errorCode(err), "got %v", err)
 	require.ErrorContains(t, err, "seat limit reached: 3 of 3")
+	require.ErrorContains(t, err, "can upgrade the plan to add more people")
+
+	svc.cfg.BillingURL = "https://nipalab.com/settings/billing"
+	err = svc.Admit(context.Background(), 1, 2, func(context.Context) error { return nil })
+	require.EqualError(t, err, "seat limit reached: 3 of 3 seats in use; the organization's billing owner can add seats at https://nipalab.com/settings/billing")
 }
 
 func TestAdmit_PaidLimit(t *testing.T) {
