@@ -111,7 +111,7 @@ jobs:
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }},enable=${{ env.TAG != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.TAG != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.TAG != '' && !contains(env.TAG, '-') }}
             type=raw,value=latest,enable=${{ env.TAG != '' && !contains(env.TAG, '-') }}
             type=ref,event=pr
 
