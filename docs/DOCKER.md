@@ -8,7 +8,9 @@ release tag:
 - `docker.io/nipalab/nipad`
 
 Tags: the exact version (`0.4.1`, `0.5.0-beta.1`), `major.minor` (`0.4`) and
-`latest`. Prereleases only get their exact version tag. The enterprise
+`latest`. Prereleases only get their exact version tag. A manual run of the
+"Docker image" workflow rebuilds a tag's exact version only, unless
+`move_tags` is checked. The enterprise
 `nipad-ee` is not published as an image.
 
 ## Quick start

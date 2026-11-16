@@ -3,8 +3,10 @@ name: Docker image
 # Builds the free nipad server image for linux/amd64 and linux/arm64 and pushes
 # it to ghcr.io/nipalab/nipad, plus docker.io/nipalab/nipad when the
 # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets are set. `latest` and the
-# major.minor tag only move on non-prerelease tags. Pull requests that touch
-# the image only build and smoke-test it.
+# major.minor tag only move on non-prerelease tag pushes (or a manual run with
+# move_tags), so rebuilding an older tag never moves them backwards. Pull
+# requests that touch the image or its build inputs only build and smoke-test
+# it.
 on:
   push:
     tags:
@@ -14,17 +16,29 @@ on:
       tag:
         description: Existing tag to (re)build, e.g. v0.1.0
         required: true
+      move_tags:
+        description: Also move latest and major.minor (only for the newest release)
+        type: boolean
+        default: false
   pull_request:
     paths:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/docker.yml'
+      - 'config.yaml.sample'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/nipad/**'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'web/server/webui.go'
     types: [opened, synchronize, reopened]
 
 permissions: {}
 
 env:
   TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  MOVE_TAGS: ${{ github.event_name == 'push' || inputs.move_tags == true }}
   GHCR_IMAGE: ghcr.io/nipalab/nipad
   DOCKERHUB_IMAGE: docker.io/nipalab/nipad
 
@@ -111,8 +125,8 @@ jobs:
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }},enable=${{ env.TAG != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.TAG != '' && !contains(env.TAG, '-') }}
-            type=raw,value=latest,enable=${{ env.TAG != '' && !contains(env.TAG, '-') }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ env.TAG != '' && !contains(env.TAG, '-') && env.MOVE_TAGS == 'true' }}
+            type=raw,value=latest,enable=${{ env.TAG != '' && !contains(env.TAG, '-') && env.MOVE_TAGS == 'true' }}
             type=ref,event=pr
 
       - name: Build and push
