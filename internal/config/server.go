@@ -76,21 +76,43 @@ func (c *Config) MetricsListenAddress() (string, error) {
 // CORSAllowedOrigins is the browser origin of PUBLIC_BASE_URL (a bare host
 // means https). Empty means no cross-origin access.
 func (c *Config) CORSAllowedOrigins() ([]string, error) {
-	raw := strings.TrimSpace(c.PublicBaseURL)
-	if raw == "" {
+	origin, err := webOrigin(c.PublicBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PUBLIC_BASE_URL %q: %w", c.PublicBaseURL, err)
+	}
+	if origin == "" {
 		return nil, nil
+	}
+	return []string{origin}, nil
+}
+
+// BillingPageURL is the absolute address of the SPA billing settings, from
+// PUBLIC_BASE_URL or else EMAIL_BASE_URL; empty when neither is valid.
+func (c *Config) BillingPageURL() string {
+	for _, raw := range []string{c.PublicBaseURL, c.EmailBaseURL} {
+		if origin, err := webOrigin(raw); err == nil && origin != "" {
+			return origin + "/settings/billing"
+		}
+	}
+	return ""
+}
+
+func webOrigin(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
 	}
 	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("invalid PUBLIC_BASE_URL %q: %w", c.PublicBaseURL, err)
+		return "", err
 	}
 	scheme := strings.ToLower(u.Scheme)
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if (scheme != "http" && scheme != "https") || host == "" || u.User != nil {
-		return nil, fmt.Errorf("invalid PUBLIC_BASE_URL %q", c.PublicBaseURL)
+		return "", fmt.Errorf("not an http(s) origin")
 	}
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
@@ -99,5 +121,5 @@ func (c *Config) CORSAllowedOrigins() ([]string, error) {
 	if port := u.Port(); port != "" && port != defaultPort {
 		host += ":" + port
 	}
-	return []string{scheme + "://" + host}, nil
+	return scheme + "://" + host, nil
 }

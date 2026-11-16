@@ -6,6 +6,7 @@ import { MaintenanceBanner, useRouteTarget } from './MaintenanceBanner'
 import { APP_HOME } from '../routes'
 import { NipaLogo } from './NipaLogo'
 import { TermsGate } from './TermsGate'
+import { UsageBanner } from './UsageBanner'
 import { UserMenu } from './UserMenu'
 
 export default function AppShell() {
@@ -36,6 +37,7 @@ export default function AppShell() {
         <UserMenu me={me} onSignOut={signOut} />
       </header>
       <MaintenanceBanner org={org} project={project} />
+      <UsageBanner enabled={Boolean(me)} />
       <MaintenanceGate>
         <TermsGate>
           <Outlet />

@@ -52,8 +52,7 @@ func (s *Service) Admit(ctx context.Context, orgID, userID snow.ID, insert func(
 						"limit":            entitlement.SeatLimit,
 					},
 				}
-				return domain.NewErrorQuotaExceeded(fmt.Sprintf(
-					"seat limit reached: %d of %d seats in use; upgrade the plan to add more people", used, entitlement.SeatLimit))
+				return domain.NewErrorQuotaExceeded(seatLimitMessage(used, entitlement.SeatLimit, s.cfg.BillingURL))
 			}
 		}
 		return insert(ctx)
@@ -64,4 +63,12 @@ func (s *Service) Admit(ctx context.Context, orgID, userID snow.ID, insert func(
 		}
 	}
 	return err
+}
+
+func seatLimitMessage(used, limit int64, billingURL string) string {
+	msg := fmt.Sprintf("seat limit reached: %d of %d seats in use", used, limit)
+	if billingURL != "" {
+		return msg + "; the organization's billing owner can add seats at " + billingURL
+	}
+	return msg + "; the organization's billing owner can upgrade the plan to add more people"
 }

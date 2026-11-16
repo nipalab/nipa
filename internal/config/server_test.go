@@ -103,6 +103,16 @@ func TestCORSAllowedOrigins(t *testing.T) {
 	}
 }
 
+func TestBillingPageURL(t *testing.T) {
+	require.Empty(t, (&Config{}).BillingPageURL())
+	require.Equal(t, "https://dev.nipalab.com/settings/billing", (&Config{PublicBaseURL: "dev.nipalab.com"}).BillingPageURL())
+	require.Equal(t, "https://nipalab.com/settings/billing",
+		(&Config{PublicBaseURL: "https://nipalab.com/x", EmailBaseURL: "https://other.example"}).BillingPageURL())
+	require.Equal(t, "http://localhost:6745/settings/billing",
+		(&Config{PublicBaseURL: "ftp://bad", EmailBaseURL: "http://localhost:6745/"}).BillingPageURL())
+	require.Empty(t, (&Config{PublicBaseURL: "ftp://bad"}).BillingPageURL())
+}
+
 func TestLoadConfig_Maintenance(t *testing.T) {
 	clearConfigEnv(t)
 	dir := t.TempDir()

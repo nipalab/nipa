@@ -77,6 +77,22 @@ seat quantity counts paid seats only and adds to them, so the seat limit is
 Lowering the limit never removes access: existing seats keep working and only
 new seats are refused.
 
+## Upgrade prompts
+
+Seat and storage refusals (402) name the billing page,
+`Config.BillingPageURL()` (`PUBLIC_BASE_URL`, else `EMAIL_BASE_URL`, plus
+`/settings/billing`), passed as `billing.Config.BillingURL` and
+`storageusage.Config.BillingURL`; storage refusals give the sizes in binary
+units (`storageusage.FormatBytes`). The CLI, desktop app and MCP show the
+server message as is. In the SPA, `components/UsageBanner.tsx` reads
+`GET /billing/me` for the signed-in user (on load and every 10 minutes,
+hidden on `/settings/billing`) and `billing/usage.ts` turns it into banners:
+storage at 80% (dismissible per quota), storage full (not dismissible) and
+all seats in use (dismissible per limit). Dismissals live in `localStorage`
+`nipa.usage.dismissed`. The link to billing settings appears only when
+`/auth/capabilities` carries `billing`; otherwise the banner asks to contact
+an administrator.
+
 ## Entitlements
 
 `billing.Config.Entitlement` (`ee/billing/entitlement.go`) maps the owner's

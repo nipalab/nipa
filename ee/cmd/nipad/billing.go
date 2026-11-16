@@ -99,6 +99,7 @@ func newBillingService(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.
 		FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
 		SeatIncludedBytes: cfg.BillingSeatIncludedBytes,
 		StoragePackBytes:  cfg.BillingStoragePackBytes,
+		BillingURL:        cfg.BillingPageURL(),
 	})
 }
 

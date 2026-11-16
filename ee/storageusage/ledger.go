@@ -22,6 +22,8 @@ type Config struct {
 	// DefaultQuotaBytes is the quota applied to an owner without an explicit
 	// quota row. Zero means unlimited.
 	DefaultQuotaBytes int64
+	// BillingURL is where an owner adds storage; quota errors name it.
+	BillingURL string
 }
 
 // Ledger attributes chunk bytes to projects and enforces the storage quota of
@@ -32,6 +34,7 @@ type Ledger struct {
 	queries      *sqlcPostgres.Queries
 	transactor   *dbtx.Transactor
 	defaultQuota int64
+	billingURL   string
 	audit        usecase.AuditRecorder
 }
 
@@ -41,6 +44,7 @@ func NewLedger(db *sql.DB, cfg Config) *Ledger {
 		queries:      sqlcPostgres.New(dbtx.New(db)),
 		transactor:   dbtx.NewTransactor(db),
 		defaultQuota: cfg.DefaultQuotaBytes,
+		billingURL:   cfg.BillingURL,
 	}
 }
 
@@ -128,7 +132,7 @@ func (l *Ledger) Headroom(ctx context.Context, org *domain.Organization, project
 		return dbError(err)
 	}
 	if used+projectedNewBytes > quota {
-		return quotaExceeded(used, quota, used+projectedNewBytes)
+		return quotaExceeded(used, quota, projectedNewBytes, l.billingURL)
 	}
 	return nil
 }
@@ -211,7 +215,7 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 			newBytes += size
 		}
 		if newBytes > 0 && quota > 0 && used+newBytes > quota {
-			return quotaExceeded(used, quota, used+newBytes)
+			return quotaExceeded(used, quota, newBytes, l.billingURL)
 		}
 		if newBytes > 0 {
 			if err := l.queries.AddProjectUsage(ctx, sqlcPostgres.AddProjectUsageParams{
@@ -493,9 +497,33 @@ func quotaPtr(quota int64) *int64 {
 	return &quota
 }
 
-func quotaExceeded(used, quota, needed int64) error {
-	return domain.NewErrorQuotaExceeded(fmt.Sprintf(
-		"storage quota exceeded: %d bytes used, %d bytes quota, %d bytes needed", used, quota, needed))
+func quotaExceeded(used, quota, adding int64, billingURL string) error {
+	msg := fmt.Sprintf("storage quota exceeded: %s of %s used and this upload adds %s",
+		FormatBytes(used), FormatBytes(quota), FormatBytes(adding))
+	if billingURL != "" {
+		msg += "; the organization's billing owner can add storage at " + billingURL
+	} else {
+		msg += "; free space or ask the organization's billing owner for more storage"
+	}
+	return domain.NewErrorQuotaExceeded(msg)
+}
+
+// FormatBytes renders a size in binary units for messages, e.g. "14.2 GiB".
+func FormatBytes(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n) / 1024
+	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB"}
+	unit := 0
+	for value >= 1024 && unit < len(units)-1 {
+		value /= 1024
+		unit++
+	}
+	if value >= 10 {
+		return fmt.Sprintf("%.0f %s", value, units[unit])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[unit])
 }
 
 func dbError(err error) error {
