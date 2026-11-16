@@ -44,6 +44,7 @@ LABEL org.opencontainers.image.title="nipad" \
       org.opencontainers.image.revision="${REVISION}"
 COPY --from=build /out/nipad /usr/local/bin/nipad
 COPY --from=build /out/app/config.yaml /app/config.yaml
+COPY --from=build /src/LICENSE /app/LICENSE
 COPY --from=build --chown=65532:65532 /out/data /data
 WORKDIR /app
 VOLUME /data

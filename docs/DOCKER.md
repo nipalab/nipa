@@ -32,6 +32,7 @@ them. Then sign in as the bootstrap administrator and continue with
 | --- | --- |
 | `/usr/local/bin/nipad` | the server binary |
 | `/app/config.yaml` | `config.yaml.sample` with `DATABASE_DSN=/data/nipa.db`, `CHUNK_STORAGE_DIR=/data/chunks`, `LOG_LEVEL=info`, `LOG_FORMAT=json` |
+| `/app/LICENSE` | the Apache-2.0 license |
 | `/data` | volume: the SQLite database and the chunk store |
 
 The image is distroless (no shell) and runs as uid/gid `65532`. A bind mount
