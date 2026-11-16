@@ -511,10 +511,10 @@ func TestAPIRoutes(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":`, nil, "")
 		defer func() { _ = resp.Body.Close() }()
 
-		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		var apiErr model.APIError
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&apiErr))
-		require.Equal(t, "internal unknown error", apiErr.Error)
+		require.Equal(t, "invalid request body", apiErr.Error)
 	})
 
 	t.Run("cross-origin writes are rejected", func(t *testing.T) {

@@ -10,7 +10,11 @@ import (
 // health probes, metrics scrapes and pprof access are skipped. When quiet
 // reports true for a successful request (the embedded SPA assets), the line is
 // emitted at debug instead of info.
-func AccessLog(quiet func(*http.Request) bool, next http.Handler) http.Handler {
+func AccessLog(quiet func(*http.Request) bool, next http.Handler, opts ...AccessLogOption) http.Handler {
+	var cfg accessLogConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if skipAccessLog(r) {
 			next.ServeHTTP(w, r)
@@ -22,14 +26,23 @@ func AccessLog(quiet func(*http.Request) bool, next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 
 		logger := Log(r.Context())
+		remote := r.RemoteAddr
+		if cfg.clientIP != nil {
+			if ip := cfg.clientIP(r); ip != "" {
+				remote = ip
+			}
+		}
 		attrs := []any{
 			"method", r.Method,
 			"path", r.URL.Path,
 			"proto", r.Proto,
-			"remote", r.RemoteAddr,
+			"remote", remote,
 			"status", rec.status,
 			"bytes", rec.bytes,
 			"duration_ms", time.Since(start).Milliseconds(),
+		}
+		if remote != r.RemoteAddr {
+			attrs = append(attrs, "peer", r.RemoteAddr)
 		}
 		switch {
 		case rec.status >= http.StatusInternalServerError:
@@ -42,6 +55,19 @@ func AccessLog(quiet func(*http.Request) bool, next http.Handler) http.Handler {
 			logger.InfoContext(r.Context(), "http request", attrs...)
 		}
 	})
+}
+
+// AccessLogOption configures AccessLog.
+type AccessLogOption func(*accessLogConfig)
+
+type accessLogConfig struct {
+	clientIP func(*http.Request) string
+}
+
+// WithClientIP logs the resolved caller address as remote and the direct
+// peer as peer.
+func WithClientIP(fn func(*http.Request) string) AccessLogOption {
+	return func(c *accessLogConfig) { c.clientIP = fn }
 }
 
 // IsGRPCRequest reports whether the shared mux dispatches the request to the

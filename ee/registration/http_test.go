@@ -159,7 +159,7 @@ func TestRegisterEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/register", `{"name":`)
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode, "malformed bodies surface as unhandled errors")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestResendVerificationEndpoint(t *testing.T) {
@@ -174,7 +174,7 @@ func TestResendVerificationEndpoint(t *testing.T) {
 	require.Len(t, server.env.outbox.deliveries, 1)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/register/resend", `{"email":`)
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestRegisterAndResendEndpointsAnswer429WhenThrottled(t *testing.T) {
@@ -205,7 +205,7 @@ func TestVerifyEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":`)
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	user := &domain.User{ID: 42, Name: "Alice", Email: "alice@example.com", EmailVerified: false}
 	server.env.users.users = []*domain.User{user}

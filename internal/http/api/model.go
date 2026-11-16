@@ -47,7 +47,12 @@ func (a *appContext) ResponseWriter() http.ResponseWriter {
 }
 
 func (a *appContext) ReadJson(v any) error {
-	return a.req.ReadEntity(v)
+	if err := a.req.ReadEntity(v); err != nil {
+		e := domain.NewErrorUser("invalid request body")
+		e.Cause = err
+		return e
+	}
+	return nil
 }
 
 func (a *appContext) WriteJson(statusCode int, v any) error {

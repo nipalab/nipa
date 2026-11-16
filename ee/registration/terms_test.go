@@ -191,7 +191,7 @@ func TestTermsEndpoints(t *testing.T) {
 		"accepted_at": "2026-07-01T12:00:00Z", "required": false}`, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/me/terms", `{"version":`)
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	env.repo.latestTermsErr = errors.New("lookup failed")
 	resp, _ = server.do(t, http.MethodGet, "/api/v1/me/terms", "")

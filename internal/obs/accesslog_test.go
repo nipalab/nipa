@@ -252,3 +252,32 @@ func TestAccessLog_CarriesTraceContext(t *testing.T) {
 	require.True(t, trace.SpanContextFromContext(contexts[0]).IsValid(),
 		"the access log must run inside the request span so logs correlate with traces")
 }
+
+func TestAccessLog_ClientIP(t *testing.T) {
+	collector := installCollector(t)
+	h := AccessLog(nil, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		WithClientIP(func(r *http.Request) string { return r.Header.Get("X-Forwarded-For") }))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.RemoteAddr = "127.0.0.1:60706"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	attrs := attrsOf(collector.records()[0])
+	require.Equal(t, "203.0.113.7", attrs["remote"])
+	require.Equal(t, "127.0.0.1:60706", attrs["peer"])
+}
+
+func TestAccessLog_ClientIPEmptyKeepsPeer(t *testing.T) {
+	collector := installCollector(t)
+	h := AccessLog(nil, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		WithClientIP(func(*http.Request) string { return "" }))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.RemoteAddr = "198.51.100.2:1234"
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	attrs := attrsOf(collector.records()[0])
+	require.Equal(t, "198.51.100.2:1234", attrs["remote"])
+	require.NotContains(t, attrs, "peer")
+}

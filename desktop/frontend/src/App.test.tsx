@@ -81,6 +81,30 @@ describe("App", () => {
     expect(within(nav).getByRole("button", { name: /game/ })).toHaveAttribute("aria-current", "page");
   });
 
+  it("keeps the layout below the macOS window buttons", async () => {
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    try {
+      renderWithProviders(<App />);
+      await screen.findByRole("heading", { name: "game" });
+      const bar = screen.getByTestId("mac-titlebar");
+      expect(bar).toHaveClass("drag-region");
+      expect(bar.compareDocumentPosition(screen.getByRole("navigation", { name: "Repositories" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
+  it("has no macOS title bar spacer on other platforms", async () => {
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
+    try {
+      renderWithProviders(<App />);
+      await screen.findByRole("heading", { name: "game" });
+      expect(screen.queryByTestId("mac-titlebar")).not.toBeInTheDocument();
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
   it("switches repositories and remembers the choice", async () => {
     renderWithProviders(<App />);
     const nav = await screen.findByRole("navigation", { name: "Repositories" });

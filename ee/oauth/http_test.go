@@ -343,7 +343,7 @@ func TestCompleteExchangesTheCodeForASession(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/oauth/complete", `{"code":`)
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestCompleteRecordsOneOAuthLogin(t *testing.T) {
