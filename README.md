@@ -40,6 +40,8 @@ and branch switches only transfer what actually changed.
 
 - [`docs/SERVER_GUIDE.md`](docs/SERVER_GUIDE.md): building, configuring and
   running the server, including first-user and project bootstrapping.
+- [`docs/DOCKER.md`](docs/DOCKER.md): the `ghcr.io/nipalab/nipad` /
+  `docker.io/nipalab/nipad` image of the free server.
 - [`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md): a task-oriented walkthrough
   of every client command.
 
