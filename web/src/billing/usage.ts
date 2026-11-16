@@ -26,7 +26,7 @@ export function usageAlerts(data: OwnerStorageResponse | null | undefined): Usag
         variant: 'critical',
         title: 'Storage is full',
         text: `${usage}. New pushes are refused until you add storage or free space.`,
-        key: `storage_full:${quota}`,
+        key: `${data.user_id}:storage_full:${quota}`,
         dismissible: false,
       })
     } else if (data.used_bytes >= quota * STORAGE_WARN_RATIO) {
@@ -35,7 +35,7 @@ export function usageAlerts(data: OwnerStorageResponse | null | undefined): Usag
         variant: 'warning',
         title: 'Storage is almost full',
         text: `${usage}. Pushes will be refused once it is full.`,
-        key: `storage_low:${quota}`,
+        key: `${data.user_id}:storage_low:${quota}`,
         dismissible: true,
       })
     }
@@ -48,7 +48,7 @@ export function usageAlerts(data: OwnerStorageResponse | null | undefined): Usag
       variant: 'warning',
       title: 'All seats are in use',
       text: `${used} of ${limit} seats in use. Adding another person to your organizations needs another seat.`,
-      key: `seats_full:${limit}`,
+      key: `${data.user_id}:seats_full:${limit}`,
       dismissible: true,
     })
   }

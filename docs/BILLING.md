@@ -89,7 +89,9 @@ server message as is. In the SPA, `components/UsageBanner.tsx` reads
 hidden on `/settings/billing`) and `billing/usage.ts` turns it into banners:
 storage at 80% (dismissible per quota), storage full (not dismissible) and
 all seats in use (dismissible per limit). Dismissals live in `localStorage`
-`nipa.usage.dismissed`. The link to billing settings appears only when
+`nipa.usage.dismissed`, keyed by the owner id, so they never hide another
+account's warning on a shared browser. A failed capabilities call only drops
+the billing link, never the banner. The link to billing settings appears only when
 `/auth/capabilities` carries `billing`; otherwise the banner asks to contact
 an administrator.
 

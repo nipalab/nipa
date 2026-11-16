@@ -18,7 +18,7 @@ describe('usageAlerts', () => {
 
   it('warns from 80% and is dismissible', () => {
     const [alert] = usageAlerts(owner({ used_bytes: 12 * GIB }))
-    expect(alert).toMatchObject({ kind: 'storage_low', variant: 'warning', dismissible: true, key: `storage_low:${15 * GIB}` })
+    expect(alert).toMatchObject({ kind: 'storage_low', variant: 'warning', dismissible: true, key: `7:storage_low:${15 * GIB}` })
     expect(alert.text).toContain('12 GiB of 15 GiB used')
   })
 
@@ -35,5 +35,12 @@ describe('usageAlerts', () => {
     const alerts = usageAlerts(owner({ used_bytes: 15 * GIB, seats_used: 6, seat_limit: 5 }))
     expect(alerts.map((alert) => alert.kind)).toEqual(['storage_full', 'seats_full'])
     expect(alerts[1].text).toContain('6 of 5 seats in use')
+  })
+
+  it('keys every alert by the owner so dismissals stay per account', () => {
+    const keys = (user_id: string) =>
+      usageAlerts(owner({ user_id, used_bytes: 15 * GIB, seats_used: 5, seat_limit: 5 })).map((alert) => alert.key)
+    expect(keys('7')).toEqual([`7:storage_full:${15 * GIB}`, '7:seats_full:5'])
+    expect(keys('8')).toEqual([`8:storage_full:${15 * GIB}`, '8:seats_full:5'])
   })
 })

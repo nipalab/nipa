@@ -72,12 +72,27 @@ describe('UsageBanner', () => {
 
     await click(view.container.querySelector('button[class*="BannerDismiss"]'))
     expect(view.container.textContent).not.toContain('Storage is almost full')
-    expect(JSON.parse(localStorage.getItem('nipa.usage.dismissed') ?? '[]')).toEqual([`storage_low:${15 * GIB}`])
+    expect(JSON.parse(localStorage.getItem('nipa.usage.dismissed') ?? '[]')).toEqual([`7:storage_low:${15 * GIB}`])
 
     await view.unmount()
     const again = await show()
-    unmount = again.unmount
     expect(again.container.textContent).toBe('')
+    await again.unmount()
+
+    api.getMyBilling.mockResolvedValue({ ...LOW, user_id: '8' })
+    const other = await show()
+    unmount = other.unmount
+    expect(other.container.textContent).toContain('Storage is almost full')
+  })
+
+  it('still warns when the capabilities call fails', async () => {
+    api.getMyBilling.mockResolvedValue(FULL)
+    api.getOnboardingCapabilities.mockRejectedValue(new Error('503'))
+    const view = await show()
+    unmount = view.unmount
+    expect(view.container.textContent).toContain('Storage is full')
+    expect(view.container.textContent).toContain('Contact your administrator to raise the limit.')
+    expect(view.container.querySelector('a')).toBeNull()
   })
 
   it('shows full storage and full seats, without a link when billing is off', async () => {

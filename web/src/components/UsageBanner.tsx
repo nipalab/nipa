@@ -38,17 +38,20 @@ export function useUsage(enabled: boolean): UsageState {
     if (!enabled) return
     let active = true
     async function load() {
+      let data: OwnerStorageResponse | null
       try {
-        const data = (await Promise.resolve().then(() => getMyBilling())) ?? null
-        if (!active) return
-        if (usageAlerts(data).length === 0) {
-          setState({ data, canUpgrade: false })
-          return
-        }
+        data = (await Promise.resolve().then(() => getMyBilling())) ?? null
+      } catch {
+        return
+      }
+      if (!active) return
+      setState((prev) => ({ data, canUpgrade: prev.canUpgrade }))
+      if (usageAlerts(data).length === 0) return
+      try {
         const capabilities = (await Promise.resolve().then(() => getOnboardingCapabilities())) ?? null
         if (active) setState({ data, canUpgrade: Boolean(capabilities?.billing) })
       } catch {
-        // usage hints are best effort
+        // without capabilities the banner still shows, only without the billing link
       }
     }
     void load()
