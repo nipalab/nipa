@@ -62,6 +62,15 @@ describe("Select", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("closes when focus leaves with Tab", async () => {
+    const { trigger } = setup();
+    await userEvent.click(trigger);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await userEvent.tab();
+    expect(trigger).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
   it("does nothing while disabled", async () => {
     const { trigger } = setup("merge", true);
     expect(trigger).toBeDisabled();

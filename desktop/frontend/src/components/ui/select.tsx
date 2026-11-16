@@ -60,7 +60,12 @@ export function Select<T extends string>({ value, options, onChange, label, disa
   };
 
   return (
-    <div ref={root} className={cn("relative", className)} onKeyDown={onKeyDown}>
+    <div ref={root} className={cn("relative", className)}
+      onKeyDown={onKeyDown}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <button
         ref={button}
         type="button"
