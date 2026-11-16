@@ -399,6 +399,17 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `nipa.gdextension`; optional companion `nipa` CLI, macOS signing/notarization
   gated on secrets), smoke-loads the zip in Godot 4.4 and attaches it to the
   release with `--latest=false` (the desktop updater owns `releases/latest`).
+- **VS Code extension** (`plugins/vscode`, Apache 2.0, design in
+  `docs/VSCODE_EXTENSION.md`): TypeScript client of the daemon JSON bridge
+  (`src/daemon`: endpoint, connector (attach or start `nipa serve`), NDJSON
+  client, shared `DaemonSession`) and a native `vscode.scm` provider per clone
+  (`src/scm`: staged/changes/conflicts groups, push with `PushPlan` +
+  `LockStatus` checks, update, `nipa-snapshot:` quick diff over `ReadBlob`,
+  file decorations with lock states, `WatchChanges` refresh). Never calls
+  `UnwatchRepo` (not ref-counted, it would unwatch the desktop's clone).
+  vitest against `test/fakes/vscode.ts` + a fake bridge, 80% gate,
+  `NIPA_VSCODE_DAEMON_BIN` runs the real-daemon test; `make vscode-test` /
+  `vscode-pack`, `.github/workflows/vscode-extension.yml`.
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
 `GetBranchByName` when a branch is given) → fetch tree manifest (gRPC
