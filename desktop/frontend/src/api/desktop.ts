@@ -426,6 +426,7 @@ export const desktop = {
     return out;
   },
   saveUIState: (state: Record<string, string>): Promise<void> => Service.SaveUIState(state),
+  setZoom: (level: number): Promise<void> => Service.SetZoom(level),
   saveSettings: async (s: Settings): Promise<Settings> => settings(await Service.SaveSettings(s)),
   uploadWorkers: (): Promise<number> => Service.UploadWorkers(),
   setUploadWorkers: (n: number): Promise<void> => Service.SetUploadWorkers(n),

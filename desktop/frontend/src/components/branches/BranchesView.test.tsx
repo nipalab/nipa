@@ -57,6 +57,21 @@ describe("BranchesView", () => {
     expect(onSwitch).toHaveBeenCalledWith("art-pass");
   });
 
+  it("offers the default branch when the current one was deleted", async () => {
+    view({ branch: "sample-branch" });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Branch sample-branch no longer exists on the server");
+    expect(within(section("Branches")).queryByRole("button", { name: /Merge into/ })).not.toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole("button", { name: "Switch to main" }));
+    expect(onSwitch).toHaveBeenCalledWith("main");
+  });
+
+  it("shows no deleted-branch notice while detached", async () => {
+    view({ branch: "sample-branch", detached: "v1.0" });
+    expect(await screen.findByText("art-pass")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows the base and only switches when asked", async () => {
     api.createBranch.mockResolvedValueOnce({ name: "stay" });
     view();

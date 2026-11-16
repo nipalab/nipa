@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { Archive, Lock, LockOpen, TriangleAlert, Undo2 } from "lucide-react";
 import type { ChangeSet, FileChange, FileLockState } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
@@ -45,16 +45,38 @@ export function buildRows(changes: ChangeSet): Row[] {
   return rows;
 }
 
+export function stickyHeader(headers: number[], start: number): number {
+  let active = -1;
+  for (const i of headers) {
+    if (i > start) break;
+    active = i;
+  }
+  return active;
+}
+
 export function FileList({ changes, selected, busy, onSelect, onToggle, onStage, onUnstage, onDiscard, warnings, locks, onLock, onShelve }: FileListProps) {
   const { t } = useTranslation();
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
+  const headers = useMemo(() => rows.flatMap((r, i) => (r.type === "header" ? [i] : [])), [rows]);
+  const active = useRef(-1);
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      active.current = stickyHeader(headers, range.startIndex);
+      const indexes = defaultRangeExtractor(range);
+      if (active.current < 0 || indexes.includes(active.current)) return indexes;
+      return [active.current, ...indexes].sort((a, b) => a - b);
+    },
+    [headers],
+  );
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parent.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 12,
     initialRect: { width: 320, height: 640 },
+    scrollPaddingStart: ROW_HEIGHT,
+    rangeExtractor,
   });
 
   const fileIndexes = useMemo(() => rows.flatMap((r, i) => (r.type === "file" ? [i] : [])), [rows]);
@@ -84,8 +106,17 @@ export function FileList({ changes, selected, busy, onSelect, onToggle, onStage,
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index];
+          const pinned = item.index === active.current;
           return (
-            <div key={item.key} style={{ position: "absolute", top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)` }}>
+            <div
+              key={item.key}
+              data-pinned={pinned || undefined}
+              style={
+                pinned
+                  ? { position: "sticky", top: 0, zIndex: 1, height: item.size }
+                  : { position: "absolute", top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)`, zIndex: row.type === "header" ? 2 : undefined }
+              }
+            >
               {row.type === "header" ? (
                 <SectionHeader
                   staged={row.staged}

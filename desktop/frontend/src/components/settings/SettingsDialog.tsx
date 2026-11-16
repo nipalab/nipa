@@ -9,6 +9,7 @@ import { AISection, aiFormValid, type AIForm } from "@/components/settings/AISec
 import { llmSettingsKey, useLLMSettings } from "@/hooks/useGenerate";
 import { setMode, startTour, useMode } from "@/lib/mode";
 import { errorMessage } from "@/lib/utils";
+import { formatZoom, setZoom, useZoom, ZOOM_STEPS } from "@/lib/zoom";
 import { Trans, useTranslation } from "react-i18next";
 import { changeLanguage, LANGUAGE_NAMES, LANGUAGES, storedLanguage, translate, type LanguageSetting } from "@/i18n";
 
@@ -301,6 +302,28 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   );
 }
 
+function ZoomSetting() {
+  const { t } = useTranslation();
+  const zoom = useZoom();
+  return (
+    <div className="flex items-center gap-2">
+      <label className="flex items-center gap-2">
+        <span className="font-medium">{t("settingsDialog.zoom")}</span>
+        <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="h-7 rounded-md border border-border bg-background px-2 text-xs">
+          {ZOOM_STEPS.map((z) => (
+            <option key={z} value={z}>
+              {formatZoom(z)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Button type="button" size="sm" variant="ghost" disabled={zoom === 1} onClick={() => setZoom(1)}>
+        {t("settingsDialog.resetZoom")}
+      </Button>
+    </div>
+  );
+}
+
 function InterfaceSection({ onTour, canReplay }: { onTour: () => void; canReplay: boolean }) {
   const { t } = useTranslation();
   const mode = useMode();
@@ -327,6 +350,7 @@ function InterfaceSection({ onTour, canReplay }: { onTour: () => void; canReplay
           ))}
         </select>
       </label>
+      <ZoomSetting />
       <label className="flex items-start gap-2">
         <input type="checkbox" className="mt-0.5" checked={simple} onChange={(e) => setMode(e.target.checked ? "simple" : "full")} />
         <span>

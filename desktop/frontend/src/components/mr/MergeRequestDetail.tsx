@@ -23,6 +23,7 @@ import { PeopleBar } from "@/components/mr/PeopleBar";
 import { CommentBox, ThreadCard } from "@/components/mr/ThreadCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import type { Notify } from "@/hooks/useLocks";
 import { useLockStatus } from "@/hooks/useLocks";
@@ -71,11 +72,11 @@ export function MergeRequestStatus({ mr }: { mr: MergeRequest }) {
   );
 }
 
-type DetailProps = { root: string; number: number; notify: Notify };
+type DetailProps = { root: string; number: number; notify: Notify; onSourceDeleted?: (source: string, target: string) => void };
 
-export function MergeRequestDetail({ root, number, notify }: DetailProps) {
+export function MergeRequestDetail({ root, number, notify, onSourceDeleted }: DetailProps) {
   const { t } = useTranslation();
-  const mr = useMergeRequest(root, number, notify);
+  const mr = useMergeRequest(root, number, notify, onSourceDeleted);
   const [tab, setTab] = useState<Tab>("conversation");
   const [focusPath, setFocusPath] = useState("");
   const needsSourceHead = !!mr.detail.data && !mr.detail.data.mergeability.sourceCommitId && !mr.detail.data.request.mergedSourceId;
@@ -413,22 +414,10 @@ function MergeBox({ detail, mr }: { detail: Detail; mr: Actions }) {
         {blocked || (behindForFF ? mergeabilityText("behind_target") : mergeability.status === "behind_target" ? translate("mergeRequestDetail.theTargetMovedOnThis") : mergeabilityText(mergeability.status))}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground">{t("mergeRequestDetail.strategy")}</span>
-          <select
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value as Strategy)}
-            aria-label={t("mergeRequestDetail.mergeStrategy")}
-            className="rounded-md border border-border bg-background px-1.5 py-1 text-[12px]"
-            title={strategies.find((s) => s.id === strategy)?.hint}
-          >
-            {strategies.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <Select value={strategy} options={strategies} onChange={setStrategy} label={t("mergeRequestDetail.mergeStrategy")} />
+        </div>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={deleteSource} onChange={(e) => setDeleteSource(e.target.checked)} />
           <Trans i18nKey="mergeRequestDetail.deleteSource" values={{ source: request.source }} components={[<span key="s" className="font-mono">{null}</span>]} />

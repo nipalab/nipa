@@ -29,9 +29,9 @@ type Filter = (typeof filters)[number][0];
 
 const isFilter = (v: unknown): v is Filter => filters.some(([id]) => id === v);
 
-type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number }; create?: number };
+type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number }; create?: number; onSwitch?: (branch: string) => void };
 
-export function MergeRequestsView({ root, branch, notify, open, create }: MergeRequestsViewProps) {
+export function MergeRequestsView({ root, branch, notify, open, create, onSwitch }: MergeRequestsViewProps) {
   const { t } = useTranslation();
   const { writes } = useMaintenance();
   const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
@@ -129,7 +129,7 @@ export function MergeRequestsView({ root, branch, notify, open, create }: MergeR
         <PaneResizer size={listSize} label={t("mergeRequestsView.resizeMergeRequestList")} />
       </aside>
       <section className="min-w-0 flex-1">
-        {current !== null ? <MergeRequestDetail key={current} root={root} number={current} notify={notify} /> : <Centered>{t("mergeRequestsView.selectAMergeRequest")}</Centered>}
+        {current !== null ? <MergeRequestDetail key={current} root={root} number={current} notify={notify} onSourceDeleted={(source, target) => source === branch && onSwitch?.(target)} /> : <Centered>{t("mergeRequestsView.selectAMergeRequest")}</Centered>}
       </section>
       {creating && (
         <NewMergeRequestDialog

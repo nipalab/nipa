@@ -10,7 +10,7 @@ export type ReviewState = "approved" | "changes_requested" | "commented";
 
 // useMergeRequest loads one request and wraps every action on it; each
 // action refreshes the request, its activity and the list.
-export function useMergeRequest(root: string, number: number, notify: Notify) {
+export function useMergeRequest(root: string, number: number, notify: Notify, onSourceDeleted?: (source: string, target: string) => void) {
   const queryClient = useQueryClient();
   const { writes } = useMaintenance();
   const detail = useQuery({ queryKey: ["mr", root, number], queryFn: () => desktop.mergeRequest(root, number) });
@@ -39,7 +39,14 @@ export function useMergeRequest(root: string, number: number, notify: Notify) {
     ({ state }) => (state === "approved" ? translate("useMergeRequest.approved") : state === "changes_requested" ? translate("useMergeRequest.requestedChanges") : translate("useMergeRequest.reviewSent")),
   );
   const merge = action(
-    ({ strategy, deleteSource }: { strategy: Strategy; deleteSource: boolean }) => desktop.mergeMergeRequest(root, number, strategy, deleteSource),
+    async ({ strategy, deleteSource }: { strategy: Strategy; deleteSource: boolean }) => {
+      const merged = await desktop.mergeMergeRequest(root, number, strategy, deleteSource);
+      if (deleteSource) {
+        void queryClient.invalidateQueries({ queryKey: ["branches", root] });
+        onSourceDeleted?.(merged.request.source, merged.request.target);
+      }
+      return merged;
+    },
     translate("useMergeRequest.couldNotMerge"),
     () => translate("useMergeRequest.merged", { number }),
   );

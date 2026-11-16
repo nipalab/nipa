@@ -18,6 +18,7 @@ import { Welcome } from "@/components/Welcome";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { isMac } from "@/lib/shortcuts";
 import { startTourOnce, useStoredMode } from "@/lib/mode";
+import { formatZoom, nextZoom, setZoom, storedZoom } from "@/lib/zoom";
 import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { translate } from "@/i18n";
@@ -82,6 +83,13 @@ export default function App() {
     },
     ready,
   );
+
+  const zoom = (level: number) => notify(translate("app.zoomLevel", { value: formatZoom(setZoom(level)) }), "success");
+  useShortcuts({
+    zoomIn: () => zoom(nextZoom(storedZoom(), 1)),
+    zoomOut: () => zoom(nextZoom(storedZoom(), -1)),
+    zoomReset: () => zoom(1),
+  });
 
   const select = (root: string | null) => {
     writeSetting(SELECTED_KEY, root);
