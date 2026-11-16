@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { Welcome } from "@/components/Welcome";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { isMac } from "@/lib/shortcuts";
 import { startTourOnce, useStoredMode } from "@/lib/mode";
 import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
@@ -163,41 +164,44 @@ export default function App() {
   ) : null;
 
   return (
-    <div className="flex h-full">
-      {!sidebarHidden && (
-        <Sidebar
-          repos={list}
-          selected={current?.root ?? null}
-          daemon={daemon.data}
-          adding={add.isPending}
-          onSelect={select}
-          onAdd={() => add.mutate()}
-          onClone={() => setCloning(true)}
-          onSettings={() => setSettingsOpen(true)}
-          activity={activity.data ?? []}
-          onHide={() => setSidebarHidden(true)}
-        />
-      )}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <UpdateBanner notify={notify} />
-        <div className="min-h-0 flex-1">
-          {current ? (
-            <RepoView
-              key={current.root}
-              repo={current}
-              removing={remove.isPending}
-              onRemove={(root) => remove.mutate(root)}
-              notify={notify}
-              activity={activity.data?.find((a) => a.root === current.root)}
-              intent={intent?.root === current.root ? intent : undefined}
-              leading={showSidebar}
-              onSearch={() => setPalette("all")}
-            />
-          ) : (
-            <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} leading={showSidebar} />
-          )}
-        </div>
-      </main>
+    <div className="flex h-full flex-col">
+      {isMac() && <div data-testid="mac-titlebar" className="drag-region h-7 shrink-0 bg-sidebar" />}
+      <div className="flex min-h-0 flex-1">
+        {!sidebarHidden && (
+          <Sidebar
+            repos={list}
+            selected={current?.root ?? null}
+            daemon={daemon.data}
+            adding={add.isPending}
+            onSelect={select}
+            onAdd={() => add.mutate()}
+            onClone={() => setCloning(true)}
+            onSettings={() => setSettingsOpen(true)}
+            activity={activity.data ?? []}
+            onHide={() => setSidebarHidden(true)}
+          />
+        )}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <UpdateBanner notify={notify} />
+          <div className="min-h-0 flex-1">
+            {current ? (
+              <RepoView
+                key={current.root}
+                repo={current}
+                removing={remove.isPending}
+                onRemove={(root) => remove.mutate(root)}
+                notify={notify}
+                activity={activity.data?.find((a) => a.root === current.root)}
+                intent={intent?.root === current.root ? intent : undefined}
+                leading={showSidebar}
+                onSearch={() => setPalette("all")}
+              />
+            ) : (
+              <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} leading={showSidebar} />
+            )}
+          </div>
+        </main>
+      </div>
       {cloning && (
         <CloneDialog
           hint={cloneHint}

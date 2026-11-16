@@ -298,7 +298,9 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 
 	handler := obs.RequestID(ro.tracing.HTTPHandler("nipa", obs.AccessLog(func(r *http.Request) bool {
 		return !isAPIPath(r.URL.Path)
-	}, ro.rateLimit.Middleware(mainHandler)), skipTraceRequest))
+	}, ro.rateLimit.Middleware(mainHandler), obs.WithClientIP(func(r *http.Request) string {
+		return ratelimit.ClientIP(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), ro.proxies)
+	})), skipTraceRequest))
 
 	httpServer := newHTTPServer(cfg, address, handler)
 
