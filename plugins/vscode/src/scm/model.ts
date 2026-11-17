@@ -18,6 +18,10 @@ export class Model implements vscode.Disposable, vscode.FileDecorationProvider {
     private readonly findRoot: (start: string) => Promise<string | undefined> = findRepoRoot,
   ) {}
 
+  client() {
+    return this.deps.session.client();
+  }
+
   get repositories(): NipaRepository[] {
     return [...this.repos.values()];
   }

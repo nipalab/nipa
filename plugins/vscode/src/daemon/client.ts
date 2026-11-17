@@ -56,9 +56,9 @@ export class DaemonClient {
       if (line.trim() === "") {
         return;
       }
-      const parsed = JSON.parse(line) as T & { error?: ErrorBody };
-      if (parsed.error) {
-        throw toError(500, parsed.error);
+      const parsed = JSON.parse(line) as T & { error?: unknown };
+      if (parsed.error && typeof parsed.error === "object") {
+        throw toError(500, parsed.error as ErrorBody);
       }
       onMessage(parsed);
     };

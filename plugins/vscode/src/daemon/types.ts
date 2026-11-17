@@ -115,6 +115,7 @@ export interface LockStatusResponse {
   branch: string;
   default_branch: boolean;
   can_release_any: boolean;
+  locks: FileLockDetail[];
   files: FileLockState[];
 }
 
@@ -138,4 +139,100 @@ export interface PushPlanResponse {
   asset_violations: AssetViolation[];
   asset_impact: { broken: BrokenReference[]; newly_unused: string[]; truncated: boolean } | null;
   warnings: string[];
+}
+
+export interface FileLockDetail {
+  id: string;
+  path: string;
+  branch: string;
+  global: boolean;
+  held_by: string;
+  held_by_name: string;
+  merge_request_number?: string | null;
+  acquired_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface BlameLine {
+  text: string;
+  commit_id: string;
+  uncommitted: boolean;
+}
+
+export interface BlameCommit {
+  id: string;
+  hash: string;
+  author_name: string;
+  author_email: string;
+  message: string;
+  created_at: string;
+}
+
+export interface BlameResult {
+  path: string;
+  revision: string;
+  lines: BlameLine[];
+  commits: BlameCommit[];
+  truncated: boolean;
+}
+
+export interface BlameEvent {
+  progress?: { done: number; total: number };
+  result?: BlameResult;
+  failure?: OpFailure;
+}
+
+export interface ConflictFile {
+  path: string;
+  kind: string;
+  binary: boolean;
+  resolved: boolean;
+  viewer: string;
+}
+
+export interface ConflictRevision {
+  id: string;
+  label: string;
+}
+
+export interface ConflictsResponse {
+  op: string;
+  base: ConflictRevision | null;
+  ours: ConflictRevision | null;
+  theirs: ConflictRevision | null;
+  files: ConflictFile[];
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  commit_id?: string | null;
+  is_default: boolean;
+  is_protected: boolean;
+  updated_at?: string | null;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  commit_id: string;
+  message: string;
+  created_at?: string | null;
+}
+
+export interface MaintenanceWindow {
+  mode: string;
+  active: boolean;
+  message: string;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  org: string;
+  project: string;
+}
+
+export interface RepoActivity {
+  incoming: number;
+  review_requests: number;
+  error: string;
+  maintenance: { server: MaintenanceWindow | null; org: MaintenanceWindow | null; project: MaintenanceWindow | null } | null;
 }

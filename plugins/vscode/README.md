@@ -20,7 +20,22 @@ plugins.
   last synced version.
 - Status letters and lock state on files in the Explorer and in the panel.
 - The current branch, or the detached tag, and a pending merge, revert or
-  shelf in the status bar.
+  shelf in the status bar. Click the branch to switch to another branch or
+  check out a tag. Incoming commits show on the Update button, and an active
+  maintenance window shows as its own item.
+- Before an update or a switch, if it would replace local changes, the
+  extension offers to shelve just those files first.
+- Lock, Unlock and Ask to Release from the Explorer, the editor tab or the
+  Source Control view. Locks can cover a file or a whole folder. When a
+  changed binary needs your lock, or someone else holds it, you get one
+  warning with a quick action.
+- Conflicts: Take Mine, Take Theirs and Compare Sides for any file. Text files
+  open with VS Code's conflict markers, and Mark as Resolved works only once
+  no markers remain.
+- Blame (Nipa: Toggle Blame): the author and age of each run of lines,
+  "Not pushed" for local lines, and a hover card linking to the commit in
+  the desktop app.
+- Open in Nipa Desktop and Copy nipa:// Link for any file or folder.
 
 ## Requirements
 
@@ -37,6 +52,8 @@ starts `nipa serve` when none is running. It looks for the CLI in this order:
 |---|---|---|
 | `nipa.path` | empty | Path to the `nipa` CLI |
 | `nipa.lockRefreshSeconds` | 30 | How often lock states are fetched from the server |
+| `nipa.lockWarnings` | true | Warn when a changed binary needs your lock or is locked by someone else |
+| `nipa.blame` | false | Show blame annotations (toggled by Nipa: Toggle Blame) |
 
 ## Development
 

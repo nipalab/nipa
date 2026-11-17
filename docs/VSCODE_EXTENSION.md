@@ -21,7 +21,9 @@ code and holds no server credentials: the daemon owns the session.
 | `src/scm/repository.ts` | one `SourceControl` per clone: groups, push/update, quick diff, lock states, `WatchChanges` loop |
 | `src/scm/model.ts` | clone discovery and the `FileDecorationProvider` |
 | `src/scm/snapshot.ts` | `nipa-snapshot:` documents (`ReadBlob` source `snapshot`) |
-| `src/scm/commands.ts` | command handlers and resolving which clone a command is for |
+| `src/scm/commands.ts` | command handlers, the branch/tag picker, resolving the clone and files a command is for |
+| `src/scm/blame.ts` | blame annotations as editor decorations |
+| `src/scm/helpers.ts` | pure helpers: `nipa://` links, lock coverage, conflict markers, blame labels, maintenance note |
 
 Only stable VS Code APIs are used:
 
@@ -72,13 +74,51 @@ Only stable VS Code APIs are used:
 - `make vscode-test` / `make vscode-pack` and
   `.github/workflows/vscode-extension.yml` run them.
 
-## Later (phase 2)
+## Phase 2
 
-- Blame gutter (`Blame`, editor decorations).
-- Lock, unlock and "Ask to release" commands, and a warning when saving an
-  unlocked binary.
-- A conflict workflow: built-in marker CodeLens, take mine/theirs through
-  `ResolveConflict`.
-- Branch and tag quick pick with "Shelve and continue".
-- `nipa://` links to the desktop app.
-- A status bar notice for maintenance windows (`WatchEvents`).
+- **Blame:** `BlameController` asks `Blame` (working file, so unpushed lines
+  are marked) for each visible, saved file in a clone while `nipa.blame` is
+  on.
+  - It draws a fixed-width `before` decoration with the author and age once
+    per run of lines, "Not pushed" for local lines and "Older" past the
+    history read.
+  - The hover card shows the commit and links to
+    `nipa://.../commits/<id>`.
+  - Results are cached per file and dropped on save and on every status
+    change of the clone. Edits clear the annotations until the next save.
+- **Locks:** Lock sends `ProxyLockFile` with the clone's branch; the server
+  maps the default branch to a mainline lock. Unlock and Ask to Release read
+  `LockStatus.locks` and pick the most specific covering lock (exact path or
+  folder prefix, the same rule as `domain.PrefixCovers`).
+  - Unlock takes your own lock first. Someone else's lock is only released
+    for project admins (`can_release_any`) after a confirmation.
+  - Each changed binary in the `needed` or `theirs` state gets one warning
+    (with Lock or Ask to Release) until its state changes. Warnings are
+    skipped during the push check and when `nipa.lockWarnings` is off.
+- **Conflicts:** `Conflicts` is loaded while status lists conflicts.
+  - Rows are `conflict-text`, `conflict-other` or `resolved`.
+  - The sides follow `usecase.ConflictSides`: revisions for a merge or
+    revert; snapshot and `shelf` for a shelf apply. They open as
+    `nipa-snapshot:` documents.
+  - Mark as Resolved (`ResolveConflict` `working`) refuses a dirty document
+    and a file that still has `<<<<<<<`/`>>>>>>>` lines. Take Mine and Take
+    Theirs map to `ours` and `theirs`.
+- **Switch and update:**
+  - The branch item in the status bar opens a picker of branches and tags
+    (`ProxyBranchList`/`ProxyTagList`, keyset pages of 100, at most 10
+    pages each).
+  - Before `Switch` or `Update`, `SyncPlan` names the local changes the
+    operation would replace. "Shelve and Continue" runs `ShelveCreate` with
+    exactly those paths. A failed check never blocks.
+- **Activity:** `WatchEvents` adds incoming commits to the Update button and
+  shows the strictest active maintenance window in the status bar. A string
+  `error` field on a streamed message is data, not a stream failure; only an
+  `error` object is.
+- **Links:** "Open in Nipa Desktop" and "Copy nipa:// Link" build
+  `nipa://<host>/<org>/<project>/file/<path>` like the desktop `FileLink`
+  (`?server=` only when the scheme differs from the loopback=http,
+  else https default).
+
+Not covered yet: continuing or aborting a pending merge or revert from VS
+Code (the CLI and the desktop app do it), applying or listing shelves, and
+team notifications.

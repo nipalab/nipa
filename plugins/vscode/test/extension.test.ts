@@ -4,8 +4,9 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import manifest from "../package.json";
 import { FakeDaemon, startFakeDaemon, status } from "./fakes/daemon";
-import { fake, Uri } from "./fakes/vscode";
+import { fake, fakeEditor, Uri } from "./fakes/vscode";
 
 const connectMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/daemon/connector", () => ({ connect: connectMock }));
@@ -27,7 +28,7 @@ async function makeClone(name: string): Promise<string> {
 beforeEach(async () => {
   fake.reset();
   daemon = await startFakeDaemon();
-  daemon.on("WatchRepo", () => ({ json: { repo: null } }));
+  daemon.on("WatchRepo", () => ({ json: { repo: { root: "", url: "https://nipa.example.com/acme/game", branch: "main", sparse: [] } } }));
   daemon.on("Status", () => ({ json: status({ modified: ["a.txt", "b.txt"], staged: ["s.txt"] }) }));
   daemon.on("Stage", () => ({ json: status() }));
   daemon.on("Restore", () => ({ json: status() }));
@@ -35,6 +36,10 @@ beforeEach(async () => {
   daemon.on("LockStatus", () => ({ json: { files: [] } }));
   daemon.on("PushPlan", () => ({ json: {} }));
   daemon.on("Update", () => ({ lines: [{ result: { sync: { branch: "main", commit_id: "c" } } }] }));
+  daemon.on("SyncPlan", () => ({ json: { overwritten: [] } }));
+  daemon.on("WatchEvents", () => ({ lines: [], hold: true }));
+  daemon.on("ProxyLockFile", () => ({ json: {} }));
+  daemon.on("Blame", () => ({ lines: [{ result: { path: "a.txt", lines: [{ text: "x", commit_id: "", uncommitted: true }], commits: [] } }] }));
   connectMock.mockReset();
   connectMock.mockImplementation(async () => ({ client: daemon.client(), version: "v9", started: true }));
   roots = [await makeClone("one")];
@@ -178,5 +183,78 @@ describe("commands", () => {
     expect(await resolveRepository(api.model, undefined)).toBeUndefined();
     await run("nipa.push");
     expect(fake.messages.at(-1)?.text).toBe("No Nipa clone is open in this workspace.");
+  });
+});
+
+describe("phase 2 commands", () => {
+  it("declares exactly the registered commands", async () => {
+    await start();
+    const declared = manifest.contributes.commands.map((c) => c.command).sort();
+    expect([...fake.commands.keys()].sort()).toEqual(declared);
+    const menuCommands = Object.values(manifest.contributes.menus).flatMap((items) => items.map((i: { command: string }) => i.command));
+    for (const id of menuCommands) {
+      expect(declared).toContain(id);
+    }
+    expect(fake.executed).toContainEqual({ command: "setContext", args: ["nipa.hasRepositories", true] });
+  });
+
+  it("toggles blame through the setting", async () => {
+    const api = await start();
+    const editor = fakeEditor(path.join(roots[0], "a.txt"), { lines: 1 });
+    fake.visibleEditors = [editor];
+    await run("nipa.toggleBlame");
+    expect(fake.configUpdates).toEqual([{ key: "blame", value: true, target: 1 }]);
+    await vi.waitFor(() => expect(editor.decorations).toHaveLength(1));
+    await run("nipa.toggleBlame");
+    expect(editor.decorations).toEqual([]);
+    fake.configListeners.fire({ affectsConfiguration: () => false });
+    expect(api.blame).toBeDefined();
+  });
+
+  it("opens and copies desktop links and routes lock commands", async () => {
+    await start();
+    const file = Uri.file(path.join(roots[0], "art", "hero.png"));
+    await run("nipa.openInDesktop", file);
+    expect(fake.opened).toEqual(["nipa://nipa.example.com/acme/game/file/art/hero.png"]);
+    await run("nipa.copyLink", file);
+    expect(fake.clipboard).toBe("nipa://nipa.example.com/acme/game/file/art/hero.png");
+    await run("nipa.lock", file, [file]);
+    expect(daemon.calls.find((c) => c.method === "ProxyLockFile")?.body.request.path).toBe("art/hero.png");
+    await run("nipa.lock");
+    expect(fake.messages.at(-1)?.text).toBe("Select a file in a Nipa clone first.");
+  });
+
+  it("explains missing links and surfaces command failures", async () => {
+    daemon.on("WatchRepo", () => ({ json: { repo: null } }));
+    await start();
+    const file = Uri.file(path.join(roots[0], "a.txt"));
+    await run("nipa.openInDesktop", file);
+    expect(fake.messages.at(-1)?.text).toBe("This clone has no server address to link to.");
+    await run("nipa.copyLink", file);
+    expect(fake.clipboard).toBe("");
+    daemon.on("LockStatus", () => ({ status: 503, json: { code: "Unavailable", message: "server down" } }));
+    await run("nipa.unlock", file);
+    expect(fake.messages.at(-1)).toMatchObject({ level: "error", text: "Nipa: server down" });
+  });
+
+  it("routes conflict and switch commands", async () => {
+    daemon.on("ResolveConflict", () => ({ json: status() }));
+    daemon.on("ProxyBranchList", () => ({ json: { response: { branches: [] } } }));
+    daemon.on("ProxyTagList", () => ({ json: { response: { tags: [] } } }));
+    daemon.on("ProxyLockRequestRelease", () => ({ json: {} }));
+    await start();
+    const file = Uri.file(path.join(roots[0], "a.txt"));
+    await run("nipa.takeOurs", file);
+    await run("nipa.takeTheirs", file);
+    fake.files.set(file.fsPath, "clean");
+    await run("nipa.markResolved", file);
+    expect(daemon.calls.filter((c) => c.method === "ResolveConflict").map((c) => c.body.choice)).toEqual(["ours", "theirs", "working"]);
+    await run("nipa.compareConflict", file);
+    expect(fake.messages.at(-1)?.text).toContain("does not exist on both sides");
+    await run("nipa.requestRelease", file);
+    expect(fake.messages.at(-1)?.text).toBe("a.txt is not locked by anyone else.");
+    fake.quickPick = () => undefined;
+    await run("nipa.switch");
+    expect(daemon.calls.some((c) => c.method === "ProxyBranchList")).toBe(true);
   });
 });

@@ -113,6 +113,13 @@ describe("DaemonClient", () => {
     await new DaemonClient("http://x", "t", fetchImpl).stream("S", {}, () => undefined);
   });
 
+  it("keeps messages whose own error field is a string", async () => {
+    daemon.on("WatchEvents", () => ({ lines: [{ incoming: 1, error: "poll failed" }, { incoming: 2, error: "" }] }));
+    const seen: unknown[] = [];
+    await daemon.client().stream("WatchEvents", {}, (m) => seen.push(m));
+    expect(seen).toHaveLength(2);
+  });
+
   it("raises stream error lines", async () => {
     daemon.on("Update", () => ({ lines: [{ started: { phase: "x" } }, { error: { code: "Internal", message: "bad" } }] }));
     await expect(daemon.client().stream("Update", {}, () => undefined)).rejects.toThrow("bad");
@@ -141,10 +148,10 @@ describe("ops", () => {
         ? { lines: [{ failure: { code: 404, message: "not found" } }] }
         : { lines: [{ info: { path: "a", is_binary: false } }, { data: Buffer.from("he").toString("base64") }, { data: Buffer.from("llo").toString("base64") }] },
     );
-    const blob = await readBlob(daemon.client(), "/r", "snapshot", "a");
+    const blob = await readBlob(daemon.client(), "/r", { source: "snapshot", path: "a" });
     expect(blob.data.toString()).toBe("hello");
     expect(blob.info?.path).toBe("a");
-    await expect(readBlob(daemon.client(), "/r", "snapshot", "missing")).rejects.toMatchObject({ status: 404 });
+    await expect(readBlob(daemon.client(), "/r", { source: "snapshot", path: "missing" })).rejects.toMatchObject({ status: 404 });
   });
 
   it("describes any error", () => {

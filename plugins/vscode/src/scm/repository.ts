@@ -3,12 +3,29 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { DaemonClient, DaemonError } from "../daemon/client";
-import { describeError, runOp } from "../daemon/ops";
+import { BlobRef, describeError, runOp } from "../daemon/ops";
 import type { DaemonSession } from "../daemon/session";
-import type { FileLockState, LockStatusResponse, OpEvent, OpResult, PushPlanResponse, RepoChange, StatusResponse } from "../daemon/types";
+import type {
+  Branch,
+  ConflictFile,
+  ConflictsResponse,
+  FileLockDetail,
+  FileLockState,
+  LockStatusResponse,
+  OpEvent,
+  OpResult,
+  PushPlanResponse,
+  RepoActivity,
+  RepoChange,
+  RepoInfo,
+  StatusResponse,
+  Tag,
+  WatchRepoResponse,
+} from "../daemon/types";
 import { Change, ChangeKind, Changes, groupStatus, hasSnapshot, KIND_LABEL, KIND_LETTER } from "./changes";
 import { relativeTo } from "./discovery";
-import { SnapshotContentProvider, snapshotUri } from "./snapshot";
+import { coveringLock, hasConflictMarkers, maintenanceNote } from "./helpers";
+import { blobUri, SnapshotContentProvider, snapshotUri } from "./snapshot";
 
 export interface RepositoryDeps {
   session: DaemonSession;
@@ -16,6 +33,7 @@ export interface RepositoryDeps {
   log: (line: string) => void;
   onDidChangeDecorations: (uris: vscode.Uri[]) => void;
   lockRefreshMs: number;
+  lockWarnings?: () => boolean;
   debounceMs?: number;
   retryDelayMs?: number;
 }
@@ -27,6 +45,14 @@ export interface ResourceState extends vscode.SourceControlResourceState {
   readonly change: Change;
   readonly group: GroupId;
 }
+
+export interface SwitchTarget {
+  branch?: string;
+  tag?: string;
+}
+
+const PAGE = 100;
+const MAX_PAGES = 10;
 
 export interface FileDecorationInfo {
   letter: string;
@@ -56,10 +82,20 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   readonly changes: vscode.SourceControlResourceGroup;
   readonly conflicts: vscode.SourceControlResourceGroup;
   state?: Changes;
+  info?: RepoInfo;
+  activity?: RepoActivity;
+  conflictSet?: ConflictsResponse;
+  private readonly stateChanged = new vscode.EventEmitter<void>();
+  readonly onDidChangeState = this.stateChanged.event;
+  private conflictFiles = new Map<string, ConflictFile>();
+  private warned = new Set<string>();
+  private eventsAbort?: AbortController;
+  private eventsLoop?: Promise<void>;
   private kinds = new Map<string, ChangeKind>();
   private locks = new Map<string, FileLockState>();
   private busy?: string;
   private disposed = false;
+  private stopped = false;
   private refreshing?: Promise<void>;
   private again = false;
   private debounce?: NodeJS.Timeout;
@@ -87,9 +123,11 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   }
 
   async open(): Promise<void> {
-    await this.withClient((client) => client.call("WatchRepo", { root: this.root }));
+    const watched = await this.withClient((client) => client.call<WatchRepoResponse>("WatchRepo", { root: this.root }));
+    this.info = watched.repo ?? undefined;
     await this.refresh();
     this.watchLoop = this.watch();
+    this.eventsLoop = this.watchEvents();
     void this.refreshLocks();
     this.lockTimer = setInterval(() => void this.refreshLocks(), this.deps.lockRefreshMs);
   }
@@ -243,10 +281,223 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   }
 
   async update(): Promise<void> {
+    if (!(await this.guardSync({}, "Updating"))) {
+      return;
+    }
     const result = await this.runOperation("Updating", "Update", { root: this.root });
     if (result?.sync) {
       void vscode.window.showInformationMessage(`Updated ${result.sync.branch} to ${result.sync.commit_id}.`);
     }
+  }
+
+  async switchTo(target: SwitchTarget): Promise<void> {
+    const label = target.tag ? `tag ${target.tag}` : `${target.branch}`;
+    if (!(await this.guardSync(target, `Switching to ${label}`))) {
+      return;
+    }
+    const result = await this.runOperation(target.tag ? "Checking out" : "Switching", "Switch", { root: this.root, ...target });
+    if (result) {
+      void vscode.window.showInformationMessage(`Switched to ${label}.`);
+    }
+  }
+
+  async guardSync(target: SwitchTarget, action: string): Promise<boolean> {
+    let overwritten: string[];
+    try {
+      const plan = await this.call<{ overwritten: string[] }>("SyncPlan", { branch: target.branch ?? "", tag: target.tag ?? "" });
+      overwritten = plan.overwritten ?? [];
+    } catch (err) {
+      this.deps.log(`sync plan: ${describeError(err)}`);
+      return true;
+    }
+    if (!overwritten.length) {
+      return true;
+    }
+    const shown = overwritten.slice(0, 10).join("\n");
+    const more = overwritten.length > 10 ? `\n…and ${overwritten.length - 10} more` : "";
+    const choice = await vscode.window.showWarningMessage(
+      `${action} would replace your local changes in ${plural(overwritten.length, "file")}.`,
+      { modal: true, detail: `${shown}${more}\n\nShelve them first to keep them; apply the shelf later with nipa shelve apply.` },
+      "Shelve and Continue",
+    );
+    if (choice !== "Shelve and Continue") {
+      return false;
+    }
+    return (await this.runOperation("Shelving", "ShelveCreate", { root: this.root, name: action, paths: overwritten })) !== undefined;
+  }
+
+  async listTargets(): Promise<{ branches: Branch[]; tags: Tag[] }> {
+    const branches: Branch[] = [];
+    const branchPage: Record<string, unknown> = { limit: PAGE };
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const res = await this.call<{ response: { branches: Branch[] } }>("ProxyBranchList", { request: branchPage });
+      const page = res.response?.branches ?? [];
+      branches.push(...page);
+      if (page.length < PAGE) {
+        break;
+      }
+      const last = page[page.length - 1];
+      branchPage.last_updated_at = last.updated_at;
+      branchPage.last_id = last.id;
+    }
+    const tags: Tag[] = [];
+    const tagPage: Record<string, unknown> = { limit: PAGE };
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const res = await this.call<{ response: { tags: Tag[] } }>("ProxyTagList", { request: tagPage });
+      const page = res.response?.tags ?? [];
+      tags.push(...page);
+      if (page.length < PAGE) {
+        break;
+      }
+      const last = page[page.length - 1];
+      tagPage.last_created_at = last.created_at;
+      tagPage.last_id = last.id;
+    }
+    return { branches, tags };
+  }
+
+  async lockPaths(paths: string[]): Promise<void> {
+    const branch = this.state?.branch ?? this.info?.branch ?? "";
+    const failed: string[] = [];
+    let locked = 0;
+    for (const p of paths) {
+      try {
+        const res = await this.call<{ warning?: string }>("ProxyLockFile", { request: { path: p, branch } });
+        locked++;
+        if (res.warning) {
+          this.deps.log(`lock ${p}: ${res.warning}`);
+        }
+      } catch (err) {
+        failed.push(`${p}: ${describeError(err)}`);
+      }
+    }
+    if (failed.length) {
+      void vscode.window.showErrorMessage(`Nipa: could not lock ${failed.join("; ")}`);
+    }
+    if (locked) {
+      void vscode.window.showInformationMessage(paths.length === 1 ? `Locked ${paths[0]}.` : `Locked ${plural(locked, "path")}.`);
+    }
+    await this.refreshLocks(false);
+  }
+
+  async unlockPaths(paths: string[]): Promise<void> {
+    const status = await this.call<LockStatusResponse>("LockStatus", {});
+    const locks = status.locks ?? [];
+    for (const p of paths) {
+      const lock = coveringLock(locks, p, (l) => l.held_by === status.user_id) ?? coveringLock(locks, p);
+      if (!lock) {
+        void vscode.window.showInformationMessage(`${p} is not locked.`);
+        continue;
+      }
+      if (lock.held_by !== status.user_id) {
+        if (!status.can_release_any) {
+          void vscode.window.showWarningMessage(`${lock.path} is locked by ${holder(lock)}. Use "Ask to Release" instead.`);
+          continue;
+        }
+        const choice = await vscode.window.showWarningMessage(`Release ${holder(lock)}'s lock on ${lock.path}?`, { modal: true }, "Release Lock");
+        if (choice !== "Release Lock") {
+          continue;
+        }
+      }
+      try {
+        await this.call("ProxyUnlockFile", { request: { path: lock.path, branch: lock.global ? "" : lock.branch } });
+        void vscode.window.showInformationMessage(`Unlocked ${lock.path}.`);
+      } catch (err) {
+        void vscode.window.showErrorMessage(`Nipa: could not unlock ${lock.path}: ${describeError(err)}`);
+      }
+    }
+    await this.refreshLocks(false);
+  }
+
+  async requestRelease(p: string): Promise<void> {
+    const status = await this.call<LockStatusResponse>("LockStatus", {});
+    const lock = coveringLock(status.locks ?? [], p, (l) => l.held_by !== status.user_id);
+    if (!lock) {
+      void vscode.window.showInformationMessage(`${p} is not locked by anyone else.`);
+      return;
+    }
+    const message = await vscode.window.showInputBox({
+      title: `Ask ${holder(lock)} to release ${lock.path}`,
+      placeHolder: "Optional message",
+      validateInput: (v) => (v.length > 500 ? "Keep the message under 500 characters" : undefined),
+    });
+    if (message === undefined) {
+      return;
+    }
+    try {
+      await this.call("ProxyLockRequestRelease", { request: { lock_id: lock.id, message } });
+      void vscode.window.showInformationMessage(`Asked ${holder(lock)} to release ${lock.path}.`);
+    } catch (err) {
+      void vscode.window.showErrorMessage(`Nipa: ${describeError(err)}`);
+    }
+  }
+
+  conflictFile(rel: string): ConflictFile | undefined {
+    return this.conflictFiles.get(rel);
+  }
+
+  conflictSides(rel: string): { ours?: BlobRef; theirs?: BlobRef; labels: [string, string] } {
+    const set = this.conflictSet;
+    const labels: [string, string] = [set?.ours?.label || "Mine", set?.theirs?.label || "Theirs"];
+    if (!set) {
+      return { labels };
+    }
+    if (set.op === "shelf") {
+      return {
+        ours: { source: "snapshot", path: rel },
+        theirs: set.theirs?.id ? { source: "shelf", revision: set.theirs.id, path: rel } : undefined,
+        labels,
+      };
+    }
+    const side = (id?: string): BlobRef | undefined => (id ? { source: "revision", revision: id, path: rel } : undefined);
+    return { ours: side(set.ours?.id), theirs: side(set.theirs?.id), labels };
+  }
+
+  async compareConflict(rel: string): Promise<void> {
+    const { ours, theirs, labels } = this.conflictSides(rel);
+    if (!ours || !theirs) {
+      void vscode.window.showInformationMessage(`${rel} does not exist on both sides; open it or take one side.`);
+      return;
+    }
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      blobUri(this.root, ours, "ours"),
+      blobUri(this.root, theirs, "theirs"),
+      `${path.posix.basename(rel)} (${labels[0]} ↔ ${labels[1]})`,
+    );
+  }
+
+  async takeSide(paths: string[], choice: "ours" | "theirs"): Promise<void> {
+    for (const p of paths) {
+      await this.statusCall("ResolveConflict", { root: this.root, path: p, choice });
+    }
+    this.deps.snapshots.refresh(this.root);
+  }
+
+  async markResolved(paths: string[]): Promise<void> {
+    for (const p of paths) {
+      const uri = this.uriOf(p);
+      const open = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath);
+      if (open?.isDirty) {
+        void vscode.window.showWarningMessage(`Save ${p} before marking it resolved.`);
+        continue;
+      }
+      let text = "";
+      try {
+        text = open ? open.getText() : (await vscode.workspace.fs.readFile(uri)).toString();
+      } catch {
+        text = "";
+      }
+      if (hasConflictMarkers(text)) {
+        void vscode.window.showWarningMessage(`${p} still has conflict markers. Resolve them first, or take one side.`);
+        continue;
+      }
+      await this.statusCall("ResolveConflict", { root: this.root, path: p, choice: "working" });
+    }
+  }
+
+  call<T>(method: string, body: object): Promise<T> {
+    return this.withClient((client) => client.call<T>(method, { root: this.root, ...body }));
   }
 
   async pushWarnings(): Promise<string[]> {
@@ -263,7 +514,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     } catch (err) {
       this.deps.log(`push plan: ${describeError(err)}`);
     }
-    await this.refreshLocks();
+    await this.refreshLocks(false);
     const staged = new Set((this.state?.staged ?? []).map((c) => c.path));
     for (const [file, lock] of this.locks) {
       if (staged.has(file) && (lock.state === "theirs" || lock.state === "needed")) {
@@ -307,7 +558,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     }
   }
 
-  async refreshLocks(): Promise<void> {
+  async refreshLocks(notify = true): Promise<void> {
     if (this.disposed) {
       return;
     }
@@ -318,6 +569,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
       try {
         const res = await this.withClient((client) => client.call<LockStatusResponse>("LockStatus", { root: this.root }));
         this.locks = new Map((res.files ?? []).map((f) => [f.path, f]));
+        this.warnLocks(notify);
       } catch (err) {
         this.deps.log(`lock status: ${describeError(err)}`);
         this.locks.clear();
@@ -335,6 +587,8 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     clearTimeout(this.debounce);
     clearInterval(this.lockTimer);
     this.watchAbort?.abort();
+    this.eventsAbort?.abort();
+    this.stateChanged.dispose();
     this.sc.dispose();
   }
 
@@ -343,12 +597,62 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   }
 
   async stopWatching(): Promise<void> {
+    this.stopped = true;
     this.watchAbort?.abort();
-    await this.watchLoop;
+    this.eventsAbort?.abort();
+    await Promise.all([this.watchLoop, this.eventsLoop]);
   }
 
   uriOf(rel: string): vscode.Uri {
     return vscode.Uri.file(path.join(this.root, ...rel.split("/")));
+  }
+
+  private warnLocks(notify: boolean): void {
+    const current = new Set<string>();
+    for (const lock of this.locks.values()) {
+      if (lock.state !== "needed" && lock.state !== "theirs") {
+        continue;
+      }
+      const key = `${lock.path}\0${lock.state}\0${lock.held_by}`;
+      current.add(key);
+      if (this.warned.has(key)) {
+        continue;
+      }
+      this.warned.add(key);
+      if (!notify || this.deps.lockWarnings?.() === false) {
+        continue;
+      }
+      if (lock.state === "needed") {
+        void vscode.window
+          .showWarningMessage(`${lock.path} changed but is not locked. Pushing a changed binary needs your lock.`, "Lock")
+          .then((choice) => (choice === "Lock" ? this.lockPaths([lock.path]) : undefined));
+      } else {
+        void vscode.window
+          .showWarningMessage(`${lock.path} is locked by ${lock.held_by_name || lock.held_by}. Your changes cannot be pushed until it is released.`, "Ask to Release")
+          .then((choice) => (choice === "Ask to Release" ? this.requestRelease(lock.path) : undefined));
+      }
+    }
+    for (const key of this.warned) {
+      if (!current.has(key)) {
+        this.warned.delete(key);
+      }
+    }
+  }
+
+  private async loadConflicts(): Promise<void> {
+    if (!this.state?.conflicts.length) {
+      this.conflictSet = undefined;
+      this.conflictFiles.clear();
+      return;
+    }
+    try {
+      const res = await this.call<ConflictsResponse>("Conflicts", {});
+      this.conflictSet = res;
+      this.conflictFiles = new Map((res.files ?? []).map((f) => [f.path, f]));
+      this.render();
+    } catch (err) {
+      this.deps.log(`conflicts: ${describeError(err)}`);
+    }
   }
 
   private hasChanges(): boolean {
@@ -398,6 +702,8 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     if (before.size) {
       this.deps.onDidChangeDecorations([...before].map((rel) => this.uriOf(rel)));
     }
+    this.stateChanged.fire();
+    void this.loadConflicts();
   }
 
   private render(): void {
@@ -412,16 +718,31 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
 
     const head = state.detachedTag ? `$(tag) ${state.detachedTag}` : `$(git-branch) ${state.branch}`;
     const commands: vscode.Command[] = [
-      { command: "nipa.refresh", title: head, tooltip: state.detachedTag ? `Detached at tag ${state.detachedTag}` : `Branch ${state.branch}`, arguments: [this.sc] },
+      {
+        command: "nipa.switch",
+        title: head,
+        tooltip: `${state.detachedTag ? `Detached at tag ${state.detachedTag}` : `Branch ${state.branch}`} (click to switch)`,
+        arguments: [this.sc],
+      },
     ];
     if (state.pending) {
       const remaining = state.pendingRemaining > 1 ? ` (${state.pendingRemaining} left)` : "";
       commands.push({ command: "nipa.showOutput", title: `$(warning) ${capitalize(state.pending)} pending${remaining}`, tooltip: `A ${state.pending} is waiting to be continued or aborted` });
     }
+    const maintenance = maintenanceNote(this.activity);
+    if (maintenance) {
+      commands.push({ command: "nipa.showOutput", title: maintenance.title, tooltip: maintenance.tooltip });
+    }
+    const incoming = this.activity?.incoming ?? 0;
     commands.push(
       this.busy
         ? { command: "nipa.showOutput", title: `$(sync~spin) ${this.busy}…`, tooltip: this.busy }
-        : { command: "nipa.update", title: "$(sync)", tooltip: "Update", arguments: [this.sc] },
+        : {
+            command: "nipa.update",
+            title: incoming > 0 ? `$(sync) ${incoming}↓` : "$(sync)",
+            tooltip: incoming > 0 ? `Update (${plural(incoming, "incoming commit")})` : "Update",
+            arguments: [this.sc],
+          },
     );
     this.sc.statusBarCommands = commands;
     this.sc.inputBox.enabled = !state.detachedTag;
@@ -439,7 +760,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
       change,
       group,
       resourceUri,
-      contextValue: change.kind,
+      contextValue: this.contextValue(change, group),
       decorations: {
         strikeThrough: change.kind === "deleted",
         faded: change.kind === "deleted",
@@ -449,8 +770,28 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     };
   }
 
+  private contextValue(change: Change, group: GroupId): string {
+    if (group !== "conflicts" || change.kind === "resolved") {
+      return change.kind;
+    }
+    const file = this.conflictFiles.get(change.path);
+    return file && file.kind === "text" && !file.binary ? "conflict-text" : "conflict-other";
+  }
+
   private openCommand(change: Change, uri: vscode.Uri): vscode.Command {
     const name = path.posix.basename(change.path);
+    if (change.kind === "conflict") {
+      const file = this.conflictFiles.get(change.path);
+      const { ours, theirs, labels } = this.conflictSides(change.path);
+      if (file && (file.binary || file.kind !== "text") && ours && theirs) {
+        return {
+          command: "vscode.diff",
+          title: "Compare Sides",
+          arguments: [blobUri(this.root, ours, "ours"), blobUri(this.root, theirs, "theirs"), `${name} (${labels[0]} ↔ ${labels[1]})`],
+        };
+      }
+      return { command: "vscode.open", title: "Open", arguments: [uri] };
+    }
     if (change.kind === "deleted") {
       return { command: "vscode.open", title: "Open", arguments: [snapshotUri(this.root, change.path)] };
     }
@@ -461,7 +802,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   }
 
   private async watch(): Promise<void> {
-    while (!this.disposed) {
+    while (!this.disposed && !this.stopped) {
       const controller = new AbortController();
       this.watchAbort = controller;
       try {
@@ -474,15 +815,47 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
           ),
         );
       } catch (err) {
-        if (this.disposed || controller.signal.aborted) {
+        if (this.disposed || this.stopped || controller.signal.aborted) {
           return;
         }
         this.deps.log(`watch: ${describeError(err)}`);
       }
-      if (this.disposed || controller.signal.aborted) {
+      if (this.disposed || this.stopped || controller.signal.aborted) {
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, this.deps.retryDelayMs ?? 2_000));
+    }
+  }
+
+  private async watchEvents(): Promise<void> {
+    while (!this.disposed && !this.stopped) {
+      const controller = new AbortController();
+      this.eventsAbort = controller;
+      try {
+        await this.withClient((client) =>
+          client.stream<RepoActivity>(
+            "WatchEvents",
+            { root: this.root },
+            (activity) => {
+              this.activity = activity;
+              if (activity.error) {
+                this.deps.log(`activity: ${activity.error}`);
+              }
+              this.render();
+            },
+            controller.signal,
+          ),
+        );
+      } catch (err) {
+        if (this.disposed || this.stopped || controller.signal.aborted) {
+          return;
+        }
+        this.deps.log(`activity: ${describeError(err)}`);
+      }
+      if (this.disposed || this.stopped || controller.signal.aborted) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, (this.deps.retryDelayMs ?? 2_000) * 5));
     }
   }
 
@@ -513,6 +886,14 @@ function lockText(lock: FileLockState): string {
     return `Locked by ${lock.held_by_name || lock.held_by}`;
   }
   return LOCK_TEXT[lock.state] ?? lock.state;
+}
+
+function holder(lock: FileLockDetail): string {
+  return lock.held_by_name || lock.held_by;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function capitalize(s: string): string {
