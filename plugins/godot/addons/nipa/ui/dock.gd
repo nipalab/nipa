@@ -177,9 +177,19 @@ func _on_shelve_confirmed() -> void:
 	if _session == null or not action.is_valid():
 		return
 	var request: RefCounted = _session.request_shelve(shelf_name(_guard_label), paths)
+	if request.is_done():
+		_toast_refused(request)
+		return
 	await request.completed
 	if request.is_ok():
 		action.call()
+
+
+# A request refused before it was queued (session closed or stopping) reports no op_finished.
+func _toast_refused(request: RefCounted) -> void:
+	if not request.is_ok() and Engine.is_editor_hint():
+		EditorInterface.get_editor_toaster().push_toast(
+			"Nipa: %s" % request.get_message(), EditorToaster.SEVERITY_ERROR)
 
 
 func _on_shelve_canceled() -> void:

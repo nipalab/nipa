@@ -199,3 +199,76 @@ func test_bottom_panel_has_shelves_and_lock_request_actions() -> void:
 	panel.watches = null
 	remove_child(panel)
 	panel.free()
+
+
+class RefusedRequest extends RefCounted:
+	signal completed
+
+	func is_done() -> bool:
+		return true
+
+	func is_ok() -> bool:
+		return false
+
+	func get_message() -> String:
+		return "session is not open"
+
+	func get_result() -> Dictionary:
+		return {}
+
+
+class ClosedSession extends RefCounted:
+	var calls := []
+
+	func is_open() -> bool:
+		return true
+
+	func request_shelve(name: String, paths: PackedStringArray) -> RefCounted:
+		calls.append(["shelve", name, paths])
+		return RefusedRequest.new()
+
+	func request_shelve_apply(id: String, keep: bool) -> RefCounted:
+		calls.append(["apply", id, keep])
+		return RefusedRequest.new()
+
+	func request_shelves() -> RefCounted:
+		calls.append(["list"])
+		return RefusedRequest.new()
+
+
+func test_shelve_and_continue_does_not_wait_on_a_refused_request() -> void:
+	var dock: Control = load("res://addons/nipa/ui/dock.tscn").instantiate()
+	add_child(dock)
+	var session := ClosedSession.new()
+	dock._session = session
+	var ran := [false]
+	dock._guard_action = func(): ran[0] = true
+	dock._guard_label = "Update"
+	dock._guard_paths = PackedStringArray(["a.gd"])
+	await dock._on_shelve_confirmed()
+	assert_array(session.calls).contains_exactly([["shelve", "Before update", PackedStringArray(["a.gd"])]])
+	assert_bool(ran[0]).is_false()
+	assert_bool(dock._guard_action.is_valid()).is_false()
+	dock._session = null
+	remove_child(dock)
+	dock.free()
+
+
+func test_shelves_tab_reports_refused_apply_and_list() -> void:
+	var tab = ShelvesTab.new()
+	add_child(tab)
+	var session := ClosedSession.new()
+	tab._session = session
+	tab.show_shelves([{"id": "s1", "name": "wip", "entries": []}], "")
+	tab._tree.get_root().get_first_child().select(0)
+	var conflicts := [0]
+	tab.conflicts_requested.connect(func(): conflicts[0] += 1)
+	await tab._on_apply(true)
+	assert_str(tab._summary.text).is_equal("Could not apply the shelf: session is not open")
+	assert_int(conflicts[0]).is_equal(0)
+	await tab.refresh_from_daemon()
+	assert_str(tab._summary.text).is_equal("Could not list shelves: session is not open")
+	assert_array(session.calls).contains_exactly([["apply", "s1", true], ["list"]])
+	tab._session = null
+	remove_child(tab)
+	tab.free()

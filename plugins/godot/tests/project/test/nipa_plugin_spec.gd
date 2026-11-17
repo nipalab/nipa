@@ -90,9 +90,11 @@ func test_history_reloads_only_after_it_was_shown_and_while_visible() -> void:
 	assert_bool(history._stale).is_false()
 	history._shown = true
 	panel.current_tab = panel.conflicts_tab.get_index()
+	await get_tree().process_frame
 	history._on_commits_changed()
 	assert_bool(history._stale).is_true()
 	panel.current_tab = history.get_index()
+	await get_tree().process_frame
 	assert_bool(history._stale).is_false()
 	assert_str(history.get_node("Toolbar/Target").text).is_equal("History: whole project")
 	remove_child(panel)

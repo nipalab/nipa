@@ -104,7 +104,8 @@ func refresh_from_daemon() -> void:
 		show_shelves([], "")
 		return
 	var request: RefCounted = _session.request_shelves()
-	await request.completed
+	if not request.is_done():
+		await request.completed
 	if not is_inside_tree():
 		return
 	if request.is_ok():
@@ -155,8 +156,11 @@ func _on_apply(keep: bool) -> void:
 	if _session == null or shelf.is_empty():
 		return
 	var request: RefCounted = _session.request_shelve_apply(shelf.get("id", ""), keep)
-	await request.completed
-	if request.is_ok() and not request.get_result().get("shelve_apply", {}).get("conflicts", []).is_empty():
+	if not request.is_done():
+		await request.completed
+	if not request.is_ok():
+		_summary.text = "Could not apply the shelf: %s" % request.get_message()
+	elif not request.get_result().get("shelve_apply", {}).get("conflicts", []).is_empty():
 		conflicts_requested.emit()
 
 
