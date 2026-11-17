@@ -178,7 +178,17 @@ namespace Nipa.Editor
                     var version = conn.Version;
                     var options = new ConnectorOptions { Binary = binary };
                     session = new NipaSession(conn.Client, paths, async c =>
-                        (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client)
+                    {
+                        var next = await Connector.ConnectAsync(options, c).ConfigureAwait(false);
+                        MainThread.Post(() =>
+                        {
+                            if (gen != generation)
+                                return;
+                            DaemonVersion = next.Version;
+                            Changed?.Invoke();
+                        });
+                        return next.Client;
+                    })
                     {
                         PollInterval = poll,
                     };
