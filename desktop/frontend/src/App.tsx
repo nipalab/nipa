@@ -20,7 +20,7 @@ import { isMac } from "@/lib/shortcuts";
 import { startTourOnce, useStoredMode } from "@/lib/mode";
 import { formatZoom, nextZoom, setZoom, storedZoom } from "@/lib/zoom";
 import { removeSettings, repoSettingsPrefix } from "@/lib/settings";
-import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
 import { translate } from "@/i18n";
 
 const SELECTED_KEY = "nipa.selectedRepo";
@@ -165,7 +165,7 @@ export default function App() {
   const current = list.find((r) => r.root === selected) ?? list[0];
   const pending = (activity.data ?? []).some((a) => a.incoming > 0 || a.reviewRequests > 0);
   const showSidebar = sidebarHidden ? (
-    <Button variant="ghost" size="icon" className="relative shrink-0" onClick={() => setSidebarHidden(false)} aria-label={translate("app.showSidebar")} title={translate("app.showSidebarCtrlB")}>
+    <Button variant="ghost" size="icon" className={cn("relative shrink-0", isMac() && "ml-[72px]")} onClick={() => setSidebarHidden(false)} aria-label={translate("app.showSidebar")} title={translate("app.showSidebarCtrlB")}>
       <PanelLeftOpen />
       {pending && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" aria-label={translate("app.newActivity")} />}
     </Button>
@@ -173,7 +173,6 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      {isMac() && <div data-testid="mac-titlebar" className="drag-region h-7 shrink-0 bg-sidebar" />}
       <div className="flex min-h-0 flex-1">
         {!sidebarHidden && (
           <Sidebar
