@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Activate for clones nested at any depth in the workspace.
+- Mark as Resolved decodes unopened files as UTF-8 before checking for conflict markers.
+- A lock warning skipped during the push check is still shown by the next refresh.
 - Serve synced versions under the `nipa-blob` scheme. `nipa-snapshot` is also registered by the separate `nipa-vscode` extension, which then answered for these documents, so diffs and gutter markers showed the whole file as added.
 
 ## 0.2.0

@@ -46,10 +46,18 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
+          cache-dependency-path: |
+            desktop/frontend/package-lock.json
+            plugins/vscode/package-lock.json
 
       - name: Desktop frontend coverage
         working-directory: desktop/frontend
+        run: |
+          npm ci --ignore-scripts
+          npx vitest run --coverage --coverage.reporter=lcov
+
+      - name: VS Code extension coverage
+        working-directory: plugins/vscode
         run: |
           npm ci --ignore-scripts
           npx vitest run --coverage --coverage.reporter=lcov
@@ -64,6 +72,7 @@ jobs:
             report.json
             desktop/coverage.out
             desktop/frontend/coverage/lcov.info
+            plugins/vscode/coverage/lcov.info
           retention-days: 1
 
   lint:

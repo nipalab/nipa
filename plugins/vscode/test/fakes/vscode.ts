@@ -314,7 +314,7 @@ export const workspace = {
       if (text === undefined) {
         throw new Error("ENOENT");
       }
-      return Buffer.from(text);
+      return new Uint8Array(Buffer.from(text));
     },
   },
   onDidChangeTextDocument: (listener: (e: { document: FakeDocument }) => void) => fake.changeListeners.event(listener),

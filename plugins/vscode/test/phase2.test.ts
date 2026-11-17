@@ -181,6 +181,33 @@ describe("locks", () => {
   });
 });
 
+describe("lock warning bookkeeping", () => {
+  it("still warns after a silent refresh and again once the change came back", async () => {
+    current = status({ modified: ["hero.png"] });
+    lockFiles = [{ path: "hero.png", state: "needed", held_by: "", held_by_name: "" }];
+    const repo = await open();
+    const needed = () => fake.messages.filter((m) => m.text.startsWith("hero.png changed")).length;
+    await waitFor(() => calls("LockStatus").length > 0);
+    fake.messages = [];
+    repo["warned"].clear();
+
+    await repo.refreshLocks(false);
+    expect(needed()).toBe(0);
+    await repo.refreshLocks(true);
+    expect(needed()).toBe(1);
+    await repo.refreshLocks(true);
+    expect(needed()).toBe(1);
+
+    current = status();
+    await repo.refresh();
+    await repo.refreshLocks(true);
+    current = status({ modified: ["hero.png"] });
+    await repo.refresh();
+    await repo.refreshLocks(true);
+    expect(needed()).toBe(2);
+  });
+});
+
 describe("conflicts", () => {
   beforeEach(() => {
     current = status({ conflicts: ["a.txt", "hero.png", "gone.txt", "done.txt"], resolved: ["done.txt"], pending: "merge" });

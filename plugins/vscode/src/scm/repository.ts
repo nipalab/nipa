@@ -484,7 +484,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
       }
       let text = "";
       try {
-        text = open ? open.getText() : (await vscode.workspace.fs.readFile(uri)).toString();
+        text = open ? open.getText() : new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
       } catch {
         text = "";
       }
@@ -565,6 +565,7 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
     const previous = [...this.locks.keys()];
     if (!this.hasChanges()) {
       this.locks.clear();
+      this.warned.clear();
     } else {
       try {
         const res = await this.withClient((client) => client.call<LockStatusResponse>("LockStatus", { root: this.root }));
@@ -615,13 +616,10 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
       }
       const key = `${lock.path}\0${lock.state}\0${lock.held_by}`;
       current.add(key);
-      if (this.warned.has(key)) {
+      if (this.warned.has(key) || !notify || this.deps.lockWarnings?.() === false) {
         continue;
       }
       this.warned.add(key);
-      if (!notify || this.deps.lockWarnings?.() === false) {
-        continue;
-      }
       if (lock.state === "needed") {
         void vscode.window
           .showWarningMessage(`${lock.path} changed but is not locked. Pushing a changed binary needs your lock.`, "Lock")

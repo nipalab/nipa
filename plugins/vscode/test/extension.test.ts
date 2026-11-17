@@ -198,6 +198,10 @@ describe("phase 2 commands", () => {
     expect(fake.executed).toContainEqual({ command: "setContext", args: ["nipa.hasRepositories", true] });
   });
 
+  it("activates for clones nested at any depth", () => {
+    expect(manifest.activationEvents).toContain("workspaceContains:**/.nipa/config");
+  });
+
   it("toggles blame through the setting", async () => {
     const api = await start();
     const editor = fakeEditor(path.join(roots[0], "a.txt"), { lines: 1 });

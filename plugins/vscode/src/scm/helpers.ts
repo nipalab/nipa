@@ -28,8 +28,20 @@ export function nipaLink(repoUrl: string | undefined, segments: string[]): strin
 }
 
 export function coversPath(lockPath: string, rel: string): boolean {
-  const prefix = lockPath.replace(/^\/+|\/+$/g, "");
+  const prefix = trimSlashes(lockPath);
   return prefix === "" || rel === prefix || rel.startsWith(`${prefix}/`);
+}
+
+function trimSlashes(p: string): string {
+  let start = 0;
+  let end = p.length;
+  while (start < end && p[start] === "/") {
+    start++;
+  }
+  while (end > start && p[end - 1] === "/") {
+    end--;
+  }
+  return p.slice(start, end);
 }
 
 export function coveringLock(locks: FileLockDetail[], rel: string, filter: (lock: FileLockDetail) => boolean = () => true): FileLockDetail | undefined {
@@ -134,7 +146,7 @@ export function maintenanceNote(activity: RepoActivity | undefined): Maintenance
     return undefined;
   }
   const rank = (mode: string) => ["read_only", "full", "frozen"].indexOf(mode);
-  const [scope, window] = active.reduce((a, b) => (rank(b[1].mode) > rank(a[1].mode) ? b : a));
+  const [scope, window] = active.reduce((a, b) => (rank(b[1].mode) > rank(a[1].mode) ? b : a), active[0]);
   const mode = MODE_TEXT[window.mode] ?? window.mode;
   const parts = [`${scope} maintenance (${mode})`];
   if (window.message) {
