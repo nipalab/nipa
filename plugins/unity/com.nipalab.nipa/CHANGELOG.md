@@ -14,6 +14,15 @@
   your own locks.
 - Notify when free: watch a lock someone else holds and get a "Lock now"
   prompt when it is released.
+- Maintenance windows: a banner, notices for scheduled/started/ended windows,
+  Push/Lock (and Update/switch/merge in closed mode) refused up front, and
+  refusals that name the estimated end.
+- Push checks: asset budget violations and broken or unused references from
+  `PushPlan`, with Push anyway.
+- Lock expiry: an optional Lock expiry setting, time left in the Locks tab and
+  Inspector bar, and Renew.
+- History tab Load more.
+- Compare for image conflicts: mine and theirs side by side with pixel stats.
 
 - Setup tab: checks Force Text, visible meta files and `.nipaignore`, with Fix buttons
   and the Unity `.nipaignore` template.

@@ -59,7 +59,7 @@ namespace Nipa.Editor
             Func<NipaSession, Action<OpEvent>, Task> op, Action onSuccess = null)
         {
             var session = Session;
-            if (session == null || Busy != null || !SaveOpenScenes())
+            if (session == null || Busy != null || !Allowed(title, true) || !SaveOpenScenes())
                 return;
             Busy = "Checking local changes";
             BusyProgress = -1f;
@@ -107,6 +107,17 @@ namespace Nipa.Editor
         }
 
         public static void NotifyChanged() => Changed?.Invoke();
+
+        public static MaintenanceNotice Maintenance => Session?.MaintenanceNotice(DateTimeOffset.UtcNow);
+
+        public static bool Allowed(string title, bool sync)
+        {
+            var notice = Maintenance;
+            if (notice == null || !(sync ? notice.BlocksSync : notice.BlocksWrites))
+                return true;
+            NipaLocks.Tell("Nipa: " + title, notice.Text);
+            return false;
+        }
 
         public static void DismissNotices()
         {
@@ -278,7 +289,7 @@ namespace Nipa.Editor
                 }
                 catch (Exception e)
                 {
-                    error = e.Message;
+                    error = MaintenanceNotes.ErrorText(e);
                 }
                 MainThread.Post(() =>
                 {

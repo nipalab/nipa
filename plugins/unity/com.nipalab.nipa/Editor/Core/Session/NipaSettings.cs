@@ -9,6 +9,7 @@ namespace Nipa.Editor.Core.Session
     {
         public int PollIntervalSeconds { get; set; } = 60;
         public bool LockStrict { get; set; }
+        public int LockTtlHours { get; set; }
         public List<string> LockExtensions { get; set; } = new List<string>(Locks.LockPolicy.DefaultExtensions);
 
         public static NipaSettings Load(string path)
@@ -36,6 +37,10 @@ namespace Nipa.Editor.Core.Session
                 s.PollIntervalSeconds = 15;
             if (s.PollIntervalSeconds > 3600)
                 s.PollIntervalSeconds = 3600;
+            if (s.LockTtlHours < 0)
+                s.LockTtlHours = 0;
+            if (s.LockTtlHours > 168)
+                s.LockTtlHours = 168;
             if (s.LockExtensions == null)
                 s.LockExtensions = new List<string>(Locks.LockPolicy.DefaultExtensions);
             return s;

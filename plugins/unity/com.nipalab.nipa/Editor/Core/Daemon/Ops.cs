@@ -14,7 +14,7 @@ namespace Nipa.Editor.Core.Daemon
             {
                 onEvent?.Invoke(ev);
                 if (ev.Failure != null)
-                    throw new DaemonException(ev.Failure.Code, ev.Failure.Message);
+                    throw new DaemonException(ev.Failure.Code, ev.Failure.Message, ev.Failure.Maintenance);
                 if (ev.Result != null)
                     result = ev.Result;
             }

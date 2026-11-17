@@ -352,7 +352,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `shelf` banner), `SyncPlan` behind `NipaHost.Sync` ("Shelve and continue"
   before Update/switch/tag checkout, open scenes saved first through
   `NipaHost.SaveOpenScenes`) and `ProxyLockRequestRelease` (Ask to release,
-  `lock_requested` prompt); locks surface through
+  `lock_requested` prompt), maintenance (`RepoActivity.maintenance` banner,
+  `MaintenanceNotes`, `NipaHost.Allowed` gate, `DaemonException.Maintenance`),
+  `PushPlan` push checks (`PushChecks`), lock TTL (`LockTtlHours`, `LockExpiry`,
+  Renew), paged history (`HistoryPageAsync`, next = last `parent_1_id`) and
+  `Preview` image compare for conflicts (`NipaImageCompare`); locks surface through
   `AssetModificationProcessor`, overlays, the Inspector header and a Locks
   tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +

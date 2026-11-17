@@ -32,6 +32,8 @@ namespace Nipa.Editor
                     if (info.State == LockState.Free && GUILayout.Button("Lock", EditorStyles.miniButton))
                         NipaLocks.Lock(new System.Collections.Generic.List<string> { clone });
                     var own = info.State == LockState.Mine && ProjectPaths.AssetOf(info.LockPath) == clone;
+                    if (own && info.Lock?.ExpiresAt != null && GUILayout.Button("Renew", EditorStyles.miniButton))
+                        NipaLocks.Renew(info.Lock);
                     if (own && GUILayout.Button("Unlock", EditorStyles.miniButton))
                         NipaLocks.Unlock(new System.Collections.Generic.List<string> { clone });
                     if (info.State == LockState.Theirs)
@@ -45,14 +47,20 @@ namespace Nipa.Editor
             }
         }
 
+        static string Expiry(LockInfo info)
+        {
+            var text = NipaLocks.Expiry(info.Lock);
+            return text == null ? string.Empty : ", " + text;
+        }
+
         static string Label(LockInfo info, string clone)
         {
             switch (info.State)
             {
                 case LockState.Mine:
-                    return ProjectPaths.AssetOf(info.LockPath) == clone ? "Nipa: locked by you" : "Nipa: locked by you (" + info.LockPath + ")";
+                    return (ProjectPaths.AssetOf(info.LockPath) == clone ? "Nipa: locked by you" : "Nipa: locked by you (" + info.LockPath + ")") + Expiry(info);
                 case LockState.Theirs:
-                    return "Nipa: locked by " + info.Holder + " (read-only)";
+                    return "Nipa: locked by " + info.Holder + " (read-only)" + Expiry(info);
                 default:
                     return "Nipa: not locked";
             }
