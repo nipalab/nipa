@@ -1,0 +1,471 @@
+{
+  "name": "nipa",
+  "displayName": "Nipa",
+  "description": "Nipa version control in the Source Control view: status, staging, push, update, branch switching, file locks, conflicts and blame.",
+  "version": "0.2.1",
+  "publisher": "nipalab",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nipalab/nipa"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "activationEvents": [
+    "workspaceContains:.nipa/config",
+    "workspaceContains:**/.nipa/config"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Nipa",
+      "properties": {
+        "nipa.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to the nipa CLI used to start the daemon. Empty uses NIPA_BIN, then PATH."
+        },
+        "nipa.lockRefreshSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "How often file lock states are refreshed from the server."
+        },
+        "nipa.blame": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show who last changed each line next to the editor (Nipa: Toggle Blame)."
+        },
+        "nipa.lockWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn when a changed binary needs your lock or is locked by someone else."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "nipa.refresh",
+        "title": "Refresh",
+        "category": "Nipa",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nipa.push",
+        "title": "Push",
+        "category": "Nipa",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "nipa.update",
+        "title": "Update",
+        "category": "Nipa",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "nipa.stage",
+        "title": "Stage Changes",
+        "category": "Nipa",
+        "icon": "$(add)"
+      },
+      {
+        "command": "nipa.stageAll",
+        "title": "Stage All Changes",
+        "category": "Nipa",
+        "icon": "$(add)"
+      },
+      {
+        "command": "nipa.unstage",
+        "title": "Unstage Changes",
+        "category": "Nipa",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "nipa.unstageAll",
+        "title": "Unstage All Changes",
+        "category": "Nipa",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "nipa.discard",
+        "title": "Discard Changes",
+        "category": "Nipa",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "nipa.openFile",
+        "title": "Open File",
+        "category": "Nipa",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "nipa.openChange",
+        "title": "Open Changes",
+        "category": "Nipa",
+        "icon": "$(compare-changes)"
+      },
+      {
+        "command": "nipa.reconnect",
+        "title": "Reconnect to Daemon",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.showOutput",
+        "title": "Show Output",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.switch",
+        "title": "Switch Branch or Tag\u2026",
+        "category": "Nipa",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "nipa.lock",
+        "title": "Lock",
+        "category": "Nipa",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "nipa.unlock",
+        "title": "Unlock",
+        "category": "Nipa",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "nipa.requestRelease",
+        "title": "Ask to Release Lock\u2026",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.takeOurs",
+        "title": "Take Mine",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.takeTheirs",
+        "title": "Take Theirs",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.markResolved",
+        "title": "Mark as Resolved",
+        "category": "Nipa",
+        "icon": "$(check)"
+      },
+      {
+        "command": "nipa.compareConflict",
+        "title": "Compare Sides",
+        "category": "Nipa",
+        "icon": "$(compare-changes)"
+      },
+      {
+        "command": "nipa.openInDesktop",
+        "title": "Open in Nipa Desktop",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.copyLink",
+        "title": "Copy nipa:// Link",
+        "category": "Nipa"
+      },
+      {
+        "command": "nipa.toggleBlame",
+        "title": "Toggle Blame",
+        "category": "Nipa"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "nipa.stage",
+          "when": "false"
+        },
+        {
+          "command": "nipa.unstage",
+          "when": "false"
+        },
+        {
+          "command": "nipa.discard",
+          "when": "false"
+        },
+        {
+          "command": "nipa.openFile",
+          "when": "false"
+        },
+        {
+          "command": "nipa.openChange",
+          "when": "false"
+        },
+        {
+          "command": "nipa.switch",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.lock",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.unlock",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.requestRelease",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.takeOurs",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.takeTheirs",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.markResolved",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.compareConflict",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.openInDesktop",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.copyLink",
+          "when": "nipa.hasRepositories"
+        },
+        {
+          "command": "nipa.toggleBlame",
+          "when": "nipa.hasRepositories"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "nipa.push",
+          "group": "navigation@1",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.update",
+          "group": "navigation@2",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.refresh",
+          "group": "navigation@3",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.stageAll",
+          "group": "1_stage",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.unstageAll",
+          "group": "1_stage",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.showOutput",
+          "group": "9_output",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.switch",
+          "group": "2_switch",
+          "when": "scmProvider == nipa"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "nipa.stageAll",
+          "group": "inline",
+          "when": "scmProvider == nipa && scmResourceGroup == changes"
+        },
+        {
+          "command": "nipa.unstageAll",
+          "group": "inline",
+          "when": "scmProvider == nipa && scmResourceGroup == staged"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "nipa.openFile",
+          "group": "inline@1",
+          "when": "scmProvider == nipa && scmResourceState != deleted"
+        },
+        {
+          "command": "nipa.discard",
+          "group": "inline@2",
+          "when": "scmProvider == nipa && scmResourceGroup == changes && scmResourceState != untracked"
+        },
+        {
+          "command": "nipa.stage",
+          "group": "inline@3",
+          "when": "scmProvider == nipa && scmResourceGroup == changes"
+        },
+        {
+          "command": "nipa.unstage",
+          "group": "inline@3",
+          "when": "scmProvider == nipa && scmResourceGroup == staged"
+        },
+        {
+          "command": "nipa.openChange",
+          "group": "navigation",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.stage",
+          "group": "1_modification",
+          "when": "scmProvider == nipa && scmResourceGroup == changes"
+        },
+        {
+          "command": "nipa.unstage",
+          "group": "1_modification",
+          "when": "scmProvider == nipa && scmResourceGroup == staged"
+        },
+        {
+          "command": "nipa.discard",
+          "group": "1_modification",
+          "when": "scmProvider == nipa && scmResourceGroup == changes && scmResourceState != untracked"
+        },
+        {
+          "command": "nipa.markResolved",
+          "group": "inline@4",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState == conflict-text"
+        },
+        {
+          "command": "nipa.compareConflict",
+          "group": "inline@4",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState == conflict-other"
+        },
+        {
+          "command": "nipa.takeOurs",
+          "group": "2_conflict@1",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState =~ /^conflict-/"
+        },
+        {
+          "command": "nipa.takeTheirs",
+          "group": "2_conflict@2",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState =~ /^conflict-/"
+        },
+        {
+          "command": "nipa.markResolved",
+          "group": "2_conflict@3",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState == conflict-text"
+        },
+        {
+          "command": "nipa.compareConflict",
+          "group": "2_conflict@4",
+          "when": "scmProvider == nipa && scmResourceGroup == conflicts && scmResourceState =~ /^conflict-/"
+        },
+        {
+          "command": "nipa.lock",
+          "group": "3_lock@1",
+          "when": "scmProvider == nipa && scmResourceState != untracked"
+        },
+        {
+          "command": "nipa.unlock",
+          "group": "3_lock@2",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.requestRelease",
+          "group": "3_lock@3",
+          "when": "scmProvider == nipa"
+        },
+        {
+          "command": "nipa.openInDesktop",
+          "group": "4_open",
+          "when": "scmProvider == nipa"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "nipa.lock",
+          "group": "7_nipa@1",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.unlock",
+          "group": "7_nipa@2",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.requestRelease",
+          "group": "7_nipa@3",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.openInDesktop",
+          "group": "7_nipa@4",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.copyLink",
+          "group": "7_nipa@5",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "nipa.lock",
+          "group": "7_nipa@1",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.unlock",
+          "group": "7_nipa@2",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.requestRelease",
+          "group": "7_nipa@3",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.openInDesktop",
+          "group": "7_nipa@4",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        },
+        {
+          "command": "nipa.copyLink",
+          "group": "7_nipa@5",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "nipa.toggleBlame",
+          "group": "7_nipa@1",
+          "when": "nipa.hasRepositories && resourceScheme == file"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "lint": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies --out ../../bin/",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/vscode": "1.85.0",
+    "@vitest/coverage-v8": "2.1.5",
+    "@vscode/vsce": "3.2.1",
+    "esbuild": "0.24.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5"
+  }
+}

@@ -1,0 +1,47 @@
+name: VS Code extension
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/vscode/**'
+      - '.github/workflows/vscode-extension.yml'
+  pull_request:
+    paths:
+      - 'plugins/vscode/**'
+      - '.github/workflows/vscode-extension.yml'
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: plugins/vscode/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build nipa CLI
+        run: go build -o bin/nipa ./cmd/nipa
+
+      - name: Test
+        env:
+          NIPA_VSCODE_DAEMON_BIN: ${{ github.workspace }}/bin/nipa
+        run: make vscode-test
+
+      - name: Pack
+        run: make vscode-pack
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: bin/nipa-*.vsix

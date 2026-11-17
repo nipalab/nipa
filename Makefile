@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release release-server
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack vscode-test vscode-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release release-server
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 GCOVR ?= gcovr
@@ -172,6 +172,15 @@ unity-test:
 unity-pack:
 	mkdir -p bin
 	cd plugins/unity/com.nipalab.nipa && npm pack --pack-destination ../../../bin
+
+## Run the VS Code extension tests with the 80% coverage gate (needs Node 20+).
+vscode-test:
+	cd plugins/vscode && npm ci && npm run lint && npm test
+
+## Build the VS Code extension .vsix into bin/.
+vscode-pack:
+	mkdir -p bin
+	cd plugins/vscode && npm ci && npm run package
 
 ## Build and test the Godot plugin core (needs CMake >= 3.24, a C++17 compiler and gcovr).
 godot-test:

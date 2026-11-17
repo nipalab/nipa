@@ -68,7 +68,7 @@ Client discovery: read file → check `pid` alive → dial → `Ping`. A stale f
 ### JSON bridge (`json_port`)
 
 Clients that cannot speak gRPC over h2c (Unity's Mono `HttpClient`, Godot,
-Unreal) use a second loopback listener, `127.0.0.1:<json_port>`
+Unreal, the VS Code extension) use a second loopback listener, `127.0.0.1:<json_port>`
 (`nipa serve --json-port`, `NIPA_DAEMON_JSON_PORT`; 0 picks a free port).
 Older readers ignore the new `json_port` field.
 
