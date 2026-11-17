@@ -47,6 +47,12 @@ namespace Nipa.Editor
         [MenuItem("Assets/Nipa/Notify When Free", true)]
         static bool AssetsWatchValid() => WatchValid("Assets/Nipa/Notify When Free");
 
+        [MenuItem("Assets/Nipa/Compare with Last Pushed")]
+        static void AssetsCompare() => CompareSelected();
+
+        [MenuItem("Assets/Nipa/Compare with Last Pushed", true)]
+        static bool AssetsCompareValid() => SelectedComparable() != null;
+
         [MenuItem("Assets/Nipa/Refresh")]
         static void AssetsRefresh() => NipaHost.Refresh();
 
@@ -89,6 +95,12 @@ namespace Nipa.Editor
         [MenuItem("CONTEXT/Nipa/Notify When Free", true)]
         static bool ContextWatchValid() => WatchValid("CONTEXT/Nipa/Notify When Free");
 
+        [MenuItem("CONTEXT/Nipa/Compare with Last Pushed")]
+        static void ContextCompare() => CompareSelected();
+
+        [MenuItem("CONTEXT/Nipa/Compare with Last Pushed", true)]
+        static bool ContextCompareValid() => SelectedComparable() != null;
+
         [MenuItem("CONTEXT/Nipa/Refresh")]
         static void ContextRefresh() => NipaHost.Refresh();
 
@@ -111,6 +123,28 @@ namespace Nipa.Editor
                 return null;
             var path = NipaHost.SelectedClonePaths().FirstOrDefault();
             return path != null && session.Locks.Lookup(path).State == Core.Locks.LockState.Theirs ? path : null;
+        }
+
+        internal static string SelectedComparable()
+        {
+            var session = NipaHost.Session;
+            if (session == null || Selection.assetGUIDs.Length != 1)
+                return null;
+            var path = NipaHost.SelectedClonePaths().FirstOrDefault();
+            return path != null && session.CanCompareWithPushed(path) ? path : null;
+        }
+
+        static void CompareSelected()
+        {
+            var path = SelectedComparable();
+            if (path != null)
+                CompareWithPushed(path);
+        }
+
+        internal static void CompareWithPushed(string clonePath)
+        {
+            var sides = Core.Session.NipaSession.PushedSides(clonePath);
+            NipaImageCompare.Open(sides.Ours.Path, sides.Ours, "Last pushed", sides.Theirs, "Working copy");
         }
 
         static void RequestRelease()

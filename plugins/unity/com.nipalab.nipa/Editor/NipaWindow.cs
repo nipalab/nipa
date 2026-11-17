@@ -107,7 +107,7 @@ namespace Nipa.Editor
             LoadWarnings(session);
             DrawBanners();
             if (Event.current.type == EventType.Layout)
-                setupCount = NipaSetup.Check(session).Count;
+                setupCount = NipaSetup.Check(session, warnings).Count;
 
             tab = GUILayout.Toolbar(tab, new[]
             {
@@ -148,7 +148,7 @@ namespace Nipa.Editor
             }
             else
             {
-                NipaSetup.Draw(session);
+                NipaSetup.Draw(session, warnings);
             }
             EditorGUILayout.EndScrollView();
 
@@ -204,6 +204,7 @@ namespace Nipa.Editor
                     EditorGUILayout.HelpBox(NipaHost.Error, MessageType.Warning);
                 else if (!NipaHost.Connecting)
                     EditorGUILayout.HelpBox("Set Project Settings > Editor > Version Control > Mode to Nipa.", MessageType.Info);
+                EditorGUILayout.HelpBox(NipaSetup.VersionText(null), MessageType.None);
                 if (GUILayout.Button("Connect"))
                     NipaHost.Reconnect();
             }
@@ -230,6 +231,12 @@ namespace Nipa.Editor
                 if (warnings.Count > 6)
                     text += "\n… and " + (warnings.Count - 6) + " more";
                 EditorGUILayout.HelpBox(".meta warnings:\n" + text, MessageType.Warning);
+                var stage = Core.Setup.SetupChecker.StagePaths(warnings);
+                using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+                {
+                    if (stage.Count > 0 && GUILayout.Button(new GUIContent("Stage " + stage.Count + " .meta file(s)", string.Join("\n", stage))))
+                        NipaSetup.StageMeta(stage);
+                }
             }
         }
 
@@ -659,6 +666,9 @@ namespace Nipa.Editor
                         selected.Add(row.Path);
                     else
                         selected.Remove(row.Path);
+                    if (row.Image && NipaHost.Session != null && NipaHost.Session.CanCompareWithPushed(row.Path)
+                        && GUILayout.Button(new GUIContent("Compare", "Compare with the last pushed version"), EditorStyles.miniButton, GUILayout.Width(60)))
+                        NipaMenus.CompareWithPushed(row.Path);
                     GUILayout.Label(row.Tag, EditorStyles.miniLabel, GUILayout.Width(64));
                 }
             }
@@ -871,6 +881,7 @@ namespace Nipa.Editor
                     State = kv.Value,
                     Label = kv.Key + (hasMeta ? "  (+meta)" : string.Empty),
                     Tag = Describe(kv.Value),
+                    Image = ImageFiles.IsImage(kv.Key),
                 });
             }
             return rows;
@@ -897,6 +908,7 @@ namespace Nipa.Editor
             public string Label;
             public string Tag;
             public FileState State;
+            public bool Image;
         }
     }
 }

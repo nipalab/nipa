@@ -1,5 +1,7 @@
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
+using Nipa.Editor.Core.Daemon;
 using Nipa.Editor.Core.Setup;
 using NUnit.Framework;
 
@@ -115,6 +117,52 @@ namespace Nipa.Core.Tests
                 File.WriteAllText(path, rule + "\n");
                 Assert.That(SetupChecker.Check(Inputs(prefix: "games/hero")), Is.Empty, rule);
             }
+        }
+
+        [Test]
+        public void MetaWarningsOfferStagingOnlyForUnstagedMeta()
+        {
+            SetupChecker.WriteIgnore(root, "");
+            var inputs = Inputs();
+            inputs.MetaWarnings = new List<MetaWarning>();
+            Assert.That(SetupChecker.Check(inputs), Is.Empty);
+            inputs.MetaWarnings = new List<MetaWarning>
+            {
+                new MetaWarning { Path = "Assets/b.png.meta", Kind = SetupChecker.MetaNotStaged, Message = "is not staged" },
+                new MetaWarning { Path = "Assets/a.png.meta", Kind = SetupChecker.MetaNotStaged, Message = "is not staged" },
+                new MetaWarning { Path = "Assets/a.png.meta", Kind = SetupChecker.MetaNotStaged, Message = "dup" },
+                new MetaWarning { Path = "Assets/c", Kind = "missing-meta", Message = "folder has no .meta file" },
+            };
+            var issue = SetupChecker.Check(inputs).Single();
+            Assert.That(issue.Kind, Is.EqualTo(SetupKind.MetaFiles));
+            Assert.That(issue.AutoFix, Is.True);
+            Assert.That(issue.FixLabel, Is.EqualTo("Stage 2 files"));
+            Assert.That(issue.Paths, Is.EqualTo(new[] { "Assets/a.png.meta", "Assets/b.png.meta" }));
+            Assert.That(issue.Message, Does.StartWith("4 .meta warning(s)").And.Contain("• Assets/c: folder has no .meta file"));
+
+            inputs.MetaWarnings = inputs.MetaWarnings.Skip(1).ToList();
+            Assert.That(SetupChecker.Check(inputs).Single().FixLabel, Is.EqualTo("Stage 1 file"));
+
+            inputs.MetaWarnings = Enumerable.Range(0, 8).Select(i => new MetaWarning { Path = "Assets/m" + i, Kind = "orphan-meta", Message = "x" }).ToList();
+            issue = SetupChecker.Check(inputs).Single();
+            Assert.That(issue.AutoFix, Is.False);
+            Assert.That(issue.Paths, Is.Empty);
+            Assert.That(issue.Message, Does.Contain("… and 2 more").And.Contain("nothing to stage"));
+            Assert.That(SetupChecker.StagePaths(null), Is.Empty);
+        }
+
+        [Test]
+        public void VersionTextNamesDaemonPluginAndCli()
+        {
+            var inputs = Inputs();
+            inputs.DaemonVersion = "1.4.0";
+            inputs.PluginVersion = "0.1.0";
+            inputs.Binary = "/usr/bin/nipa";
+            Assert.That(SetupChecker.VersionText(inputs), Is.EqualTo("Daemon 1.4.0 · plugin 0.1.0\nCLI: /usr/bin/nipa"));
+            var none = new SetupInputs { Connected = false };
+            Assert.That(SetupChecker.VersionText(none), Does.StartWith("Daemon not connected · plugin unknown\nCLI: not found"));
+            Assert.That(SetupChecker.VersionText(new SetupInputs()), Does.StartWith("Daemon unknown"));
+            Assert.That(new SetupIssue(SetupKind.ForceText, "m", true).FixLabel, Is.EqualTo("Fix"));
         }
     }
 }
