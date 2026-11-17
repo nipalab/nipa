@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   setLLMKey: vi.fn(),
   clearLLMKey: vi.fn(),
   testLLM: vi.fn(),
+  setZoom: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -43,6 +44,7 @@ beforeEach(() => {
   api.updateStatus.mockResolvedValue(idle);
   api.onUpdate.mockReturnValue(() => {});
   api.llmSettings.mockResolvedValue(noLLM);
+  api.setZoom.mockResolvedValue(undefined);
 });
 
 const noLLM = { endpoint: "", model: "", keySaved: false, configured: false };
@@ -50,6 +52,18 @@ const noLLM = { endpoint: "", model: "", keySaved: false, configured: false };
 const render = () => renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
 
 describe("SettingsDialog interface", () => {
+  it("changes and resets the zoom", async () => {
+    render();
+    const reset = await screen.findByRole("button", { name: "Reset" });
+    expect(reset).toBeDisabled();
+    await userEvent.selectOptions(screen.getByLabelText("Zoom"), "1.25");
+    expect(api.setZoom).toHaveBeenLastCalledWith(1.25);
+    expect(screen.getByLabelText("Zoom")).toHaveValue("1.25");
+    await userEvent.click(reset);
+    expect(api.setZoom).toHaveBeenLastCalledWith(1);
+    expect(screen.getByLabelText("Zoom")).toHaveValue("1");
+  });
+
   it("replays the tour only when a project is open", async () => {
     const { unmount } = renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} canReplayTour={false} />);
     expect(await screen.findByRole("button", { name: "Replay the quick tour" })).toBeDisabled();

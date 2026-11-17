@@ -123,6 +123,17 @@ describe("matchShortcut", () => {
     const dialog = mount(document.createElement("div"));
     dialog.setAttribute("aria-modal", "true");
     expect(matchShortcut(key("k", { ctrlKey: true }))).toBeNull();
+    expect(matchShortcut(key("=", { ctrlKey: true }))?.id).toBe("zoomIn");
+  });
+
+  it("matches the zoom keys with or without Shift and in text fields", () => {
+    const input = mount(document.createElement("input"));
+    expect(matchShortcut(key("=", { ctrlKey: true }, input))).toEqual({ id: "zoomIn", index: 0 });
+    expect(matchShortcut(key("+", { ctrlKey: true, shiftKey: true }))).toEqual({ id: "zoomIn", index: 1 });
+    expect(matchShortcut(key("-", { metaKey: true }))?.id).toBe("zoomOut");
+    expect(matchShortcut(key("0", { ctrlKey: true }))?.id).toBe("zoomReset");
+    expect(matchShortcut(key("0"))).toBeNull();
+    expect(shortcutKeys(shortcut("zoomIn"), false)).toEqual([["Ctrl", "+"]]);
   });
 });
 

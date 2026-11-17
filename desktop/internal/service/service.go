@@ -85,6 +85,8 @@ type Service struct {
 	ActivityHook func([]RepoActivity)
 	// SettingsHook is called after settings are saved.
 	SettingsHook func(workspace.Settings)
+	// ZoomFunc sets the window zoom; nil ignores zoom changes.
+	ZoomFunc func(level float64)
 	// Autostart enables or disables starting at login; nil disables the option.
 	Autostart func(enabled bool) error
 	// Prefs stores the settings; nil uses the defaults.

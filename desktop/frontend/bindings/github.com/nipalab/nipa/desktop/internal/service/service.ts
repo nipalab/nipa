@@ -827,6 +827,13 @@ export function SetUploadWorkers(workers: number): $CancellablePromise<void> {
 }
 
 /**
+ * SetZoom scales the whole window's content; 1 is the default size.
+ */
+export function SetZoom(level: number): $CancellablePromise<void> {
+    return $Call.ByID(1847628939, level);
+}
+
+/**
  * Settings returns the app preferences.
  */
 export function Settings(): $CancellablePromise<workspace$0.Settings> {

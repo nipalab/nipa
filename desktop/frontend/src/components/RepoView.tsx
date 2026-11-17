@@ -458,7 +458,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                     onCheckoutTag={checkoutTag}
                   />
                 ) : current === "mrs" ? (
-                  <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} />
+                  <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} create={createMR} onSwitch={switchTo} />
                 ) : current === "locks" ? (
                   <LocksView root={repo.root} notify={notify} />
                 ) : current === "activity" ? (

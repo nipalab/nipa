@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { desktop } from "./api/desktop";
 import { hydrateSettings } from "./lib/settings";
 import { ThemeProvider } from "./lib/theme";
+import { applyStoredZoom } from "./lib/zoom";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -24,4 +25,7 @@ async function render() {
   );
 }
 
-void hydrateSettings(desktop.uiState, desktop.saveUIState).then(render);
+void hydrateSettings(desktop.uiState, desktop.saveUIState).then(() => {
+  applyStoredZoom();
+  return render();
+});

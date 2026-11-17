@@ -14,7 +14,10 @@ export type ShortcutId =
   | "refresh"
   | "stage"
   | "next"
-  | "previous";
+  | "previous"
+  | "zoomIn"
+  | "zoomOut"
+  | "zoomReset";
 
 // mod is Ctrl, or Cmd on macOS.
 export type Chord = { key: string; mod?: boolean; shift?: boolean; alt?: boolean };
@@ -29,6 +32,8 @@ export type Shortcut = {
   // whileTyping keeps the shortcut active in text fields; only chords with a
   // modifier should set it.
   whileTyping?: boolean;
+  // inModals keeps the shortcut active while a modal dialog is open.
+  inModals?: boolean;
   // display overrides the rendered keys, e.g. for the 1-9 range.
   display?: string[];
 };
@@ -40,6 +45,9 @@ export const shortcuts: Shortcut[] = [
   { id: "help", label: translate("shortcuts.showKeyboardShortcuts"), group: "General", chords: [{ key: "?" }] },
   { id: "sidebar", label: translate("shortcuts.showOrHideTheSidebar"), group: "General", chords: [{ key: "b", mod: true }], whileTyping: true },
   { id: "settings", label: translate("shortcuts.openSettings"), group: "General", chords: [{ key: ",", mod: true }], whileTyping: true },
+  { id: "zoomIn", label: translate("shortcuts.zoomIn"), group: "General", chords: [{ key: "=", mod: true }, { key: "+", mod: true }], whileTyping: true, inModals: true, display: ["Mod", "+"] },
+  { id: "zoomOut", label: translate("shortcuts.zoomOut"), group: "General", chords: [{ key: "-", mod: true }], whileTyping: true, inModals: true },
+  { id: "zoomReset", label: translate("shortcuts.resetZoom"), group: "General", chords: [{ key: "0", mod: true }], whileTyping: true, inModals: true },
   {
     id: "tab",
     label: translate("shortcuts.goToTab19"),
@@ -98,13 +106,15 @@ export type ShortcutMatch = { id: ShortcutId; index: number };
 
 // matchShortcut finds the shortcut an event triggers, if any. Plain keys never
 // fire in text fields, Space and arrows never steal from a focused control,
-// and nothing fires while an IME composes or a modal dialog is open.
+// and nothing fires while an IME composes, nor under a modal dialog unless
+// the shortcut is inModals.
 export function matchShortcut(e: KeyboardEvent, list: readonly Shortcut[] = shortcuts): ShortcutMatch | null {
   if (e.isComposing || e.defaultPrevented) return null;
-  if (typeof document !== "undefined" && document.querySelector("[aria-modal='true']")) return null;
+  const modal = typeof document !== "undefined" && !!document.querySelector("[aria-modal='true']");
   for (const s of list) {
     const index = s.chords.findIndex((c) => chordMatches(c, e));
     if (index < 0) continue;
+    if (modal && !s.inModals) return null;
     const chord = s.chords[index];
     if (!s.whileTyping && isEditable(e.target)) return null;
     if (!chord.mod && bareNavigation.has(chord.key) && isControl(e.target)) return null;

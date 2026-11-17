@@ -277,6 +277,7 @@ export function createService(scenario: string): typeof Real {
     SaveSettings: (s) => ok(s),
     UIState: () => ok({}),
     SaveUIState: () => ok(undefined),
+    SetZoom: () => ok(undefined),
     UploadWorkers: () => ok(16),
     SetUploadWorkers: () => ok(undefined),
     RestartDaemon: () => ok({ version: "1.4.0", pid: 4243, port: 7070, started: true }),

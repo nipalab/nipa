@@ -65,6 +65,11 @@ func main() {
 	svc.Prefs = store
 	svc.Watches = store
 	svc.Layout = store
+	svc.ZoomFunc = func(level float64) {
+		if window != nil {
+			window.SetZoom(level)
+		}
+	}
 	svc.Events = func(name string, data any) { app.Event.Emit(name, data) }
 	svc.PickFileFunc = func(dir string) (string, error) {
 		return app.Dialog.OpenFile().
@@ -173,6 +178,7 @@ func main() {
 		MinHeight:  560,
 		StartState: startState,
 		Hidden:     background,
+		Zoom:       service.StoredZoom(store),
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 44,
 			Backdrop:                application.MacBackdropTranslucent,

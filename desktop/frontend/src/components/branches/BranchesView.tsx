@@ -11,7 +11,7 @@ import { useMaintenance } from "@/hooks/useMaintenance";
 import { shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { errorMessage } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
 type BranchesViewProps = {
@@ -36,6 +36,8 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
   const tags = useQuery({ queryKey: ["tags", root], queryFn: () => desktop.tags(root) });
 
   const baseHead = branches.data?.find((b) => b.name === branch)?.commitId;
+  const gone = !detached && !!branches.data && !branches.data.some((b) => b.name === branch);
+  const fallback = gone ? (branches.data?.find((b) => b.default) ?? branches.data?.[0]) : undefined;
   const baseLabel = baseHead ? translate("branchesView.text", { branch, value: shortId(baseHead) }) : branch;
 
   const done = (key: string, message: string) => {
@@ -70,6 +72,20 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-3xl space-y-6 p-5">
+        {gone && (
+          <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/15 px-3 py-2 text-[12px]">
+            <AlertTriangle className="size-4 shrink-0 text-warning" />
+            <span className="mr-auto">
+              <Trans i18nKey="branchesView.currentBranchGone" values={{ branch }} components={[<span key="b" className="font-mono">{null}</span>]} />
+            </span>
+            {fallback && (
+              <Button size="sm" variant="primary" disabled={busy || !!sync} title={sync} onClick={() => onSwitch(fallback.name)}>
+                <ArrowRightLeft />
+                {t("branchesView.switchToBranch", { name: fallback.name })}
+              </Button>
+            )}
+          </div>
+        )}
         <Section
           title={t("branchesView.branches")}
           Icon={GitBranch}
@@ -100,7 +116,7 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                       </Badge>
                     )}
                     <span className="ml-auto font-mono text-[11px] text-muted-foreground">{b.commitId ? shortId(b.commitId) : "empty"}</span>
-                    {!current && !detached && b.commitId && (
+                    {!current && !detached && !gone && b.commitId && (
                       <Button size="sm" disabled={busy || !!writes} onClick={() => setDialog({ kind: "merge", name: b.name })} title={writes ?? t("branchesView.mergeIntoTitle", { name: b.name, branch })}>
                         <GitMerge />
                         {t("branchesView.mergeInto", { branch })}

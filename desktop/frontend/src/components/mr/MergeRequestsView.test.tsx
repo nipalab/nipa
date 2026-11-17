@@ -135,6 +135,10 @@ beforeEach(() => {
 
 const view = () => renderWithProviders(<MergeRequestsView root="/work/game" branch="art" notify={notify} />);
 const list = () => screen.findByRole("list", { name: "Merge requests" });
+const pickStrategy = async (box: HTMLElement, name: RegExp) => {
+  await userEvent.click(within(box).getByRole("combobox", { name: "Merge strategy" }));
+  await userEvent.click(within(box).getByRole("option", { name }));
+};
 
 describe("MergeRequestsView list", () => {
   it("lists requests, filters by status and search, and pages", async () => {
@@ -373,12 +377,40 @@ describe("MergeRequestDetail", () => {
     api.mergeMergeRequest.mockResolvedValue(detail({ status: "merged" }));
     view();
     const box = await screen.findByRole("region", { name: "Merge" });
-    await userEvent.selectOptions(within(box).getByRole("combobox", { name: "Merge strategy" }), "squash");
+    await pickStrategy(box, /^Squash/);
     await userEvent.click(within(box).getByRole("checkbox"));
     await userEvent.click(within(box).getByRole("button", { name: "Merge" }));
     expect(api.mergeMergeRequest).toHaveBeenCalledWith("/work/game", 12, "squash", true);
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Merged !12", "success"));
     expect(localStorage.getItem("nipa.mergeStrategy")).toBe("squash");
+  });
+
+  it("switches the clone to the target when its branch was deleted by the merge", async () => {
+    api.mergeMergeRequest.mockResolvedValue(detail({ status: "merged" }));
+    const onSwitch = vi.fn();
+    renderWithProviders(<MergeRequestsView root="/work/game" branch="art" notify={notify} onSwitch={onSwitch} />);
+    const box = await screen.findByRole("region", { name: "Merge" });
+    await userEvent.click(within(box).getByRole("checkbox"));
+    await userEvent.click(within(box).getByRole("button", { name: "Merge" }));
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("main"));
+  });
+
+  it("stays on the branch when the source is kept or is another branch", async () => {
+    api.mergeMergeRequest.mockResolvedValue(detail({ status: "merged" }));
+    const onSwitch = vi.fn();
+    const { unmount } = renderWithProviders(<MergeRequestsView root="/work/game" branch="art" notify={notify} onSwitch={onSwitch} />);
+    let box = await screen.findByRole("region", { name: "Merge" });
+    await userEvent.click(within(box).getByRole("button", { name: "Merge" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Merged !12", "success"));
+    unmount();
+
+    renderWithProviders(<MergeRequestsView root="/work/game" branch="main" notify={notify} onSwitch={onSwitch} />);
+    box = await screen.findByRole("region", { name: "Merge" });
+    await userEvent.click(within(box).getByRole("checkbox"));
+    await userEvent.click(within(box).getByRole("button", { name: "Merge" }));
+    await waitFor(() => expect(api.mergeMergeRequest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(notify).toHaveBeenCalledTimes(2));
+    expect(onSwitch).not.toHaveBeenCalled();
   });
 
   it("explains blocked requests and lets drafts become ready", async () => {
@@ -401,7 +433,7 @@ describe("MergeRequestDetail", () => {
     const box = await screen.findByRole("region", { name: "Merge" });
     expect(box).toHaveTextContent("A fast-forward is not possible");
     expect(within(box).getByRole("button", { name: "Merge" })).toBeDisabled();
-    await userEvent.selectOptions(within(box).getByRole("combobox", { name: "Merge strategy" }), "rebase");
+    await pickStrategy(box, /^Rebase/);
     expect(box).toHaveTextContent("this strategy can still merge");
     expect(within(box).getByRole("button", { name: "Merge" })).toBeEnabled();
     await userEvent.click(within(box).getByRole("button", { name: "Mark as draft" }));

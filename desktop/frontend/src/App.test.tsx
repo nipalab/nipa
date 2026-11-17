@@ -38,6 +38,7 @@ const api = vi.hoisted(() => ({
   files: vi.fn(),
   lockStatus: vi.fn(),
   update: vi.fn(),
+  setZoom: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -62,11 +63,25 @@ beforeEach(() => {
   api.ignoreRules.mockResolvedValue({ shared: "", local: "" });
   api.updateStatus.mockResolvedValue({ current: "1.0.0", enabled: true, inPlace: true, phase: "idle", release: null, written: 0, total: 0, error: "", checkedAt: "" });
   api.onUpdate.mockReturnValue(() => {});
+  api.setZoom.mockResolvedValue(undefined);
 });
 
 const openDetails = () => userEvent.click(screen.getByRole("tab", { name: /Details/ }));
 
 describe("App", () => {
+  it("zooms with the keyboard and reports the level", async () => {
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    await userEvent.keyboard("{Control>}={/Control}");
+    expect(api.setZoom).toHaveBeenLastCalledWith(1.1);
+    expect(await screen.findByText("Zoom 110%")).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}-{/Control}{Control>}-{/Control}");
+    expect(api.setZoom).toHaveBeenLastCalledWith(0.9);
+    await userEvent.keyboard("{Control>}0{/Control}");
+    expect(api.setZoom).toHaveBeenLastCalledWith(1);
+    expect(await screen.findByText("Zoom 100%")).toBeInTheDocument();
+  });
+
   it("shows the splash, then the first repository", async () => {
     renderWithProviders(<App />);
     expect(screen.getByRole("status")).toHaveTextContent("Starting Nipa");

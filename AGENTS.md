@@ -136,7 +136,12 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   per `seq`), keyboard shortcuts declared once in `lib/shortcuts.ts` and
   bound through `hooks/useShortcuts.ts` (ignored in text fields, IME
   composition and under modals; Space/arrows yield to focused controls),
-  the `?` "Keyboard shortcuts" sheet,
+  the `?` "Keyboard shortcuts" sheet, window zoom (`lib/zoom.ts`:
+  Ctrl/Cmd `+`/`=`/`-`/`0`, also under modals via `inModals`, steps 50–200%,
+  `nipa.zoom` in the `ui` map, Settings > Interface select; `SetZoom` →
+  `Service.ZoomFunc` → Wails `window.SetZoom`, `service.StoredZoom` sets the
+  initial window option and `applyStoredZoom` re-applies it at boot since
+  macOS ignores that option),
   a blame gutter on text viewers via `Blame` (daemon `Blame`; the
   "Blame" toggle in `DiffViewer` and the Files detail viewer, kept in
   `localStorage` `nipa.blame`, `hooks/useTextTools.ts` +
