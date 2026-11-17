@@ -109,7 +109,7 @@ func TestChunk_StoreUploaded_NeverTouchesTheDatabase(t *testing.T) {
 	hash := chunker.Sum(data)
 	uc, _ := newLinkFixture(t, newStubChunkStore())
 
-	require.NoError(t, uc.StoreUploaded(context.Background(), hash, data))
+	require.NoError(t, uc.StoreUploaded(context.Background(), snow.ID(1), hash, data))
 }
 
 func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {

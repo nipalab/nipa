@@ -70,6 +70,20 @@ type Branch struct {
 	chunkUploads   chunkUploader
 	audit          AuditRecorder
 	visible        *visibleChunkCache
+	storage        storageWriteGate
+}
+
+// WithStorageGate refuses merges into projects whose store is read-only.
+func (b *Branch) WithStorageGate(gate storageWriteGate) *Branch {
+	b.storage = gate
+	return b
+}
+
+func (b *Branch) requireWritableStorage(ctx context.Context, projectID snow.ID) error {
+	if b.storage == nil {
+		return nil
+	}
+	return b.storage.RequireWritable(ctx, projectID)
 }
 
 // WithAudit records branch protection changes.

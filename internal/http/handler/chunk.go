@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io"
 	nethttp "net/http"
 
@@ -14,13 +15,20 @@ import (
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
-// ChunkHandler serves signed-URL chunk transfers over HTTP.
-type ChunkHandler struct {
-	chunks *usecase.Chunk
+// chunkProjectResolver resolves the project named by a signed chunk URL. The
+// signature is the capability, so no permission is checked.
+type chunkProjectResolver interface {
+	ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (*domain.Organization, *domain.Project, error)
 }
 
-func NewChunkHandler(chunks *usecase.Chunk) *ChunkHandler {
-	return &ChunkHandler{chunks: chunks}
+// ChunkHandler serves signed-URL chunk transfers over HTTP.
+type ChunkHandler struct {
+	chunks   *usecase.Chunk
+	projects chunkProjectResolver
+}
+
+func NewChunkHandler(chunks *usecase.Chunk, projects chunkProjectResolver) *ChunkHandler {
+	return &ChunkHandler{chunks: chunks, projects: projects}
 }
 
 // PutChunk stores one chunk uploaded through a signed transfer URL. The URL
@@ -36,7 +44,8 @@ func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorNoPermission())
 		return
 	}
-	if err := h.verifyURL(appCtx, hashHex, params); err != nil {
+	project, err := h.verifyURL(appCtx, hashHex, params)
+	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -60,7 +69,7 @@ func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUser("chunk size mismatch"))
 		return
 	}
-	if err := h.chunks.StoreUploaded(appCtx.Context(), hash, data); err != nil {
+	if err := h.chunks.StoreUploaded(appCtx.Context(), project.ID, hash, data); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -79,7 +88,8 @@ func (h *ChunkHandler) GetChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorNoPermission())
 		return
 	}
-	if err := h.verifyURL(appCtx, hashHex, params); err != nil {
+	project, err := h.verifyURL(appCtx, hashHex, params)
+	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -89,7 +99,7 @@ func (h *ChunkHandler) GetChunk(appCtx httpApp.AppContext) {
 		return
 	}
 	trace.SpanFromContext(appCtx.Context()).SetAttributes(attribute.String(obs.AttrChunkHash, hashHex))
-	data, err := h.chunks.Download(appCtx.Context(), hash)
+	data, err := h.chunks.Download(appCtx.Context(), project.ID, hash)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -97,11 +107,14 @@ func (h *ChunkHandler) GetChunk(appCtx httpApp.AppContext) {
 	appCtx.WriteBytes(nethttp.StatusOK, "application/octet-stream", data)
 }
 
-func (h *ChunkHandler) verifyURL(appCtx httpApp.AppContext, hashHex string, params chunkurl.Params) error {
-	return h.chunks.VerifyTransferURL(
-		appCtx.PathParameter("org"),
-		appCtx.PathParameter("project"),
-		hashHex,
-		params,
-	)
+func (h *ChunkHandler) verifyURL(appCtx httpApp.AppContext, hashHex string, params chunkurl.Params) (*domain.Project, error) {
+	orgSlug, projectSlug := appCtx.PathParameter("org"), appCtx.PathParameter("project")
+	if err := h.chunks.VerifyTransferURL(orgSlug, projectSlug, hashHex, params); err != nil {
+		return nil, err
+	}
+	_, project, err := h.projects.ResolveBySlug(appCtx.Context(), orgSlug, projectSlug)
+	if err != nil {
+		return nil, err
+	}
+	return project, nil
 }

@@ -134,6 +134,9 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
+	if err := b.requireWritableStorage(ctx, projectID); err != nil {
+		return nil, err
+	}
 
 	target, err := b.branchRepo.GetBranchByName(ctx, projectID, targetBranch)
 	if domain.IsErrorNotFound(err) {

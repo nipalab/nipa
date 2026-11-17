@@ -66,6 +66,20 @@ type Push struct {
 	hooks      hookPushGate
 	metrics    *obs.Metrics
 	maxFiles   int
+	storage    storageWriteGate
+}
+
+// WithStorageGate refuses pushes to projects whose store is read-only.
+func (p *Push) WithStorageGate(gate storageWriteGate) *Push {
+	p.storage = gate
+	return p
+}
+
+func (p *Push) requireWritableStorage(ctx context.Context, projectID snow.ID) error {
+	if p.storage == nil {
+		return nil
+	}
+	return p.storage.RequireWritable(ctx, projectID)
 }
 
 // DefaultPushMaxFiles bounds the files plus removed paths one push may carry.
@@ -115,6 +129,9 @@ func (p *Push) MaxFiles() int {
 func (p *Push) CheckTarget(ctx context.Context, projectID snow.ID, branchName, message, baseCommitID string) error {
 	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return domain.NewErrorNoPermission()
+	}
+	if err := p.requireWritableStorage(ctx, projectID); err != nil {
+		return err
 	}
 	if strings.TrimSpace(message) == "" {
 		return domain.NewErrorUser("commit message is required")
@@ -203,6 +220,9 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	}()
 	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
+	}
+	if err := p.requireWritableStorage(ctx, projectID); err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(message) == "" {
 		return nil, domain.NewErrorUser("commit message is required")

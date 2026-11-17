@@ -2379,6 +2379,18 @@ and `nipa mcp` stay silent.
   receive so the transport may carry a scheme while `securestorage` never does.
 - **Chunk content backends**: `internal/storage.ChunkStore` (Put/Get/Size/
   Exists/Close, content-addressed by BLAKE3, idempotent Put) is the single seam.
+  Usecases reach it per project through `usecase.ChunkStores`
+  (`chunk_stores.go`, `ForProject` → `ProjectStore{Store, External,
+  ReadOnly}`; `UsecaseDeps.ChunkStores`, nil = `StaticStores(ChunkStore)`):
+  `Chunk` resolves once per presign/confirm/store/download (existence and
+  dedup are per store), `Branch` reads through `ProjectChunkReader` and stores
+  merge output with `Chunk.StoreForProject`, and `/api/chunks` resolves the
+  project from the signed slugs. `External` skips the storage ledger (chunk
+  rows and project links are still written); `ReadOnly` refuses upload
+  presign/confirm/store with 402 `own storage requires the Own storage
+  add-on`, and the same `Chunk.RequireWritable` gate (`WithStorageGate`)
+  refuses `Push.CheckTarget`/`Push.Push` and every branch landing
+  (`fastForward`, `MergeForMergeRequest`); reads stay open.
   `storage.NewLocalStore` (`CHUNK_STORAGE=local`, `CHUNK_STORAGE_DIR`) is the
   free `cmd/nipad`'s only backend — `CHUNK_STORAGE=s3` there fails with a hint
   to use `nipad-ee`. The enterprise `ee/cmd/nipad` is S3-only: empty or `s3`

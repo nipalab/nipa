@@ -18,7 +18,7 @@ type stubChunkReader struct {
 	err  error
 }
 
-func (s *stubChunkReader) Get(_ context.Context, hash domain.Hash) ([]byte, error) {
+func (s *stubChunkReader) Get(_ context.Context, _ snow.ID, hash domain.Hash) ([]byte, error) {
 	if s.err != nil {
 		return nil, s.err
 	}

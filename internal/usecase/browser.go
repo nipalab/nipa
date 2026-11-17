@@ -13,7 +13,7 @@ import (
 
 // chunkReader reads stored chunk content back for the browser endpoints.
 type chunkReader interface {
-	Get(ctx context.Context, hash domain.Hash) ([]byte, error)
+	Get(ctx context.Context, projectID snow.ID, hash domain.Hash) ([]byte, error)
 }
 
 // NewBranchWithChunks builds a Branch with content access for tree, blob and
@@ -227,11 +227,11 @@ func (b *Branch) FileEntry(ctx context.Context, projectID snow.ID, rev, path str
 }
 
 // ReadEntry reassembles the content of an entry returned by FileEntry.
-func (b *Branch) ReadEntry(ctx context.Context, entry diff.Entry) ([]byte, error) {
+func (b *Branch) ReadEntry(ctx context.Context, projectID snow.ID, entry diff.Entry) ([]byte, error) {
 	if b.chunks == nil {
 		return nil, domain.NewErrorInternalServer("chunk store is not configured")
 	}
-	data, err := diff.LoadContent(b.loadChunk(ctx), entry)
+	data, err := diff.LoadContent(b.loadChunk(ctx, projectID), entry)
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
 	}
@@ -244,7 +244,7 @@ func (b *Branch) FileContent(ctx context.Context, projectID snow.ID, rev, path s
 	if err != nil {
 		return nil, diff.Entry{}, err
 	}
-	data, err := b.ReadEntry(ctx, entry)
+	data, err := b.ReadEntry(ctx, projectID, entry)
 	if err != nil {
 		return nil, diff.Entry{}, err
 	}
@@ -314,12 +314,12 @@ func (b *Branch) resolveRevision(ctx context.Context, projectID snow.ID, rev str
 	return &commit.ID, nil
 }
 
-func (b *Branch) loadChunk(ctx context.Context) func(domain.Hash) ([]byte, error) {
+func (b *Branch) loadChunk(ctx context.Context, projectID snow.ID) func(domain.Hash) ([]byte, error) {
 	if b.chunks == nil {
 		return nil
 	}
 	return func(hash domain.Hash) ([]byte, error) {
-		return b.chunks.Get(ctx, hash)
+		return b.chunks.Get(ctx, projectID, hash)
 	}
 }
 
@@ -386,5 +386,5 @@ func (b *Branch) diffRoots(ctx context.Context, projectID snow.ID, baseRoot, hea
 	if err != nil {
 		return nil, err
 	}
-	return diff.TreeDiffEntries(baseEntries, headEntries, b.loadChunk(ctx)), nil
+	return diff.TreeDiffEntries(baseEntries, headEntries, b.loadChunk(ctx, projectID)), nil
 }

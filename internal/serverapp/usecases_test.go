@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -108,4 +109,43 @@ func TestBuildUsecases_MFAKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+type readOnlyStores struct{ store storage.ChunkStore }
+
+func (s readOnlyStores) ForProject(context.Context, snow.ID) (usecase.ProjectStore, error) {
+	return usecase.ProjectStore{Store: s.store, External: true, ReadOnly: true}, nil
+}
+
+func TestBuildUsecases_ChunkStores(t *testing.T) {
+	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+	require.NoError(t, db.MigrateUp(database, "sqlite3"))
+	node, err := snow.NewNode(0)
+	require.NoError(t, err)
+	store, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	repos := usecase.Repositories{
+		Org:     sqlite.NewOrgRepository(database),
+		Project: sqlite.NewProjectRepository(database),
+		User:    sqlite.NewUserRepository(database),
+		PBAC:    sqlite.NewPBACRepository(database),
+		Group:   sqlite.NewGroupRepository(database),
+		Audit:   sqlite.NewAuditRepository(database),
+	}
+	ctx := context.Background()
+
+	uc := BuildUsecases(repos, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node, ChunkStore: store})
+	resolved, err := uc.Chunk.ChunkStores().ForProject(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.Same(t, store, resolved.Store)
+	require.NoError(t, uc.Chunk.RequireWritable(ctx, snow.ID(1)))
+
+	uc = BuildUsecases(repos, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node, ChunkStore: store, ChunkStores: readOnlyStores{store: store}})
+	require.Equal(t, 402, errorCode(uc.Chunk.RequireWritable(ctx, snow.ID(1))))
+	admin := domain.ContextWithClaim(ctx, domain.Claims{UserID: 1, IsSuperAdmin: true})
+	require.Equal(t, 402, errorCode(uc.Push.CheckTarget(admin, snow.ID(1), "main", "msg", "")))
+	_, err = uc.Branch.FastForward(admin, snow.ID(1), "main", "feature")
+	require.Equal(t, 402, errorCode(err))
 }

@@ -53,11 +53,11 @@ func setupChunkRouter(ws *restful.WebService, h *handler.ChunkHandler) {
 // NewChunkTransferHandler serves only the signed chunk transfer endpoints on a
 // fresh container. Useful when the routes are mounted on their own listener.
 // A non-nil svc enforces its maintenance windows.
-func NewChunkTransferHandler(chunks *usecase.Chunk, svc *maintenance.Service) http.Handler {
+func NewChunkTransferHandler(chunks *usecase.Chunk, projects *usecase.Common, svc *maintenance.Service) http.Handler {
 	ws := new(restful.WebService).ApiVersion("1.0.0")
 	ws.Path("/api/chunks")
 	(&API{maintenance: svc}).enforceMaintenance(ws)
-	setupChunkRouter(ws, handler.NewChunkHandler(chunks))
+	setupChunkRouter(ws, handler.NewChunkHandler(chunks, projects))
 
 	container := restful.NewContainer()
 	container.Add(ws)

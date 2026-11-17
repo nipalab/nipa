@@ -24,11 +24,14 @@ import (
 // repositories. StorageLedger, SeatGate, EmailDispatcher and RateLimiter are
 // optional.
 type UsecaseDeps struct {
-	Config            *config.Config
-	DB                *sql.DB
-	Snow              snow.Node
-	Hasher            *hasher.Hasher
-	ChunkStore        storage.ChunkStore
+	Config     *config.Config
+	DB         *sql.DB
+	Snow       snow.Node
+	Hasher     *hasher.Hasher
+	ChunkStore storage.ChunkStore
+	// ChunkStores picks the store of each project; nil serves every project
+	// from ChunkStore.
+	ChunkStores       usecase.ChunkStores
 	Metrics           *obs.Metrics
 	WebhookDispatcher *webhook.Dispatcher
 	EmailDispatcher   *mail.Dispatcher
@@ -48,6 +51,10 @@ type UsecaseDeps struct {
 func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	cfg := deps.Config
 	node := deps.Snow
+	chunkStores := deps.ChunkStores
+	if chunkStores == nil {
+		chunkStores = usecase.StaticStores(deps.ChunkStore)
+	}
 	transactor := dbtx.NewTransactor(deps.DB)
 
 	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
@@ -73,7 +80,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 
-	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithTags(repos.Tag).WithAudit(auditUsecase)
+	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, usecase.NewProjectChunkReader(chunkStores)).WithUsers(repos.User).WithTags(repos.Tag).WithAudit(auditUsecase)
 	fileLockUsecase := usecase.NewFileLock(repos.FileLock, repos.Branch, permissionUsecase, node).WithAudit(auditUsecase)
 	if repos.FileLockSerializer != nil {
 		fileLockUsecase = fileLockUsecase.WithSerializer(transactor, repos.FileLockSerializer)
@@ -98,11 +105,12 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithMetrics(deps.Metrics)
+	}).WithChunkStores(chunkStores).WithMetrics(deps.Metrics)
 	if deps.StorageLedger != nil {
 		chunkUsecase = chunkUsecase.WithStorageLedger(deps.StorageLedger)
 	}
-	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase)
+	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase).WithStorageGate(chunkUsecase)
+	pushUsecase = pushUsecase.WithStorageGate(chunkUsecase)
 
 	commonUsecase := usecase.NewCommon(repos.Org, repos.Project)
 	maintenanceUsecase := usecase.NewMaintenance(repos.Maintenance, commonUsecase, orgUsecase, permissionUsecase, deps.Maintenance, node).WithAudit(auditUsecase)

@@ -225,7 +225,7 @@ func (h *Handler) GetBlob(appCtx http.AppContext) {
 		appCtx.ResponseWriter().WriteHeader(nethttp.StatusNotModified)
 		return
 	}
-	content, err := h.useCase.Branch().ReadEntry(appCtx.Context(), entry)
+	content, err := h.useCase.Branch().ReadEntry(appCtx.Context(), project.ID, entry)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

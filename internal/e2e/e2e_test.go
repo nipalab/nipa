@@ -179,7 +179,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 	)
 	pb.RegisterNipaServiceServer(grpcServer, servergrpc.New(reg))
 
-	chunkHandler := api.NewChunkTransferHandler(chunkUc, maintenanceSvc)
+	chunkHandler := api.NewChunkTransferHandler(chunkUc, uc.Common, maintenanceSvc)
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
