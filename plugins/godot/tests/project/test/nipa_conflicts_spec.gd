@@ -181,9 +181,10 @@ func test_image_diff_tab_shows_both_sides_and_frees_them() -> void:
 
 func test_bottom_panel_has_the_phase_3_tabs() -> void:
 	var panel := _scene("res://addons/nipa/ui/bottom_panel.tscn")
-	assert_int(panel.get_tab_count()).is_equal(4)
+	assert_int(panel.get_tab_count()).is_equal(5)
 	assert_str(panel.get_tab_title(1)).is_equal("Conflicts")
 	assert_str(panel.get_tab_title(3)).is_equal("Image diff")
+	assert_str(panel.get_tab_title(4)).is_equal("Shelves")
 	panel.show_image_diff({}, {"source": "working", "path": "a.png"}, "a.png")
 	assert_int(panel.current_tab).is_equal(3)
 	assert_str(panel.get_node("Image diff/Toolbar/Title").text).is_equal("a.png")

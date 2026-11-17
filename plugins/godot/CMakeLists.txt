@@ -37,6 +37,8 @@ add_library(nipa_core STATIC
   core/session/session.cpp
   core/session/session_ops.cpp
   core/session/session_setup.cpp
+  core/session/session_shelves.cpp
+  core/shelves/shelves.cpp
   core/setup/checker.cpp
   core/setup/ignore.cpp
   core/decor/decor.cpp
@@ -87,6 +89,7 @@ if(NIPA_BUILD_TESTS)
     core/tests/test_merge_tool.cpp
     core/tests/test_history.cpp
     core/tests/test_setup.cpp
+    core/tests/test_shelves.cpp
     core/tests/test_decor.cpp
   )
   target_include_directories(nipa_core_tests SYSTEM PRIVATE ${NIPA_THIRDPARTY}/doctest)

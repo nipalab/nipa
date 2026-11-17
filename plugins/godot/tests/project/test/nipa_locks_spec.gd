@@ -46,7 +46,7 @@ func test_badge_text_per_lock_state() -> void:
 	assert_str(LockBadge.describe({})).is_equal("Not locked")
 	assert_str(LockBadge.action_for({"state": "mine"})).is_equal("Unlock")
 	assert_str(LockBadge.action_for({"state": "free"})).is_equal("Lock")
-	assert_str(LockBadge.action_for({"state": "theirs"})).is_empty()
+	assert_str(LockBadge.action_for({"state": "theirs"})).is_equal(LockBadge.ASK)
 
 
 func test_edit_action_locks_free_files_warns_on_theirs() -> void:

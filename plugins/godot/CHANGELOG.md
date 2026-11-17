@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Lock requests, lock watching and shelves
+
+- Ask to release (context menu, lock badge, Locks tab) with an optional note;
+  the holder gets a Release requested prompt.
+- Notify me when free: watched paths (kept in the editor's project metadata)
+  raise a Lock now prompt when their lock is released.
+- Update, branch switch and tag checkout from the dock check `SyncPlan` and
+  offer Shelve and continue when local changes would be replaced; the new
+  Shelves tab applies, keeps, deletes and aborts shelves, and the dock shows a
+  pending shelf apply.
+- Staging from the Version Control panel no longer rescans the project or
+  toasts per file (failures still toast).
+- Activity polls refresh branches and tags; branch and tag events fire only
+  when the lists changed.
+
 ### Fixes
 
 - Godot strings passed to the core no longer end in a NUL byte, which made

@@ -8,10 +8,15 @@ const SETUP_SCENE := preload("res://addons/nipa/ui/setup_checker.tscn")
 const FileSystemDecorator := preload("res://addons/nipa/filesystem_decorator.gd")
 const ContextMenu := preload("res://addons/nipa/context_menu.gd")
 const InspectorPlugin := preload("res://addons/nipa/inspector_plugin.gd")
+const LockWatch := preload("res://addons/nipa/lock_watch.gd")
+const ReleaseRequestDialog := preload("res://addons/nipa/ui/release_request_dialog.gd")
 const RECONNECT_ITEM := "Nipa: Reconnect"
 const SETUP_ITEM := "Nipa: Setup checker..."
-const QUIET_OPS := ["lock", "unlock", "conflicts", "merge-godot", "merge-tool", "history", "preview"]
-const SILENT_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "setup"]
+const QUIET_OPS := ["lock", "unlock", "conflicts", "merge-godot", "merge-tool", "history", "preview", "lock-request",
+	"shelve-drop"]
+const SILENT_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "setup", "sync-plan", "shelves"]
+# Ops that change no files and run once per file from the Version Control panel: toast failures only.
+const FAILURE_ONLY_OPS := ["stage"]
 
 var dock: Control
 var bottom_panel: Control
@@ -28,6 +33,8 @@ var _setup_checker: AcceptDialog
 var _decorator: RefCounted
 var _decoration_failed := false
 var _vcs_refresh_queued := false
+var _watches: RefCounted
+var _release_dialog: ConfirmationDialog
 
 
 # What an edit of a file does: "lock" it, "warn" that someone else holds it, or nothing.
@@ -44,11 +51,16 @@ static func edit_action(info: Dictionary, auto_lock: bool) -> String:
 
 func _enter_tree() -> void:
 	NipaSettings.register()
+	_watches = LockWatch.new(EditorInterface.get_editor_settings())
+	_release_dialog = ReleaseRequestDialog.new()
+	EditorInterface.get_base_control().add_child(_release_dialog)
 	dock = DOCK_SCENE.instantiate()
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
 	dock.reconnect_requested.connect(reconnect)
 	bottom_panel = BOTTOM_PANEL_SCENE.instantiate()
 	add_control_to_bottom_panel(bottom_panel, "Nipa")
+	bottom_panel.watches = _watches
+	bottom_panel.release_requested.connect(_ask_release)
 	dock.conflicts_requested.connect(_show_conflicts)
 	dock.setup_requested.connect(show_setup_checker)
 	add_tool_menu_item(RECONNECT_ITEM, reconnect)
@@ -58,12 +70,15 @@ func _enter_tree() -> void:
 		menu.slot = slot
 		menu.history_requested.connect(_show_history)
 		menu.compare_requested.connect(_show_image_diff)
+		menu.release_request_requested.connect(_ask_release)
+		menu.watches = _watches
 		add_context_menu_plugin(slot, menu)
 		_context_menus.append(menu)
 	_inspector_plugin = InspectorPlugin.new()
 	add_inspector_plugin(_inspector_plugin)
 	for container in [CONTAINER_CANVAS_EDITOR_MENU, CONTAINER_SPATIAL_EDITOR_MENU]:
 		var badge: Control = BADGE_SCENE.instantiate()
+		badge.release_requested.connect(_ask_release_one)
 		add_control_to_container(container, badge)
 		_badges.append([container, badge])
 	_lock_timer = Timer.new()
@@ -81,6 +96,8 @@ func _enter_tree() -> void:
 		session.status_changed.connect(_on_status_changed)
 		session.commits_changed.connect(_queue_vcs_refresh)
 		session.branches_changed.connect(_queue_vcs_refresh)
+		session.activity.connect(_on_activity)
+	_release_dialog.session = session
 	scene_saved.connect(_on_scene_saved)
 	scene_changed.connect(_on_scene_changed)
 	resource_saved.connect(_on_resource_saved)
@@ -121,6 +138,7 @@ func _exit_tree() -> void:
 			[_connected_session.status_changed, _on_status_changed],
 			[_connected_session.commits_changed, _queue_vcs_refresh],
 			[_connected_session.branches_changed, _queue_vcs_refresh],
+			[_connected_session.activity, _on_activity],
 		]:
 			if pair[0].is_connected(pair[1]):
 				pair[0].disconnect(pair[1])
@@ -131,6 +149,7 @@ func _exit_tree() -> void:
 		_lock_timer.queue_free()
 		_lock_timer = null
 	for pair in _badges:
+		pair[1].release_requested.disconnect(_ask_release_one)
 		remove_control_from_container(pair[0], pair[1])
 		pair[1].queue_free()
 	_badges.clear()
@@ -140,11 +159,15 @@ func _exit_tree() -> void:
 	for menu in _context_menus:
 		menu.history_requested.disconnect(_show_history)
 		menu.compare_requested.disconnect(_show_image_diff)
+		menu.release_request_requested.disconnect(_ask_release)
+		menu.watches = null
 		remove_context_menu_plugin(menu)
 	_context_menus.clear()
 	remove_tool_menu_item(RECONNECT_ITEM)
 	remove_tool_menu_item(SETUP_ITEM)
 	if bottom_panel:
+		bottom_panel.release_requested.disconnect(_ask_release)
+		bottom_panel.watches = null
 		remove_control_from_bottom_panel(bottom_panel)
 		bottom_panel.queue_free()
 		bottom_panel = null
@@ -160,6 +183,10 @@ func _exit_tree() -> void:
 	_lock_requested.clear()
 	_warned.clear()
 	_vcs_refresh_queued = false
+	if _release_dialog:
+		_release_dialog.queue_free()
+		_release_dialog = null
+	_watches = null
 
 
 func _notification(what: int) -> void:
@@ -233,9 +260,9 @@ func _on_op_queued(id: int, kind: String) -> void:
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
-	if SILENT_OPS.has(kind):
+	if SILENT_OPS.has(kind) or (ok and FAILURE_ONLY_OPS.has(kind)):
 		return
-	if not QUIET_OPS.has(kind):
+	if not QUIET_OPS.has(kind) and not FAILURE_ONLY_OPS.has(kind):
 		EditorInterface.get_resource_filesystem().scan()
 		_reload_changed_scenes(changed_paths)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
@@ -268,6 +295,60 @@ func _refresh_vcs_panel() -> void:
 	var fs := EditorInterface.get_resource_filesystem()
 	if fs and not fs.is_scanning():
 		fs.filesystem_changed.emit()
+
+
+static func free_prompt_text(paths: PackedStringArray, actor: String) -> String:
+	var by := " (released by %s)" % actor if not actor.is_empty() else ""
+	return "%s %s free now%s. Lock %s?" % [
+		", ".join(paths), "is" if paths.size() == 1 else "are", by, "it" if paths.size() == 1 else "them"]
+
+
+static func release_prompt_text(path: String, actor: String, note: String) -> String:
+	var who := actor if not actor.is_empty() else "A teammate"
+	var text := "%s asks you to release your lock on %s." % [who, path]
+	if not note.strip_edges().is_empty():
+		text += "\n\n\"%s\"" % note.strip_edges()
+	return text + "\n\nRelease it now? Push your changes first if you still have any."
+
+
+func _on_activity(kind: String, actor: String, detail: String, clone_path: String) -> void:
+	var session := _session()
+	if session == null:
+		return
+	match kind:
+		"lock_released":
+			var freed: PackedStringArray = _watches.take_hits(clone_path) if _watches else PackedStringArray()
+			if not freed.is_empty():
+				_confirm("Lock is free", free_prompt_text(freed, actor), "Lock now",
+					func(): session.request_lock(freed))
+		"lock_requested":
+			if clone_path.is_empty():
+				return
+			_confirm("Release requested", release_prompt_text(clone_path, actor, detail), "Release lock",
+				func(): session.request_unlock(PackedStringArray([clone_path]), false))
+
+
+func _confirm(title: String, text: String, ok_text: String, action: Callable) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = title
+	dialog.dialog_text = text
+	dialog.ok_button_text = ok_text
+	dialog.cancel_button_text = "Not now"
+	dialog.confirmed.connect(action)
+	dialog.visibility_changed.connect(func():
+		if not dialog.visible:
+			dialog.queue_free())
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.popup_centered()
+
+
+func _ask_release(clone_paths: PackedStringArray, holders: Dictionary) -> void:
+	if _release_dialog and not clone_paths.is_empty():
+		_release_dialog.open(clone_paths, holders)
+
+
+func _ask_release_one(clone_path: String, holder: String) -> void:
+	_ask_release(PackedStringArray([clone_path]), {clone_path: holder})
 
 
 func _show_conflicts() -> void:

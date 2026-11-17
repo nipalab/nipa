@@ -1,6 +1,10 @@
 @tool
 extends HBoxContainer
 
+signal release_requested(clone_path: String, holder: String)
+
+const ASK := "Ask to release"
+
 var clone_path := ""
 var _session: Object
 
@@ -23,6 +27,8 @@ static func action_for(info: Dictionary) -> String:
 			return "Unlock"
 		"free":
 			return "Lock"
+		"theirs":
+			return ASK
 	return ""
 
 
@@ -68,7 +74,9 @@ func _on_locks_changed(_paths: PackedStringArray) -> void:
 func _on_pressed() -> void:
 	if _session == null or clone_path.is_empty():
 		return
-	if _button.text == "Unlock":
+	if _button.text == ASK:
+		release_requested.emit(clone_path, _session.get_lock_info(clone_path).get("holder", ""))
+	elif _button.text == "Unlock":
 		_session.request_unlock(PackedStringArray([clone_path]), false)
 	else:
 		_session.request_lock(PackedStringArray([clone_path]))

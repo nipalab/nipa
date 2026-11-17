@@ -101,6 +101,13 @@ public:
     godot::Ref<NipaRequest> request_lock(const godot::PackedStringArray& clone_paths);
     godot::Ref<NipaRequest> request_unlock(const godot::PackedStringArray& clone_paths, bool any_holder);
     godot::Ref<NipaRequest> request_lock_refresh();
+    godot::Ref<NipaRequest> request_lock_release(const godot::String& clone_path, const godot::String& message);
+    godot::Ref<NipaRequest> request_sync_plan(const godot::String& branch, const godot::String& tag);
+    godot::Ref<NipaRequest> request_shelve(const godot::String& name, const godot::PackedStringArray& clone_paths);
+    godot::Ref<NipaRequest> request_shelve_apply(const godot::String& shelf_id, bool keep);
+    godot::Ref<NipaRequest> request_shelve_abort();
+    godot::Ref<NipaRequest> request_shelves();
+    godot::Ref<NipaRequest> request_shelve_drop(const godot::String& shelf_id);
 
     godot::Ref<NipaRequest> request_setup_check();
     godot::Dictionary apply_ignore_template();

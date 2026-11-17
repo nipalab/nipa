@@ -1172,3 +1172,180 @@ TEST_CASE("tags, history pages and previews") {
     CHECK(preview_body["max_size"] == 512);
     CHECK(preview_body["old"]["source"] == "snapshot");
 }
+
+TEST_CASE("a lock release request names the lock someone else holds") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.fake.on_unary("ProxyLockRequestRelease", [](const json&) { return Reply{200, {{"response", json::object()}}}; });
+    h.start();
+    auto asked = h.session->submit_lock_release_request("art/a.png.import", "need it for the boss fight");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(asked) != nullptr; }));
+    REQUIRE(h.op_finished(asked)->ok);
+    CHECK(h.op_finished(asked)->message == "asked Ann to release art/a.png");
+    CHECK(h.op_finished(asked)->name == "lock-request");
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ProxyLockRequestRelease") {
+            CHECK(r.body["request"]["lock_id"] == "1");
+            CHECK(r.body["request"]["message"] == "need it for the boss fight");
+        }
+    }
+
+    auto mine = h.session->submit_lock_release_request("art/m.png", "");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(mine) != nullptr; }));
+    CHECK_FALSE(h.op_finished(mine)->ok);
+    CHECK(h.op_finished(mine)->message == "art/m.png is not locked by someone else");
+    CHECK(h.fake.count("ProxyLockRequestRelease") == 1);
+}
+
+TEST_CASE("a lock release request fails cleanly without a lock status") {
+    Harness h;
+    h.start();
+    auto asked = h.session->submit_lock_release_request("a.png", "");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(asked) != nullptr; }));
+    CHECK(h.op_finished(asked)->message == "lock status is unavailable");
+}
+
+TEST_CASE("a sync plan lists the local changes an update or switch would replace") {
+    Harness h;
+    h.fake.on_unary("SyncPlan", [](const json& body) {
+        if (body.value("branch", std::string()) == "dev") {
+            return Reply{200, {{"overwritten", {"a.gd", "level.tscn"}}}};
+        }
+        return Reply{200, {{"overwritten", json::array()}}};
+    });
+    h.start();
+    auto update = h.session->submit_sync_plan("", "");
+    auto sw = h.session->submit_sync_plan("dev", "");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(update) && h.op_finished(sw); }));
+    CHECK(h.op_finished(update)->data["overwritten"].empty());
+    CHECK(h.op_finished(sw)->data["overwritten"] == json{"a.gd", "level.tscn"});
+    CHECK(h.op_finished(sw)->message == "2 local change(s) would be replaced");
+    CHECK(h.op_finished(sw)->name == "sync-plan");
+}
+
+TEST_CASE("shelving streams the operation and reloads the status") {
+    Harness h;
+    auto shelved = std::make_shared<std::atomic<bool>>(false);
+    h.fake.on_unary("Status", [shelved](const json&) {
+        return *shelved ? Reply{200, {{"branch", "main"}}} : Reply{200, {{"branch", "main"}, {"modified", {"a.gd"}}}};
+    });
+    h.fake.on_stream("ShelveCreate", [shelved](const json&) {
+        *shelved = true;
+        StreamScript script;
+        script.lines = {R"({"result":{"shelve":{"shelf":{"id":"s1","name":"Before update","entries":[{"path":"a.gd"}]}}}})"};
+        return script;
+    });
+    h.start();
+    REQUIRE(h.session->status_blocking(2s));
+    auto id = h.session->submit_shelve("Before update", {"a.gd"});
+    CHECK(h.wait([&](const Events&) { return h.op_finished(id) != nullptr; }));
+    REQUIRE(h.op_finished(id)->ok);
+    CHECK(h.op_finished(id)->message == "shelved 1 file(s) as \"Before update\"");
+    CHECK(h.op_finished(id)->data["shelve"]["shelf"]["id"] == "s1");
+    CHECK(h.session->status_cache().snapshot().modified.empty());
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ShelveCreate") {
+            CHECK(r.body["paths"] == json{"a.gd"});
+            CHECK(r.body["include_untracked"] == true);
+            CHECK(r.body["name"] == "Before update");
+        }
+    }
+
+    auto everything = h.session->submit_shelve("all", {});
+    CHECK(h.wait([&](const Events&) { return h.op_finished(everything) != nullptr; }));
+    CHECK(h.fake.requests().back().method != "");
+    bool saw_all = false;
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ShelveCreate" && r.body["name"] == "all") {
+            CHECK(r.body["include_untracked"] == false);
+            saw_all = true;
+        }
+    }
+    CHECK(saw_all);
+}
+
+TEST_CASE("shelves list, apply, abort and drop") {
+    Harness h;
+    h.fake.on_unary("ShelveList", [](const json&) {
+        return Reply{200, {{"applying", ""},
+                           {"shelves", {{{"id", "s1"}, {"name", "wip"}, {"created_at", "5"}, {"entries", {{{"path", "a.gd"}}}}}}}}};
+    });
+    h.fake.on_unary("ShelveDrop", [](const json&) { return Reply{200, json::object()}; });
+    h.fake.on_unary("Conflicts", [](const json&) { return Reply{200, json::object()}; });
+    h.fake.on_stream("ShelveApply", [](const json& body) {
+        StreamScript script;
+        if (body.value("abort", false)) {
+            script.lines = {R"({"result":{"shelve_apply":{"shelf_id":"s1","aborted":true}}})"};
+        } else {
+            script.lines = {R"({"result":{"shelve_apply":{"shelf_id":"s1","conflicts":["a.tscn"]}}})"};
+        }
+        return script;
+    });
+    h.start();
+    auto list = h.session->submit_shelves();
+    auto apply = h.session->submit_shelve_apply("s1", true);
+    auto abort = h.session->submit_shelve_abort();
+    auto drop = h.session->submit_shelve_drop("s1");
+    CHECK(h.wait([&](const Events&) {
+        return h.op_finished(list) && h.op_finished(apply) && h.op_finished(abort) && h.op_finished(drop);
+    }));
+    CHECK(h.op_finished(list)->message == "1 shelf(s)");
+    CHECK(h.op_finished(list)->data["shelves"][0]["created_at"] == 5);
+    CHECK(h.op_finished(apply)->message == "1 conflict(s) to resolve");
+    CHECK(h.op_finished(apply)->name == "shelve-apply");
+    CHECK(h.op_finished(abort)->message == "shelf apply aborted");
+    CHECK(h.op_finished(abort)->name == "shelve-abort");
+    CHECK(h.op_finished(drop)->message == "shelf deleted");
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ShelveApply" && !r.body.value("abort", false)) {
+            CHECK(r.body["id"] == "s1");
+            CHECK(r.body["keep"] == true);
+        }
+        if (r.method == "ShelveDrop") {
+            CHECK(r.body["id"] == "s1");
+        }
+    }
+    CHECK(h.wait([&](const Events&) { return h.fake.count("Conflicts") >= 1; }));
+}
+
+TEST_CASE("activity polls refresh branches and tags but only emit on a change") {
+    Harness h;
+    std::atomic<int> tag_calls{0};
+    h.fake.on_unary("ProxyTagList", [&tag_calls](const json&) {
+        int call = tag_calls++;
+        json tags = json::array({{{"name", "v1"}, {"commit_id", "c1"}}});
+        if (call >= 2) {
+            tags.push_back({{"name", "v2"}, {"commit_id", "c2"}});
+        }
+        return Reply{200, {{"response", {{"tags", tags}}}}};
+    });
+    h.fake.on_stream("WatchEvents", [](const json&) {
+        StreamScript script;
+        script.lines = {R"({"events":[],"incoming":0})"};
+        script.endless = true;
+        script.delay_ms = 30;
+        return script;
+    });
+    h.start();
+    CHECK(h.wait([&](const Events&) { return tag_calls >= 4 && h.fake.count("ProxyBranchList") >= 3; }));
+    CHECK(h.wait([&](const Events&) { return h.session->tags().size() == 2; }));
+    CHECK(h.count(EventKind::TagsChanged) == 2);
+    CHECK(h.count(EventKind::BranchesChanged) == 1);
+}
+
+TEST_CASE("list fingerprints change with the content") {
+    std::vector<nipa::daemon::Branch> a{{"1", "main", "c1", false, true}};
+    auto b = a;
+    CHECK(nipa::session::branch_fingerprint(a) == nipa::session::branch_fingerprint(b));
+    b[0].commit_id = "c2";
+    CHECK(nipa::session::branch_fingerprint(a) != nipa::session::branch_fingerprint(b));
+    b = a;
+    b[0].is_protected = true;
+    CHECK(nipa::session::branch_fingerprint(a) != nipa::session::branch_fingerprint(b));
+    std::vector<nipa::history::Tag> t{{"v1", "c1", "m"}};
+    auto u = t;
+    CHECK(nipa::session::tag_fingerprint(t) == nipa::session::tag_fingerprint(u));
+    u[0].message = "other";
+    CHECK(nipa::session::tag_fingerprint(t) != nipa::session::tag_fingerprint(u));
+}

@@ -37,21 +37,30 @@ conflicts::Set Session::conflicts() const {
     return conflicts_;
 }
 
-std::int64_t Session::submit_tags() {
-    return enqueue("tags", true, [this](std::int64_t) {
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("ProxyTagList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
-                                options_.unary_timeout, &cancel_);
-        });
-        auto list = history::parse_tags(daemon::proxy_payload(reply));
-        {
-            std::lock_guard<std::mutex> guard(mu_);
-            tags_ = std::move(list);
-        }
+void Session::load_tags() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("ProxyTagList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
+                            options_.unary_timeout, &cancel_);
+    });
+    auto list = history::parse_tags(daemon::proxy_payload(reply));
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        changed = !tags_loaded_ || tag_fingerprint(list) != tag_fingerprint(tags_);
+        tags_loaded_ = true;
+        tags_ = std::move(list);
+    }
+    if (changed) {
         Event e;
         e.kind = EventKind::TagsChanged;
         events_.push(std::move(e));
+    }
+}
+
+std::int64_t Session::submit_tags() {
+    return enqueue("tags", true, [this](std::int64_t) {
+        load_tags();
         return Outcome{};
     });
 }

@@ -5,8 +5,10 @@ signal reconnect_requested
 signal conflicts_requested
 signal setup_requested
 
-const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup"]
+const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup", "sync-plan",
+	"shelves", "lock-request"]
 const SYNC_OPS := ["update", "switch"]
+const SYNC_GUARD_LIST := 10
 
 var _pending_action: Callable
 var _commit_message := ""
@@ -14,6 +16,10 @@ var _commit_paths := PackedStringArray()
 var _reload_path := ""
 var _sidecar_paths := PackedStringArray()
 var _active_ops := {}
+var _guard_action: Callable
+var _guard_label := ""
+var _guard_paths := PackedStringArray()
+var _shelve_dialog: ConfirmationDialog
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -69,6 +75,12 @@ func _ready() -> void:
 	_abort_button.pressed.connect(_on_abort_pressed)
 	_stage_sidecars_button.pressed.connect(_on_stage_sidecars_pressed)
 	_setup_button.pressed.connect(func(): setup_requested.emit())
+	_shelve_dialog = ConfirmationDialog.new()
+	_shelve_dialog.title = "Local changes would be replaced"
+	_shelve_dialog.ok_button_text = "Shelve and continue"
+	_shelve_dialog.confirmed.connect(_on_shelve_confirmed)
+	_shelve_dialog.canceled.connect(_on_shelve_canceled)
+	add_child(_shelve_dialog)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -115,11 +127,64 @@ func _exit_tree() -> void:
 
 
 func request_update() -> void:
-	_ask_save_then(func(): _session.request_update())
+	_ask_save_then(func(): _guard_sync("", "", "Update", func(): _session.request_update()))
 
 
 func request_switch(branch: String) -> void:
-	_ask_save_then(func(): _session.request_switch(branch))
+	_ask_save_then(func(): _guard_sync(branch, "", "Switch to %s" % branch, func(): _session.request_switch(branch)))
+
+
+func request_switch_tag(tag: String) -> void:
+	_ask_save_then(func(): _guard_sync("", tag, "Check out tag %s" % tag, func(): _session.request_switch_tag(tag)))
+
+
+static func sync_guard_text(label: String, paths: Array) -> String:
+	var shown := PackedStringArray()
+	for i in mini(paths.size(), SYNC_GUARD_LIST):
+		shown.append(paths[i])
+	if paths.size() > SYNC_GUARD_LIST:
+		shown.append("... and %d more" % (paths.size() - SYNC_GUARD_LIST))
+	return "%s would replace %d local change(s):\n%s\n\nShelve them first? You can apply the shelf again from Nipa > Shelves." % [
+		label, paths.size(), "\n".join(shown)]
+
+
+static func shelf_name(label: String) -> String:
+	return "Before %s" % label.to_lower()
+
+
+# Runs `action` unless it would replace local changes; then offers to shelve them first.
+# A failed check never blocks the operation.
+func _guard_sync(branch: String, tag: String, label: String, action: Callable) -> void:
+	var plan: RefCounted = _session.request_sync_plan(branch, tag)
+	if not plan.is_done():
+		await plan.completed
+	var paths: Array = plan.get_result().get("overwritten", []) if plan.is_ok() else []
+	if paths.is_empty():
+		action.call()
+		return
+	_guard_action = action
+	_guard_label = label
+	_guard_paths = PackedStringArray(paths)
+	_shelve_dialog.dialog_text = sync_guard_text(label, paths)
+	_shelve_dialog.popup_centered()
+
+
+func _on_shelve_confirmed() -> void:
+	var action := _guard_action
+	var paths := _guard_paths
+	_guard_action = Callable()
+	_guard_paths = PackedStringArray()
+	if _session == null or not action.is_valid():
+		return
+	var request: RefCounted = _session.request_shelve(shelf_name(_guard_label), paths)
+	await request.completed
+	if request.is_ok():
+		action.call()
+
+
+func _on_shelve_canceled() -> void:
+	_guard_action = Callable()
+	_guard_paths = PackedStringArray()
 
 
 func _ask_save_then(action: Callable) -> void:
@@ -190,7 +255,9 @@ static func banner_state(head: Dictionary, conflicts: Dictionary) -> Dictionary:
 		"revert":
 			var remaining: int = head.get("pending_remaining", 0)
 			state.pending_text = "Revert in progress (%d step(s) left). %s" % [remaining, conflict_text]
-	state.can_finish = state.pending != "" and open == 0
+		"shelf":
+			state.pending_text = "Applying a shelf. %s Resolve each file in Conflicts, or abort." % conflict_text
+	state.can_finish = state.pending in ["merge", "revert"] and open == 0
 	return state
 
 
@@ -235,7 +302,7 @@ func _on_ref_selected(index: int) -> void:
 	if item.kind == "tag":
 		if head.get("detached", false) and head.get("head_name", "") == item.name:
 			return
-		_ask_save_then(func(): _session.request_switch_tag(item.name))
+		request_switch_tag(item.name)
 	elif head.get("detached", false) or head.get("branch", "") != item.name:
 		request_switch(item.name)
 
@@ -289,8 +356,11 @@ func _on_revert_step(step: String) -> void:
 func _on_abort_pressed() -> void:
 	if _session == null:
 		return
-	if _session.get_head().get("pending", "") == "revert":
+	var pending: String = _session.get_head().get("pending", "")
+	if pending == "revert":
 		_ask_save_then(func(): _session.request_revert_abort())
+	elif pending == "shelf":
+		_ask_save_then(func(): _session.request_shelve_abort())
 	else:
 		_ask_save_then(func(): _session.request_merge_abort())
 
