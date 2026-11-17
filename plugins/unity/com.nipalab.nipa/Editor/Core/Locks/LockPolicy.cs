@@ -20,12 +20,14 @@ namespace Nipa.Editor.Core.Locks
         public LockState State { get; }
         public string Holder { get; }
         public string LockPath { get; }
+        public FileLockDetail Lock { get; }
 
-        public LockInfo(LockState state, string holder, string lockPath)
+        public LockInfo(LockState state, string holder, string lockPath, FileLockDetail detail = null)
         {
             State = state;
             Holder = holder;
             LockPath = lockPath;
+            Lock = detail;
         }
     }
 
@@ -111,8 +113,8 @@ namespace Nipa.Editor.Core.Locks
                         continue;
                     var holder = string.IsNullOrEmpty(l.HeldByName) ? l.HeldBy : l.HeldByName;
                     if (!IsMine(l))
-                        return new LockInfo(LockState.Theirs, holder, Trim(l.Path));
-                    mine = mine ?? new LockInfo(LockState.Mine, holder, Trim(l.Path));
+                        return new LockInfo(LockState.Theirs, holder, Trim(l.Path), l);
+                    mine = mine ?? new LockInfo(LockState.Mine, holder, Trim(l.Path), l);
                 }
             }
             return mine ?? LockInfo.Free;

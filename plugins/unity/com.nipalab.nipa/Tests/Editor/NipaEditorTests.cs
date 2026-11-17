@@ -53,11 +53,22 @@ namespace Nipa.Editor.Tests
             Assert.That(Menu.GetEnabled("Assets/Nipa/Stage"), Is.False);
             Assert.That(Menu.GetEnabled("Assets/Nipa/Restore"), Is.False);
             Assert.That(Menu.GetEnabled("Assets/Nipa/Refresh"), Is.False);
+            Assert.That(Menu.GetEnabled("Assets/Nipa/Ask to Release..."), Is.False);
+            Assert.That(Menu.GetEnabled("Assets/Nipa/Notify When Free"), Is.False);
         }
 
         [Test]
         public void WindowOpens()
         {
+            var w = EditorWindow.GetWindow<NipaWindow>();
+            Assert.That(w, Is.Not.Null);
+            w.Close();
+        }
+
+        [Test]
+        public void WindowOpensOnShelvesTab()
+        {
+            NipaWindow.OpenTab(NipaWindow.ShelvesTab);
             var w = EditorWindow.GetWindow<NipaWindow>();
             Assert.That(w, Is.Not.Null);
             w.Close();

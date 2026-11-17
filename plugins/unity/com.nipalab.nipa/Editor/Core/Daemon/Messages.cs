@@ -153,10 +153,36 @@ namespace Nipa.Editor.Core.Daemon
         public string TreeHash { get; set; }
     }
 
+    public sealed class MergeResult
+    {
+        public bool UpToDate { get; set; }
+        public bool FastForwarded { get; set; }
+        public bool MergeCommitted { get; set; }
+        public bool Aborted { get; set; }
+        public List<string> Conflicts { get; set; }
+    }
+
+    public sealed class ShelveResult
+    {
+        public Shelf Shelf { get; set; }
+    }
+
+    public sealed class ShelveApplyResult
+    {
+        public string ShelfId { get; set; }
+        public string Name { get; set; }
+        public List<string> Conflicts { get; set; }
+        public bool Dropped { get; set; }
+        public bool Aborted { get; set; }
+    }
+
     public sealed class OpResult
     {
         public SyncResult Sync { get; set; }
         public PushResult Push { get; set; }
+        public MergeResult Merge { get; set; }
+        public ShelveResult Shelve { get; set; }
+        public ShelveApplyResult ShelveApply { get; set; }
     }
 
     public sealed class OpEvent
@@ -176,6 +202,31 @@ namespace Nipa.Editor.Core.Daemon
         public bool Global { get; set; }
         public string HeldBy { get; set; }
         public string HeldByName { get; set; }
+        public List<FileLockRequestDetail> Requests { get; set; }
+    }
+
+    public sealed class FileLockRequestDetail
+    {
+        public string Id { get; set; }
+        public string RequesterId { get; set; }
+        public string RequesterName { get; set; }
+        public string Message { get; set; }
+    }
+
+    public sealed class RequestFileLockReleaseRequest
+    {
+        public string LockId { get; set; }
+        public string Message { get; set; }
+    }
+
+    public sealed class ProxyLockRequestReleaseRequest
+    {
+        public string Root { get; set; }
+        public RequestFileLockReleaseRequest Request { get; set; }
+    }
+
+    public sealed class ProxyLockRequestReleaseResponse
+    {
     }
 
     public sealed class FileLockState
@@ -336,7 +387,119 @@ namespace Nipa.Editor.Core.Daemon
     public sealed class MergeOpRequest
     {
         public string Root { get; set; }
+        public string SourceBranch { get; set; }
         public bool Abort { get; set; }
+        public string Message { get; set; }
+    }
+
+    public sealed class CreateBranchRequest
+    {
+        public string Name { get; set; }
+        public string FromBranch { get; set; }
+        public string FromCommitId { get; set; }
+    }
+
+    public sealed class CreateBranchResponse
+    {
+        public Branch Branch { get; set; }
+    }
+
+    public sealed class ProxyBranchCreateRequest
+    {
+        public string Root { get; set; }
+        public CreateBranchRequest Request { get; set; }
+    }
+
+    public sealed class ProxyBranchCreateResponse
+    {
+        public CreateBranchResponse Response { get; set; }
+    }
+
+    public sealed class DeleteBranchRequest
+    {
+        public string Name { get; set; }
+    }
+
+    public sealed class ProxyBranchDeleteRequest
+    {
+        public string Root { get; set; }
+        public DeleteBranchRequest Request { get; set; }
+    }
+
+    public sealed class ProxyBranchDeleteResponse
+    {
+    }
+
+    public sealed class SyncPlanRequest
+    {
+        public string Root { get; set; }
+        public string Branch { get; set; }
+        public string Tag { get; set; }
+    }
+
+    public sealed class SyncPlanResponse
+    {
+        public List<string> Overwritten { get; set; }
+    }
+
+    public sealed class ShelfEntry
+    {
+        public string Path { get; set; }
+        public string Status { get; set; }
+        public bool Staged { get; set; }
+        public bool Untracked { get; set; }
+        public bool Locked { get; set; }
+        public long SizeBytes { get; set; }
+        public bool IsBinary { get; set; }
+    }
+
+    public sealed class Shelf
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public long CreatedAt { get; set; }
+        public string Branch { get; set; }
+        public string Tag { get; set; }
+        public string BaseCommitId { get; set; }
+        public List<ShelfEntry> Entries { get; set; }
+        public long SizeBytes { get; set; }
+    }
+
+    public sealed class ShelveCreateRequest
+    {
+        public string Root { get; set; }
+        public string Name { get; set; }
+        public List<string> Paths { get; set; }
+        public bool IncludeUntracked { get; set; }
+    }
+
+    public sealed class ShelveApplyRequest
+    {
+        public string Root { get; set; }
+        public string Id { get; set; }
+        public bool Keep { get; set; }
+        public bool Abort { get; set; }
+    }
+
+    public sealed class ShelveListRequest
+    {
+        public string Root { get; set; }
+    }
+
+    public sealed class ShelveListResponse
+    {
+        public List<Shelf> Shelves { get; set; }
+        public string Applying { get; set; }
+    }
+
+    public sealed class ShelveDropRequest
+    {
+        public string Root { get; set; }
+        public string Id { get; set; }
+    }
+
+    public sealed class ShelveDropResponse
+    {
     }
 
     public sealed class Branch

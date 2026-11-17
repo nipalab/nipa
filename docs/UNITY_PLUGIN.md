@@ -69,6 +69,27 @@ issues) checks the project and offers a **Fix** button for each:
   icon right-click menu.
 - Staging or restoring an asset always includes its `.meta`; update and restore
   call `AssetDatabase.Refresh()` when they finish.
+- Update, branch switch, tag checkout, merge, shelf apply and the abort/continue
+  buttons of a pending merge, revert or shelf apply first ask to save modified
+  open scenes (`EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo`);
+  Cancel stops the operation.
+
+## Shelves
+
+- **Shelve** on the Changes and Staged lists puts the selected changes aside
+  under a name (`ShelveCreate`; an asset brings its `.meta`) and puts the files
+  back to the pushed version.
+- **Update, branch switch and tag checkout** first ask the daemon which local
+  changes they would replace (`SyncPlan`). When there are any, a dialog offers
+  **Shelve and continue** (shelves exactly those paths, untracked included,
+  as "Before <operation> <time>", then runs the operation), **Overwrite them**
+  or **Cancel**. A failed check never blocks the operation.
+- **Window › Nipa › Pending Changes › Shelves** lists shelves with their branch,
+  file count and time (hover for the files): **Apply** (applies and deletes),
+  **Keep** (applies and keeps) and **Delete**. An apply that hits conflicts
+  waits: the window shows a banner with **Abort** (applied files go back, the
+  shelf is kept) and the Conflicts tab resolves the files; the last resolution
+  finishes the apply.
 
 ## Locking (Perforce-style checkout)
 
@@ -93,7 +114,19 @@ checkout model:
   selection.
 - **Window › Nipa › Pending Changes › Locks** tab lists the locks in scope;
   Release is enabled for your own locks, and for anyone's when you administer
-  the project (`can_release_any`).
+  the project (`can_release_any`). Your own locks show how many release
+  requests they have (hover for who asked and their note).
+- **Ask to release** (Inspector bar, Locks tab **Ask**, **Assets › Nipa › Ask
+  to Release...**) sends the holder a request with an optional note
+  (`ProxyLockRequestRelease`, by lock id). The holder's editor gets a
+  "release requested" dialog from the `lock_requested` event with **Release
+  lock** / **Keep it**.
+- **Notify when free** (Inspector bar, Locks tab **Notify**, **Assets › Nipa ›
+  Notify When Free**) watches a path someone else holds. Watches are kept per
+  user and project in `EditorUserSettings` (`Nipa.LockWatches`) and listed at
+  the bottom of the Locks tab. A `lock_released` event that covers one (the
+  exact path, a folder lock or the other half of an asset/`.meta` pair) drops
+  the watch and asks **Lock now**.
 - **Push** first refreshes `LockStatus`: changed binaries locked by someone
   else block the push (holders are named); binaries that still need a lock
   trigger a "Lock N files" prompt and the push continues once they are locked.
@@ -106,8 +139,17 @@ checkout model:
 
 - **Switcher:** a dropdown in the window toolbar and a Scene view overlay
   ("Nipa") list branches (`ProxyBranchList`) and tags (`ProxyTagList`).
-  Choosing one runs `Switch` (`tag` set for tags) and refreshes the
-  AssetDatabase. A detached tag shows a banner (`Status.head`) and blocks push.
+  Choosing one runs `Switch` (`tag` set for tags, guarded by the shelve check
+  above) and refreshes the AssetDatabase. A detached tag shows a banner
+  (`Status.head`) and blocks push.
+- **Merge into current branch** (switcher submenu) merges another branch into
+  the checked-out one (`Merge{source_branch}`) and reports the outcome (up to
+  date, fast-forwarded, merged); conflicts open the Conflicts tab. Disabled
+  while detached or while a merge, revert or shelf apply is pending.
+- **New branch...** creates a branch from the current branch (or the tag's
+  commit when detached, `ProxyBranchCreate`) and switches to it; **Delete
+  branch** removes another non-default branch on the server
+  (`ProxyBranchDelete`).
 - **Pending merge/revert banner:** a waiting merge offers Finish (push) and
   Abort; a waiting revert offers Continue, Skip and Abort. Both stay disabled
   for Finish/Continue while conflicts are open.
@@ -143,15 +185,17 @@ plugins/unity/com.nipalab.nipa/
     Status/      StatusCache (path -> flags, folder aggregates, deltas)
     Paths/       ProjectPaths (project <-> clone paths, .meta pairing)
     Locks/       LockPolicy (covering-lock lookup, scope, strict mode,
-                 push pre-check)
+                 push pre-check), LockWatches (notify-when-free paths)
     Setup/       SetupChecker (Force Text, visible meta, .nipaignore template)
     Merge/       MergeTool (UnityYAMLMerge command, marker check, conflict
                  classification), SystemMergeProcess
     Session/     NipaSession (WatchRepo, Status, WatchChanges + WatchEvents
-                 loops, ops, lock/unlock), NipaSettings
+                 loops, ops, lock/unlock/release requests, merge, branches,
+                 shelves, SyncPlan), OpSummary (result and event text),
+                 NipaSettings
   Editor/        Unity glue: NipaVersionControl, NipaHost, NipaWindow,
                  NipaMenus, NipaIcons, NipaBranches, NipaSceneOverlay, MainThread, NipaAssetProcessor,
-                 NipaInspectorBar, NipaLocks, NipaSetup
+                 NipaInspectorBar, NipaLocks, NipaSetup, NipaPrompt
   Tests/Editor/  EditMode smoke tests
 plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Core)
                         + NUnit tests with a fake daemon over HttpListener

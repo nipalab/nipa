@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- Merge another branch into the current one, and create or delete branches,
+  from the branch switcher.
+- Update, branch switch, tag checkout, merge and the merge/revert/shelf banners
+  ask to save modified open scenes first.
+- Shelves: a Shelves tab (Apply, Keep, Delete), Shelve on the Changes and
+  Staged lists, "Shelve and continue" when Update or a switch would replace
+  local changes, and a pending shelf apply banner with Abort.
+- Ask to release a lock held by someone else (Inspector bar, Locks tab,
+  Assets menu), with a Release prompt for the holder and request counts on
+  your own locks.
+- Notify when free: watch a lock someone else holds and get a "Lock now"
+  prompt when it is released.
+
 - Setup tab: checks Force Text, visible meta files and `.nipaignore`, with Fix buttons
   and the Unity `.nipaignore` template.
 - Install from a git URL or tarball (`make unity-pack`).
