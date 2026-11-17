@@ -142,7 +142,7 @@ namespace Nipa.Editor
                 float h = side.Info != null && side.Info.PreviewHeight > 0 ? side.Info.PreviewHeight : tex.height;
                 var scale = Mathf.Min(rect.width / w, rect.height / h, 1f);
                 var fit = new Rect(rect.x + (rect.width - w * scale) / 2, rect.y + (rect.height - h * scale) / 2, w * scale, h * scale);
-                EditorGUI.DrawTextureTransparent(fit, Texture2D.clearTexture);
+                EditorGUI.DrawRect(fit, new Color(0.11f, 0.11f, 0.11f, 1f));
                 GUI.DrawTextureWithTexCoords(fit, tex, hdr ? new Rect(0, 0, 0.5f, 1) : new Rect(0, 0, 1, 1), true);
             }
         }

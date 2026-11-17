@@ -257,7 +257,7 @@ namespace Nipa.Core.Tests
                 Lines = new[]
                 {
                     "{\"maintenance\":{\"server\":" + w + "}}",
-                    "{\"incoming\":1}",
+                    "{\"incoming\":1,\"maintenance\":{\"server\":" + w + "}}",
                 },
                 Hold = true,
             });
@@ -273,6 +273,32 @@ namespace Nipa.Core.Tests
             Assert.That(session.Maintenance.Server.Mode, Is.EqualTo("full"));
             var notice = session.MaintenanceNotice(DateTimeOffset.UtcNow);
             Assert.That(notice.BlocksSync, Is.True);
+        }
+
+        [Test]
+        public async Task ActivityWithoutMaintenanceClearsEndedWindow()
+        {
+            var w = "{\"mode\":\"full\",\"active\":true}";
+            fake.On("WatchEvents", new Reply
+            {
+                Lines = new[]
+                {
+                    "{\"maintenance\":{\"server\":" + w + "}}",
+                    "{\"events\":[{\"kind\":\"maintenance\",\"message\":\"ended\"}]}",
+                },
+                Hold = true,
+            });
+            var got = new TaskCompletionSource<bool>();
+            var count = 0;
+            session.Activity += _ =>
+            {
+                if (Interlocked.Increment(ref count) == 2)
+                    got.TrySetResult(true);
+            };
+            await session.StartAsync();
+            Assert.That(await Task.WhenAny(got.Task, Task.Delay(5000)), Is.SameAs(got.Task));
+            Assert.That(session.Maintenance, Is.Null);
+            Assert.That(session.MaintenanceNotice(DateTimeOffset.UtcNow), Is.Null);
         }
 
         [Test]

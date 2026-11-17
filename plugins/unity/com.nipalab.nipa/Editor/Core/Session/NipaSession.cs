@@ -861,8 +861,7 @@ namespace Nipa.Editor.Core.Session
         {
             Incoming = a.Incoming;
             ReviewRequests = a.ReviewRequests;
-            if (a.Maintenance != null)
-                Maintenance = a.Maintenance;
+            Maintenance = a.Maintenance;
             if (a.Events != null && a.Events.Any(e => e.Kind == "lock_released" || e.Kind == "lock_requested"))
                 await TryRefreshLocksAsync(ct).ConfigureAwait(false);
             Activity?.Invoke(a);
