@@ -334,8 +334,10 @@ namespace Nipa.Editor
 
         static void PromptWatched(TeamEvent e)
         {
+            if (string.IsNullOrEmpty(e.Path) || UnityEngine.Application.isBatchMode)
+                return;
             var hits = Watches.TakeHits(e.Path);
-            if (hits.Count == 0 || UnityEngine.Application.isBatchMode)
+            if (hits.Count == 0)
                 return;
             EditorApplication.delayCall += () =>
             {

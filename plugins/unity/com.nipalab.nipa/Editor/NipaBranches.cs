@@ -118,7 +118,7 @@ namespace Nipa.Editor
         public static void NewBranch()
         {
             var session = NipaHost.Session;
-            if (session == null)
+            if (session == null || NipaHost.Busy != null || Blocked(session, "New branch"))
                 return;
             var from = session.Cache.Head != null ? "tag " + session.Cache.Head.Name : session.Cache.Branch;
             NipaPrompt.Ask("Nipa: New branch", "Create a branch from " + from + " and switch to it.", string.Empty, "Create", false, name =>
