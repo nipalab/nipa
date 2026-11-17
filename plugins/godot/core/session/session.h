@@ -180,6 +180,11 @@ private:
     void run_on_link(const std::function<void(const daemon::Client&)>& fn);
     void drop_link(std::uint64_t generation, const std::string& reason);
     void apply_status(const nlohmann::json& reply);
+    void load_status();
+    void load_branches();
+    void load_commits();
+    void refresh_quietly(void (Session::*load)());
+    // Reloads the caches an operation changed before its OpFinished, so UI refreshed on it reads fresh data.
     void refresh_after_op(const std::string& name);
     std::int64_t enqueue_lock_refresh(std::uint64_t ticket);
     bool refresh_locks();

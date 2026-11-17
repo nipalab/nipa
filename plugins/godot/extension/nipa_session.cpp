@@ -417,6 +417,7 @@ Ref<NipaRequest> NipaSession::request_refresh() {
     session_->submit_branches();
     session_->submit_commits();
     session_->submit_tags();
+    session_->submit_locks();
     return done_request(true, "refreshing");
 }
 

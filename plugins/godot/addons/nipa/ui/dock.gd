@@ -6,12 +6,14 @@ signal conflicts_requested
 signal setup_requested
 
 const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup"]
+const SYNC_OPS := ["update", "switch"]
 
 var _pending_action: Callable
 var _commit_message := ""
 var _commit_paths := PackedStringArray()
 var _reload_path := ""
 var _sidecar_paths := PackedStringArray()
+var _active_ops := {}
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -293,24 +295,36 @@ func _on_abort_pressed() -> void:
 		_ask_save_then(func(): _session.request_merge_abort())
 
 
-func _on_op_queued(_id: int, kind: String) -> void:
+func _on_op_queued(id: int, kind: String) -> void:
 	if DATA_OPS.has(kind):
 		return
-	_op_label.visible = true
-	_op_label.text = "Queued: %s" % kind
-	_op_progress.visible = false
+	_active_ops[id] = kind
+	if _active_ops.size() == 1:
+		_op_label.visible = true
+		_op_label.text = "Queued: %s" % kind
+		_op_progress.visible = false
 
 
-func _on_op_progress(_id: int, phase: String, done: int, total: int) -> void:
+func _on_op_progress(id: int, phase: String, done: int, total: int) -> void:
+	if not _active_ops.has(id):
+		return
 	_op_label.visible = true
 	_op_label.text = phase
 	_op_progress.visible = total > 0
 	_op_progress.value = float(done) / float(total) if total > 0 else 0.0
 
 
-func _on_op_finished(_id: int, _ok: bool, _message: String, _paths: PackedStringArray) -> void:
-	_op_label.visible = false
-	_op_progress.visible = false
+func _on_op_finished(id: int, ok: bool, _message: String, _paths: PackedStringArray) -> void:
+	var kind: String = _active_ops.get(id, "")
+	_active_ops.erase(id)
+	if ok and SYNC_OPS.has(kind):
+		_out_of_date.visible = false
+	if _active_ops.is_empty():
+		_op_label.visible = false
+		_op_progress.visible = false
+	else:
+		_op_label.text = "Queued: %s" % _active_ops.values()[0]
+		_op_progress.visible = false
 	_refresh_branch()
 
 

@@ -248,10 +248,13 @@ Source: `editor/version_control/version_control_editor_plugin.cpp` and the
    a worker thread keeps fresh. Only a cold-start `Status` may block, for at
    most 2 s against the local daemon. Write virtuals (`_commit`, `_pull`,
    `_checkout_branch`) queue a daemon operation and return at once. Progress
-   goes to the Nipa dock and `EditorToaster`, and when the operation finishes
-   the plugin calls `EditorFileSystem.scan()`. Godot then emits
-   `filesystem_changed`, which refreshes the native dock without any private
-   API. Worker results reach the main thread through
+   goes to the Nipa dock and `EditorToaster`. An operation reloads status,
+   commits and branches before its `OpFinished`, then the plugin calls
+   `EditorFileSystem.scan()`, and Godot emits `filesystem_changed`, which
+   refreshes the native dock from the fresh caches without any private API.
+   Status, commit and branch changes outside an operation (watcher, teammate
+   pushes, Fetch) re-emit `filesystem_changed` once per frame, skipped while
+   a scan runs. Worker results reach the main thread through
    `callable_mp(...).call_deferred()` on `NipaSession`.
 5. **Map Nipa's centralized model onto the git-shaped dock honestly.**
    - **Commit = push to the server:** stage, then `Push(message)`.

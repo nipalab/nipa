@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixes
+
+- Godot strings passed to the core no longer end in a NUL byte, which made
+  the setup checker read the clone root as `.nipaignore` ("Is a directory")
+  and every clone lookup stop at the project folder.
+- Godot's Version Control panel no longer needs a manual Refresh after a
+  push, update, switch, merge or revert: operations reload status, commits
+  and branches before they finish, and daemon-side status, commit and branch
+  changes re-emit `filesystem_changed` (once per frame, not during a scan).
+- The out-of-date banner hides after a successful Update or Switch, the
+  History tab reloads when new commits arrive, the dock's progress label
+  stays up while other operations are queued, and Fetch refreshes locks.
+
 ### Phase 4: setup and distribution
 
 - Core `setup` (setup checker rows, `.nipaignore` template merge and matcher,

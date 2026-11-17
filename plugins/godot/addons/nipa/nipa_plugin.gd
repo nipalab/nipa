@@ -27,6 +27,7 @@ var _warned := {}
 var _setup_checker: AcceptDialog
 var _decorator: RefCounted
 var _decoration_failed := false
+var _vcs_refresh_queued := false
 
 
 # What an edit of a file does: "lock" it, "warn" that someone else holds it, or nothing.
@@ -77,6 +78,9 @@ func _enter_tree() -> void:
 		session.op_queued.connect(_on_op_queued)
 		session.op_finished.connect(_on_op_finished)
 		session.locks_changed.connect(_on_locks_changed)
+		session.status_changed.connect(_on_status_changed)
+		session.commits_changed.connect(_queue_vcs_refresh)
+		session.branches_changed.connect(_queue_vcs_refresh)
 	scene_saved.connect(_on_scene_saved)
 	scene_changed.connect(_on_scene_changed)
 	resource_saved.connect(_on_resource_saved)
@@ -114,6 +118,9 @@ func _exit_tree() -> void:
 			[_connected_session.op_queued, _on_op_queued],
 			[_connected_session.op_finished, _on_op_finished],
 			[_connected_session.locks_changed, _on_locks_changed],
+			[_connected_session.status_changed, _on_status_changed],
+			[_connected_session.commits_changed, _queue_vcs_refresh],
+			[_connected_session.branches_changed, _queue_vcs_refresh],
 		]:
 			if pair[0].is_connected(pair[1]):
 				pair[0].disconnect(pair[1])
@@ -152,6 +159,7 @@ func _exit_tree() -> void:
 	_scene_hashes.clear()
 	_lock_requested.clear()
 	_warned.clear()
+	_vcs_refresh_queued = false
 
 
 func _notification(what: int) -> void:
@@ -233,6 +241,33 @@ func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedSt
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
+
+
+static func vcs_active() -> bool:
+	return ProjectSettings.get_setting("editor/version_control/plugin_name", "") == "NipaVCSInterface"
+
+
+func _on_status_changed(_paths: PackedStringArray) -> void:
+	_queue_vcs_refresh()
+
+
+# Godot's Version Control panel only re-reads the VCS interface on
+# filesystem_changed, so cache changes from the daemon are forwarded as one
+# emission per frame. A running scan emits it on its own.
+func _queue_vcs_refresh() -> void:
+	if _vcs_refresh_queued:
+		return
+	_vcs_refresh_queued = true
+	_refresh_vcs_panel.call_deferred()
+
+
+func _refresh_vcs_panel() -> void:
+	_vcs_refresh_queued = false
+	if not vcs_active():
+		return
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs and not fs.is_scanning():
+		fs.filesystem_changed.emit()
 
 
 func _show_conflicts() -> void:

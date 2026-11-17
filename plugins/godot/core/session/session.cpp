@@ -393,6 +393,46 @@ void Session::apply_status(const json& reply) {
     }
 }
 
+void Session::load_status() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("Status", root_body(options_.root), options_.unary_timeout, &cancel_);
+    });
+    apply_status(reply);
+}
+
+void Session::load_branches() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("ProxyBranchList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
+                            options_.unary_timeout, &cancel_);
+    });
+    auto list = daemon::parse_branches(daemon::proxy_payload(reply));
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        branches_ = std::move(list);
+    }
+    Event e;
+    e.kind = EventKind::BranchesChanged;
+    events_.push(std::move(e));
+}
+
+void Session::load_commits() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("ProxyCommitLog", {{"root", options_.root}, {"request", {{"limit", 50}}}},
+                            options_.unary_timeout, &cancel_);
+    });
+    auto list = daemon::parse_commits(daemon::proxy_payload(reply));
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        commits_ = std::move(list);
+    }
+    Event e;
+    e.kind = EventKind::CommitsChanged;
+    events_.push(std::move(e));
+}
+
 std::int64_t Session::submit_status() {
     {
         std::lock_guard<std::mutex> guard(mu_);
@@ -406,70 +446,49 @@ std::int64_t Session::submit_status() {
             std::lock_guard<std::mutex> guard(mu_);
             status_pending_ = false;
         }
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("Status", root_body(options_.root), options_.unary_timeout, &cancel_);
-        });
-        apply_status(reply);
+        load_status();
         return Outcome{};
     });
 }
 
 std::int64_t Session::submit_branches() {
     return enqueue("branches", true, [this](std::int64_t) {
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("ProxyBranchList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
-                                options_.unary_timeout, &cancel_);
-        });
-        auto list = daemon::parse_branches(daemon::proxy_payload(reply));
-        {
-            std::lock_guard<std::mutex> guard(mu_);
-            branches_ = std::move(list);
-        }
-        Event e;
-        e.kind = EventKind::BranchesChanged;
-        events_.push(std::move(e));
+        load_branches();
         return Outcome{};
     });
 }
 
 std::int64_t Session::submit_commits() {
     return enqueue("commits", true, [this](std::int64_t) {
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("ProxyCommitLog", {{"root", options_.root}, {"request", {{"limit", 50}}}},
-                                options_.unary_timeout, &cancel_);
-        });
-        auto list = daemon::parse_commits(daemon::proxy_payload(reply));
-        {
-            std::lock_guard<std::mutex> guard(mu_);
-            commits_ = std::move(list);
-        }
-        Event e;
-        e.kind = EventKind::CommitsChanged;
-        events_.push(std::move(e));
+        load_commits();
         return Outcome{};
     });
 }
 
+void Session::refresh_quietly(void (Session::*load)()) {
+    try {
+        (this->*load)();
+    } catch (const daemon::CancelledError&) {
+        throw;
+    } catch (const std::exception&) {
+    }
+}
+
 void Session::refresh_after_op(const std::string& name) {
-    if (name == "switch") {
-        submit_status();
-        submit_commits();
-        submit_branches();
+    bool merging = name == "merge" || name == "merge-abort" || name == "revert";
+    bool syncing = merging || name == "switch" || name == "push" || name == "update";
+    if (syncing) {
+        refresh_quietly(&Session::load_status);
+        refresh_quietly(&Session::load_commits);
+    }
+    if (name == "switch" || name == "branch-create" || name == "branch-delete") {
+        refresh_quietly(&Session::load_branches);
+    }
+    if (syncing) {
         submit_locks();
-    } else if (name == "merge" || name == "merge-abort" || name == "revert") {
-        submit_status();
-        submit_commits();
-        submit_locks();
+    }
+    if (merging) {
         refresh_conflicts_async();
-    } else if (name == "push" || name == "update") {
-        submit_status();
-        submit_commits();
-        submit_locks();
-    } else if (name == "branch-create" || name == "branch-delete") {
-        submit_branches();
     }
 }
 

@@ -290,6 +290,71 @@ TEST_CASE("switch refreshes branches, commits and status afterwards") {
     }));
 }
 
+TEST_CASE("a push reloads status and commits before its OpFinished") {
+    Harness h;
+    auto pushed = std::make_shared<std::atomic<bool>>(false);
+    h.fake.on_unary("Status", [pushed](const json&) {
+        return *pushed ? Reply{200, {{"branch", "main"}}} : Reply{200, {{"branch", "main"}, {"staged", {"a.gd"}}}};
+    });
+    h.fake.on_unary("ProxyCommitLog", [pushed](const json&) {
+        std::string id = *pushed ? "c9" : "c1";
+        return Reply{200, {{"response", {{"commits", {{{"commit_id", id}, {"message", "m"}}}}}}}};
+    });
+    h.fake.on_stream("Push", [pushed](const json&) {
+        *pushed = true;
+        StreamScript script;
+        script.lines = {R"({"result":{"push":{"commit_id":"c9"}}})"};
+        return script;
+    });
+    h.start();
+    CHECK(h.wait([](const Events& e) {
+        return std::any_of(e.begin(), e.end(), [](const Event& event) { return event.kind == EventKind::CommitsChanged; });
+    }));
+    REQUIRE(h.session->status_blocking(2s));
+    CHECK(h.session->status_cache().snapshot().staged == std::vector<std::string>{"a.gd"});
+    h.seen.clear();
+
+    auto push = h.session->submit_push("msg");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(push) != nullptr; }));
+
+    std::size_t finished_at = h.seen.size();
+    std::size_t status_at = h.seen.size();
+    std::size_t commits_at = h.seen.size();
+    for (std::size_t i = 0; i < h.seen.size(); ++i) {
+        const auto& e = h.seen[i];
+        if (e.kind == EventKind::OpFinished && e.op_id == push) finished_at = i;
+        if (e.kind == EventKind::StatusChanged && status_at == h.seen.size()) status_at = i;
+        if (e.kind == EventKind::CommitsChanged && commits_at == h.seen.size()) commits_at = i;
+    }
+    CHECK(status_at < finished_at);
+    CHECK(commits_at < finished_at);
+    CHECK(h.session->status_cache().snapshot().staged.empty());
+    REQUIRE(h.session->commits().size() == 1);
+    CHECK(h.session->commits()[0].commit_id == "c9");
+}
+
+TEST_CASE("a failed refresh after an operation does not fail the operation") {
+    Harness h;
+    auto pushed = std::make_shared<std::atomic<bool>>(false);
+    h.fake.on_unary("ProxyCommitLog", [pushed](const json&) {
+        if (*pushed) {
+            return Reply{500, {{"message", "log unavailable"}}};
+        }
+        return Reply{200, {{"response", {{"commits", json::array()}}}}};
+    });
+    h.fake.on_stream("Push", [pushed](const json&) {
+        *pushed = true;
+        StreamScript script;
+        script.lines = {R"({"result":{"push":{"commit_id":"c9"}}})"};
+        return script;
+    });
+    h.start();
+    auto push = h.session->submit_push("msg");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(push) != nullptr; }));
+    CHECK(h.op_finished(push)->ok);
+    CHECK(h.op_finished(push)->message == "c9");
+}
+
 TEST_CASE("branch create and delete refresh the branch list") {
     Harness h;
     h.start();
