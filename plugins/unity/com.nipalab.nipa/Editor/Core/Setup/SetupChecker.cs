@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Nipa.Editor.Core.Daemon;
 
 namespace Nipa.Editor.Core.Setup
 {
@@ -11,6 +12,7 @@ namespace Nipa.Editor.Core.Setup
         ForceText,
         VisibleMeta,
         NipaIgnore,
+        MetaFiles,
     }
 
     public sealed class SetupIssue
@@ -18,12 +20,16 @@ namespace Nipa.Editor.Core.Setup
         public SetupKind Kind { get; }
         public string Message { get; }
         public bool AutoFix { get; }
+        public string FixLabel { get; }
+        public IReadOnlyList<string> Paths { get; }
 
-        public SetupIssue(SetupKind kind, string message, bool autoFix)
+        public SetupIssue(SetupKind kind, string message, bool autoFix, string fixLabel = "Fix", IReadOnlyList<string> paths = null)
         {
             Kind = kind;
             Message = message;
             AutoFix = autoFix;
+            FixLabel = fixLabel;
+            Paths = paths ?? new List<string>();
         }
     }
 
@@ -33,12 +39,19 @@ namespace Nipa.Editor.Core.Setup
         public bool VisibleMeta { get; set; }
         public string CloneRoot { get; set; }
         public string ProjectPrefix { get; set; } = string.Empty;
+        public List<MetaWarning> MetaWarnings { get; set; }
+        public bool Connected { get; set; } = true;
+        public string DaemonVersion { get; set; }
+        public string PluginVersion { get; set; }
+        public string Binary { get; set; }
     }
 
     public static class SetupChecker
     {
         public const string IgnoreFile = ".nipaignore";
         public const string HiddenMetaMode = "Hidden Meta Files";
+        public const string MetaNotStaged = "meta-not-staged";
+        const int MaxListed = 6;
 
         static readonly string[] Template =
         {
@@ -80,7 +93,44 @@ namespace Nipa.Editor.Core.Setup
                 issues.Add(new SetupIssue(SetupKind.NipaIgnore,
                     ".nipaignore does not ignore the Unity Library folder.", true));
             }
+            var meta = MetaIssue(inputs.MetaWarnings);
+            if (meta != null)
+                issues.Add(meta);
             return issues;
+        }
+
+        public static List<string> StagePaths(IEnumerable<MetaWarning> warnings)
+        {
+            return (warnings ?? Enumerable.Empty<MetaWarning>())
+                .Where(w => w.Kind == MetaNotStaged && !string.IsNullOrEmpty(w.Path))
+                .Select(w => w.Path).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+        }
+
+        static SetupIssue MetaIssue(List<MetaWarning> warnings)
+        {
+            if (warnings == null || warnings.Count == 0)
+                return null;
+            var lines = warnings.Take(MaxListed).Select(w => "• " + w.Path + ": " + w.Message).ToList();
+            if (warnings.Count > MaxListed)
+                lines.Add("… and " + (warnings.Count - MaxListed) + " more");
+            var paths = StagePaths(warnings);
+            var message = warnings.Count + " .meta warning(s) in the pending changes:\n" + string.Join("\n", lines);
+            if (paths.Count == 0)
+                message += "\nThese need a fix in Unity (reimport, delete or add the file); nothing to stage.";
+            return new SetupIssue(SetupKind.MetaFiles, message, paths.Count > 0,
+                paths.Count == 1 ? "Stage 1 file" : "Stage " + paths.Count + " files", paths);
+        }
+
+        public static string VersionText(SetupInputs inputs)
+        {
+            var daemon = inputs.Connected ? (string.IsNullOrEmpty(inputs.DaemonVersion) ? "unknown" : inputs.DaemonVersion) : "not connected";
+            var plugin = string.IsNullOrEmpty(inputs.PluginVersion) ? "unknown" : inputs.PluginVersion;
+            return "Daemon " + daemon + " · plugin " + plugin + "\n" + CliText(inputs.Binary);
+        }
+
+        static string CliText(string binary)
+        {
+            return "CLI: " + (string.IsNullOrEmpty(binary) ? "not found (set the nipa binary setting, NIPA_BIN or PATH)" : binary);
         }
 
         public static void WriteIgnore(string cloneRoot, string projectPrefix)

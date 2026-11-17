@@ -23,6 +23,9 @@
   Inspector bar, and Renew.
 - History tab Load more.
 - Compare for image conflicts: mine and theirs side by side with pixel stats.
+- Compare with Last Pushed for modified images (menu and row button).
+- Setup tab: a `.meta` warnings row with Stage N files (also under the
+  `.meta` banner), and the daemon, plugin and CLI versions.
 
 - Setup tab: checks Force Text, visible meta files and `.nipaignore`, with Fix buttons
   and the Unity `.nipaignore` template.

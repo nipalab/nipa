@@ -356,7 +356,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `MaintenanceNotes`, `NipaHost.Allowed` gate, `DaemonException.Maintenance`),
   `PushPlan` push checks (`PushChecks`), lock TTL (`LockTtlHours`, `LockExpiry`,
   Renew), paged history (`HistoryPageAsync`, next = last `parent_1_id`) and
-  `Preview` image compare for conflicts (`NipaImageCompare`); locks surface through
+  `Preview` image compare for conflicts and Compare with Last Pushed
+  (`NipaImageCompare`, `snapshot` vs `working`, `ImageFiles`), Setup tab
+  `.meta` row with Stage N files (`SetupChecker.StagePaths`, `meta-not-staged`)
+  and daemon/plugin/CLI versions (`SetupChecker.VersionText`); locks surface through
   `AssetModificationProcessor`, overlays, the Inspector header and a Locks
   tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +

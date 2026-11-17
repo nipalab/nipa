@@ -55,6 +55,16 @@ issues) checks the project and offers a **Fix** button for each:
   For a project in a clone subfolder the directory rules are prefixed with the
   subfolder (`games/hero/Library/`), because `.nipaignore` is rooted at the
   clone.
+- **`.meta` warnings** (`MetaWarnings`) in the pending changes: missing or
+  orphaned `.meta` files, changed GUIDs and `.meta` files (or their deletions)
+  not staged with their asset. Unstaged ones get **Stage N files**, which
+  stages exactly those paths; the same button sits under the `.meta` banner in
+  the Changes tab. The others need a fix in Unity and are only listed.
+
+The top of the tab shows the running daemon's version, the plugin version
+(from the package) and the `nipa` binary the plugin would start (the setting,
+then `NIPA_BIN`, then `PATH`; "not found" when there is none). The same line
+shows in the window while it is disconnected.
 
 ## Using it
 
@@ -73,6 +83,11 @@ issues) checks the project and offers a **Fix** button for each:
   buttons of a pending merge, revert or shelf apply first ask to save modified
   open scenes (`EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo`);
   Cancel stops the operation.
+- **Compare with Last Pushed** (**Assets › Nipa**, the icon menu, and a
+  **Compare** button on Changes/Staged rows) opens a modified image (textures,
+  PSD, EXR, ...) next to its last pushed version, with the pixel difference,
+  through the daemon's `Preview` (`snapshot` vs `working`). New, deleted and
+  missing files have nothing to compare.
 - **Push checks:** after the lock check, Push asks the daemon for the push plan
   (`PushPlan`). Asset budget violations (`.nipaassets.yml`), broken references
   and assets no longer used by anything are listed in a dialog with **Push

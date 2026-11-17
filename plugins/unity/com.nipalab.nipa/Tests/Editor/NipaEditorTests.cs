@@ -55,6 +55,7 @@ namespace Nipa.Editor.Tests
             Assert.That(Menu.GetEnabled("Assets/Nipa/Refresh"), Is.False);
             Assert.That(Menu.GetEnabled("Assets/Nipa/Ask to Release..."), Is.False);
             Assert.That(Menu.GetEnabled("Assets/Nipa/Notify When Free"), Is.False);
+            Assert.That(Menu.GetEnabled("Assets/Nipa/Compare with Last Pushed"), Is.False);
         }
 
         [Test]

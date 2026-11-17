@@ -23,6 +23,7 @@ namespace Nipa.Editor
         public static bool Connecting { get; private set; }
         public static string Error { get; private set; }
         public static string Busy { get; private set; }
+        public static string DaemonVersion { get; private set; }
         public static float BusyProgress { get; private set; } = -1f;
 
         public static event Action Changed;
@@ -174,9 +175,20 @@ namespace Nipa.Editor
                 {
                     var conn = await Connector.ConnectAsync(
                         new ConnectorOptions { Binary = binary }, token).ConfigureAwait(false);
+                    var version = conn.Version;
                     var options = new ConnectorOptions { Binary = binary };
                     session = new NipaSession(conn.Client, paths, async c =>
-                        (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client)
+                    {
+                        var next = await Connector.ConnectAsync(options, c).ConfigureAwait(false);
+                        MainThread.Post(() =>
+                        {
+                            if (gen != generation)
+                                return;
+                            DaemonVersion = next.Version;
+                            Changed?.Invoke();
+                        });
+                        return next.Client;
+                    })
                     {
                         PollInterval = poll,
                     };
@@ -195,6 +207,7 @@ namespace Nipa.Editor
                             return;
                         }
                         Session = session;
+                        DaemonVersion = version;
                         Connecting = false;
                         OnCacheChanged();
                     });

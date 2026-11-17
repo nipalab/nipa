@@ -448,5 +448,29 @@ namespace Nipa.Core.Tests
             var e = Assert.ThrowsAsync<DaemonException>(() => session.PreviewAsync(null, new BlobRef { Source = "working", Path = "a.bin" }));
             Assert.That(e.Code, Is.EqualTo(415));
         }
+
+        [Test]
+        public async Task ComparesOnlyChangedTrackedImages()
+        {
+            fake.On("Status", "{\"branch\":\"main\",\"modified\":[\"game/Assets/a.png\",\"game/Assets/m.prefab\"],\"staged\":[\"game/Assets/s.TGA\"],"
+                + "\"added\":[\"game/Assets/n.png\"],\"untracked\":[\"game/Assets/u.png\"],\"missing\":[\"game/Assets/x.png\"]}");
+            await session.RefreshAsync();
+            Assert.That(session.CanCompareWithPushed("game/Assets/a.png"), Is.True);
+            Assert.That(session.CanCompareWithPushed("/game/Assets/s.TGA"), Is.True);
+            Assert.That(session.CanCompareWithPushed("game/Assets/m.prefab"), Is.False);
+            Assert.That(session.CanCompareWithPushed("game/Assets/n.png"), Is.False);
+            Assert.That(session.CanCompareWithPushed("game/Assets/u.png"), Is.False);
+            Assert.That(session.CanCompareWithPushed("game/Assets/x.png"), Is.False);
+            Assert.That(session.CanCompareWithPushed("game/Assets/clean.png"), Is.False);
+            Assert.That(session.CanCompareWithPushed(null), Is.False);
+            var sides = NipaSession.PushedSides("/game/Assets/a.png");
+            Assert.That(sides.Ours.Source, Is.EqualTo("snapshot"));
+            Assert.That(sides.Ours.Path, Is.EqualTo("game/Assets/a.png"));
+            Assert.That(sides.Theirs.Source, Is.EqualTo("working"));
+            Assert.That(NipaSession.PushedSides(null).Ours.Path, Is.Empty);
+            Assert.That(ImageFiles.IsImage("a.PSD"), Is.True);
+            Assert.That(ImageFiles.IsImage("a.fbx"), Is.False);
+            Assert.That(ImageFiles.IsImage(""), Is.False);
+        }
     }
 }

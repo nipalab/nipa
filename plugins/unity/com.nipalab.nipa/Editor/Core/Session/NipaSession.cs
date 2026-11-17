@@ -516,6 +516,22 @@ namespace Nipa.Editor.Core.Session
             return new ConflictSides(Rev(set?.Ours), Rev(set?.Theirs));
         }
 
+        public bool CanCompareWithPushed(string clonePath)
+        {
+            var path = Trim(clonePath ?? string.Empty);
+            if (!ImageFiles.IsImage(path))
+                return false;
+            var state = Cache.Get(path);
+            const FileState Gone = FileState.Added | FileState.Untracked | FileState.Deleted | FileState.Missing;
+            return (state & Gone) == 0 && (state & (FileState.Modified | FileState.Staged)) != 0;
+        }
+
+        public static ConflictSides PushedSides(string clonePath)
+        {
+            var path = Trim(clonePath ?? string.Empty);
+            return new ConflictSides(new BlobRef { Source = "snapshot", Path = path }, new BlobRef { Source = "working", Path = path });
+        }
+
         public async Task<ImageCompare> PreviewAsync(BlobRef oldRef, BlobRef newRef, int maxSize = 1024, CancellationToken ct = default)
         {
             var l = Acquire();
