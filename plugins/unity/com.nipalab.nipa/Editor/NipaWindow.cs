@@ -39,6 +39,8 @@ namespace Nipa.Editor
         string historyKey;
         bool historyLoading;
         string historyError;
+        string historyNext;
+        bool historyMoreLoading;
         ShelveListResponse shelves;
         bool shelvesLoading;
         object shelvesSession;
@@ -218,6 +220,9 @@ namespace Nipa.Editor
                 EditorGUILayout.HelpBox(conflictCount + " file(s) in conflict. Resolve them in the Conflicts tab.", MessageType.Error);
             if (NipaHost.Error != null)
                 EditorGUILayout.HelpBox(NipaHost.Error, MessageType.Warning);
+            var maintenance = NipaHost.Maintenance;
+            if (maintenance != null)
+                EditorGUILayout.HelpBox(maintenance.Text, maintenance.Active ? MessageType.Warning : MessageType.Info);
             DrawActivity();
             if (warnings.Count > 0)
             {
@@ -341,6 +346,8 @@ namespace Nipa.Editor
                                     RunMergeTool(f.Path, tool);
                             }
                         }
+                        if (f.Viewer == "image" && GUILayout.Button(new GUIContent("Compare", "Show mine and theirs side by side"), GUILayout.Width(64)))
+                            CompareConflict(f.Path);
                         if (GUILayout.Button("Mine", GUILayout.Width(48)))
                             Resolve(f.Path, "ours");
                         if (GUILayout.Button("Theirs", GUILayout.Width(56)))
@@ -348,6 +355,14 @@ namespace Nipa.Editor
                     }
                 }
             }
+        }
+
+        void CompareConflict(string path)
+        {
+            var sides = Core.Session.NipaSession.Sides(conflictSet, path);
+            var mine = string.IsNullOrEmpty(conflictSet.Ours?.Label) ? "Mine" : "Mine (" + conflictSet.Ours.Label + ")";
+            var theirs = string.IsNullOrEmpty(conflictSet.Theirs?.Label) ? "Theirs" : "Theirs (" + conflictSet.Theirs.Label + ")";
+            NipaImageCompare.Open(path, sides.Ours, mine, sides.Theirs, theirs);
         }
 
         static void Resolve(string path, string choice)
@@ -409,33 +424,55 @@ namespace Nipa.Editor
                 EditorGUILayout.HelpBox("Could not load history: " + historyError, MessageType.Warning);
             else if (history.Count == 0)
                 EditorGUILayout.HelpBox(historyLoading ? "Loading..." : "No commits.", MessageType.None);
+            if (historyNext != null && !historyLoading)
+            {
+                using (new EditorGUI.DisabledScope(historyMoreLoading))
+                {
+                    if (GUILayout.Button(historyMoreLoading ? "Loading..." : "Load more"))
+                        LoadHistory(session, historyPath, historyKey, historyNext);
+                }
+            }
         }
 
-        void LoadHistory(Core.Session.NipaSession session, string path, string key)
+        void LoadHistory(Core.Session.NipaSession session, string path, string key, string start = null)
         {
-            historyLoading = true;
+            var more = start != null;
+            if (more)
+            {
+                historyMoreLoading = true;
+            }
+            else
+            {
+                historyLoading = true;
+                historyMoreLoading = false;
+                historyNext = null;
+                history = new List<CommitLogEntry>();
+            }
             historyError = null;
-            history = new List<CommitLogEntry>();
             Task.Run(async () =>
             {
-                List<CommitLogEntry> result = null;
+                HistoryPage page = null;
                 string error = null;
                 try
                 {
-                    result = await session.HistoryAsync(path).ConfigureAwait(false);
+                    page = await session.HistoryPageAsync(path, start).ConfigureAwait(false);
                 }
                 catch (System.Exception e)
                 {
-                    error = e.Message;
+                    error = MaintenanceNotes.ErrorText(e);
                 }
                 MainThread.Post(() =>
                 {
                     if (key != historyKey || path != historyPath)
                         return;
                     historyLoading = false;
+                    historyMoreLoading = false;
                     historyError = error;
-                    if (result != null)
-                        history = result;
+                    if (page != null)
+                    {
+                        history = more ? history.Concat(page.Commits).ToList() : page.Commits;
+                        historyNext = page.Next;
+                    }
                     Repaint();
                 });
             });
@@ -484,6 +521,9 @@ namespace Nipa.Editor
                             + (string.IsNullOrWhiteSpace(r.Message) ? string.Empty : ": " + r.Message)));
                         GUILayout.Label(new GUIContent(requests.Count + " request(s)", "Asked to release:\n" + who), EditorStyles.miniBoldLabel, GUILayout.Width(80));
                     }
+                    var expiry = NipaLocks.Expiry(l);
+                    if (expiry != null)
+                        GUILayout.Label(new GUIContent(expiry, "Expires " + l.ExpiresAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")), EditorStyles.miniLabel, GUILayout.Width(90));
                     GUILayout.Label(policy.IsMine(l) ? "you" : l.HeldByName, EditorStyles.miniLabel, GUILayout.Width(80));
                     using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
                     {
@@ -496,6 +536,8 @@ namespace Nipa.Editor
                             if (GUILayout.Button(new GUIContent(watched ? "Unwatch" : "Notify", watched ? "Stop the notification" : "Ask to lock it when it is released"), GUILayout.Width(60)))
                                 NipaLocks.ToggleWatch(target);
                         }
+                        if (policy.IsMine(l) && l.ExpiresAt != null && GUILayout.Button(new GUIContent("Renew", "Extend the lock's expiry"), GUILayout.Width(52)))
+                            NipaLocks.Renew(l);
                         using (new EditorGUI.DisabledScope(!policy.CanRelease(l)))
                         {
                             if (GUILayout.Button("Release", GUILayout.Width(64)))
@@ -523,9 +565,15 @@ namespace Nipa.Editor
             }
         }
 
-        void PushWithLockCheck(string msg)
+        void PushWithLockCheck(string msg, bool skipChecks = false)
         {
+            if (!NipaHost.Allowed("Push", false))
+            {
+                message = msg;
+                return;
+            }
             List<string> needed = null;
+            List<string> checks = null;
             NipaHost.Run("Push", async (s, on) =>
             {
                 var check = await s.CheckPushAsync();
@@ -539,12 +587,49 @@ namespace Nipa.Editor
                     needed = check.Needed;
                     return;
                 }
+                if (!skipChecks)
+                {
+                    checks = await PlanWarnings(s);
+                    if (checks.Count > 0)
+                        return;
+                }
                 await s.PushAsync(msg, on);
             }, onSuccess: () =>
             {
                 if (needed != null)
                     PromptLock(needed, msg);
+                else if (checks != null && checks.Count > 0)
+                    PromptChecks(checks, msg);
             });
+        }
+
+        static async Task<List<string>> PlanWarnings(Core.Session.NipaSession s)
+        {
+            try
+            {
+                return PushChecks.Warnings(await s.PushPlanAsync());
+            }
+            catch (DaemonException e) when (e.Maintenance != null)
+            {
+                throw;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[Nipa] Push checks failed: " + e.Message);
+                return new List<string>();
+            }
+        }
+
+        void PromptChecks(List<string> checks, string msg)
+        {
+            var list = string.Join("\n", checks.Take(12).Select(c => "• " + c)) + (checks.Count > 12 ? "\n… and " + (checks.Count - 12) + " more" : string.Empty);
+            foreach (var c in checks)
+                Debug.LogWarning("[Nipa] Push check: " + c);
+            if (EditorUtility.DisplayDialog("Nipa: push checks", "The push checks found " + checks.Count + " problem(s):\n" + list
+                + "\n\nThe full list is in the Console.", "Push anyway", "Cancel"))
+                PushWithLockCheck(msg, true);
+            else
+                message = msg;
         }
 
         void PromptLock(List<string> needed, string msg)
@@ -728,9 +813,10 @@ namespace Nipa.Editor
             }
             EditorGUILayout.LabelField("Message");
             message = EditorGUILayout.TextArea(message, GUILayout.MinHeight(48));
-            using (new EditorGUI.DisabledScope(stagedCount == 0 || string.IsNullOrWhiteSpace(message) || blocked))
+            var paused = NipaHost.Maintenance?.BlocksWrites == true;
+            using (new EditorGUI.DisabledScope(stagedCount == 0 || string.IsNullOrWhiteSpace(message) || blocked || paused))
             {
-                if (GUILayout.Button("Push"))
+                if (GUILayout.Button(new GUIContent("Push", paused ? "The server is in maintenance" : null)))
                 {
                     var msg = message;
                     message = string.Empty;

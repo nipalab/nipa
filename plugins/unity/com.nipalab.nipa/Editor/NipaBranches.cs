@@ -139,7 +139,7 @@ namespace Nipa.Editor
         public static void Merge(string source)
         {
             var session = NipaHost.Session;
-            if (session == null || NipaHost.Busy != null || Blocked(session, "Merge"))
+            if (session == null || NipaHost.Busy != null || Blocked(session, "Merge") || !NipaHost.Allowed("Merge", true))
                 return;
             var target = session.Cache.Branch;
             if (!EditorUtility.DisplayDialog("Nipa: Merge", "Merge " + source + " into " + target + "?", "Merge", "Cancel"))

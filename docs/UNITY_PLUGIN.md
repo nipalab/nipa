@@ -73,6 +73,18 @@ issues) checks the project and offers a **Fix** button for each:
   buttons of a pending merge, revert or shelf apply first ask to save modified
   open scenes (`EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo`);
   Cancel stops the operation.
+- **Push checks:** after the lock check, Push asks the daemon for the push plan
+  (`PushPlan`). Asset budget violations (`.nipaassets.yml`), broken references
+  and assets no longer used by anything are listed in a dialog with **Push
+  anyway** / **Cancel**, and in full in the Console. A failed check never
+  blocks the push.
+- **Maintenance:** the server's maintenance windows come with every
+  `WatchEvents` poll. An active or upcoming window shows a banner with its
+  scope, mode, message and estimated end; scheduled, started, updated and
+  ended windows are also notices. While a window is active, Push, Lock and
+  Renew are refused before they start; in `full` or `frozen` mode Update,
+  branch switch, tag checkout and merge are too. A refused operation shows the
+  server's reason and the estimated end.
 
 ## Shelves
 
@@ -127,6 +139,11 @@ checkout model:
   the bottom of the Locks tab. A `lock_released` event that covers one (the
   exact path, a folder lock or the other half of an asset/`.meta` pair) drops
   the watch and asks **Lock now**.
+- **Lock expiry:** with **Lock expiry (hours)** set, locks taken from Unity
+  expire after that time (`ttl_seconds`). The Locks tab and the Inspector bar
+  show how long a lock has left, and your expiring locks have **Renew**, which
+  locks the path again with the configured time (one hour when the setting is
+  0). Locks taken elsewhere with a TTL show their expiry too.
 - **Push** first refreshes `LockStatus`: changed binaries locked by someone
   else block the push (holders are named); binaries that still need a lock
   trigger a "Lock N files" prompt and the push continues once they are locked.
@@ -159,9 +176,14 @@ checkout model:
   (`revision` source, ids from `Conflicts`) into a temp folder and runs
   `<Unity>/Tools/UnityYAMLMerge merge -p <base> <theirs> <ours> <out>`. A clean
   result is submitted with `choice=content`; a non-zero exit or leftover
-  conflict markers fall back to a manual Mine/Theirs pick.
+  conflict markers fall back to a manual Mine/Theirs pick. Image conflicts
+  (`viewer` = `image`, textures included) also get **Compare**, a window with
+  mine and theirs side by side and the pixel difference, decoded by the
+  daemon's `Preview` (revisions for merge and revert, the synced version and
+  the shelf for a shelf apply).
 - **History tab:** `ProxyCommitLog` for the selected asset (or the whole
-  project); **Diff** opens `nipa://<server>/<org>/<project>/commits/<id>` in
+  project) in pages of 50; **Load more** continues from the last commit's
+  parent. **Diff** opens `nipa://<server>/<org>/<project>/commits/<id>` in
   Nipa Desktop.
 
 ## Settings
@@ -174,6 +196,7 @@ In **Project Settings › Editor › Version Control** (Nipa section):
 | Poll interval | `ProjectSettings/NipaSettings.json` (shared) | Safety-net `Status` refresh when no file events arrive (e.g. a missed watcher event); also the `WatchEvents` server poll. Clamped to 15–3600 s, default 60; applies on reconnect |
 | Strict locking | `ProjectSettings/NipaSettings.json` (shared) | Listed extensions are read-only until locked. Applies immediately |
 | Locked extensions | `ProjectSettings/NipaSettings.json` (shared) | Comma separated list used by strict locking |
+| Lock expiry (hours) | `ProjectSettings/NipaSettings.json` (shared) | Locks taken from Unity expire after this time unless renewed. 0 (default) = never; at most 168 |
 
 ## Architecture
 

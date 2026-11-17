@@ -32,6 +32,45 @@ namespace Nipa.Editor.Core.Session
         public List<LockFailure> Failed { get; } = new List<LockFailure>();
     }
 
+    public sealed class HistoryPage
+    {
+        public List<CommitLogEntry> Commits { get; }
+        public string Next { get; }
+
+        public HistoryPage(List<CommitLogEntry> commits, string next)
+        {
+            Commits = commits;
+            Next = next;
+        }
+    }
+
+    public sealed class ConflictSides
+    {
+        public BlobRef Ours { get; }
+        public BlobRef Theirs { get; }
+
+        public ConflictSides(BlobRef ours, BlobRef theirs)
+        {
+            Ours = ours;
+            Theirs = theirs;
+        }
+    }
+
+    public sealed class ImageSide
+    {
+        public ImagePreview Info { get; set; }
+        public byte[] Png { get; set; }
+    }
+
+    public sealed class ImageCompare
+    {
+        public ImageSide Old { get; } = new ImageSide();
+        public ImageSide New { get; } = new ImageSide();
+        public ImageDiffStats Diff { get; set; }
+
+        public ImageSide Side(string side) => side == "old" ? Old : New;
+    }
+
     public sealed class NipaSession : IDisposable
     {
         readonly Func<CancellationToken, Task<DaemonClient>> reconnect;
@@ -55,6 +94,10 @@ namespace Nipa.Editor.Core.Session
         public LockPolicy Locks => locks;
         public int Incoming { get; private set; }
         public int ReviewRequests { get; private set; }
+        public MaintenanceState Maintenance { get; private set; }
+        public TimeSpan? LockTtl => LockExpiry.Ttl(settings.LockTtlHours);
+
+        public MaintenanceNotice MaintenanceNotice(DateTimeOffset now) => MaintenanceNotes.Current(Maintenance, now);
 
         public event Action<Exception> WatchFailed;
         public event Action Healthy;
@@ -144,7 +187,7 @@ namespace Nipa.Editor.Core.Session
                         try
                         {
                             await Call<ProxyLockFileRequest, ProxyLockFileResponse>("ProxyLockFile",
-                                new ProxyLockFileRequest { Root = Root, Request = new LockFileRequest { Path = p, Branch = locks.LockBranch } },
+                                new ProxyLockFileRequest { Root = Root, Request = new LockFileRequest { Path = p, Branch = locks.LockBranch, TtlSeconds = TtlSeconds(LockTtl) } },
                                 ct).ConfigureAwait(false);
                         }
                         catch (DaemonException e)
@@ -169,6 +212,26 @@ namespace Nipa.Editor.Core.Session
                     result.Failed[i] = new LockFailure(result.Failed[i].Path, result.Failed[i].Message, info.Holder);
             }
             return result;
+        }
+
+        public async Task RenewAsync(FileLockDetail l, CancellationToken ct = default)
+        {
+            var ttl = LockExpiry.RenewTtl(LockTtl);
+            try
+            {
+                await Call<ProxyLockFileRequest, ProxyLockFileResponse>("ProxyLockFile",
+                    new ProxyLockFileRequest { Root = Root, Request = new LockFileRequest { Path = l.Path, Branch = l.Global ? string.Empty : l.Branch, TtlSeconds = TtlSeconds(ttl) } },
+                    ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await TryRefreshLocksAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        static long? TtlSeconds(TimeSpan? ttl)
+        {
+            return ttl.HasValue ? (long)ttl.Value.TotalSeconds : (long?)null;
         }
 
         public async Task UnlockAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
@@ -417,9 +480,14 @@ namespace Nipa.Editor.Core.Session
 
         public async Task<List<CommitLogEntry>> HistoryAsync(string clonePath, int limit = 50, CancellationToken ct = default)
         {
-            var request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit, Branch = Cache.Branch };
+            return (await HistoryPageAsync(clonePath, null, limit, ct).ConfigureAwait(false)).Commits;
+        }
+
+        public async Task<HistoryPage> HistoryPageAsync(string clonePath, string startCommitId, int limit = 50, CancellationToken ct = default)
+        {
+            var request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit, Branch = Cache.Branch, StartCommitId = startCommitId };
             var head = Cache.Head;
-            if (head != null && head.Kind == "tag")
+            if (string.IsNullOrEmpty(startCommitId) && head != null && head.Kind == "tag")
             {
                 var tag = await FindTagAsync(head.Name, ct).ConfigureAwait(false);
                 if (tag == null)
@@ -428,7 +496,65 @@ namespace Nipa.Editor.Core.Session
             }
             var res = await Call<ProxyCommitLogRequest, ProxyCommitLogResponse>("ProxyCommitLog",
                 new ProxyCommitLogRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
-            return res.Response?.Commits ?? new List<CommitLogEntry>();
+            var commits = res.Response?.Commits ?? new List<CommitLogEntry>();
+            var next = limit > 0 && commits.Count >= limit ? commits[commits.Count - 1].Parent1Id : null;
+            return new HistoryPage(commits, string.IsNullOrEmpty(next) ? null : next);
+        }
+
+        public async Task<PushPlanResponse> PushPlanAsync(CancellationToken ct = default)
+        {
+            return await Call<PushPlanRequest, PushPlanResponse>("PushPlan",
+                new PushPlanRequest { Root = Root }, ct).ConfigureAwait(false) ?? new PushPlanResponse();
+        }
+
+        public static ConflictSides Sides(ConflictsResponse set, string path)
+        {
+            if (set?.Op == "shelf")
+                return new ConflictSides(new BlobRef { Source = "snapshot", Path = path },
+                    new BlobRef { Source = "shelf", Revision = set.Theirs?.Id, Path = path });
+            BlobRef Rev(ConflictRevision r) => string.IsNullOrEmpty(r?.Id) ? null : new BlobRef { Source = "revision", Revision = r.Id, Path = path };
+            return new ConflictSides(Rev(set?.Ours), Rev(set?.Theirs));
+        }
+
+        public async Task<ImageCompare> PreviewAsync(BlobRef oldRef, BlobRef newRef, int maxSize = 1024, CancellationToken ct = default)
+        {
+            var l = Acquire();
+            try
+            {
+                var compare = new ImageCompare();
+                var buffers = new Dictionary<string, MemoryStream>();
+                try
+                {
+                    var req = new PreviewRequest { Root = Root, Old = oldRef, New = newRef, MaxSize = maxSize };
+                    await foreach (var ev in l.Client.StreamAsync<PreviewRequest, PreviewEvent>("Preview", req, ct).ConfigureAwait(false))
+                    {
+                        if (ev.Failure != null)
+                            throw new DaemonException(ev.Failure.Code, ev.Failure.Message, ev.Failure.Maintenance);
+                        if (ev.Image != null)
+                            compare.Side(ev.Image.Side).Info = ev.Image;
+                        if (ev.Data?.Png != null && ev.Data.Side != null)
+                        {
+                            if (!buffers.TryGetValue(ev.Data.Side, out var buf))
+                                buffers[ev.Data.Side] = buf = new MemoryStream();
+                            buf.Write(ev.Data.Png, 0, ev.Data.Png.Length);
+                        }
+                        if (ev.Diff != null)
+                            compare.Diff = ev.Diff;
+                    }
+                    foreach (var kv in buffers)
+                        compare.Side(kv.Key).Png = kv.Value.ToArray();
+                }
+                finally
+                {
+                    foreach (var b in buffers.Values)
+                        b.Dispose();
+                }
+                return compare;
+            }
+            finally
+            {
+                Release(l);
+            }
         }
 
         public async Task<ConflictsResponse> ConflictsAsync(CancellationToken ct = default)
@@ -735,6 +861,8 @@ namespace Nipa.Editor.Core.Session
         {
             Incoming = a.Incoming;
             ReviewRequests = a.ReviewRequests;
+            if (a.Maintenance != null)
+                Maintenance = a.Maintenance;
             if (a.Events != null && a.Events.Any(e => e.Kind == "lock_released" || e.Kind == "lock_requested"))
                 await TryRefreshLocksAsync(ct).ConfigureAwait(false);
             Activity?.Invoke(a);

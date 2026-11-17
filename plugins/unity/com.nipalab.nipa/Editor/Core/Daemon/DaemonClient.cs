@@ -121,7 +121,7 @@ namespace Nipa.Editor.Core.Daemon
                 var env = JsonConvert.DeserializeObject<StreamErrorEnvelope>(line, JsonSettings);
                 if (env?.Error == null)
                     return null;
-                return new DaemonException(StatusFor(env.Error.Code), env.Error.Message ?? env.Error.Code ?? "stream failed");
+                return new DaemonException(StatusFor(env.Error.Code), env.Error.Message ?? env.Error.Code ?? "stream failed", env.Error.Maintenance);
             }
             catch (JsonException)
             {
@@ -167,7 +167,7 @@ namespace Nipa.Editor.Core.Daemon
             {
                 var err = JsonConvert.DeserializeObject<ErrorBody>(body, JsonSettings);
                 if (err != null && !string.IsNullOrEmpty(err.Message))
-                    return new DaemonException((int)status, err.Message);
+                    return new DaemonException((int)status, err.Message, err.Maintenance);
             }
             catch (JsonException)
             {
@@ -189,6 +189,7 @@ namespace Nipa.Editor.Core.Daemon
         {
             public string Code { get; set; }
             public string Message { get; set; }
+            public MaintenanceWindow Maintenance { get; set; }
         }
     }
 }

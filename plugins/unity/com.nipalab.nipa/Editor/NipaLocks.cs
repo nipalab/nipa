@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nipa.Editor.Core.Daemon;
+using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Session;
 using UnityEditor;
 
@@ -10,7 +12,7 @@ namespace Nipa.Editor
     {
         public static void Lock(List<string> clonePaths, Action afterLocked = null)
         {
-            if (clonePaths.Count == 0)
+            if (clonePaths.Count == 0 || !NipaHost.Allowed("Lock", false))
                 return;
             NipaHost.Run("Lock", async (s, _) =>
             {
@@ -32,7 +34,7 @@ namespace Nipa.Editor
             if (session == null)
                 return;
             var info = session.Locks.Lookup(clonePath);
-            if (info.State != Core.Locks.LockState.Theirs)
+            if (info.State != LockState.Theirs)
             {
                 EditorUtility.DisplayDialog("Nipa: Ask to release", clonePath + " is not locked by someone else.", "OK");
                 return;
@@ -42,6 +44,14 @@ namespace Nipa.Editor
                     NipaHost.Run("Ask to release", (s, _) => s.RequestReleaseAsync(clonePath, note), onSuccess: () =>
                         EditorUtility.DisplayDialog("Nipa: Ask to release", "Request sent to " + info.Holder + ".", "OK")));
         }
+
+        public static void Renew(FileLockDetail l)
+        {
+            if (NipaHost.Allowed("Renew lock", false))
+                NipaHost.Run("Renew lock", (s, _) => s.RenewAsync(l));
+        }
+
+        public static string Expiry(FileLockDetail l) => LockExpiry.Describe(l, DateTimeOffset.UtcNow);
 
         public static bool IsWatched(string clonePath) => NipaHost.Watches.IsWatched(clonePath);
 

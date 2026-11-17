@@ -74,6 +74,26 @@ namespace Nipa.Editor.Tests
             w.Close();
         }
 
+        static System.Type EditorType(string name) => typeof(NipaWindow).Assembly.GetType("Nipa.Editor." + name);
+
+        [Test]
+        public void CompareWindowOpensWithoutSession()
+        {
+            var open = EditorType("NipaImageCompare").GetMethod("Open", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            open.Invoke(null, new object[] { "Assets/a.png", null, "Mine", new Nipa.Editor.Core.Daemon.BlobRef { Source = "working", Path = "Assets/a.png" }, "Theirs" });
+            var w = Resources.FindObjectsOfTypeAll(EditorType("NipaImageCompare")).OfType<EditorWindow>().FirstOrDefault();
+            Assert.That(w, Is.Not.Null);
+            w.Close();
+        }
+
+        [Test]
+        public void MaintenanceGateAllowsWithoutSession()
+        {
+            var host = EditorType("NipaHost");
+            Assert.That(host.GetProperty("Maintenance").GetValue(null), Is.Null);
+            Assert.That((bool)host.GetMethod("Allowed").Invoke(null, new object[] { "Push", false }), Is.True);
+        }
+
         static object Call(string method, params object[] args)
         {
             var m = typeof(NipaAssetProcessor).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)

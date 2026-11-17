@@ -96,9 +96,13 @@ namespace Nipa.Editor
             var extensions = EditorGUILayout.TextField(
                 new GUIContent("Locked extensions", "Comma separated. Only used by strict locking."),
                 string.Join(", ", settings.LockExtensions));
+            var ttl = EditorGUILayout.IntField(
+                new GUIContent("Lock expiry (hours)", "Locks taken from Unity expire after this many hours unless renewed. 0 keeps them until unlocked; at most 168."),
+                settings.LockTtlHours);
             if (EditorGUI.EndChangeCheck())
             {
                 settings.LockStrict = strict;
+                settings.LockTtlHours = ttl;
                 settings.LockExtensions = extensions.Split(',').Select(e => e.Trim()).Where(e => e.Length > 0).ToList();
                 NipaSettingsStore.SaveProject(settings);
                 NipaHost.ApplySettings();

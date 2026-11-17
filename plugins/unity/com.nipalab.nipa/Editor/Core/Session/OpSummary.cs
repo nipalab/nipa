@@ -54,6 +54,8 @@ namespace Nipa.Editor.Core.Session
                     return e.Path + " is no longer locked by " + e.Actor;
                 case "lock_requested":
                     return e.Actor + " asks you to release " + e.Path + (string.IsNullOrWhiteSpace(e.Message) ? string.Empty : ": " + e.Message);
+                case "maintenance":
+                    return MaintenanceNotes.Describe(e);
                 default:
                     return null;
             }

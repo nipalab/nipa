@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace Nipa.Editor.Core.Daemon
 {
@@ -138,6 +140,26 @@ namespace Nipa.Editor.Core.Daemon
     {
         public int Code { get; set; }
         public string Message { get; set; }
+        public MaintenanceWindow Maintenance { get; set; }
+    }
+
+    public sealed class MaintenanceWindow
+    {
+        public string Scope { get; set; }
+        public string Mode { get; set; }
+        public bool Active { get; set; }
+        public string Message { get; set; }
+        public DateTimeOffset? StartsAt { get; set; }
+        public DateTimeOffset? EndsAt { get; set; }
+        public string Org { get; set; }
+        public string Project { get; set; }
+    }
+
+    public sealed class MaintenanceState
+    {
+        public MaintenanceWindow Server { get; set; }
+        public MaintenanceWindow Org { get; set; }
+        public MaintenanceWindow Project { get; set; }
     }
 
     public sealed class SyncResult
@@ -202,6 +224,8 @@ namespace Nipa.Editor.Core.Daemon
         public bool Global { get; set; }
         public string HeldBy { get; set; }
         public string HeldByName { get; set; }
+        public DateTimeOffset? AcquiredAt { get; set; }
+        public DateTimeOffset? ExpiresAt { get; set; }
         public List<FileLockRequestDetail> Requests { get; set; }
     }
 
@@ -258,6 +282,7 @@ namespace Nipa.Editor.Core.Daemon
     {
         public string Path { get; set; }
         public string Branch { get; set; }
+        public long? TtlSeconds { get; set; }
     }
 
     public sealed class ProxyLockFileRequest
@@ -302,6 +327,7 @@ namespace Nipa.Editor.Core.Daemon
         public int Count { get; set; }
         public string Path { get; set; }
         public long Number { get; set; }
+        public MaintenanceWindow Maintenance { get; set; }
     }
 
     public sealed class RepoActivity
@@ -310,6 +336,7 @@ namespace Nipa.Editor.Core.Daemon
         public int Incoming { get; set; }
         public int ReviewRequests { get; set; }
         public string Error { get; set; }
+        public MaintenanceState Maintenance { get; set; }
     }
 
     public sealed class ConflictsRequest
@@ -578,6 +605,8 @@ namespace Nipa.Editor.Core.Daemon
     {
         public string CommitId { get; set; }
         public string CommitHash { get; set; }
+        [JsonProperty("parent_1_id")]
+        public string Parent1Id { get; set; }
         public string AuthorName { get; set; }
         public string Message { get; set; }
         public string CreatedAt { get; set; }
@@ -598,5 +627,105 @@ namespace Nipa.Editor.Core.Daemon
     public sealed class ProxyCommitLogResponse
     {
         public CommitLogResponse Response { get; set; }
+    }
+
+    public sealed class PushPlanRequest
+    {
+        public string Root { get; set; }
+    }
+
+    public sealed class PushPlanChange
+    {
+        public string Path { get; set; }
+        public string Status { get; set; }
+        public bool Binary { get; set; }
+        public long SizeBytes { get; set; }
+    }
+
+    public sealed class AssetViolation
+    {
+        public string Path { get; set; }
+        public string Rule { get; set; }
+        public string Limit { get; set; }
+        public string Actual { get; set; }
+        public string Max { get; set; }
+        public string Message { get; set; }
+    }
+
+    public sealed class BrokenReference
+    {
+        public string From { get; set; }
+        public string Raw { get; set; }
+        public string Target { get; set; }
+        public string Reason { get; set; }
+    }
+
+    public sealed class AssetImpact
+    {
+        public List<BrokenReference> Broken { get; set; }
+        public List<string> NewlyUnused { get; set; }
+        public int Scanned { get; set; }
+        public bool Truncated { get; set; }
+    }
+
+    public sealed class PushPlanResponse
+    {
+        public bool UpToDate { get; set; }
+        public List<PushPlanChange> Changes { get; set; }
+        public int UploadObjects { get; set; }
+        public long UploadBytes { get; set; }
+        public List<AssetViolation> AssetViolations { get; set; }
+        public AssetImpact AssetImpact { get; set; }
+        public List<string> Warnings { get; set; }
+    }
+
+    public sealed class PreviewRequest
+    {
+        public string Root { get; set; }
+        public BlobRef Old { get; set; }
+        public BlobRef New { get; set; }
+        public int MaxSize { get; set; }
+    }
+
+    public sealed class ImagePreview
+    {
+        public string Side { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public string Format { get; set; }
+        public int BitDepth { get; set; }
+        public bool HasAlpha { get; set; }
+        public long SizeBytes { get; set; }
+        public int PreviewWidth { get; set; }
+        public int PreviewHeight { get; set; }
+        public string Encoding { get; set; }
+        public bool Hdr { get; set; }
+        public bool Thumbnail { get; set; }
+    }
+
+    public sealed class PreviewData
+    {
+        public string Side { get; set; }
+        public byte[] Png { get; set; }
+    }
+
+    public sealed class ImageDiffStats
+    {
+        public long ChangedPixels { get; set; }
+        public long TotalPixels { get; set; }
+        public double ChangedRatio { get; set; }
+        public int MaxDelta { get; set; }
+        public bool SizeChanged { get; set; }
+        public bool FormatChanged { get; set; }
+        public bool BitDepthChanged { get; set; }
+        public bool AlphaChanged { get; set; }
+    }
+
+    public sealed class PreviewEvent
+    {
+        public ImagePreview Image { get; set; }
+        public PreviewData Data { get; set; }
+        public ImageDiffStats Diff { get; set; }
+        public OpFailure Failure { get; set; }
     }
 }
