@@ -20,7 +20,7 @@ code and holds no server credentials: the daemon owns the session.
 | `src/daemon/ops.ts` | `OpEvent` streams to a result or a failure, `ReadBlob` assembly |
 | `src/scm/repository.ts` | one `SourceControl` per clone: groups, push/update, quick diff, lock states, `WatchChanges` loop |
 | `src/scm/model.ts` | clone discovery and the `FileDecorationProvider` |
-| `src/scm/snapshot.ts` | `nipa-snapshot:` documents (`ReadBlob` source `snapshot`) |
+| `src/scm/snapshot.ts` | `nipa-blob:` documents (`ReadBlob` source `snapshot`) |
 | `src/scm/commands.ts` | command handlers, the branch/tag picker, resolving the clone and files a command is for |
 | `src/scm/blame.ts` | blame annotations as editor decorations |
 | `src/scm/helpers.ts` | pure helpers: `nipa://` links, lock coverage, conflict markers, blame labels, maintenance note |
@@ -99,7 +99,7 @@ Only stable VS Code APIs are used:
   - Rows are `conflict-text`, `conflict-other` or `resolved`.
   - The sides follow `usecase.ConflictSides`: revisions for a merge or
     revert; snapshot and `shelf` for a shelf apply. They open as
-    `nipa-snapshot:` documents.
+    `nipa-blob:` documents.
   - Mark as Resolved (`ResolveConflict` `working`) refuses a dirty document
     and a file that still has `<<<<<<<`/`>>>>>>>` lines. Take Mine and Take
     Theirs map to `ours` and `theirs`.

@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import type { DaemonClient } from "../daemon/client";
 import { BlobRef, readBlob } from "../daemon/ops";
 
-export const SNAPSHOT_SCHEME = "nipa-snapshot";
+export const SNAPSHOT_SCHEME = "nipa-blob";
 
 interface BlobQuery {
   root: string;

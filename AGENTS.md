@@ -404,7 +404,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`src/daemon`: endpoint, connector (attach or start `nipa serve`), NDJSON
   client, shared `DaemonSession`) and a native `vscode.scm` provider per clone
   (`src/scm`: staged/changes/conflicts groups, push with `PushPlan` +
-  `LockStatus` checks, update, `nipa-snapshot:` quick diff over `ReadBlob`,
+  `LockStatus` checks, update, `nipa-blob:` quick diff over `ReadBlob`,
   file decorations with lock states, `WatchChanges` refresh; phase 2:
   `BlameController` editor decorations over `Blame`, Lock/Unlock/Ask to
   Release with covering-lock lookup from `LockStatus.locks` and one-time

@@ -71,7 +71,7 @@ describe("activate", () => {
     const api = await start();
     expect(connectMock).toHaveBeenCalledWith({ binary: "/opt/nipa" });
     expect(api.model.repositories.map((r) => r.root)).toEqual([roots[0]]);
-    expect(fake.contentProviders.has("nipa-snapshot")).toBe(true);
+    expect(fake.contentProviders.has("nipa-blob")).toBe(true);
     expect(fake.decorationProviders).toHaveLength(1);
     expect(fake.output).toContain("started nipa daemon v9");
     expect([...fake.commands.keys()]).toEqual(

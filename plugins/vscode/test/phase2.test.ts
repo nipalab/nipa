@@ -156,7 +156,10 @@ describe("locks", () => {
     fake.inputBox = "";
     const repo = await open();
     await repo.refreshLocks();
-    await waitFor(() => calls("ProxyLockFile").length === 1 && calls("ProxyLockRequestRelease").length === 1);
+    await waitFor(() => {
+      const texts = fake.messages.map((m) => m.text);
+      return texts.includes("Locked hero.png.") && texts.includes("Asked Ana to release map.umap.");
+    });
     const warnings = fake.messages.filter((m) => m.level === "warning").map((m) => m.text);
     expect(warnings).toEqual(
       expect.arrayContaining([
@@ -401,7 +404,7 @@ describe("blob documents", () => {
     expect(await snapshots.provideTextDocumentContent(rev as never, token)).toBe("rev o1");
     await fs.writeFile(path.join(root, "a.txt"), "working");
     expect(await snapshots.provideTextDocumentContent(blobUri(root, { source: "shelf", revision: "s", path: "a.txt" }) as never, token)).toBe("");
-    expect(parseBlobUri(Uri.from({ scheme: "nipa-snapshot", query: "nope" }) as never)).toBeUndefined();
+    expect(parseBlobUri(Uri.from({ scheme: "nipa-blob", query: "nope" }) as never)).toBeUndefined();
   });
 });
 

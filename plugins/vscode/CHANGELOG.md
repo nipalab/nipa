@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Serve synced versions under the `nipa-blob` scheme. `nipa-snapshot` is also registered by the separate `nipa-vscode` extension, which then answered for these documents, so diffs and gutter markers showed the whole file as added.
+
 ## 0.2.0
 
 - Blame annotations next to the editor (Nipa: Toggle Blame, `nipa.blame`), with commit details and a desktop link on hover.

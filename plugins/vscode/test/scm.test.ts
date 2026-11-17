@@ -375,8 +375,8 @@ describe("SnapshotContentProvider", () => {
     await fs.writeFile(path.join(root, "w.txt"), "working");
     expect(await snapshots.provideTextDocumentContent(snapshotUri(root, "w.txt") as never, token)).toBe("working");
     expect(await snapshots.provideTextDocumentContent(snapshotUri(root, "none.txt") as never, token)).toBe("");
-    expect(await snapshots.provideTextDocumentContent(Uri.from({ scheme: "nipa-snapshot", path: "/x", query: "bad" }) as never, token)).toBe("");
-    expect(parseSnapshotUri(Uri.from({ scheme: "nipa-snapshot", query: '{"root":1}' }) as never)).toBeUndefined();
+    expect(await snapshots.provideTextDocumentContent(Uri.from({ scheme: "nipa-blob", path: "/x", query: "bad" }) as never, token)).toBe("");
+    expect(parseSnapshotUri(Uri.from({ scheme: "nipa-blob", query: '{"root":1}' }) as never)).toBeUndefined();
   });
 
   it("only refreshes documents of the given clone", async () => {

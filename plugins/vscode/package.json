@@ -2,7 +2,7 @@
   "name": "nipa",
   "displayName": "Nipa",
   "description": "Nipa version control in the Source Control view: status, staging, push, update, branch switching, file locks, conflicts and blame.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "nipalab",
   "license": "Apache-2.0",
   "repository": {
