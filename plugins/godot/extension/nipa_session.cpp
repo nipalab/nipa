@@ -118,6 +118,13 @@ void NipaSession::_bind_methods() {
     ClassDB::bind_method(D_METHOD("request_lock", "clone_paths"), &NipaSession::request_lock);
     ClassDB::bind_method(D_METHOD("request_unlock", "clone_paths", "any_holder"), &NipaSession::request_unlock);
     ClassDB::bind_method(D_METHOD("request_lock_refresh"), &NipaSession::request_lock_refresh);
+    ClassDB::bind_method(D_METHOD("request_lock_release", "clone_path", "message"), &NipaSession::request_lock_release);
+    ClassDB::bind_method(D_METHOD("request_sync_plan", "branch", "tag"), &NipaSession::request_sync_plan);
+    ClassDB::bind_method(D_METHOD("request_shelve", "name", "clone_paths"), &NipaSession::request_shelve);
+    ClassDB::bind_method(D_METHOD("request_shelve_apply", "shelf_id", "keep"), &NipaSession::request_shelve_apply);
+    ClassDB::bind_method(D_METHOD("request_shelve_abort"), &NipaSession::request_shelve_abort);
+    ClassDB::bind_method(D_METHOD("request_shelves"), &NipaSession::request_shelves);
+    ClassDB::bind_method(D_METHOD("request_shelve_drop", "shelf_id"), &NipaSession::request_shelve_drop);
     ClassDB::bind_method(D_METHOD("get_tag_names"), &NipaSession::get_tag_names);
     ClassDB::bind_method(D_METHOD("get_head"), &NipaSession::get_head);
     ClassDB::bind_method(D_METHOD("get_conflicts"), &NipaSession::get_conflicts);
@@ -160,7 +167,7 @@ void NipaSession::_bind_methods() {
     ADD_SIGNAL(MethodInfo("blob_ready", PropertyInfo(Variant::STRING, "key"), PropertyInfo(Variant::BOOL, "ok"),
                           PropertyInfo(Variant::STRING, "message")));
     ADD_SIGNAL(MethodInfo("activity", PropertyInfo(Variant::STRING, "kind"), PropertyInfo(Variant::STRING, "actor"),
-                          PropertyInfo(Variant::STRING, "detail")));
+                          PropertyInfo(Variant::STRING, "detail"), PropertyInfo(Variant::STRING, "clone_path")));
     ADD_SIGNAL(MethodInfo("activity_summary", PropertyInfo(Variant::INT, "incoming"),
                           PropertyInfo(Variant::INT, "review_requests"), PropertyInfo(Variant::STRING, "error")));
     ADD_SIGNAL(MethodInfo("notice", PropertyInfo(Variant::STRING, "text")));
@@ -417,6 +424,7 @@ Ref<NipaRequest> NipaSession::request_refresh() {
     session_->submit_branches();
     session_->submit_commits();
     session_->submit_tags();
+    session_->submit_locks();
     return done_request(true, "refreshing");
 }
 
@@ -516,7 +524,8 @@ void NipaSession::dispatch(const session::Event& event) {
             emit_signal("blob_ready", to_godot(event.name), event.ok, to_godot(event.message));
             break;
         case EventKind::Activity:
-            emit_signal("activity", to_godot(event.name), to_godot(event.actor), to_godot(event.message));
+            emit_signal("activity", to_godot(event.name), to_godot(event.actor), to_godot(event.message),
+                        to_godot(event.paths.empty() ? std::string() : event.paths.front()));
             break;
         case EventKind::ActivitySummary:
             emit_signal("activity_summary", static_cast<int64_t>(event.done), static_cast<int64_t>(event.total),
@@ -622,6 +631,37 @@ Ref<NipaRequest> NipaSession::request_lock_refresh() {
     }
     session_->submit_locks();
     return done_request(true, "refreshing locks");
+}
+
+Ref<NipaRequest> NipaSession::request_lock_release(const String& clone_path, const String& message) {
+    return track_or_closed(
+        [&](session::Session& s) { return s.submit_lock_release_request(from_godot(clone_path), from_godot(message)); });
+}
+
+Ref<NipaRequest> NipaSession::request_sync_plan(const String& branch, const String& tag) {
+    return track_or_closed([&](session::Session& s) { return s.submit_sync_plan(from_godot(branch), from_godot(tag)); });
+}
+
+Ref<NipaRequest> NipaSession::request_shelve(const String& name, const PackedStringArray& clone_paths) {
+    std::vector<std::string> list;
+    for (int i = 0; i < clone_paths.size(); ++i) list.push_back(from_godot(clone_paths[i]));
+    return track_or_closed([&](session::Session& s) { return s.submit_shelve(from_godot(name), std::move(list)); });
+}
+
+Ref<NipaRequest> NipaSession::request_shelve_apply(const String& shelf_id, bool keep) {
+    return track_or_closed([&](session::Session& s) { return s.submit_shelve_apply(from_godot(shelf_id), keep); });
+}
+
+Ref<NipaRequest> NipaSession::request_shelve_abort() {
+    return track_or_closed([](session::Session& s) { return s.submit_shelve_abort(); });
+}
+
+Ref<NipaRequest> NipaSession::request_shelves() {
+    return track_or_closed([](session::Session& s) { return s.submit_shelves(); });
+}
+
+Ref<NipaRequest> NipaSession::request_shelve_drop(const String& shelf_id) {
+    return track_or_closed([&](session::Session& s) { return s.submit_shelve_drop(from_godot(shelf_id)); });
 }
 
 Ref<NipaRequest> NipaSession::track_or_closed(const std::function<std::int64_t(session::Session&)>& submit) {

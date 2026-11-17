@@ -34,7 +34,11 @@ static func summary_for(conflicts: Dictionary) -> String:
 	var open: int = conflicts.get("open", 0)
 	var ours: String = conflicts.get("ours", {}).get("label", "")
 	var theirs: String = conflicts.get("theirs", {}).get("label", "")
-	var head := "Merging %s into %s" % [theirs, ours] if op == "merge" else "Reverting %s" % conflicts.get("base", {}).get("label", "")
+	var head := "Reverting %s" % conflicts.get("base", {}).get("label", "")
+	if op == "merge":
+		head = "Merging %s into %s" % [theirs, ours]
+	elif op == "shelf":
+		head = "Applying shelf %s" % theirs if not theirs.is_empty() else "Applying a shelf"
 	if open == 0:
 		return "%s: all %d file(s) resolved." % [head, files.size()]
 	return "%s: %d of %d file(s) still conflicted." % [head, open, files.size()]

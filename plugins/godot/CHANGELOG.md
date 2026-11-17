@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Lock requests, lock watching and shelves
+
+- Ask to release (context menu, lock badge, Locks tab) with an optional note;
+  the holder gets a Release requested prompt.
+- Notify me when free: watched paths (kept in the editor's project metadata)
+  raise a Lock now prompt when their lock is released.
+- Update, branch switch and tag checkout from the dock check `SyncPlan` and
+  offer Shelve and continue when local changes would be replaced; the new
+  Shelves tab applies, keeps, deletes and aborts shelves, and the dock shows a
+  pending shelf apply.
+- Staging from the Version Control panel no longer rescans the project or
+  toasts per file (failures still toast).
+- Activity polls refresh branches and tags; branch and tag events fire only
+  when the lists changed.
+
+### Fixes
+
+- Godot strings passed to the core no longer end in a NUL byte, which made
+  the setup checker read the clone root as `.nipaignore` ("Is a directory")
+  and every clone lookup stop at the project folder.
+- Godot's Version Control panel no longer needs a manual Refresh after a
+  push, update, switch, merge or revert: operations reload status, commits
+  and branches before they finish, and daemon-side status, commit and branch
+  changes re-emit `filesystem_changed` (once per frame, not during a scan).
+- The out-of-date banner hides after a successful Update or Switch, the
+  History tab reloads when new commits arrive, the dock's progress label
+  stays up while other operations are queued, and Fetch refreshes locks.
+
 ### Phase 4: setup and distribution
 
 - Core `setup` (setup checker rows, `.nipaignore` template merge and matcher,

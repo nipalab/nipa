@@ -85,6 +85,23 @@ Settings:
   lock count in the dock. Editing a lock-relevant file locks it in the
   background; a file locked by someone else gets a warning and, for scenes, an
   offer to reload. Commit checks locks first (see Locks below).
+  - **Ask to release** (context menu, badge, Locks tab) sends the holder a
+    request with an optional note (`ProxyLockRequestRelease`, by lock id); the
+    holder gets a "Release requested" prompt from the `lock_requested` event.
+  - **Notify me when free** (context menu, Locks tab) watches a path someone
+    else holds; watches live in the editor's project metadata
+    (`nipa/lock_watches`). A `lock_released` event that covers one (exact path,
+    folder lock, or the asset of a sidecar) drops the watch and asks
+    "Lock now".
+
+- **Shelves**: the dock's Update, branch switch and tag checkout first ask
+  `SyncPlan` which local changes the operation would replace. When there are
+  any, "Shelve and continue" shelves exactly those (`ShelveCreate`, untracked
+  included) and then runs the operation; a failed check never blocks. The
+  bottom panel's Shelves tab lists shelves (Apply, Apply and keep, Delete) and
+  an apply waiting on conflicts (Abort; the dock shows the pending banner and
+  the Conflicts tab resolves the files). The native Pull and branch picker are
+  not guarded.
 
 - **Conflicts, tags, history and previews** (Phase 3):
   - The dock's switcher lists branches and tags. Picking a tag checks it out
@@ -248,10 +265,13 @@ Source: `editor/version_control/version_control_editor_plugin.cpp` and the
    a worker thread keeps fresh. Only a cold-start `Status` may block, for at
    most 2 s against the local daemon. Write virtuals (`_commit`, `_pull`,
    `_checkout_branch`) queue a daemon operation and return at once. Progress
-   goes to the Nipa dock and `EditorToaster`, and when the operation finishes
-   the plugin calls `EditorFileSystem.scan()`. Godot then emits
-   `filesystem_changed`, which refreshes the native dock without any private
-   API. Worker results reach the main thread through
+   goes to the Nipa dock and `EditorToaster`. An operation reloads status,
+   commits and branches before its `OpFinished`, then the plugin calls
+   `EditorFileSystem.scan()`, and Godot emits `filesystem_changed`, which
+   refreshes the native dock from the fresh caches without any private API.
+   Status, commit and branch changes outside an operation (watcher, teammate
+   pushes, Fetch) re-emit `filesystem_changed` once per frame, skipped while
+   a scan runs. Worker results reach the main thread through
    `callable_mp(...).call_deferred()` on `NipaSession`.
 5. **Map Nipa's centralized model onto the git-shaped dock honestly.**
    - **Commit = push to the server:** stage, then `Push(message)`.
@@ -347,7 +367,7 @@ The GDScript `EditorPlugin` (`addons/nipa/plugin.cfg`, enabled in
 | Surface | Godot API | Purpose | Daemon |
 |---|---|---|---|
 | **Nipa dock** (right, next to Inspector) | `add_control_to_dock`, `.tscn` scene | connection state, branch/tag switcher, operation progress, out-of-date banner with Update, sidecar warnings, detached-tag and pending merge/revert banners, staged-outside-project note | `Status`, `OpEvent`, `WatchEvents`, `MetaWarnings` |
-| **Nipa bottom panel** | `add_control_to_bottom_panel` | tabs Locks, Conflicts, History (per file), Activity, Image diff | `ProxyListFileLocks`, `Conflicts`, `ProxyCommitLog{path}`, `Preview` |
+| **Nipa bottom panel** | `add_control_to_bottom_panel` | tabs Locks, Conflicts, History (per file), Image diff, Shelves | `ProxyListFileLocks`, `ProxyLockRequestRelease`, `Conflicts`, `ProxyCommitLog{path}`, `Preview`, `ShelveList`/`ShelveApply`/`ShelveDrop` |
 | FileSystem context menu | `EditorContextMenuPlugin` (`CONTEXT_SLOT_FILESYSTEM`) | Nipa › Stage, Restore, Lock, Unlock, History, Open in Nipa Desktop | as named |
 | Scene tabs menu | `CONTEXT_SLOT_SCENE_TABS` | Lock / Unlock this scene | `ProxyLockFile` |
 | Inspector header | `EditorInspectorPlugin._parse_begin` | lock state of the edited resource's file, Lock / Unlock buttons | `LockStatus` |

@@ -28,6 +28,10 @@
 
 namespace nipa::session {
 
+// Change detection for the cached lists, so an unchanged reload emits no event.
+std::string branch_fingerprint(const std::vector<daemon::Branch>& branches);
+std::string tag_fingerprint(const std::vector<history::Tag>& tags);
+
 struct SessionOptions {
     daemon::ConnectOptions connect;
     std::string root;  // clone root, passed to WatchRepo
@@ -134,8 +138,20 @@ public:
     std::int64_t submit_lock(std::vector<std::string> clone_paths);
     // Releases my locks on the assets of `clone_paths`; `any_holder` also releases others' when allowed.
     std::int64_t submit_unlock(std::vector<std::string> clone_paths, bool any_holder);
+    // Asks the holder of the lock covering `clone_path` to release it (someone else's lock only).
+    std::int64_t submit_lock_release_request(std::string clone_path, std::string message);
     // Fresh LockStatus push check; nullopt on timeout, stop or a daemon error.
     std::optional<locks::PushCheck> push_check_blocking(std::chrono::milliseconds timeout);
+
+    // data: {"overwritten": [...]}, the local changes an update (empty branch and tag) or switch would replace.
+    std::int64_t submit_sync_plan(std::string branch, std::string tag);
+    // Shelves `paths` (untracked ones included); empty shelves every change.
+    std::int64_t submit_shelve(std::string name, std::vector<std::string> paths);
+    std::int64_t submit_shelve_apply(std::string shelf_id, bool keep);
+    std::int64_t submit_shelve_abort();
+    // data: shelves::to_json(List).
+    std::int64_t submit_shelves();
+    std::int64_t submit_shelve_drop(std::string shelf_id);
 
     std::vector<setup::SidecarWarning> sidecar_warnings() const;
     // Refreshes sidecar_warnings() from MetaWarnings{engine: godot}.
@@ -180,6 +196,12 @@ private:
     void run_on_link(const std::function<void(const daemon::Client&)>& fn);
     void drop_link(std::uint64_t generation, const std::string& reason);
     void apply_status(const nlohmann::json& reply);
+    void load_status();
+    void load_branches();
+    void load_commits();
+    void load_tags();
+    void refresh_quietly(void (Session::*load)());
+    // Reloads the caches an operation changed before its OpFinished, so UI refreshed on it reads fresh data.
     void refresh_after_op(const std::string& name);
     std::int64_t enqueue_lock_refresh(std::uint64_t ticket);
     bool refresh_locks();
@@ -212,9 +234,11 @@ private:
     std::string version_;
     status::StatusCache status_;
     std::vector<daemon::Branch> branches_;
+    bool branches_loaded_ = false;
     std::vector<daemon::Commit> commits_;
     std::vector<std::string> remotes_;
     std::vector<history::Tag> tags_;
+    bool tags_loaded_ = false;
     conflicts::Set conflicts_;
     bool conflicts_pending_ = false;
     std::vector<setup::SidecarWarning> warnings_;

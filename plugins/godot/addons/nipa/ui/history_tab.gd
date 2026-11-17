@@ -10,6 +10,8 @@ var _session: Object
 var _clone_path := ""
 var _next := ""
 var _generation := 0
+var _shown := false
+var _stale := false
 
 @onready var _target: Label = $Toolbar/Target
 @onready var _project_button: Button = $Toolbar/ProjectButton
@@ -39,16 +41,35 @@ func _ready() -> void:
 	_more_button.pressed.connect(_load_page)
 	_open_button.pressed.connect(_open_selected)
 	_compare_button.pressed.connect(_compare_selected)
+	visibility_changed.connect(_reload_if_stale)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
+	if _session:
+		_session.commits_changed.connect(_on_commits_changed)
 	_update_actions()
 
 
 func _exit_tree() -> void:
+	if _session and _session.commits_changed.is_connected(_on_commits_changed):
+		_session.commits_changed.disconnect(_on_commits_changed)
 	_session = null
+
+
+func _on_commits_changed() -> void:
+	if not _shown:
+		return
+	_stale = true
+	_reload_if_stale()
+
+
+func _reload_if_stale() -> void:
+	if _stale and is_visible_in_tree():
+		show_history(_clone_path)
 
 
 # Lists the commits that changed `clone_path` (empty = the whole project).
 func show_history(clone_path: String) -> void:
+	_shown = true
+	_stale = false
 	_clone_path = clone_path
 	_next = ""
 	_generation += 1

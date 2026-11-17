@@ -5,13 +5,21 @@ signal reconnect_requested
 signal conflicts_requested
 signal setup_requested
 
-const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup"]
+const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup", "sync-plan",
+	"shelves", "lock-request"]
+const SYNC_OPS := ["update", "switch"]
+const SYNC_GUARD_LIST := 10
 
 var _pending_action: Callable
 var _commit_message := ""
 var _commit_paths := PackedStringArray()
 var _reload_path := ""
 var _sidecar_paths := PackedStringArray()
+var _active_ops := {}
+var _guard_action: Callable
+var _guard_label := ""
+var _guard_paths := PackedStringArray()
+var _shelve_dialog: ConfirmationDialog
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -67,6 +75,12 @@ func _ready() -> void:
 	_abort_button.pressed.connect(_on_abort_pressed)
 	_stage_sidecars_button.pressed.connect(_on_stage_sidecars_pressed)
 	_setup_button.pressed.connect(func(): setup_requested.emit())
+	_shelve_dialog = ConfirmationDialog.new()
+	_shelve_dialog.title = "Local changes would be replaced"
+	_shelve_dialog.ok_button_text = "Shelve and continue"
+	_shelve_dialog.confirmed.connect(_on_shelve_confirmed)
+	_shelve_dialog.canceled.connect(_on_shelve_canceled)
+	add_child(_shelve_dialog)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -113,11 +127,74 @@ func _exit_tree() -> void:
 
 
 func request_update() -> void:
-	_ask_save_then(func(): _session.request_update())
+	_ask_save_then(func(): _guard_sync("", "", "Update", func(): _session.request_update()))
 
 
 func request_switch(branch: String) -> void:
-	_ask_save_then(func(): _session.request_switch(branch))
+	_ask_save_then(func(): _guard_sync(branch, "", "Switch to %s" % branch, func(): _session.request_switch(branch)))
+
+
+func request_switch_tag(tag: String) -> void:
+	_ask_save_then(func(): _guard_sync("", tag, "Check out tag %s" % tag, func(): _session.request_switch_tag(tag)))
+
+
+static func sync_guard_text(label: String, paths: Array) -> String:
+	var shown := PackedStringArray()
+	for i in mini(paths.size(), SYNC_GUARD_LIST):
+		shown.append(paths[i])
+	if paths.size() > SYNC_GUARD_LIST:
+		shown.append("... and %d more" % (paths.size() - SYNC_GUARD_LIST))
+	return "%s would replace %d local change(s):\n%s\n\nShelve them first? You can apply the shelf again from Nipa > Shelves." % [
+		label, paths.size(), "\n".join(shown)]
+
+
+static func shelf_name(label: String) -> String:
+	return "Before %s" % label.to_lower()
+
+
+# Runs `action` unless it would replace local changes; then offers to shelve them first.
+# A failed check never blocks the operation.
+func _guard_sync(branch: String, tag: String, label: String, action: Callable) -> void:
+	var plan: RefCounted = _session.request_sync_plan(branch, tag)
+	if not plan.is_done():
+		await plan.completed
+	var paths: Array = plan.get_result().get("overwritten", []) if plan.is_ok() else []
+	if paths.is_empty():
+		action.call()
+		return
+	_guard_action = action
+	_guard_label = label
+	_guard_paths = PackedStringArray(paths)
+	_shelve_dialog.dialog_text = sync_guard_text(label, paths)
+	_shelve_dialog.popup_centered()
+
+
+func _on_shelve_confirmed() -> void:
+	var action := _guard_action
+	var paths := _guard_paths
+	_guard_action = Callable()
+	_guard_paths = PackedStringArray()
+	if _session == null or not action.is_valid():
+		return
+	var request: RefCounted = _session.request_shelve(shelf_name(_guard_label), paths)
+	if request.is_done():
+		_toast_refused(request)
+		return
+	await request.completed
+	if request.is_ok():
+		action.call()
+
+
+# A request refused before it was queued (session closed or stopping) reports no op_finished.
+func _toast_refused(request: RefCounted) -> void:
+	if not request.is_ok() and Engine.is_editor_hint():
+		EditorInterface.get_editor_toaster().push_toast(
+			"Nipa: %s" % request.get_message(), EditorToaster.SEVERITY_ERROR)
+
+
+func _on_shelve_canceled() -> void:
+	_guard_action = Callable()
+	_guard_paths = PackedStringArray()
 
 
 func _ask_save_then(action: Callable) -> void:
@@ -188,7 +265,9 @@ static func banner_state(head: Dictionary, conflicts: Dictionary) -> Dictionary:
 		"revert":
 			var remaining: int = head.get("pending_remaining", 0)
 			state.pending_text = "Revert in progress (%d step(s) left). %s" % [remaining, conflict_text]
-	state.can_finish = state.pending != "" and open == 0
+		"shelf":
+			state.pending_text = "Applying a shelf. %s Resolve each file in Conflicts, or abort." % conflict_text
+	state.can_finish = state.pending in ["merge", "revert"] and open == 0
 	return state
 
 
@@ -233,7 +312,7 @@ func _on_ref_selected(index: int) -> void:
 	if item.kind == "tag":
 		if head.get("detached", false) and head.get("head_name", "") == item.name:
 			return
-		_ask_save_then(func(): _session.request_switch_tag(item.name))
+		request_switch_tag(item.name)
 	elif head.get("detached", false) or head.get("branch", "") != item.name:
 		request_switch(item.name)
 
@@ -287,30 +366,45 @@ func _on_revert_step(step: String) -> void:
 func _on_abort_pressed() -> void:
 	if _session == null:
 		return
-	if _session.get_head().get("pending", "") == "revert":
+	var pending: String = _session.get_head().get("pending", "")
+	if pending == "revert":
 		_ask_save_then(func(): _session.request_revert_abort())
+	elif pending == "shelf":
+		_ask_save_then(func(): _session.request_shelve_abort())
 	else:
 		_ask_save_then(func(): _session.request_merge_abort())
 
 
-func _on_op_queued(_id: int, kind: String) -> void:
+func _on_op_queued(id: int, kind: String) -> void:
 	if DATA_OPS.has(kind):
 		return
-	_op_label.visible = true
-	_op_label.text = "Queued: %s" % kind
-	_op_progress.visible = false
+	_active_ops[id] = kind
+	if _active_ops.size() == 1:
+		_op_label.visible = true
+		_op_label.text = "Queued: %s" % kind
+		_op_progress.visible = false
 
 
-func _on_op_progress(_id: int, phase: String, done: int, total: int) -> void:
+func _on_op_progress(id: int, phase: String, done: int, total: int) -> void:
+	if not _active_ops.has(id):
+		return
 	_op_label.visible = true
 	_op_label.text = phase
 	_op_progress.visible = total > 0
 	_op_progress.value = float(done) / float(total) if total > 0 else 0.0
 
 
-func _on_op_finished(_id: int, _ok: bool, _message: String, _paths: PackedStringArray) -> void:
-	_op_label.visible = false
-	_op_progress.visible = false
+func _on_op_finished(id: int, ok: bool, _message: String, _paths: PackedStringArray) -> void:
+	var kind: String = _active_ops.get(id, "")
+	_active_ops.erase(id)
+	if ok and SYNC_OPS.has(kind):
+		_out_of_date.visible = false
+	if _active_ops.is_empty():
+		_op_label.visible = false
+		_op_progress.visible = false
+	else:
+		_op_label.text = "Queued: %s" % _active_ops.values()[0]
+		_op_progress.visible = false
 	_refresh_branch()
 
 

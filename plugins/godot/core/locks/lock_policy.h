@@ -52,6 +52,7 @@ struct LockInfo {
     LockState state = LockState::Free;
     std::string holder;
     std::string lock_path;
+    std::string lock_id;
 };
 
 struct PushCheck {

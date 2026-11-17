@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <set>
 
+#include "core/shelves/shelves.h"
+
 namespace nipa::session {
 namespace {
 
@@ -30,6 +32,26 @@ std::string fingerprint(const locks::LockStatus& s) {
     }
     return out;
 }
+
+}  // namespace
+
+std::string branch_fingerprint(const std::vector<daemon::Branch>& branches) {
+    std::string out;
+    for (const auto& b : branches) {
+        out += b.id + ":" + b.name + ":" + b.commit_id + (b.is_default ? ":d" : ":-") + (b.is_protected ? "p|" : "-|");
+    }
+    return out;
+}
+
+std::string tag_fingerprint(const std::vector<history::Tag>& tags) {
+    std::string out;
+    for (const auto& t : tags) {
+        out += t.name + ":" + t.commit_id + ":" + t.message + "|";
+    }
+    return out;
+}
+
+namespace {
 
 }  // namespace
 
@@ -352,6 +374,8 @@ void Session::watch_activity_body(const daemon::Client& client) {
                 }
             }
             submit_locks();
+            submit_branches();
+            submit_tags();
             Event summary;
             summary.kind = EventKind::ActivitySummary;
             summary.done = daemon::json_int(item, "incoming");
@@ -393,6 +417,51 @@ void Session::apply_status(const json& reply) {
     }
 }
 
+void Session::load_status() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("Status", root_body(options_.root), options_.unary_timeout, &cancel_);
+    });
+    apply_status(reply);
+}
+
+void Session::load_branches() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("ProxyBranchList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
+                            options_.unary_timeout, &cancel_);
+    });
+    auto list = daemon::parse_branches(daemon::proxy_payload(reply));
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        changed = !branches_loaded_ || branch_fingerprint(list) != branch_fingerprint(branches_);
+        branches_loaded_ = true;
+        branches_ = std::move(list);
+    }
+    if (changed) {
+        Event e;
+        e.kind = EventKind::BranchesChanged;
+        events_.push(std::move(e));
+    }
+}
+
+void Session::load_commits() {
+    json reply;
+    run_on_link([&](const daemon::Client& client) {
+        reply = client.call("ProxyCommitLog", {{"root", options_.root}, {"request", {{"limit", 50}}}},
+                            options_.unary_timeout, &cancel_);
+    });
+    auto list = daemon::parse_commits(daemon::proxy_payload(reply));
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        commits_ = std::move(list);
+    }
+    Event e;
+    e.kind = EventKind::CommitsChanged;
+    events_.push(std::move(e));
+}
+
 std::int64_t Session::submit_status() {
     {
         std::lock_guard<std::mutex> guard(mu_);
@@ -406,70 +475,53 @@ std::int64_t Session::submit_status() {
             std::lock_guard<std::mutex> guard(mu_);
             status_pending_ = false;
         }
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("Status", root_body(options_.root), options_.unary_timeout, &cancel_);
-        });
-        apply_status(reply);
+        load_status();
         return Outcome{};
     });
 }
 
 std::int64_t Session::submit_branches() {
     return enqueue("branches", true, [this](std::int64_t) {
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("ProxyBranchList", {{"root", options_.root}, {"request", {{"limit", 100}}}},
-                                options_.unary_timeout, &cancel_);
-        });
-        auto list = daemon::parse_branches(daemon::proxy_payload(reply));
-        {
-            std::lock_guard<std::mutex> guard(mu_);
-            branches_ = std::move(list);
-        }
-        Event e;
-        e.kind = EventKind::BranchesChanged;
-        events_.push(std::move(e));
+        load_branches();
         return Outcome{};
     });
 }
 
 std::int64_t Session::submit_commits() {
     return enqueue("commits", true, [this](std::int64_t) {
-        json reply;
-        run_on_link([&](const daemon::Client& client) {
-            reply = client.call("ProxyCommitLog", {{"root", options_.root}, {"request", {{"limit", 50}}}},
-                                options_.unary_timeout, &cancel_);
-        });
-        auto list = daemon::parse_commits(daemon::proxy_payload(reply));
-        {
-            std::lock_guard<std::mutex> guard(mu_);
-            commits_ = std::move(list);
-        }
-        Event e;
-        e.kind = EventKind::CommitsChanged;
-        events_.push(std::move(e));
+        load_commits();
         return Outcome{};
     });
 }
 
+void Session::refresh_quietly(void (Session::*load)()) {
+    try {
+        (this->*load)();
+    } catch (const daemon::CancelledError&) {
+        throw;
+    } catch (const std::exception&) {
+    }
+}
+
 void Session::refresh_after_op(const std::string& name) {
-    if (name == "switch") {
-        submit_status();
-        submit_commits();
-        submit_branches();
+    bool shelving = name == "shelve-apply" || name == "shelve-abort";
+    bool merging = shelving || name == "merge" || name == "merge-abort" || name == "revert";
+    bool syncing = name == "merge" || name == "merge-abort" || name == "revert" || name == "switch" ||
+                   name == "push" || name == "update";
+    if (syncing || shelving || name == "shelve") {
+        refresh_quietly(&Session::load_status);
+    }
+    if (syncing) {
+        refresh_quietly(&Session::load_commits);
+    }
+    if (name == "switch" || name == "branch-create" || name == "branch-delete") {
+        refresh_quietly(&Session::load_branches);
+    }
+    if (syncing) {
         submit_locks();
-    } else if (name == "merge" || name == "merge-abort" || name == "revert") {
-        submit_status();
-        submit_commits();
-        submit_locks();
+    }
+    if (merging) {
         refresh_conflicts_async();
-    } else if (name == "push" || name == "update") {
-        submit_status();
-        submit_commits();
-        submit_locks();
-    } else if (name == "branch-create" || name == "branch-delete") {
-        submit_branches();
     }
 }
 
@@ -508,6 +560,9 @@ Session::Outcome Session::run_stream_op(std::int64_t id, const std::string& name
                     case daemon::OpEvent::Kind::Result:
                         result = event.result_commit_id.empty() ? daemon::result_summary(event.result)
                                                                 : event.result_commit_id;
+                        if (result.empty()) {
+                            result = shelves::result_summary(event.result);
+                        }
                         data = event.result;
                         break;
                     case daemon::OpEvent::Kind::Failure:
@@ -939,6 +994,26 @@ std::int64_t Session::submit_lock(std::vector<std::string> clone_paths) {
         }
         return Outcome{true, "locked " + std::to_string(locked) + " file(s)", {}};
     });
+}
+
+std::int64_t Session::submit_lock_release_request(std::string clone_path, std::string message) {
+    return enqueue("lock-request", false,
+                   [this, clone_path = std::move(clone_path), message = std::move(message)](std::int64_t) {
+                       if (!locks().loaded() && !refresh_locks()) {
+                           return Outcome{false, "lock status is unavailable", {}};
+                       }
+                       auto info = locks().lookup(clone_path);
+                       if (info.state != locks::LockState::Theirs || info.lock_id.empty()) {
+                           return Outcome{false, clone_path + " is not locked by someone else", {}};
+                       }
+                       run_on_link([&](const daemon::Client& client) {
+                           client.call("ProxyLockRequestRelease",
+                                       {{"root", options_.root},
+                                        {"request", {{"lock_id", info.lock_id}, {"message", message}}}},
+                                       options_.unary_timeout, &cancel_);
+                       });
+                       return Outcome{true, "asked " + info.holder + " to release " + info.lock_path, {}};
+                   });
 }
 
 std::int64_t Session::submit_unlock(std::vector<std::string> clone_paths, bool any_holder) {

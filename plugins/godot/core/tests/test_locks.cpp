@@ -90,10 +90,13 @@ TEST_CASE("lookup reports mine, theirs or free for the whole lock unit") {
     CHECK(theirs.state == LockState::Theirs);
     CHECK(theirs.holder == "Ann");
     CHECK(theirs.lock_path == "art/a.png");
+    CHECK(theirs.lock_id == "id-art/a.png");
 
     auto mine = policy.lookup("art/b.png");
     CHECK(mine.state == LockState::Mine);
     CHECK(mine.lock_path == "art/b.png.import");
+    CHECK(mine.lock_id == "id-art/b.png.import");
+    CHECK(policy.lookup("other.png").lock_id.empty());
 
     CHECK(policy.lookup("levels/one.tscn").state == LockState::Theirs);
     CHECK(policy.lookup("other.png").state == LockState::Free);

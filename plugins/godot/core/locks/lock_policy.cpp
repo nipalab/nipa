@@ -170,10 +170,10 @@ LockInfo LockPolicy::lookup(const std::string& clone_path) const {
                 continue;
             }
             if (!is_mine(l)) {
-                return LockInfo{LockState::Theirs, l.holder(), l.path};
+                return LockInfo{LockState::Theirs, l.holder(), l.path, l.id};
             }
             if (!have_mine) {
-                mine = LockInfo{LockState::Mine, l.holder(), l.path};
+                mine = LockInfo{LockState::Mine, l.holder(), l.path, l.id};
                 have_mine = true;
             }
         }
