@@ -63,9 +63,12 @@ function parseQuery(uri: vscode.Uri): BlobQuery | undefined {
 export class SnapshotContentProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<vscode.Uri>();
   private readonly served = new Map<string, vscode.Uri>();
+  private readonly closed: vscode.Disposable;
   readonly onDidChange = this.changed.event;
 
-  constructor(private readonly client: () => Promise<DaemonClient>) {}
+  constructor(private readonly client: () => Promise<DaemonClient>) {
+    this.closed = vscode.workspace.onDidCloseTextDocument((doc) => this.served.delete(doc.uri.toString()));
+  }
 
   async provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> {
     const parsed = parseBlobUri(uri);
@@ -97,6 +100,7 @@ export class SnapshotContentProvider implements vscode.TextDocumentContentProvid
   }
 
   dispose(): void {
+    this.closed.dispose();
     this.changed.dispose();
     this.served.clear();
   }

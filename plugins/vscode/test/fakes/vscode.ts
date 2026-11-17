@@ -178,6 +178,7 @@ export const fake = {
   visibleListeners: new EventEmitter<void>(),
   changeListeners: new EventEmitter<{ document: FakeDocument }>(),
   saveListeners: new EventEmitter<FakeDocument>(),
+  closeListeners: new EventEmitter<{ uri: Uri }>(),
   configListeners: new EventEmitter<{ affectsConfiguration(key: string): boolean }>(),
   decorationTypes: 0,
   reset(): void {
@@ -208,6 +209,7 @@ export const fake = {
     this.visibleListeners = new EventEmitter();
     this.changeListeners = new EventEmitter();
     this.saveListeners = new EventEmitter();
+    this.closeListeners = new EventEmitter();
     this.configListeners = new EventEmitter();
     this.decorationTypes = 0;
   },
@@ -319,6 +321,7 @@ export const workspace = {
   },
   onDidChangeTextDocument: (listener: (e: { document: FakeDocument }) => void) => fake.changeListeners.event(listener),
   onDidSaveTextDocument: (listener: (doc: FakeDocument) => void) => fake.saveListeners.event(listener),
+  onDidCloseTextDocument: (listener: (doc: { uri: Uri }) => void) => fake.closeListeners.event(listener),
   onDidChangeConfiguration: (listener: (e: { affectsConfiguration(key: string): boolean }) => void) => fake.configListeners.event(listener),
   registerTextDocumentContentProvider(scheme: string, provider: any) {
     fake.contentProviders.set(scheme, provider);

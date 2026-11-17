@@ -383,8 +383,14 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
   async unlockPaths(paths: string[]): Promise<void> {
     const status = await this.call<LockStatusResponse>("LockStatus", {});
     const locks = status.locks ?? [];
+    const scoped = inScope(status);
+    const mine = (l: FileLockDetail) => l.held_by === status.user_id;
     for (const p of paths) {
-      const lock = coveringLock(locks, p, (l) => l.held_by === status.user_id) ?? coveringLock(locks, p);
+      const lock =
+        coveringLock(locks, p, (l) => mine(l) && scoped(l)) ??
+        coveringLock(locks, p, mine) ??
+        coveringLock(locks, p, scoped) ??
+        coveringLock(locks, p);
       if (!lock) {
         void vscode.window.showInformationMessage(`${p} is not locked.`);
         continue;
@@ -411,7 +417,9 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
 
   async requestRelease(p: string): Promise<void> {
     const status = await this.call<LockStatusResponse>("LockStatus", {});
-    const lock = coveringLock(status.locks ?? [], p, (l) => l.held_by !== status.user_id);
+    const scoped = inScope(status);
+    const theirs = (l: FileLockDetail) => l.held_by !== status.user_id;
+    const lock = coveringLock(status.locks ?? [], p, (l) => theirs(l) && scoped(l)) ?? coveringLock(status.locks ?? [], p, theirs);
     if (!lock) {
       void vscode.window.showInformationMessage(`${p} is not locked by anyone else.`);
       return;
@@ -884,6 +892,10 @@ function lockText(lock: FileLockState): string {
     return `Locked by ${lock.held_by_name || lock.held_by}`;
   }
   return LOCK_TEXT[lock.state] ?? lock.state;
+}
+
+function inScope(status: LockStatusResponse): (lock: FileLockDetail) => boolean {
+  return (lock) => (status.default_branch ? lock.global : !lock.global && lock.branch === status.branch);
 }
 
 function holder(lock: FileLockDetail): string {

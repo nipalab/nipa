@@ -126,6 +126,32 @@ describe("locks", () => {
     expect(fake.messages.at(-1)).toMatchObject({ level: "error", text: "Nipa: could not unlock art: gone" });
   });
 
+  it("prefers locks in the clone's branch scope", async () => {
+    const repo = await open();
+    locks = [
+      lockDetail("art.png", "bob", { global: true, branch: "", id: "mainline" }),
+      lockDetail("art.png", "ana", { id: "feature" }),
+      lockDetail("art.png", "me", { global: true, branch: "", id: "my-mainline" }),
+      lockDetail("art.png", "me", { id: "my-feature" }),
+    ];
+    fake.inputBox = "";
+    await repo.requestRelease("art.png");
+    expect(calls("ProxyLockRequestRelease")[0].body.request.lock_id).toBe("feature");
+    await repo.unlockPaths(["art.png"]);
+    expect(calls("ProxyUnlockFile")[0].body.request).toEqual({ path: "art.png", branch: "feature" });
+
+    daemon.on("LockStatus", () => ({ json: { user_id: "me", branch: "main", default_branch: true, locks, files: [] } }));
+    await repo.requestRelease("art.png");
+    expect(calls("ProxyLockRequestRelease")[1].body.request.lock_id).toBe("mainline");
+    await repo.unlockPaths(["art.png"]);
+    expect(calls("ProxyUnlockFile")[1].body.request).toEqual({ path: "art.png", branch: "" });
+
+    locks = [lockDetail("art.png", "bob", { global: true, branch: "", id: "only-mainline" })];
+    daemon.on("LockStatus", () => ({ json: { user_id: "me", branch: "feature", default_branch: false, can_release_any: false, locks, files: [] } }));
+    await repo.requestRelease("art.png");
+    expect(calls("ProxyLockRequestRelease")[2].body.request.lock_id).toBe("only-mainline");
+  });
+
   it("asks the holder to release", async () => {
     const repo = await open();
     locks = [lockDetail("art/hero.png", "ana"), lockDetail("mine.png", "me")];
@@ -421,6 +447,20 @@ describe("activity", () => {
 });
 
 describe("blob documents", () => {
+  it("stops refreshing documents once they are closed", async () => {
+    daemon.on("ReadBlob", () => ({ lines: [{ data: Buffer.from("x").toString("base64") }] }));
+    const token = new CancellationTokenSource().token;
+    const a = blobUri(root, { source: "snapshot", path: "a.txt" });
+    const b = blobUri(root, { source: "snapshot", path: "b.txt" });
+    await snapshots.provideTextDocumentContent(a as never, token);
+    await snapshots.provideTextDocumentContent(b as never, token);
+    fake.closeListeners.fire({ uri: a });
+    const fired: string[] = [];
+    snapshots.onDidChange((u) => fired.push(u.toString()));
+    snapshots.refresh(root);
+    expect(fired).toEqual([b.toString()]);
+  });
+
   it("serves revision and shelf sides without the working fallback", async () => {
     daemon.on("ReadBlob", (body) =>
       body.blob.source === "revision" ? { lines: [{ data: Buffer.from(`rev ${body.blob.revision}`).toString("base64") }] } : { lines: [{ failure: { code: 404, message: "no" } }] },

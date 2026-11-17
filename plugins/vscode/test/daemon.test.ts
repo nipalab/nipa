@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { DaemonClient, DaemonError } from "../src/daemon/client";
-import { connect, processAlive, resolveBinary } from "../src/daemon/connector";
+import { connect, processAlive, resolveBinary, startDetached } from "../src/daemon/connector";
 import { defaultEndpointPath, readEndpoint } from "../src/daemon/endpoint";
 import { describeError, readBlob, runOp } from "../src/daemon/ops";
 import { DaemonSession } from "../src/daemon/session";
@@ -178,6 +178,7 @@ describe("connector", () => {
     const conn = await connect({
       endpointPath: file,
       binary: "/bin/nipa",
+      exists: () => true,
       pollIntervalMs: 5,
       start: (bin, ep) => {
         started.push([bin, ep ?? ""]);
@@ -192,10 +193,10 @@ describe("connector", () => {
     const file = path.join(dir, "daemon.json");
     await writeEndpoint(file);
     await expect(
-      connect({ endpointPath: file, binary: "nipa", alive: () => false, start: () => undefined, startTimeoutMs: 30, pollIntervalMs: 5 }),
+      connect({ endpointPath: file, binary: "nipa", exists: () => true, alive: () => false, start: () => undefined, startTimeoutMs: 30, pollIntervalMs: 5 }),
     ).rejects.toThrow("did not start");
     await expect(
-      connect({ endpointPath: file, binary: "nipa", start: () => undefined, startTimeoutMs: 30, pollIntervalMs: 5 }),
+      connect({ endpointPath: file, binary: "nipa", exists: () => true, start: () => undefined, startTimeoutMs: 30, pollIntervalMs: 5 }),
     ).rejects.toThrow("did not start");
   });
 
@@ -207,11 +208,28 @@ describe("connector", () => {
 
   it("resolves the binary from settings, env and PATH", () => {
     const none = () => false;
-    expect(resolveBinary("/cfg/nipa", {}, "linux", none)).toBe("/cfg/nipa");
-    expect(resolveBinary(undefined, { NIPA_BIN: "/env/nipa" }, "linux", none)).toBe("/env/nipa");
+    const all = () => true;
+    expect(resolveBinary("/cfg/nipa", {}, "linux", all)).toBe("/cfg/nipa");
+    expect(resolveBinary(undefined, { NIPA_BIN: "/env/nipa" }, "linux", all)).toBe("/env/nipa");
+    expect(() => resolveBinary("/typo/nipa", { NIPA_BIN: "/env/nipa" }, "linux", none)).toThrow("nipa CLI not found at /typo/nipa (from the nipa.path setting)");
+    expect(() => resolveBinary(undefined, { NIPA_BIN: "/env/nipa" }, "linux", none)).toThrow("nipa CLI not found at /env/nipa (from NIPA_BIN)");
     expect(resolveBinary(undefined, { PATH: ":/a:/b" }, "linux", (f) => f === path.join("/b", "nipa"))).toBe(path.join("/b", "nipa"));
     expect(resolveBinary(undefined, { Path: "C:\\a" }, "win32", (f) => f.endsWith("nipa.exe"))).toContain("nipa.exe");
     expect(() => resolveBinary(undefined, {}, "linux", none)).toThrow("nipa CLI not found");
+  });
+
+  it("fails fast with the binary named when it is missing or cannot start", async () => {
+    const file = path.join(dir, "daemon.json");
+    await expect(connect({ endpointPath: file, binary: path.join(dir, "missing") })).rejects.toThrow(`nipa CLI not found at ${path.join(dir, "missing")}`);
+    const notExecutable = path.join(dir, "nipa");
+    await fs.writeFile(notExecutable, "not a program");
+    const started = Date.now();
+    await expect(connect({ endpointPath: file, binary: notExecutable, startTimeoutMs: 10_000 })).rejects.toThrow(`could not start ${notExecutable} serve:`);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("starts a detached process", async () => {
+    await expect(startDetached(process.execPath, path.join(dir, "daemon.json"))).resolves.toBeUndefined();
   });
 
   it("checks process liveness", () => {
