@@ -5,6 +5,7 @@ import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
+import { isMac } from "@/lib/shortcuts";
 import { cn, shortVersion } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
@@ -27,6 +28,7 @@ export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onCl
   const size = useResizableWidth("sidebar", { initial: 256, min: 180, max: 480 });
   return (
     <aside className="relative flex shrink-0 flex-col border-r border-border bg-sidebar" ref={size.ref} style={{ width: size.width }}>
+      {isMac() && <div data-testid="mac-titlebar" className="drag-region h-7 shrink-0" />}
       <div className="drag-region flex h-12 items-center gap-2 pl-4 pr-2 pt-1">
         <Logo className="size-5" />
         <span className="flex-1 text-sm font-semibold tracking-tight">{t("sidebar.nipa")}</span>

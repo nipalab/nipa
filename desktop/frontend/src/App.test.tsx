@@ -103,7 +103,13 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "game" });
       const bar = screen.getByTestId("mac-titlebar");
       expect(bar).toHaveClass("drag-region");
+      expect(bar.closest("aside")).toContainElement(screen.getByRole("navigation", { name: "Repositories" }));
+      expect(screen.getByRole("main")).not.toContainElement(bar);
       expect(bar.compareDocumentPosition(screen.getByRole("navigation", { name: "Repositories" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      await userEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
+      expect(screen.queryByTestId("mac-titlebar")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show sidebar" })).toHaveClass("ml-[72px]");
     } finally {
       platform.mockRestore();
     }
@@ -115,6 +121,8 @@ describe("App", () => {
       renderWithProviders(<App />);
       await screen.findByRole("heading", { name: "game" });
       expect(screen.queryByTestId("mac-titlebar")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
+      expect(screen.getByRole("button", { name: "Show sidebar" })).not.toHaveClass("ml-[72px]");
     } finally {
       platform.mockRestore();
     }
