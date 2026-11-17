@@ -26,6 +26,33 @@ namespace Nipa.Editor
                 NipaHost.Run("Unlock", (s, _) => s.UnlockAsync(clonePaths));
         }
 
+        public static void RequestRelease(string clonePath)
+        {
+            var session = NipaHost.Session;
+            if (session == null)
+                return;
+            var info = session.Locks.Lookup(clonePath);
+            if (info.State != Core.Locks.LockState.Theirs)
+            {
+                EditorUtility.DisplayDialog("Nipa: Ask to release", clonePath + " is not locked by someone else.", "OK");
+                return;
+            }
+            NipaPrompt.Ask("Nipa: Ask to release", "Ask " + info.Holder + " to release " + info.LockPath + ". Add an optional note:",
+                string.Empty, "Send request", true, note =>
+                    NipaHost.Run("Ask to release", (s, _) => s.RequestReleaseAsync(clonePath, note), onSuccess: () =>
+                        EditorUtility.DisplayDialog("Nipa: Ask to release", "Request sent to " + info.Holder + ".", "OK")));
+        }
+
+        public static bool IsWatched(string clonePath) => NipaHost.Watches.IsWatched(clonePath);
+
+        public static void ToggleWatch(string clonePath)
+        {
+            if (IsWatched(clonePath))
+                NipaHost.Watches.Unwatch(clonePath);
+            else
+                NipaHost.Watches.Watch(clonePath);
+        }
+
         public static string Describe(LockResult result)
         {
             var lines = result.Failed.Select(f => "• " + f.Path + " — " + (f.Holder != null ? "locked by " + f.Holder : f.Message));

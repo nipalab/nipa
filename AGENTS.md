@@ -344,8 +344,15 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
   `ProjectPaths`, `NipaSession`, `LockPolicy` for covering-lock checks,
   strict mode and the push pre-check, `MergeTool` for UnityYAMLMerge conflict
-  merges, `SetupChecker` (Force Text, visible meta, `.nipaignore` template;
-  Setup tab), `make unity-pack` tarball + `.github/workflows/unity-plugin.yml`, branch/tag/history/conflict calls on `NipaSession`; locks surface through
+  merges, `LockWatches` (notify-when-free paths, `EditorUserSettings`
+  `Nipa.LockWatches`), `OpSummary`, `SetupChecker` (Force Text, visible meta, `.nipaignore` template;
+  Setup tab), `make unity-pack` tarball + `.github/workflows/unity-plugin.yml`, branch/tag/history/conflict calls on `NipaSession` plus merge
+  (`Merge{source_branch}`), `ProxyBranchCreate`/`ProxyBranchDelete`, shelves
+  (`ShelveCreate`/`ShelveApply`/`ShelveList`/`ShelveDrop`, Shelves tab, pending
+  `shelf` banner), `SyncPlan` behind `NipaHost.Sync` ("Shelve and continue"
+  before Update/switch/tag checkout, open scenes saved first through
+  `NipaHost.SaveOpenScenes`) and `ProxyLockRequestRelease` (Ask to release,
+  `lock_requested` prompt); locks surface through
   `AssetModificationProcessor`, overlays, the Inspector header and a Locks
   tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +

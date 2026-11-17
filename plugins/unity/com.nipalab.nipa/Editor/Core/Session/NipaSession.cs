@@ -495,6 +495,94 @@ namespace Nipa.Editor.Core.Session
             return true;
         }
 
+        public Task<OpResult> MergeAsync(string sourceBranch, Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            return RunOp("Merge", new MergeOpRequest { Root = Root, SourceBranch = sourceBranch }, onEvent, ct);
+        }
+
+        public async Task<Branch> CreateBranchAsync(string name, CancellationToken ct = default)
+        {
+            var request = new CreateBranchRequest { Name = name };
+            var head = Cache.Head;
+            if (head != null && head.Kind == "tag")
+            {
+                var tag = await FindTagAsync(head.Name, ct).ConfigureAwait(false);
+                if (tag == null)
+                    throw new DaemonException(404, "tag " + head.Name + " not found");
+                request.FromCommitId = tag.CommitId;
+            }
+            else
+            {
+                request.FromBranch = Cache.Branch;
+            }
+            var res = await Call<ProxyBranchCreateRequest, ProxyBranchCreateResponse>("ProxyBranchCreate",
+                new ProxyBranchCreateRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+            return res.Response?.Branch;
+        }
+
+        public async Task DeleteBranchAsync(string name, CancellationToken ct = default)
+        {
+            await Call<ProxyBranchDeleteRequest, ProxyBranchDeleteResponse>("ProxyBranchDelete",
+                new ProxyBranchDeleteRequest { Root = Root, Request = new DeleteBranchRequest { Name = name } }, ct).ConfigureAwait(false);
+        }
+
+        public async Task<List<string>> SyncPlanAsync(string branch, string tag, CancellationToken ct = default)
+        {
+            var res = await Call<SyncPlanRequest, SyncPlanResponse>("SyncPlan",
+                new SyncPlanRequest { Root = Root, Branch = branch, Tag = tag }, ct).ConfigureAwait(false);
+            return res.Overwritten ?? new List<string>();
+        }
+
+        public Task<OpResult> ShelveAsync(string name, IEnumerable<string> clonePaths, bool includeUntracked,
+            Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            var req = new ShelveCreateRequest
+            {
+                Root = Root,
+                Name = name,
+                Paths = clonePaths == null ? new List<string>() : Expand(clonePaths),
+                IncludeUntracked = includeUntracked,
+            };
+            return RunOp("ShelveCreate", req, onEvent, ct);
+        }
+
+        public async Task<ShelveListResponse> ShelvesAsync(CancellationToken ct = default)
+        {
+            var res = await Call<ShelveListRequest, ShelveListResponse>("ShelveList",
+                new ShelveListRequest { Root = Root }, ct).ConfigureAwait(false);
+            res.Shelves = res.Shelves ?? new List<Shelf>();
+            return res;
+        }
+
+        public Task<OpResult> ApplyShelfAsync(string id, bool keep, Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            return RunOp("ShelveApply", new ShelveApplyRequest { Root = Root, Id = id, Keep = keep }, onEvent, ct);
+        }
+
+        public Task<OpResult> AbortShelfApplyAsync(Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            return RunOp("ShelveApply", new ShelveApplyRequest { Root = Root, Abort = true }, onEvent, ct);
+        }
+
+        public async Task DropShelfAsync(string id, CancellationToken ct = default)
+        {
+            await Call<ShelveDropRequest, ShelveDropResponse>("ShelveDrop",
+                new ShelveDropRequest { Root = Root, Id = id }, ct).ConfigureAwait(false);
+        }
+
+        public async Task RequestReleaseAsync(string clonePath, string message, CancellationToken ct = default)
+        {
+            var info = locks.Lookup(clonePath);
+            if (info.State != LockState.Theirs || string.IsNullOrEmpty(info.Lock?.Id))
+                throw new DaemonException(400, Trim(clonePath) + " is not locked by someone else");
+            await Call<ProxyLockRequestReleaseRequest, ProxyLockRequestReleaseResponse>("ProxyLockRequestRelease",
+                new ProxyLockRequestReleaseRequest
+                {
+                    Root = Root,
+                    Request = new RequestFileLockReleaseRequest { LockId = info.Lock.Id, Message = (message ?? string.Empty).Trim() },
+                }, ct).ConfigureAwait(false);
+        }
+
         public Task<OpResult> AbortMergeAsync(Action<OpEvent> onEvent, CancellationToken ct = default)
         {
             return RunOp("Merge", new MergeOpRequest { Root = Root, Abort = true }, onEvent, ct);
@@ -647,7 +735,7 @@ namespace Nipa.Editor.Core.Session
         {
             Incoming = a.Incoming;
             ReviewRequests = a.ReviewRequests;
-            if (a.Events != null && a.Events.Any(e => e.Kind == "lock_released"))
+            if (a.Events != null && a.Events.Any(e => e.Kind == "lock_released" || e.Kind == "lock_requested"))
                 await TryRefreshLocksAsync(ct).ConfigureAwait(false);
             Activity?.Invoke(a);
         }

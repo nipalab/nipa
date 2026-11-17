@@ -5,6 +5,7 @@ using Nipa.Editor.Core.Daemon;
 using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Merge;
 using Nipa.Editor.Core.Paths;
+using Nipa.Editor.Core.Session;
 using Nipa.Editor.Core.Status;
 using UnityEditor;
 using UnityEngine;
@@ -38,12 +39,32 @@ namespace Nipa.Editor
         string historyKey;
         bool historyLoading;
         string historyError;
+        ShelveListResponse shelves;
+        bool shelvesLoading;
+        object shelvesSession;
+        int shelvesVersion = -1;
+        string shelvesError;
+
+        public const int ChangesTab = 0;
+        public const int LocksTab = 1;
+        public const int ConflictsTab = 2;
+        public const int HistoryTab = 3;
+        public const int ShelvesTab = 4;
+        public const int SetupTab = 5;
 
         public static void Open()
         {
             var w = GetWindow<NipaWindow>("Nipa");
             w.minSize = new Vector2(320, 360);
             w.Show();
+        }
+
+        public static void OpenTab(int index)
+        {
+            var w = GetWindow<NipaWindow>("Nipa");
+            w.tab = index;
+            w.Show();
+            w.Repaint();
         }
 
         const int MaxRows = 500;
@@ -92,29 +113,36 @@ namespace Nipa.Editor
                 "Locks (" + session.Locks.Mine.Count() + ")",
                 "Conflicts" + (conflictCount > 0 ? " (" + conflictCount + ")" : string.Empty),
                 "History",
+                "Shelves" + (shelves != null && shelves.Shelves.Count > 0 ? " (" + shelves.Shelves.Count + ")" : string.Empty),
                 "Setup" + (setupCount > 0 ? " (" + setupCount + ")" : string.Empty),
             });
-            if (tab == 2)
+            if (tab == ConflictsTab)
                 LoadConflicts(session);
+            if (tab == ShelvesTab)
+                LoadShelves(session);
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            if (tab == 0)
+            if (tab == ChangesTab)
             {
                 DrawList("Changes", changeRows, selectedChanges, "Stage", "Stage all", paths =>
                     NipaHost.Run("Stage", (s, _) => s.StageAsync(paths)));
                 DrawList("Staged", stagedRows, selectedStaged, "Unstage", "Unstage all", paths =>
                     NipaHost.Run("Unstage", (s, _) => s.UnstageAsync(paths)));
             }
-            else if (tab == 1)
+            else if (tab == LocksTab)
             {
                 DrawLocks(session);
             }
-            else if (tab == 2)
+            else if (tab == ConflictsTab)
             {
                 DrawConflicts(session);
             }
-            else if (tab == 3)
+            else if (tab == HistoryTab)
             {
                 DrawHistory(session);
+            }
+            else if (tab == ShelvesTab)
+            {
+                DrawShelves(session);
             }
             else
             {
@@ -122,7 +150,7 @@ namespace Nipa.Editor
             }
             EditorGUILayout.EndScrollView();
 
-            if (tab == 0)
+            if (tab == ChangesTab)
                 DrawFooter(stagedRows.Count);
         }
 
@@ -159,7 +187,7 @@ namespace Nipa.Editor
                 using (new EditorGUI.DisabledScope(session == null || NipaHost.Busy != null))
                 {
                     if (GUILayout.Button("Update", EditorStyles.toolbarButton))
-                        NipaHost.Run("Update", (s, on) => s.UpdateAsync(on), refreshAssets: true);
+                        RunUpdate();
                 }
                 using (new EditorGUI.DisabledScope(session?.DesktopLink("changes") == null))
                 {
@@ -202,6 +230,17 @@ namespace Nipa.Editor
 
         void DrawPending(StatusCache cache)
         {
+            if (cache.Pending == "shelf")
+            {
+                EditorGUILayout.HelpBox("A shelf apply is waiting on conflicts. Resolve them in the Conflicts tab; the last resolution finishes it.", MessageType.Warning);
+                using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+                {
+                    if (GUILayout.Button("Abort shelf apply") && EditorUtility.DisplayDialog("Nipa: Abort shelf apply", "Put the applied files back to the pushed version? The shelf is kept.", "Abort", "Cancel")
+                        && NipaHost.SaveOpenScenes())
+                        NipaHost.Run("Abort shelf apply", (s, on) => s.AbortShelfApplyAsync(on), refreshAssets: true);
+                }
+                return;
+            }
             var text = "A " + cache.Pending + " is waiting"
                 + (cache.Pending == "revert" && cache.PendingRemaining > 1 ? " (" + cache.PendingRemaining + " steps left)" : string.Empty) + ".";
             EditorGUILayout.HelpBox(text, MessageType.Warning);
@@ -227,14 +266,22 @@ namespace Nipa.Editor
                         if (GUILayout.Button("Finish (push)"))
                             PushWithLockCheck(string.IsNullOrWhiteSpace(message) ? "Merge" : message);
                     }
-                    if (GUILayout.Button("Abort") && EditorUtility.DisplayDialog("Nipa: Abort merge", "Abort the merge and restore the original state?", "Abort", "Cancel"))
+                    if (GUILayout.Button("Abort") && EditorUtility.DisplayDialog("Nipa: Abort merge", "Abort the merge and restore the original state?", "Abort", "Cancel")
+                        && NipaHost.SaveOpenScenes())
                         NipaHost.Run("Abort merge", (s, on) => s.AbortMergeAsync(on), refreshAssets: true);
                 }
             }
         }
 
+        static void RunUpdate()
+        {
+            NipaHost.Sync("Update", "update", null, null, (s, on) => s.UpdateAsync(on));
+        }
+
         static void RunRevert(string step)
         {
+            if (!NipaHost.SaveOpenScenes())
+                return;
             NipaHost.Run("Revert", (s, on) => s.RevertStepAsync(step, on), refreshAssets: true);
         }
 
@@ -403,7 +450,7 @@ namespace Nipa.Editor
                 using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
                 {
                     if (GUILayout.Button("Update"))
-                        NipaHost.Run("Update", (s, on) => s.UpdateAsync(on), refreshAssets: true);
+                        RunUpdate();
                 }
             }
             if (session.ReviewRequests > 0)
@@ -430,16 +477,50 @@ namespace Nipa.Editor
                 {
                     GUILayout.Label(new GUIContent(l.Path, l.Path), GUILayout.MinWidth(80));
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label(policy.IsMine(l) ? "you" : l.HeldByName, EditorStyles.miniLabel, GUILayout.Width(80));
-                    using (new EditorGUI.DisabledScope(!policy.CanRelease(l) || NipaHost.Busy != null))
+                    var requests = l.Requests ?? new List<FileLockRequestDetail>();
+                    if (policy.IsMine(l) && requests.Count > 0)
                     {
-                        if (GUILayout.Button("Release", GUILayout.Width(64)))
-                            NipaHost.Run("Release", (s, _) => s.ReleaseAsync(l));
+                        var who = string.Join("\n", requests.Select(r => (string.IsNullOrEmpty(r.RequesterName) ? r.RequesterId : r.RequesterName)
+                            + (string.IsNullOrWhiteSpace(r.Message) ? string.Empty : ": " + r.Message)));
+                        GUILayout.Label(new GUIContent(requests.Count + " request(s)", "Asked to release:\n" + who), EditorStyles.miniBoldLabel, GUILayout.Width(80));
+                    }
+                    GUILayout.Label(policy.IsMine(l) ? "you" : l.HeldByName, EditorStyles.miniLabel, GUILayout.Width(80));
+                    using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+                    {
+                        if (!policy.IsMine(l))
+                        {
+                            var target = ProjectPaths.AssetOf(ProjectPaths.Normalize(l.Path).Trim('/'));
+                            if (GUILayout.Button(new GUIContent("Ask", "Ask the holder to release this lock"), GUILayout.Width(40)))
+                                NipaLocks.RequestRelease(target);
+                            var watched = NipaLocks.IsWatched(target);
+                            if (GUILayout.Button(new GUIContent(watched ? "Unwatch" : "Notify", watched ? "Stop the notification" : "Ask to lock it when it is released"), GUILayout.Width(60)))
+                                NipaLocks.ToggleWatch(target);
+                        }
+                        using (new EditorGUI.DisabledScope(!policy.CanRelease(l)))
+                        {
+                            if (GUILayout.Button("Release", GUILayout.Width(64)))
+                                NipaHost.Run("Release", (s, _) => s.ReleaseAsync(l));
+                        }
                     }
                 }
             }
             if (locks.Count == 0)
                 EditorGUILayout.HelpBox("No locks.", MessageType.None);
+            var watches = NipaHost.Watches.Paths;
+            if (watches.Count == 0)
+                return;
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Notify when free (" + watches.Count + ")", EditorStyles.boldLabel);
+            foreach (var w in watches.ToList())
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(new GUIContent(w, w), GUILayout.MinWidth(80));
+                    GUILayout.FlexibleSpace();
+                    if (GUILayout.Button("Remove", GUILayout.Width(64)))
+                        NipaHost.Watches.Unwatch(w);
+                }
+            }
         }
 
         void PushWithLockCheck(string msg)
@@ -509,10 +590,118 @@ namespace Nipa.Editor
                         run(selected.ToList());
                     if (title == "Changes" && GUILayout.Button("Restore"))
                         RestoreSelected(rows, selected);
+                    if (GUILayout.Button(new GUIContent("Shelve", "Put the selected changes aside and restore the files")))
+                        Shelve(selected.ToList());
                 }
                 if (GUILayout.Button(allLabel))
                     run(rows.Select(r => r.Path).ToList());
             }
+        }
+
+        void Shelve(List<string> paths)
+        {
+            if (paths.Count == 0)
+                return;
+            NipaPrompt.Ask("Nipa: Shelve", "Shelve " + paths.Count + " change(s). The files go back to the pushed version; apply the shelf later from the Shelves tab.",
+                OpSummary.ShelfName("shelve", System.DateTime.Now).Substring("Before ".Length), "Shelve", false, name =>
+                {
+                    if (!NipaHost.SaveOpenScenes())
+                        return;
+                    OpResult result = null;
+                    NipaHost.Run("Shelve", async (s, on) => result = await s.ShelveAsync(name, paths, false, on), refreshAssets: true, onSuccess: () =>
+                    {
+                        shelvesVersion = -1;
+                        NipaHost.Notices.Add(OpSummary.Describe(result) ?? "shelved");
+                        NipaHost.NotifyChanged();
+                    });
+                });
+        }
+
+        void LoadShelves(Core.Session.NipaSession session)
+        {
+            if (shelvesLoading)
+                return;
+            if (ReferenceEquals(shelvesSession, session) && shelvesVersion == session.Cache.Version)
+                return;
+            shelvesSession = session;
+            shelvesVersion = session.Cache.Version;
+            shelvesLoading = true;
+            Task.Run(async () =>
+            {
+                ShelveListResponse list = null;
+                string error = null;
+                try
+                {
+                    list = await session.ShelvesAsync().ConfigureAwait(false);
+                }
+                catch (System.Exception e)
+                {
+                    error = e.Message;
+                }
+                MainThread.Post(() =>
+                {
+                    shelvesLoading = false;
+                    shelvesError = error;
+                    if (list != null)
+                        shelves = list;
+                    Repaint();
+                });
+            });
+        }
+
+        void DrawShelves(Core.Session.NipaSession session)
+        {
+            if (shelvesError != null)
+                EditorGUILayout.HelpBox("Could not load shelves: " + shelvesError, MessageType.Warning);
+            if (shelves == null || shelves.Shelves.Count == 0)
+            {
+                EditorGUILayout.HelpBox(shelvesLoading ? "Loading..." : "No shelves. Select changes and press Shelve to put them aside.", MessageType.None);
+                return;
+            }
+            var pending = !string.IsNullOrEmpty(session.Cache.Pending);
+            foreach (var shelf in shelves.Shelves.OrderByDescending(x => x.CreatedAt))
+            {
+                var entries = shelf.Entries ?? new List<ShelfEntry>();
+                var when = System.DateTimeOffset.FromUnixTimeSeconds(shelf.CreatedAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+                var scope = string.IsNullOrEmpty(shelf.Tag) ? shelf.Branch : "tag " + shelf.Tag;
+                var tip = string.Join("\n", entries.Take(20).Select(e => e.Status + "  " + e.Path)) + (entries.Count > 20 ? "\n…" : string.Empty);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var applying = shelf.Id == shelves.Applying;
+                    GUILayout.Label(new GUIContent(shelf.Name + (applying ? "  [applying]" : string.Empty), tip), GUILayout.MinWidth(80));
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(entries.Count + " file(s) · " + scope + " · " + when, EditorStyles.miniLabel);
+                    using (new EditorGUI.DisabledScope(NipaHost.Busy != null || pending))
+                    {
+                        if (GUILayout.Button(new GUIContent("Apply", "Apply and delete the shelf"), GUILayout.Width(48)))
+                            ApplyShelf(shelf, false);
+                        if (GUILayout.Button(new GUIContent("Keep", "Apply and keep the shelf"), GUILayout.Width(44)))
+                            ApplyShelf(shelf, true);
+                        if (GUILayout.Button("Delete", GUILayout.Width(52))
+                            && EditorUtility.DisplayDialog("Nipa: Delete shelf", "Delete shelf \"" + shelf.Name + "\"? Its changes are lost.", "Delete", "Cancel"))
+                        {
+                            var id = shelf.Id;
+                            NipaHost.Run("Delete shelf", (s, _) => s.DropShelfAsync(id), onSuccess: () => shelvesVersion = -1);
+                        }
+                    }
+                }
+            }
+        }
+
+        void ApplyShelf(Shelf shelf, bool keep)
+        {
+            if (!NipaHost.SaveOpenScenes())
+                return;
+            var id = shelf.Id;
+            OpResult result = null;
+            NipaHost.Run("Apply shelf", async (s, on) => result = await s.ApplyShelfAsync(id, keep, on), refreshAssets: true, onSuccess: () =>
+            {
+                shelvesVersion = -1;
+                if (OpSummary.HasConflicts(result))
+                    tab = ConflictsTab;
+                NipaHost.Notices.Add("\"" + shelf.Name + "\": " + OpSummary.Describe(result));
+                NipaHost.NotifyChanged();
+            });
         }
 
         void RestoreSelected(List<Row> rows, HashSet<string> selected)

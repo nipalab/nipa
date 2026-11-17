@@ -29,6 +29,83 @@ namespace Nipa.Editor
 
         public static List<string> Notices { get; } = new List<string>();
 
+        const string WatchesKey = "Nipa.LockWatches";
+        static LockWatches watches;
+
+        public static LockWatches Watches
+        {
+            get
+            {
+                if (watches != null)
+                    return watches;
+                watches = LockWatches.Parse(EditorUserSettings.GetConfigValue(WatchesKey));
+                watches.Changed += () =>
+                {
+                    EditorUserSettings.SetConfigValue(WatchesKey, watches.Serialize());
+                    Changed?.Invoke();
+                };
+                return watches;
+            }
+        }
+
+        public static bool SaveOpenScenes()
+        {
+            if (UnityEngine.Application.isBatchMode)
+                return true;
+            return UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo();
+        }
+
+        public static void Sync(string title, string operation, string branch, string tag,
+            Func<NipaSession, Action<OpEvent>, Task> op, Action onSuccess = null)
+        {
+            var session = Session;
+            if (session == null || Busy != null || !SaveOpenScenes())
+                return;
+            Busy = "Checking local changes";
+            BusyProgress = -1f;
+            Changed?.Invoke();
+            Task.Run(async () =>
+            {
+                List<string> overwritten = null;
+                try
+                {
+                    overwritten = await session.SyncPlanAsync(branch, tag).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogWarning("[Nipa] Could not check local changes before " + operation + ": " + e.Message);
+                }
+                MainThread.Post(() =>
+                {
+                    Busy = null;
+                    Changed?.Invoke();
+                    if (overwritten == null || overwritten.Count == 0)
+                    {
+                        Run(title, op, refreshAssets: true, onSuccess: onSuccess);
+                        return;
+                    }
+                    var list = string.Join("\n", overwritten.Take(10).Select(p => "• " + p)) + (overwritten.Count > 10 ? "\n…" : string.Empty);
+                    var choice = EditorUtility.DisplayDialogComplex("Nipa: " + title,
+                        title + " would replace your local changes to " + overwritten.Count + " file(s):\n" + list
+                        + "\n\nShelve them first? Apply the shelf afterwards from the Shelves tab.",
+                        "Shelve and continue", "Cancel", "Overwrite them");
+                    if (choice == 1)
+                        return;
+                    if (choice == 2)
+                    {
+                        Run(title, op, refreshAssets: true, onSuccess: onSuccess);
+                        return;
+                    }
+                    var name = OpSummary.ShelfName(operation, DateTime.Now);
+                    Run(title, async (s, on) =>
+                    {
+                        await s.ShelveAsync(name, overwritten, true, on).ConfigureAwait(false);
+                        await op(s, on).ConfigureAwait(false);
+                    }, refreshAssets: true, onSuccess: onSuccess);
+                });
+            });
+        }
+
         public static void NotifyChanged() => Changed?.Invoke();
 
         public static void DismissNotices()
@@ -182,8 +259,13 @@ namespace Nipa.Editor
         public static void Run(string title, Func<NipaSession, Action<OpEvent>, Task> op, bool refreshAssets = false, Action onSuccess = null)
         {
             var session = Session;
-            if (session == null || Busy != null)
+            if (session == null)
                 return;
+            if (Busy != null)
+            {
+                NipaLocks.Tell("Nipa: " + title, Busy + " is still running. Try again when it has finished.");
+                return;
+            }
             Busy = title;
             BusyProgress = -1f;
             Changed?.Invoke();
@@ -219,11 +301,15 @@ namespace Nipa.Editor
             {
                 foreach (var e in a.Events)
                 {
-                    var text = Describe(e);
+                    var text = OpSummary.Describe(e);
                     if (text == null)
                         continue;
                     Notices.Add(text);
                     UnityEngine.Debug.Log("[Nipa] " + text);
+                    if (e.Kind == "lock_requested")
+                        PromptRelease(e);
+                    else if (e.Kind == "lock_released")
+                        PromptWatched(e);
                 }
                 while (Notices.Count > 20)
                     Notices.RemoveAt(0);
@@ -231,19 +317,34 @@ namespace Nipa.Editor
             OnCacheChanged();
         }
 
-        static string Describe(TeamEvent e)
+        static void PromptRelease(TeamEvent e)
         {
-            switch (e.Kind)
+            if (string.IsNullOrEmpty(e.Path) || UnityEngine.Application.isBatchMode)
+                return;
+            var path = e.Path;
+            var note = string.IsNullOrWhiteSpace(e.Message) ? string.Empty : "\n\n\"" + e.Message + "\"";
+            EditorApplication.delayCall += () =>
             {
-                case "pushed":
-                    return e.Actor + " pushed " + e.Count + " commit(s) to " + e.Branch + ": " + e.Message;
-                case "review_requested":
-                    return e.Actor + " requested your review on !" + e.Number + " " + e.Message;
-                case "lock_released":
-                    return e.Path + " is no longer locked by " + e.Actor;
-                default:
-                    return null;
-            }
+                if (EditorUtility.DisplayDialog("Nipa: release requested",
+                    (string.IsNullOrEmpty(e.Actor) ? "A teammate" : e.Actor) + " asks you to release your lock on " + path + "." + note,
+                    "Release lock", "Keep it"))
+                    NipaLocks.Unlock(new List<string> { path });
+            };
+        }
+
+        static void PromptWatched(TeamEvent e)
+        {
+            if (string.IsNullOrEmpty(e.Path) || UnityEngine.Application.isBatchMode)
+                return;
+            var hits = Watches.TakeHits(e.Path);
+            if (hits.Count == 0)
+                return;
+            EditorApplication.delayCall += () =>
+            {
+                var list = string.Join("\n", hits.Select(p => "• " + p));
+                if (EditorUtility.DisplayDialog("Nipa: lock released", "Free to lock now:\n" + list, "Lock now", "Later"))
+                    NipaLocks.Lock(hits);
+            };
         }
 
         static void ClearError()

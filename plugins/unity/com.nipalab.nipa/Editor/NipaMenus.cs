@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEditor;
 
 namespace Nipa.Editor
@@ -34,6 +35,18 @@ namespace Nipa.Editor
         [MenuItem("Assets/Nipa/Unlock", true)]
         static bool AssetsUnlockValid() => HasSelection();
 
+        [MenuItem("Assets/Nipa/Ask to Release...")]
+        static void AssetsRequestRelease() => RequestRelease();
+
+        [MenuItem("Assets/Nipa/Ask to Release...", true)]
+        static bool AssetsRequestReleaseValid() => SelectedTheirs() != null;
+
+        [MenuItem("Assets/Nipa/Notify When Free")]
+        static void AssetsWatch() => ToggleWatch();
+
+        [MenuItem("Assets/Nipa/Notify When Free", true)]
+        static bool AssetsWatchValid() => WatchValid("Assets/Nipa/Notify When Free");
+
         [MenuItem("Assets/Nipa/Refresh")]
         static void AssetsRefresh() => NipaHost.Refresh();
 
@@ -64,6 +77,18 @@ namespace Nipa.Editor
         [MenuItem("CONTEXT/Nipa/Unlock", true)]
         static bool ContextUnlockValid() => HasSelection();
 
+        [MenuItem("CONTEXT/Nipa/Ask to Release...")]
+        static void ContextRequestRelease() => RequestRelease();
+
+        [MenuItem("CONTEXT/Nipa/Ask to Release...", true)]
+        static bool ContextRequestReleaseValid() => SelectedTheirs() != null;
+
+        [MenuItem("CONTEXT/Nipa/Notify When Free")]
+        static void ContextWatch() => ToggleWatch();
+
+        [MenuItem("CONTEXT/Nipa/Notify When Free", true)]
+        static bool ContextWatchValid() => WatchValid("CONTEXT/Nipa/Notify When Free");
+
         [MenuItem("CONTEXT/Nipa/Refresh")]
         static void ContextRefresh() => NipaHost.Refresh();
 
@@ -77,6 +102,36 @@ namespace Nipa.Editor
             var paths = NipaHost.SelectedClonePaths();
             if (paths.Count > 0)
                 NipaHost.Run("Stage", (s, _) => s.StageAsync(paths));
+        }
+
+        internal static string SelectedTheirs()
+        {
+            var session = NipaHost.Session;
+            if (session == null || Selection.assetGUIDs.Length != 1)
+                return null;
+            var path = NipaHost.SelectedClonePaths().FirstOrDefault();
+            return path != null && session.Locks.Lookup(path).State == Core.Locks.LockState.Theirs ? path : null;
+        }
+
+        static void RequestRelease()
+        {
+            var path = SelectedTheirs();
+            if (path != null)
+                NipaLocks.RequestRelease(path);
+        }
+
+        static void ToggleWatch()
+        {
+            var path = SelectedTheirs();
+            if (path != null)
+                NipaLocks.ToggleWatch(path);
+        }
+
+        static bool WatchValid(string item)
+        {
+            var path = SelectedTheirs();
+            Menu.SetChecked(item, path != null && NipaLocks.IsWatched(path));
+            return path != null;
         }
 
         internal static void Lock() => NipaLocks.Lock(NipaHost.SelectedClonePaths());

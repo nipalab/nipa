@@ -86,8 +86,73 @@ namespace Nipa.Editor
             if (branches.Count == 0 && tags.Count == 0)
                 menu.AddDisabledItem(new UnityEngine.GUIContent(loading ? "Loading..." : "No branches"));
             menu.AddSeparator(string.Empty);
+            var attached = current != null && string.IsNullOrEmpty(session.Cache.Pending);
+            foreach (var b in branches.Where(b => b.Name != current).OrderBy(b => b.Name, StringComparer.Ordinal))
+            {
+                var name = b.Name;
+                var label = new UnityEngine.GUIContent("Merge into current branch/" + name);
+                if (attached)
+                    menu.AddItem(label, false, () => Merge(name));
+                else
+                    menu.AddDisabledItem(label);
+            }
+            menu.AddItem(new UnityEngine.GUIContent("New branch..."), false, NewBranch);
+            foreach (var b in branches.Where(b => !b.IsDefault && b.Name != current).OrderBy(b => b.Name, StringComparer.Ordinal))
+            {
+                var name = b.Name;
+                menu.AddItem(new UnityEngine.GUIContent("Delete branch/" + name), false, () => Delete(name));
+            }
+            menu.AddSeparator(string.Empty);
             menu.AddItem(new UnityEngine.GUIContent("Reload list"), false, () => Load(true));
             menu.ShowAsContext();
+        }
+
+        static bool Blocked(Core.Session.NipaSession session, string title)
+        {
+            if (string.IsNullOrEmpty(session.Cache.Pending))
+                return false;
+            EditorUtility.DisplayDialog("Nipa: " + title, "A " + session.Cache.Pending + " is waiting. Finish or abort it first.", "OK");
+            return true;
+        }
+
+        public static void NewBranch()
+        {
+            var session = NipaHost.Session;
+            if (session == null || NipaHost.Busy != null || Blocked(session, "New branch"))
+                return;
+            var from = session.Cache.Head != null ? "tag " + session.Cache.Head.Name : session.Cache.Branch;
+            NipaPrompt.Ask("Nipa: New branch", "Create a branch from " + from + " and switch to it.", string.Empty, "Create", false, name =>
+                NipaHost.Run("New branch", (s, _) => s.CreateBranchAsync(name), onSuccess: () =>
+                {
+                    Load(true);
+                    Switch(name, null);
+                }));
+        }
+
+        public static void Delete(string name)
+        {
+            if (!EditorUtility.DisplayDialog("Nipa: Delete branch", "Delete branch " + name + " on the server?", "Delete", "Cancel"))
+                return;
+            NipaHost.Run("Delete branch", (s, _) => s.DeleteBranchAsync(name), onSuccess: () => Load(true));
+        }
+
+        public static void Merge(string source)
+        {
+            var session = NipaHost.Session;
+            if (session == null || NipaHost.Busy != null || Blocked(session, "Merge"))
+                return;
+            var target = session.Cache.Branch;
+            if (!EditorUtility.DisplayDialog("Nipa: Merge", "Merge " + source + " into " + target + "?", "Merge", "Cancel"))
+                return;
+            if (!NipaHost.SaveOpenScenes())
+                return;
+            OpResult result = null;
+            NipaHost.Run("Merge", async (s, on) => result = await s.MergeAsync(source, on), refreshAssets: true, onSuccess: () =>
+            {
+                if (Core.Session.OpSummary.HasConflicts(result))
+                    NipaWindow.OpenTab(NipaWindow.ConflictsTab);
+                EditorUtility.DisplayDialog("Nipa: Merge", "Merge " + source + " into " + target + ": " + Core.Session.OpSummary.Describe(result) + ".", "OK");
+            });
         }
 
         public static void Switch(string branch, string tag)
@@ -95,17 +160,10 @@ namespace Nipa.Editor
             var session = NipaHost.Session;
             if (session == null || NipaHost.Busy != null)
                 return;
-            if (!string.IsNullOrEmpty(session.Cache.Pending))
-            {
-                EditorUtility.DisplayDialog("Nipa: Switch", "A " + session.Cache.Pending + " is waiting. Finish or abort it before switching.", "OK");
+            if (Blocked(session, "Switch"))
                 return;
-            }
             var target = tag != null ? "tag " + tag : branch;
-            var dirty = session.Cache.Snapshot().Count(kv => (kv.Value & Core.Status.FileState.Untracked) == 0);
-            var warning = dirty > 0 ? "\n\nYou have " + dirty + " uncommitted path(s); the switch can overwrite them." : string.Empty;
-            if (!EditorUtility.DisplayDialog("Nipa: Switch", "Switch the working copy to " + target + "?" + warning, "Switch", "Cancel"))
-                return;
-            NipaHost.Run("Switch", (s, on) => s.SwitchAsync(branch, tag, on), refreshAssets: true);
+            NipaHost.Sync("Switch to " + target, "switch to " + target, branch, tag, (s, on) => s.SwitchAsync(branch, tag, on));
         }
     }
 }

@@ -34,6 +34,13 @@ namespace Nipa.Editor
                     var own = info.State == LockState.Mine && ProjectPaths.AssetOf(info.LockPath) == clone;
                     if (own && GUILayout.Button("Unlock", EditorStyles.miniButton))
                         NipaLocks.Unlock(new System.Collections.Generic.List<string> { clone });
+                    if (info.State == LockState.Theirs)
+                    {
+                        if (GUILayout.Button("Ask to release", EditorStyles.miniButton))
+                            NipaLocks.RequestRelease(clone);
+                        if (GUILayout.Button(NipaLocks.IsWatched(clone) ? "Stop notifying" : "Notify when free", EditorStyles.miniButton))
+                            NipaLocks.ToggleWatch(clone);
+                    }
                 }
             }
         }
