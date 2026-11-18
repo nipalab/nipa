@@ -249,7 +249,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	if opts.rest != nil {
 		chunkHandler = opts.rest(reg)
 	} else {
-		chunkHandler = api.NewChunkTransferHandler(uc.Chunk, maintenanceSvc)
+		chunkHandler = api.NewChunkTransferHandler(uc.Chunk, uc.Common, maintenanceSvc)
 	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)

@@ -329,7 +329,7 @@ type stubChunkUploader struct {
 	attrErr error
 }
 
-func (u stubChunkUploader) Upload(context.Context, domain.Hash, []byte) (bool, error) {
+func (u stubChunkUploader) StoreForProject(context.Context, snow.ID, domain.Hash, []byte) (bool, error) {
 	return false, u.err
 }
 
@@ -548,7 +548,7 @@ func TestStoreMergedContent_UploadError(t *testing.T) {
 	wantErr := errors.New("upload failed")
 	uc.WithChunkUploader(stubChunkUploader{err: wantErr})
 
-	_, _, err := uc.storeMergedContent(context.Background(), "a.txt", 1, []byte("hello\n"))
+	_, _, err := uc.storeMergedContent(context.Background(), snow.ID(1), "a.txt", 1, []byte("hello\n"))
 	require.ErrorIs(t, err, wantErr)
 }
 

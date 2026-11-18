@@ -38,7 +38,7 @@ type mergeCommitter interface {
 // chunkUploader stores merge-generated content, records its metadata and
 // attributes it to the project's storage ledger.
 type chunkUploader interface {
-	Upload(ctx context.Context, hash domain.Hash, data []byte) (bool, error)
+	StoreForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error)
 	AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
 }
 
@@ -67,6 +67,9 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	}
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
+	}
+	if err := b.requireWritableStorage(ctx, projectID); err != nil {
+		return nil, err
 	}
 	target, err := b.branchByName(ctx, projectID, targetBranch)
 	if err != nil {
@@ -252,15 +255,15 @@ func (b *Branch) materialize(ctx context.Context, projectID snow.ID, result *mer
 		case merge.KeepTheirs:
 			merged[path] = entry.Theirs
 		case merge.TextMerge:
-			baseData, err := b.loadMergedContent(ctx, entry.Base)
+			baseData, err := b.loadMergedContent(ctx, projectID, entry.Base)
 			if err != nil {
 				return nil, nil, err
 			}
-			oursData, err := b.loadMergedContent(ctx, entry.Ours)
+			oursData, err := b.loadMergedContent(ctx, projectID, entry.Ours)
 			if err != nil {
 				return nil, nil, err
 			}
-			theirsData, err := b.loadMergedContent(ctx, entry.Theirs)
+			theirsData, err := b.loadMergedContent(ctx, projectID, entry.Theirs)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -268,7 +271,7 @@ func (b *Branch) materialize(ctx context.Context, projectID snow.ID, result *mer
 			if conflicted {
 				return nil, nil, conflictError([]string{path}, "")
 			}
-			file, chunks, err := b.storeMergedContent(ctx, path, entry.Theirs.Mode, content)
+			file, chunks, err := b.storeMergedContent(ctx, projectID, path, entry.Theirs.Mode, content)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -282,10 +285,10 @@ func (b *Branch) materialize(ctx context.Context, projectID snow.ID, result *mer
 	return merged, stored, nil
 }
 
-func (b *Branch) loadMergedContent(ctx context.Context, file merge.File) ([]byte, error) {
+func (b *Branch) loadMergedContent(ctx context.Context, projectID snow.ID, file merge.File) ([]byte, error) {
 	parts := make([][]byte, 0, len(file.ChunkHashes))
 	for _, hash := range file.ChunkHashes {
-		data, err := b.chunks.Get(ctx, hash)
+		data, err := b.chunks.Get(ctx, projectID, hash)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +297,7 @@ func (b *Branch) loadMergedContent(ctx context.Context, file merge.File) ([]byte
 	return chunker.Decode(file.Encoding, bytes.Join(parts, nil))
 }
 
-func (b *Branch) storeMergedContent(ctx context.Context, path string, mode int, content []byte) (merge.File, []LedgerChunk, error) {
+func (b *Branch) storeMergedContent(ctx context.Context, projectID snow.ID, path string, mode int, content []byte) (merge.File, []LedgerChunk, error) {
 	encoding, chunks, err := chunker.EncodeBytes(content, path, false, "")
 	if err != nil {
 		return merge.File{}, nil, err
@@ -303,7 +306,7 @@ func (b *Branch) storeMergedContent(ctx context.Context, path string, mode int, 
 	sizes := make([]int64, 0, len(chunks))
 	stored := make([]LedgerChunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		if _, err := b.chunkUploads.Upload(ctx, chunk.Hash, chunk.Data); err != nil {
+		if _, err := b.chunkUploads.StoreForProject(ctx, projectID, chunk.Hash, chunk.Data); err != nil {
 			return merge.File{}, nil, err
 		}
 		hashes = append(hashes, chunk.Hash)

@@ -229,7 +229,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 	pushRepo := sqlite.NewPushRepository(dbConn)
-	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
+	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, usecase.NewProjectChunkReader(usecase.StaticStores(chunkStore)))
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
 	chunkUc := usecase.NewChunk(pushRepo, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  "test-chunk-signing-key",
