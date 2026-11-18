@@ -296,3 +296,9 @@ func commitCreatedAt(t *time.Time) any {
 	}
 	return t.UTC().Format(time.DateTime)
 }
+
+// LockProject is a no-op: sqlite write transactions are immediate and already
+// serialize writers.
+func (p *PushRepository) LockProject(context.Context, snow.ID) error {
+	return nil
+}

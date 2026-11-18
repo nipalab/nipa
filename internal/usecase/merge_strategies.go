@@ -147,7 +147,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		if message == "" {
 			message = fmt.Sprintf("Merge branch '%s' into %s", sourceBranch, targetBranch)
 		}
-		req := buildApplyRequest(b.snowNode, projectID, target.ID, target.CommitID, parent2ID, parentHashes, message, root)
+		req := buildApplyRequest(b.snowNode, projectID, target.ID, target.CommitID, parent2ID, parentHashes, message, "", root)
 		req.UserID = opts.Author
 		reqs = append(reqs, req)
 	case domain.MergeStrategyRebase:
@@ -191,7 +191,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 			if err != nil {
 				return nil, err
 			}
-			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, commit.Message, root)
+			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, commit.Message, "", root)
 			req.UserID = commit.UserID
 			reqs = append(reqs, req)
 			prev := req.CommitID

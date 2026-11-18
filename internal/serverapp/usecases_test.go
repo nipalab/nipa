@@ -62,6 +62,7 @@ func TestBuildUsecases_WiresSeatGate(t *testing.T) {
 	require.NoError(t, err, "group rules add no seat")
 
 	require.Equal(t, []snow.ID{user, user, user}, gate.calls)
+	require.NotNil(t, uc.Import)
 }
 
 func errorCode(err error) int {

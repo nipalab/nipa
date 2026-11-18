@@ -47,9 +47,10 @@ const (
 	AuditAuthLoginSucceeded            = "auth.login.succeeded"
 	AuditAuthLoginFailed               = "auth.login.failed"
 
-	AuditProjectCreated = "project.created"
-	AuditProjectUpdated = "project.updated"
-	AuditProjectDeleted = "project.deleted"
+	AuditProjectCreated     = "project.created"
+	AuditProjectUpdated     = "project.updated"
+	AuditProjectDeleted     = "project.deleted"
+	AuditProjectGitImported = "project.git_imported"
 
 	AuditWebhookCreated       = "webhook.created"
 	AuditWebhookUpdated       = "webhook.updated"

@@ -81,6 +81,9 @@ const (
 	NipaService_ListMergeRequestTimeline_FullMethodName        = "/greet.NipaService/ListMergeRequestTimeline"
 	NipaService_Push_FullMethodName                            = "/greet.NipaService/Push"
 	NipaService_PushStream_FullMethodName                      = "/greet.NipaService/PushStream"
+	NipaService_ImportLookup_FullMethodName                    = "/greet.NipaService/ImportLookup"
+	NipaService_ImportStream_FullMethodName                    = "/greet.NipaService/ImportStream"
+	NipaService_ImportSetRefs_FullMethodName                   = "/greet.NipaService/ImportSetRefs"
 	NipaService_GetChunkUploadUrls_FullMethodName              = "/greet.NipaService/GetChunkUploadUrls"
 	NipaService_GetChunkDownloadUrls_FullMethodName            = "/greet.NipaService/GetChunkDownloadUrls"
 	NipaService_ConfirmChunkUploads_FullMethodName             = "/greet.NipaService/ConfirmChunkUploads"
@@ -167,6 +170,9 @@ type NipaServiceClient interface {
 	ListMergeRequestTimeline(ctx context.Context, in *ListMergeRequestTimelineRequest, opts ...grpc.CallOption) (*ListMergeRequestTimelineResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
 	PushStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushStreamRequest, PushResponse], error)
+	ImportLookup(ctx context.Context, in *ImportLookupRequest, opts ...grpc.CallOption) (*ImportLookupResponse, error)
+	ImportStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ImportStreamRequest, ImportStreamResponse], error)
+	ImportSetRefs(ctx context.Context, in *ImportSetRefsRequest, opts ...grpc.CallOption) (*ImportSetRefsResponse, error)
 	GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(ctx context.Context, in *GetChunkDownloadUrlsRequest, opts ...grpc.CallOption) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(ctx context.Context, in *ConfirmChunkUploadsRequest, opts ...grpc.CallOption) (*ConfirmChunkUploadsResponse, error)
@@ -836,6 +842,39 @@ func (c *nipaServiceClient) PushStream(ctx context.Context, opts ...grpc.CallOpt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaService_PushStreamClient = grpc.ClientStreamingClient[PushStreamRequest, PushResponse]
 
+func (c *nipaServiceClient) ImportLookup(ctx context.Context, in *ImportLookupRequest, opts ...grpc.CallOption) (*ImportLookupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImportLookupResponse)
+	err := c.cc.Invoke(ctx, NipaService_ImportLookup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ImportStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ImportStreamRequest, ImportStreamResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[3], NipaService_ImportStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ImportStreamRequest, ImportStreamResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_ImportStreamClient = grpc.BidiStreamingClient[ImportStreamRequest, ImportStreamResponse]
+
+func (c *nipaServiceClient) ImportSetRefs(ctx context.Context, in *ImportSetRefsRequest, opts ...grpc.CallOption) (*ImportSetRefsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImportSetRefsResponse)
+	err := c.cc.Invoke(ctx, NipaService_ImportSetRefs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetChunkUploadUrlsResponse)
@@ -1082,6 +1121,9 @@ type NipaServiceServer interface {
 	ListMergeRequestTimeline(context.Context, *ListMergeRequestTimelineRequest) (*ListMergeRequestTimelineResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
 	PushStream(grpc.ClientStreamingServer[PushStreamRequest, PushResponse]) error
+	ImportLookup(context.Context, *ImportLookupRequest) (*ImportLookupResponse, error)
+	ImportStream(grpc.BidiStreamingServer[ImportStreamRequest, ImportStreamResponse]) error
+	ImportSetRefs(context.Context, *ImportSetRefsRequest) (*ImportSetRefsResponse, error)
 	GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(context.Context, *GetChunkDownloadUrlsRequest) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error)
@@ -1295,6 +1337,15 @@ func (UnimplementedNipaServiceServer) Push(context.Context, *PushRequest) (*Push
 }
 func (UnimplementedNipaServiceServer) PushStream(grpc.ClientStreamingServer[PushStreamRequest, PushResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushStream not implemented")
+}
+func (UnimplementedNipaServiceServer) ImportLookup(context.Context, *ImportLookupRequest) (*ImportLookupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ImportLookup not implemented")
+}
+func (UnimplementedNipaServiceServer) ImportStream(grpc.BidiStreamingServer[ImportStreamRequest, ImportStreamResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ImportStream not implemented")
+}
+func (UnimplementedNipaServiceServer) ImportSetRefs(context.Context, *ImportSetRefsRequest) (*ImportSetRefsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ImportSetRefs not implemented")
 }
 func (UnimplementedNipaServiceServer) GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChunkUploadUrls not implemented")
@@ -2462,6 +2513,49 @@ func _NipaService_PushStream_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaService_PushStreamServer = grpc.ClientStreamingServer[PushStreamRequest, PushResponse]
 
+func _NipaService_ImportLookup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImportLookupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ImportLookup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ImportLookup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ImportLookup(ctx, req.(*ImportLookupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ImportStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NipaServiceServer).ImportStream(&grpc.GenericServerStream[ImportStreamRequest, ImportStreamResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_ImportStreamServer = grpc.BidiStreamingServer[ImportStreamRequest, ImportStreamResponse]
+
+func _NipaService_ImportSetRefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImportSetRefsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ImportSetRefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ImportSetRefs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ImportSetRefs(ctx, req.(*ImportSetRefsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_GetChunkUploadUrls_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetChunkUploadUrlsRequest)
 	if err := dec(in); err != nil {
@@ -3030,6 +3124,14 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaService_Push_Handler,
 		},
 		{
+			MethodName: "ImportLookup",
+			Handler:    _NipaService_ImportLookup_Handler,
+		},
+		{
+			MethodName: "ImportSetRefs",
+			Handler:    _NipaService_ImportSetRefs_Handler,
+		},
+		{
 			MethodName: "GetChunkUploadUrls",
 			Handler:    _NipaService_GetChunkUploadUrls_Handler,
 		},
@@ -3116,6 +3218,12 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "PushStream",
 			Handler:       _NipaService_PushStream_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "ImportStream",
+			Handler:       _NipaService_ImportStream_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},

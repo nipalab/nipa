@@ -36,6 +36,7 @@ type Repositories struct {
 		pushRepository
 		chunkRepository
 		mergeCommitter
+		importLocker
 	}
 	PBAC  pbacRepository
 	Group interface {

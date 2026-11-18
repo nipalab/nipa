@@ -219,6 +219,81 @@ message PushResponse {
     string tree_hash = 3;
 }
 
+// Import writes commits from another version control system (docs/GIT_IMPORT.md).
+// An origin is "<system>:<source>:<native-id>[:<qualifier>]".
+message ImportLookupRequest {
+    ProjectContext context = 1;
+    repeated string origins = 2; // at most 1000
+}
+
+message ImportedCommit {
+    string origin = 1;
+    string commit_id = 2; // base36 snow ID
+    string commit_hash = 3; // hex
+}
+
+message ImportLookupResponse {
+    repeated ImportedCommit commits = 1; // only the origins already imported
+}
+
+// ImportStream carries one commit at a time: a header, its file parts, then an
+// end marker, answered by one ImportStreamResponse per commit.
+message ImportCommitHeader {
+    ProjectContext context = 1; // first header of the stream only
+    string origin = 2;
+    repeated string parent_origins = 3; // at most 2, already imported
+    string message = 4;
+    string author_name = 5;
+    string author_email = 6;
+    google.protobuf.Timestamp authored_at = 7; // stored as the commit date
+    optional string author_user_id = 8; // base36; maps the author explicitly
+}
+
+message ImportCommitEnd {}
+
+message ImportStreamRequest {
+    oneof part {
+        ImportCommitHeader header = 1;
+        PushStreamFiles files = 2;
+        PushStreamChunks chunks = 3;
+        PushStreamRemoved removed = 4;
+        ImportCommitEnd end = 5;
+    }
+}
+
+message ImportStreamResponse {
+    string origin = 1;
+    string commit_id = 2;
+    string commit_hash = 3;
+}
+
+message ImportRef {
+    string name = 1;
+    string origin = 2;
+    string message = 3; // tag annotation
+}
+
+message ImportSetRefsRequest {
+    ProjectContext context = 1;
+    repeated ImportRef branches = 2;
+    repeated ImportRef tags = 3;
+    string default_branch = 4;
+    bool update = 5; // fast-forward existing branches
+    int64 commit_count = 6; // commits imported in this run, for the audit log
+}
+
+message ImportRefResult {
+    string kind = 1; // branch, tag or default
+    string name = 2;
+    string status = 3; // created, updated, unchanged, exists, diverged, protected or invalid
+    string commit_id = 4;
+    string message = 5;
+}
+
+message ImportSetRefsResponse {
+    repeated ImportRefResult refs = 1;
+}
+
 message Branch {
     google.protobuf.Timestamp created_at = 1;
     google.protobuf.Timestamp updated_at = 2;
@@ -1299,6 +1374,9 @@ service NipaService {
     rpc ListMergeRequestTimeline(ListMergeRequestTimelineRequest) returns (ListMergeRequestTimelineResponse);
     rpc Push(PushRequest) returns (PushResponse);
     rpc PushStream(stream PushStreamRequest) returns (PushResponse);
+    rpc ImportLookup(ImportLookupRequest) returns (ImportLookupResponse);
+    rpc ImportStream(stream ImportStreamRequest) returns (stream ImportStreamResponse);
+    rpc ImportSetRefs(ImportSetRefsRequest) returns (ImportSetRefsResponse);
     rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
     rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);
     rpc ConfirmChunkUploads(ConfirmChunkUploadsRequest) returns (ConfirmChunkUploadsResponse);

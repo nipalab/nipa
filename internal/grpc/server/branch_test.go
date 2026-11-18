@@ -26,6 +26,7 @@ type mockUsecaseContainer struct {
 	tag          *usecase.Tag
 	common       *usecase.Common
 	push         *usecase.Push
+	importer     *usecase.Import
 	chunk        *usecase.Chunk
 	permission   *usecase.Permission
 	group        *usecase.Group
@@ -43,6 +44,7 @@ func (m *mockUsecaseContainer) Branch() *usecase.Branch { return m.branch }
 func (m *mockUsecaseContainer) Tag() *usecase.Tag       { return m.tag }
 func (m *mockUsecaseContainer) Common() *usecase.Common { return m.common }
 func (m *mockUsecaseContainer) Push() *usecase.Push     { return m.push }
+func (m *mockUsecaseContainer) Import() *usecase.Import { return m.importer }
 func (m *mockUsecaseContainer) Chunk() *usecase.Chunk   { return m.chunk }
 func (m *mockUsecaseContainer) Permission() *usecase.Permission {
 	return m.permission

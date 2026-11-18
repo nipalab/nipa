@@ -78,7 +78,13 @@ func (b *Branch) resolveRef(ctx context.Context, projectID snow.ID, ref string) 
 }
 
 func (b *Branch) isAncestor(ctx context.Context, projectID, target, head snow.ID) (bool, error) {
-	graph := newCommitGraph(b.branchRepo, projectID, false)
+	return isAncestor(ctx, b.branchRepo, projectID, target, head)
+}
+
+// isAncestor reports whether target is head or one of its ancestors, walking
+// at most maxContainsWalk commits.
+func isAncestor(ctx context.Context, repo branchRepository, projectID, target, head snow.ID) (bool, error) {
+	graph := newCommitGraph(repo, projectID, false)
 	seen := map[snow.ID]bool{head: true}
 	queue := []snow.ID{head}
 	for walked := 0; len(queue) > 0; walked++ {

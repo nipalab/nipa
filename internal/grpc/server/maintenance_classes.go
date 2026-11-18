@@ -56,6 +56,7 @@ var methodClass = buildMethodClasses(map[maintenance.Class][]string{
 		nipaSvc + "ListPBACRules",
 		nipaSvc + "ListProjectPathPermissions",
 		nipaSvc + "ListGroups",
+		nipaSvc + "ImportLookup",
 	},
 	maintenance.ClassWrite: {
 		nipaSvc + "CreateBranch",
@@ -86,6 +87,8 @@ var methodClass = buildMethodClasses(map[maintenance.Class][]string{
 		nipaSvc + "RemoveMergeRequestReviewRequest",
 		nipaSvc + "Push",
 		nipaSvc + "PushStream",
+		nipaSvc + "ImportStream",
+		nipaSvc + "ImportSetRefs",
 		nipaSvc + "GetChunkUploadUrls",
 		nipaSvc + "ConfirmChunkUploads",
 		nipaSvc + "LockFile",

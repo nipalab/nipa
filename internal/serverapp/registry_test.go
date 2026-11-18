@@ -17,6 +17,7 @@ func TestRegistryExposesUsecases(t *testing.T) {
 		Tag:                &usecase.Tag{},
 		Common:             &usecase.Common{},
 		Push:               &usecase.Push{},
+		Import:             &usecase.Import{},
 		Chunk:              &usecase.Chunk{},
 		Permission:         &usecase.Permission{},
 		Group:              &usecase.Group{},
@@ -39,6 +40,7 @@ func TestRegistryExposesUsecases(t *testing.T) {
 	require.Same(t, uc.Tag, reg.Tag())
 	require.Same(t, uc.Common, reg.Common())
 	require.Same(t, uc.Push, reg.Push())
+	require.Same(t, uc.Import, reg.Import())
 	require.Same(t, uc.Chunk, reg.Chunk())
 	require.Same(t, uc.Permission, reg.Permission())
 	require.Same(t, uc.Group, reg.Group())

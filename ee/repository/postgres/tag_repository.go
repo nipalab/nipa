@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 	"gopkg.in/typ.v4/slices"
 )
@@ -16,7 +17,7 @@ type TagRepository struct {
 }
 
 func NewTagRepository(db *sql.DB) *TagRepository {
-	return &TagRepository{queries: sqlcPostgres.New(db)}
+	return &TagRepository{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *TagRepository) ListTags(ctx context.Context, projectID snow.ID, limit int, createdBefore *time.Time, lastID snow.ID) ([]*domain.Tag, error) {

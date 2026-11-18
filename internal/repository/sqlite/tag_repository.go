@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 	"gopkg.in/typ.v4/slices"
@@ -16,7 +17,7 @@ type TagRepository struct {
 }
 
 func NewTagRepository(db *sql.DB) *TagRepository {
-	return &TagRepository{queries: sqlcSqlite.New(db)}
+	return &TagRepository{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *TagRepository) ListTags(ctx context.Context, projectID snow.ID, limit int, createdBefore *time.Time, lastID snow.ID) ([]*domain.Tag, error) {

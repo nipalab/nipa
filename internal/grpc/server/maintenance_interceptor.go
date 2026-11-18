@@ -36,6 +36,9 @@ func maintenanceTarget(req any) (org, project string) {
 	case *pb.PushStreamRequest:
 		c := r.GetHeader().GetContext()
 		return c.GetOrg(), c.GetProject()
+	case *pb.ImportStreamRequest:
+		c := r.GetHeader().GetContext()
+		return c.GetOrg(), c.GetProject()
 	case projectContextRequest:
 		c := r.GetContext()
 		return c.GetOrg(), c.GetProject()
