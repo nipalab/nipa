@@ -251,6 +251,24 @@ func (b *BranchRepository) GetCommitByHash(ctx context.Context, projectID snow.I
 	return commitToDomain(row), nil
 }
 
+func (b *BranchRepository) CommitsByOrigins(ctx context.Context, projectID snow.ID, origins []string) ([]*domain.Commit, error) {
+	var commits []*domain.Commit
+	for start := 0; start < len(origins); start += originBatch {
+		end := min(start+originBatch, len(origins))
+		rows, err := b.queries.CommitListByOrigins(ctx, sqlcSqlite.CommitListByOriginsParams{
+			ProjectID: projectID.Int64(),
+			Origins:   slices.Map(origins[start:end], optionalString),
+		})
+		if err != nil {
+			return nil, handleError(err)
+		}
+		commits = append(commits, slices.Map(rows, commitToDomain)...)
+	}
+	return commits, nil
+}
+
+const originBatch = 500
+
 func (b *BranchRepository) GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error) {
 	row, err := b.queries.TreeNodeGet(ctx, id)
 	if err != nil {
@@ -353,6 +371,10 @@ func commitLogEntryToDomain(row sqlcSqlite.CommitLogRow) *domain.CommitLogEntry 
 			UserID:    snow.ID(row.UserID),
 			Message:   row.Message,
 			CreatedAt: row.CreatedAt,
+
+			AuthorName:  row.CommitAuthorName.String,
+			AuthorEmail: row.CommitAuthorEmail.String,
+			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
 		AuthorEmail: row.AuthorEmail,
@@ -386,6 +408,10 @@ func commitLogUntilEntryToDomain(row sqlcSqlite.CommitLogUntilRow) *domain.Commi
 			UserID:    snow.ID(row.UserID),
 			Message:   row.Message,
 			CreatedAt: row.CreatedAt,
+
+			AuthorName:  row.CommitAuthorName.String,
+			AuthorEmail: row.CommitAuthorEmail.String,
+			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
 		AuthorEmail: row.AuthorEmail,
@@ -443,6 +469,10 @@ func commitToDomain(c sqlcSqlite.Commit) *domain.Commit {
 		UserID:    snow.ID(c.UserID),
 		Message:   c.Message,
 		CreatedAt: c.CreatedAt,
+
+		AuthorName:  c.AuthorName.String,
+		AuthorEmail: c.AuthorEmail.String,
+		Origin:      c.Origin.String,
 	}
 }
 

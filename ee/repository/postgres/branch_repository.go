@@ -251,6 +251,20 @@ func (b *BranchRepository) GetCommitByHash(ctx context.Context, projectID snow.I
 	return commitToDomain(row), nil
 }
 
+func (b *BranchRepository) CommitsByOrigins(ctx context.Context, projectID snow.ID, origins []string) ([]*domain.Commit, error) {
+	if len(origins) == 0 {
+		return nil, nil
+	}
+	rows, err := b.queries.CommitListByOrigins(ctx, sqlcPostgres.CommitListByOriginsParams{
+		ProjectID: projectID.Int64(),
+		Origins:   origins,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, commitToDomain), nil
+}
+
 func (b *BranchRepository) GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error) {
 	row, err := b.queries.TreeNodeGet(ctx, id)
 	if err != nil {
@@ -353,6 +367,10 @@ func commitLogEntryToDomain(row sqlcPostgres.CommitLogRow) *domain.CommitLogEntr
 			UserID:    snow.ID(row.UserID),
 			Message:   row.Message,
 			CreatedAt: row.CreatedAt,
+
+			AuthorName:  row.CommitAuthorName.String,
+			AuthorEmail: row.CommitAuthorEmail.String,
+			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
 		AuthorEmail: row.AuthorEmail,
@@ -386,6 +404,10 @@ func commitLogUntilEntryToDomain(row sqlcPostgres.CommitLogUntilRow) *domain.Com
 			UserID:    snow.ID(row.UserID),
 			Message:   row.Message,
 			CreatedAt: row.CreatedAt,
+
+			AuthorName:  row.CommitAuthorName.String,
+			AuthorEmail: row.CommitAuthorEmail.String,
+			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
 		AuthorEmail: row.AuthorEmail,
@@ -435,6 +457,10 @@ func commitToDomain(c sqlcPostgres.Commit) *domain.Commit {
 		UserID:    snow.ID(c.UserID),
 		Message:   c.Message,
 		CreatedAt: c.CreatedAt,
+
+		AuthorName:  c.AuthorName.String,
+		AuthorEmail: c.AuthorEmail.String,
+		Origin:      c.Origin.String,
 	}
 }
 

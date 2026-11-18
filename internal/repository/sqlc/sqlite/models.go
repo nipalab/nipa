@@ -61,15 +61,18 @@ type Chunk struct {
 }
 
 type Commit struct {
-	ID        int64         `json:"id"`
-	Hash      []byte        `json:"hash"`
-	ProjectID int64         `json:"project_id"`
-	TreeID    int64         `json:"tree_id"`
-	Parent1ID sql.NullInt64 `json:"parent_1_id"`
-	Parent2ID sql.NullInt64 `json:"parent_2_id"`
-	UserID    int64         `json:"user_id"`
-	Message   string        `json:"message"`
-	CreatedAt time.Time     `json:"created_at"`
+	ID          int64          `json:"id"`
+	Hash        []byte         `json:"hash"`
+	ProjectID   int64          `json:"project_id"`
+	TreeID      int64          `json:"tree_id"`
+	Parent1ID   sql.NullInt64  `json:"parent_1_id"`
+	Parent2ID   sql.NullInt64  `json:"parent_2_id"`
+	UserID      int64          `json:"user_id"`
+	Message     string         `json:"message"`
+	CreatedAt   time.Time      `json:"created_at"`
+	AuthorName  sql.NullString `json:"author_name"`
+	AuthorEmail sql.NullString `json:"author_email"`
+	Origin      sql.NullString `json:"origin"`
 }
 
 type EmailDelivery struct {

@@ -112,18 +112,24 @@ func (q *Queries) ChunkListByHashesForProject(ctx context.Context, arg ChunkList
 }
 
 const commitInsert = `-- name: CommitInsert :exec
-INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, author_name, author_email, origin, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+        ?9, ?10, ?11, COALESCE(?12, CURRENT_TIMESTAMP))
 `
 
 type CommitInsertParams struct {
-	ID        int64         `json:"id"`
-	Hash      []byte        `json:"hash"`
-	ProjectID int64         `json:"project_id"`
-	TreeID    int64         `json:"tree_id"`
-	Parent1ID sql.NullInt64 `json:"parent_1_id"`
-	Parent2ID sql.NullInt64 `json:"parent_2_id"`
-	UserID    int64         `json:"user_id"`
-	Message   string        `json:"message"`
+	ID          int64          `json:"id"`
+	Hash        []byte         `json:"hash"`
+	ProjectID   int64          `json:"project_id"`
+	TreeID      int64          `json:"tree_id"`
+	Parent1ID   sql.NullInt64  `json:"parent_1_id"`
+	Parent2ID   sql.NullInt64  `json:"parent_2_id"`
+	UserID      int64          `json:"user_id"`
+	Message     string         `json:"message"`
+	AuthorName  sql.NullString `json:"author_name"`
+	AuthorEmail sql.NullString `json:"author_email"`
+	Origin      sql.NullString `json:"origin"`
+	CreatedAt   interface{}    `json:"created_at"`
 }
 
 func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) error {
@@ -136,6 +142,10 @@ func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) erro
 		arg.Parent2ID,
 		arg.UserID,
 		arg.Message,
+		arg.AuthorName,
+		arg.AuthorEmail,
+		arg.Origin,
+		arg.CreatedAt,
 	)
 	return err
 }

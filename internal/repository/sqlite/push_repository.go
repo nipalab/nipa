@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/pushbatch"
@@ -124,6 +125,71 @@ func (p *PushRepository) ApplyPushAll(ctx context.Context, reqs []usecase.ApplyP
 }
 
 func applyPush(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPushRequest) error {
+	if err := insertCommit(ctx, q, req); err != nil {
+		return err
+	}
+	if req.BranchID == 0 {
+		return nil
+	}
+	return handleError(q.BranchUpdateCommit(ctx, sqlcSqlite.BranchUpdateCommitParams{
+		CommitID: sql.NullInt64{Int64: req.CommitID.Int64(), Valid: true},
+		ID:       req.BranchID.Int64(),
+	}))
+}
+
+func (p *PushRepository) ApplyImport(ctx context.Context, req usecase.ApplyPushRequest) (*domain.Commit, error) {
+	if req.Origin == "" {
+		return nil, domain.NewErrorInternalServer("import commit has no origin")
+	}
+	commit, err := p.applyImport(ctx, req)
+	if err != nil && domain.IsErrorConflict(err) {
+		if existing, lookupErr := commitByOrigin(ctx, sqlcSqlite.New(p.db), req); lookupErr == nil && existing != nil {
+			return existing, nil
+		}
+	}
+	return commit, err
+}
+
+func (p *PushRepository) applyImport(ctx context.Context, req usecase.ApplyPushRequest) (*domain.Commit, error) {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	existing, err := commitByOrigin(ctx, q, req)
+	if err != nil || existing != nil {
+		return existing, err
+	}
+	if err := insertCommit(ctx, q, req); err != nil {
+		return nil, err
+	}
+	row, err := q.CommitGet(ctx, req.CommitID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, handleError(err)
+	}
+	return commitToDomain(row), nil
+}
+
+func commitByOrigin(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPushRequest) (*domain.Commit, error) {
+	row, err := q.CommitGetByOrigin(ctx, sqlcSqlite.CommitGetByOriginParams{
+		ProjectID: req.ProjectID.Int64(),
+		Origin:    sql.NullString{String: req.Origin, Valid: true},
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return commitToDomain(row), nil
+}
+
+func insertCommit(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPushRequest) error {
 	batch := pushBatchStore{q: q, projectID: req.ProjectID.Int64()}
 	chunkIDs, err := pushbatch.ResolveChunks(ctx, batch, req.Files)
 	if err != nil {
@@ -165,13 +231,11 @@ func applyPush(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPush
 		Parent2ID: nullID(req.ParentID2),
 		UserID:    req.UserID.Int64(),
 		Message:   req.Message,
-	}); err != nil {
-		return handleError(err)
-	}
 
-	if err := q.BranchUpdateCommit(ctx, sqlcSqlite.BranchUpdateCommitParams{
-		CommitID: sql.NullInt64{Int64: req.CommitID.Int64(), Valid: true},
-		ID:       req.BranchID.Int64(),
+		AuthorName:  optionalString(req.AuthorName),
+		AuthorEmail: optionalString(req.AuthorEmail),
+		CreatedAt:   commitCreatedAt(req.CreatedAt),
+		Origin:      optionalString(req.Origin),
 	}); err != nil {
 		return handleError(err)
 	}
@@ -224,4 +288,11 @@ func (s pushBatchStore) InsertFiles(ctx context.Context, payload []byte) (map[pu
 
 func (s pushBatchStore) InsertLinks(ctx context.Context, payload []byte) error {
 	return handleError(s.q.FileChunkInsertMany(ctx, string(payload)))
+}
+
+func commitCreatedAt(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC().Format(time.DateTime)
 }

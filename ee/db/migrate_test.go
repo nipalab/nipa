@@ -175,3 +175,45 @@ func (s *MigrateSuite) TestRefreshTokenDropPlaintext() {
 
 	s.Require().NoError(MigrateUp(s.conn))
 }
+
+const commitOriginVersion uint = 12
+
+func (s *MigrateSuite) commitColumns() map[string]string {
+	rows, err := s.conn.QueryContext(context.Background(),
+		"SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'commits'")
+	s.Require().NoError(err)
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var name, typ string
+		s.Require().NoError(rows.Scan(&name, &typ))
+		out[name] = typ
+	}
+	s.Require().NoError(rows.Err())
+	return out
+}
+
+func (s *MigrateSuite) TestCommitOrigin() {
+	ctx := context.Background()
+	s.Require().NoError(MigrateDown(s.conn))
+	m, err := newMigrator(s.conn)
+	s.Require().NoError(err)
+	s.Require().NoError(m.Migrate(commitOriginVersion))
+
+	cols := s.commitColumns()
+	s.Equal("text", cols["author_name"])
+	s.Equal("text", cols["author_email"])
+	s.Equal("text", cols["origin"])
+	var def string
+	s.Require().NoError(s.conn.QueryRowContext(ctx,
+		"SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'commits_project_origin'").Scan(&def))
+	s.Contains(def, "WHERE (origin IS NOT NULL)")
+
+	s.Require().NoError(m.Migrate(commitOriginVersion - 1))
+	cols = s.commitColumns()
+	for _, name := range []string{"author_name", "author_email", "origin"} {
+		s.NotContains(cols, name)
+	}
+
+	s.Require().NoError(MigrateUp(s.conn))
+}

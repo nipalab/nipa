@@ -18,7 +18,8 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < sqlc.arg('limit')::bigint
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
-       u.name AS author_name, u.email AS author_email
+       u.name AS author_name, u.email AS author_email,
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -38,7 +39,8 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     WHERE c.parent_1_id IS NOT NULL AND c.id <> sqlc.arg(stop_commit_id)::bigint AND cc.depth + 1 < sqlc.arg('limit')::bigint
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
-       u.name AS author_name, u.email AS author_email
+       u.name AS author_name, u.email AS author_email,
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -150,3 +152,14 @@ SELECT c.*
 FROM (SELECT anc.id FROM anc LIMIT sqlc.arg('limit')::bigint) a
 JOIN commits c ON c.id = a.id
 WHERE c.project_id = sqlc.arg(project_id);
+
+-- name: CommitListByOrigins :many
+SELECT *
+FROM commits
+WHERE project_id = sqlc.arg(project_id) AND origin = ANY(sqlc.arg('origins')::text[]);
+
+-- name: CommitGetByOrigin :one
+SELECT *
+FROM commits
+WHERE project_id = sqlc.arg(project_id) AND origin = sqlc.arg(origin)
+LIMIT 1;

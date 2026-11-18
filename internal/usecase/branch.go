@@ -40,6 +40,7 @@ type branchRepository interface {
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
 	GetCommitByHash(ctx context.Context, projectID snow.ID, hash domain.Hash) (*domain.Commit, error)
+	CommitsByOrigins(ctx context.Context, projectID snow.ID, origins []string) ([]*domain.Commit, error)
 	GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error)
 	GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error)
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)

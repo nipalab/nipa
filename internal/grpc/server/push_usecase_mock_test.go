@@ -13,6 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	domain "github.com/nipalab/nipa/internal/domain"
+	snow "github.com/nipalab/nipa/internal/snow"
 	usecase "github.com/nipalab/nipa/internal/usecase"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,6 +43,21 @@ func (m *MockpushRepository) EXPECT() *MockpushRepositoryMockRecorder {
 	return m.recorder
 }
 
+// ApplyImport mocks base method.
+func (m *MockpushRepository) ApplyImport(ctx context.Context, req usecase.ApplyPushRequest) (*domain.Commit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyImport", ctx, req)
+	ret0, _ := ret[0].(*domain.Commit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ApplyImport indicates an expected call of ApplyImport.
+func (mr *MockpushRepositoryMockRecorder) ApplyImport(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyImport", reflect.TypeOf((*MockpushRepository)(nil).ApplyImport), ctx, req)
+}
+
 // ApplyPush mocks base method.
 func (m *MockpushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {
 	m.ctrl.T.Helper()
@@ -53,4 +70,80 @@ func (m *MockpushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPus
 func (mr *MockpushRepositoryMockRecorder) ApplyPush(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyPush", reflect.TypeOf((*MockpushRepository)(nil).ApplyPush), ctx, req)
+}
+
+// MockreviewPushGate is a mock of reviewPushGate interface.
+type MockreviewPushGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockreviewPushGateMockRecorder
+	isgomock struct{}
+}
+
+// MockreviewPushGateMockRecorder is the mock recorder for MockreviewPushGate.
+type MockreviewPushGateMockRecorder struct {
+	mock *MockreviewPushGate
+}
+
+// NewMockreviewPushGate creates a new mock instance.
+func NewMockreviewPushGate(ctrl *gomock.Controller) *MockreviewPushGate {
+	mock := &MockreviewPushGate{ctrl: ctrl}
+	mock.recorder = &MockreviewPushGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockreviewPushGate) EXPECT() *MockreviewPushGateMockRecorder {
+	return m.recorder
+}
+
+// NoteBranchPush mocks base method.
+func (m *MockreviewPushGate) NoteBranchPush(ctx context.Context, projectID, branchID, newHead, actor snow.ID, commitHash string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NoteBranchPush", ctx, projectID, branchID, newHead, actor, commitHash)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NoteBranchPush indicates an expected call of NoteBranchPush.
+func (mr *MockreviewPushGateMockRecorder) NoteBranchPush(ctx, projectID, branchID, newHead, actor, commitHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NoteBranchPush", reflect.TypeOf((*MockreviewPushGate)(nil).NoteBranchPush), ctx, projectID, branchID, newHead, actor, commitHash)
+}
+
+// MockhookPushGate is a mock of hookPushGate interface.
+type MockhookPushGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockhookPushGateMockRecorder
+	isgomock struct{}
+}
+
+// MockhookPushGateMockRecorder is the mock recorder for MockhookPushGate.
+type MockhookPushGateMockRecorder struct {
+	mock *MockhookPushGate
+}
+
+// NewMockhookPushGate creates a new mock instance.
+func NewMockhookPushGate(ctrl *gomock.Controller) *MockhookPushGate {
+	mock := &MockhookPushGate{ctrl: ctrl}
+	mock.recorder = &MockhookPushGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockhookPushGate) EXPECT() *MockhookPushGateMockRecorder {
+	return m.recorder
+}
+
+// EmitPush mocks base method.
+func (m *MockhookPushGate) EmitPush(ctx context.Context, event usecase.PushEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitPush", ctx, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitPush indicates an expected call of EmitPush.
+func (mr *MockhookPushGateMockRecorder) EmitPush(ctx, event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitPush", reflect.TypeOf((*MockhookPushGate)(nil).EmitPush), ctx, event)
 }

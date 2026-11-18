@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -19,6 +20,7 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=push_mock_test.go -package=usecase
 type pushRepository interface {
 	ApplyPush(ctx context.Context, req ApplyPushRequest) error
+	ApplyImport(ctx context.Context, req ApplyPushRequest) (*domain.Commit, error)
 }
 
 type ApplyPushRequest struct {
@@ -32,6 +34,11 @@ type ApplyPushRequest struct {
 	Message    string
 	Nodes      []PushNodeRow
 	Files      []PushFileRow
+
+	Origin      string
+	AuthorName  string
+	AuthorEmail string
+	CreatedAt   *time.Time
 }
 
 // PushNodeRow is a new tree node (directory). IDs are logical and parent-first;
@@ -540,7 +547,7 @@ func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID
 		ProjectID:  projectID,
 		BranchID:   branchID,
 		CommitID:   snowNode.Generate(),
-		CommitHash: treehash.CommitHash(root.Hash, parentHashes, message),
+		CommitHash: treehash.CommitHashWithOrigin(root.Hash, parentHashes, message, ""),
 		ParentID:   parentID,
 		ParentID2:  parent2ID,
 		Message:    message,
