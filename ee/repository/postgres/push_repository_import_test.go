@@ -96,7 +96,7 @@ func TestPushRepositoryPostgres_ApplyImportRoot(t *testing.T) {
 	require.Equal(t, "Ada Lovelace", log[0].Commit.AuthorName)
 	require.Equal(t, "ada@example.com", log[0].Commit.AuthorEmail)
 	require.Equal(t, gitOrigin("a"), log[0].Origin)
-	require.True(t, req.CreatedAt.Equal(log[0].Commit.CreatedAt))
+	require.True(t, req.CreatedAt.Equal(log[0].CreatedAt))
 	until, err := f.branches.CommitLogUntil(ctx, f.projectID, commit.ID, 0, 10)
 	require.NoError(t, err)
 	require.Len(t, until, 1)
