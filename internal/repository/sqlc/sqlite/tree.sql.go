@@ -78,7 +78,7 @@ WITH RECURSIVE anc(id) AS (
     SELECT c.parent_2_id FROM anc JOIN commits c ON c.id = anc.id WHERE c.parent_2_id IS NOT NULL
     LIMIT ?2
 )
-SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at, c.author_name, c.author_email, c.authored_at, c.origin
+SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at, c.author_name, c.author_email, c.origin
 FROM anc
 JOIN commits c ON c.id = anc.id
 WHERE c.project_id = ?1
@@ -111,7 +111,6 @@ func (q *Queries) CommitAncestors(ctx context.Context, arg CommitAncestorsParams
 			&i.CreatedAt,
 			&i.AuthorName,
 			&i.AuthorEmail,
-			&i.AuthoredAt,
 			&i.Origin,
 		); err != nil {
 			return nil, err
@@ -128,7 +127,7 @@ func (q *Queries) CommitAncestors(ctx context.Context, arg CommitAncestorsParams
 }
 
 const commitGet = `-- name: CommitGet :one
-SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, authored_at, origin
+SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, origin
 FROM commits
 WHERE id = ?1
 LIMIT 1
@@ -149,14 +148,13 @@ func (q *Queries) CommitGet(ctx context.Context, id int64) (Commit, error) {
 		&i.CreatedAt,
 		&i.AuthorName,
 		&i.AuthorEmail,
-		&i.AuthoredAt,
 		&i.Origin,
 	)
 	return i, err
 }
 
 const commitGetByHash = `-- name: CommitGetByHash :one
-SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, authored_at, origin
+SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, origin
 FROM commits
 WHERE project_id = ?1 AND hash = ?2
 LIMIT 1
@@ -182,14 +180,13 @@ func (q *Queries) CommitGetByHash(ctx context.Context, arg CommitGetByHashParams
 		&i.CreatedAt,
 		&i.AuthorName,
 		&i.AuthorEmail,
-		&i.AuthoredAt,
 		&i.Origin,
 	)
 	return i, err
 }
 
 const commitGetByOrigin = `-- name: CommitGetByOrigin :one
-SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, authored_at, origin
+SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, origin
 FROM commits
 WHERE project_id = ?1 AND origin = ?2
 LIMIT 1
@@ -215,14 +212,13 @@ func (q *Queries) CommitGetByOrigin(ctx context.Context, arg CommitGetByOriginPa
 		&i.CreatedAt,
 		&i.AuthorName,
 		&i.AuthorEmail,
-		&i.AuthoredAt,
 		&i.Origin,
 	)
 	return i, err
 }
 
 const commitListByOrigins = `-- name: CommitListByOrigins :many
-SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, authored_at, origin
+SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at, author_name, author_email, origin
 FROM commits
 WHERE project_id = ?1 AND origin IN (/*SLICE:origins*/?)
 `
@@ -264,7 +260,6 @@ func (q *Queries) CommitListByOrigins(ctx context.Context, arg CommitListByOrigi
 			&i.CreatedAt,
 			&i.AuthorName,
 			&i.AuthorEmail,
-			&i.AuthoredAt,
 			&i.Origin,
 		); err != nil {
 			return nil, err
@@ -289,7 +284,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email,
-       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -318,7 +313,6 @@ type CommitLogRow struct {
 	AuthorEmail       string         `json:"author_email"`
 	CommitAuthorName  sql.NullString `json:"commit_author_name"`
 	CommitAuthorEmail sql.NullString `json:"commit_author_email"`
-	AuthoredAt        sql.NullTime   `json:"authored_at"`
 	Origin            sql.NullString `json:"origin"`
 }
 
@@ -345,7 +339,6 @@ func (q *Queries) CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitL
 			&i.AuthorEmail,
 			&i.CommitAuthorName,
 			&i.CommitAuthorEmail,
-			&i.AuthoredAt,
 			&i.Origin,
 		); err != nil {
 			return nil, err
@@ -370,7 +363,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email,
-       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -400,7 +393,6 @@ type CommitLogUntilRow struct {
 	AuthorEmail       string         `json:"author_email"`
 	CommitAuthorName  sql.NullString `json:"commit_author_name"`
 	CommitAuthorEmail sql.NullString `json:"commit_author_email"`
-	AuthoredAt        sql.NullTime   `json:"authored_at"`
 	Origin            sql.NullString `json:"origin"`
 }
 
@@ -436,7 +428,6 @@ func (q *Queries) CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) 
 			&i.AuthorEmail,
 			&i.CommitAuthorName,
 			&i.CommitAuthorEmail,
-			&i.AuthoredAt,
 			&i.Origin,
 		); err != nil {
 			return nil, err

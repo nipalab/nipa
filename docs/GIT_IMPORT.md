@@ -174,20 +174,21 @@ The schema change is one new migration pair (sqlite `000025`, postgres `000012`)
 ```sql
 ALTER TABLE commits ADD COLUMN author_name TEXT;
 ALTER TABLE commits ADD COLUMN author_email TEXT;
-ALTER TABLE commits ADD COLUMN authored_at <DATETIME|TIMESTAMPTZ>;
 ALTER TABLE commits ADD COLUMN origin TEXT;            -- see "Origin format"
 CREATE UNIQUE INDEX commits_project_origin ON commits (project_id, origin)
     WHERE origin IS NOT NULL;
 ```
 
-- All four columns are NULL for native commits, so existing behavior is
+- All three columns are NULL for native commits, so existing behavior is
   unchanged.
 - `user_id` is the matched Nipa user (see authors), else the importer.
-  `created_at` stays the server insert time.
-- Every reader prefers `author_*`/`authored_at` when they are set:
-  - the commit log (`CommitLogEntry.author_name/email` and a new `authored_at`);
-  - `CommitDetail` (new `author_name`, `author_email`, `authored_at` and
-    `origin` fields);
+- An imported commit stores the source author date in `created_at`; native
+  pushes keep the insert time. `created_at` is display-only (history order
+  comes from commit ids and parents), so out-of-order Git dates are harmless.
+  The import time is recorded by the `project.git_imported` audit entry.
+- Every reader prefers `author_*` when they are set:
+  - the commit log (`CommitLogEntry.author_name/email`);
+  - `CommitDetail` (new `author_name`, `author_email` and `origin` fields);
   - the REST commit DTOs, web history, desktop History, blame and the MCP
     `nipa_log`.
 
@@ -305,7 +306,7 @@ message ImportCommitHeader {
   string message = 4;
   string author_name = 5;
   string author_email = 6;
-  google.protobuf.Timestamp authored_at = 7;
+  google.protobuf.Timestamp authored_at = 7;   // stored as commits.created_at
 }
 message ImportCommitEnd {}
 message ImportStreamRequest {

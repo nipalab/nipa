@@ -370,7 +370,6 @@ func commitLogEntryToDomain(row sqlcPostgres.CommitLogRow) *domain.CommitLogEntr
 
 			AuthorName:  row.CommitAuthorName.String,
 			AuthorEmail: row.CommitAuthorEmail.String,
-			AuthoredAt:  nullTimePtr(row.AuthoredAt),
 			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
@@ -408,7 +407,6 @@ func commitLogUntilEntryToDomain(row sqlcPostgres.CommitLogUntilRow) *domain.Com
 
 			AuthorName:  row.CommitAuthorName.String,
 			AuthorEmail: row.CommitAuthorEmail.String,
-			AuthoredAt:  nullTimePtr(row.AuthoredAt),
 			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
@@ -462,7 +460,6 @@ func commitToDomain(c sqlcPostgres.Commit) *domain.Commit {
 
 		AuthorName:  c.AuthorName.String,
 		AuthorEmail: c.AuthorEmail.String,
-		AuthoredAt:  nullTimePtr(c.AuthoredAt),
 		Origin:      c.Origin.String,
 	}
 }

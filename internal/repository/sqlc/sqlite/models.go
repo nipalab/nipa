@@ -72,7 +72,6 @@ type Commit struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	AuthorName  sql.NullString `json:"author_name"`
 	AuthorEmail sql.NullString `json:"author_email"`
-	AuthoredAt  sql.NullTime   `json:"authored_at"`
 	Origin      sql.NullString `json:"origin"`
 }
 

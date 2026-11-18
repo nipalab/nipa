@@ -38,7 +38,7 @@ type ApplyPushRequest struct {
 	Origin      string
 	AuthorName  string
 	AuthorEmail string
-	AuthoredAt  *time.Time
+	CreatedAt   *time.Time
 }
 
 // PushNodeRow is a new tree node (directory). IDs are logical and parent-first;

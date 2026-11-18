@@ -19,7 +19,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email,
-       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -40,7 +40,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email,
-       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id

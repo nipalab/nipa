@@ -203,7 +203,6 @@ func (s *MigrateSuite) TestCommitOrigin() {
 	cols := s.commitColumns()
 	s.Equal("text", cols["author_name"])
 	s.Equal("text", cols["author_email"])
-	s.Equal("timestamp with time zone", cols["authored_at"])
 	s.Equal("text", cols["origin"])
 	var def string
 	s.Require().NoError(s.conn.QueryRowContext(ctx,
@@ -212,7 +211,7 @@ func (s *MigrateSuite) TestCommitOrigin() {
 
 	s.Require().NoError(m.Migrate(commitOriginVersion - 1))
 	cols = s.commitColumns()
-	for _, name := range []string{"author_name", "author_email", "authored_at", "origin"} {
+	for _, name := range []string{"author_name", "author_email", "origin"} {
 		s.NotContains(cols, name)
 	}
 

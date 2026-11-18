@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/pushbatch"
@@ -233,7 +234,7 @@ func insertCommit(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyP
 
 		AuthorName:  optionalString(req.AuthorName),
 		AuthorEmail: optionalString(req.AuthorEmail),
-		AuthoredAt:  timePtrToNullTime(req.AuthoredAt),
+		CreatedAt:   commitCreatedAt(req.CreatedAt),
 		Origin:      optionalString(req.Origin),
 	}); err != nil {
 		return handleError(err)
@@ -287,4 +288,11 @@ func (s pushBatchStore) InsertFiles(ctx context.Context, payload []byte) (map[pu
 
 func (s pushBatchStore) InsertLinks(ctx context.Context, payload []byte) error {
 	return handleError(s.q.FileChunkInsertMany(ctx, string(payload)))
+}
+
+func commitCreatedAt(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC().Format(time.DateTime)
 }

@@ -34,12 +34,12 @@ PR5/PR6 can run in parallel with PR7–PR9.
 **Goal:** the storage for imported commits, with no behavior change.
 
 - Migrations `000025_commit_origin` (sqlite) / `000012_commit_origin` (postgres):
-  nullable `author_name`, `author_email`, `authored_at`, `origin` on
+  nullable `author_name`, `author_email`, `origin` on
   `commits`, plus the partial unique index `commits_project_origin
   (project_id, origin) WHERE origin IS NOT NULL`. The down migrations drop
-  them.
-- `domain.Commit`: `AuthorName`, `AuthorEmail`, `AuthoredAt *time.Time` and
-  `Origin string`. Map them in the sqlite and postgres branch repositories
+  them. No `authored_at` column: imported commits store the author date in
+  `created_at`.
+- `domain.Commit`: `AuthorName`, `AuthorEmail` and `Origin string`. Map them in the sqlite and postgres branch repositories
   wherever commits are read (`GetCommit`, `GetCommitByHash`, the log/walk
   queries).
 - New queries in both dialects: `CommitListByOrigins(project_id, origins[])`.
@@ -60,7 +60,8 @@ PR5/PR6 can run in parallel with PR7–PR9.
   to `CommitHash` when the origin is empty. Golden tests pin the existing
   hashes.
 - `usecase.ApplyPushRequest` gains `Origin`, `AuthorName`, `AuthorEmail` and
-  `AuthoredAt`. `BranchID` becomes optional (zero = do not move a head).
+  `CreatedAt *time.Time` (nil = now; imports pass the author date).
+  `BranchID` becomes optional (zero = do not move a head).
 - `PushRepository.ApplyImport(ctx, req) (existing *domain.Commit, err)` in
   `internal/repository/sqlite/push_repository.go` and
   `ee/repository/postgres/push_repository.go`:
@@ -158,17 +159,18 @@ PR5/PR6 can run in parallel with PR7–PR9.
 **Goal:** imported metadata is visible on every non-UI surface.
 
 - Proto:
-  - `CommitLogEntry.authored_at`, `origin`;
-  - `CommitWalkEntry.author_name/email/authored_at/origin`;
-  - `CommitDetail.author_name/email/authored_at/origin`.
+  - `CommitLogEntry.origin`;
+  - `CommitWalkEntry.author_name/email/origin`;
+  - `CommitDetail.author_name/email/origin`.
 
   Server mapping prefers the author fields (`author_name` falls back to the
   user join as today).
 - REST commit DTOs (`internal/http/model`) get the same fields. Update
   `web/src/api/endpoints.ts` types (fields only).
 - CLI:
-  - `nipa log` shows the authored date when set, plus `(imported <sha7>)`;
-  - `--json` gets `authored_at` and `origin`;
+  - `nipa log` adds `(imported <sha7>)` (the date already comes from
+    `created_at`);
+  - `--json` gets `origin`;
   - `nipa blame` uses the author name.
 - MCP `nipa_log` gets the same fields.
 - Daemon proxy: no change (verbatim forwarding).
@@ -181,8 +183,8 @@ PR5/PR6 can run in parallel with PR7–PR9.
 
 ## PR6: show imported authors (web + desktop)
 
-- Web history list, commit page and blame/file history: the author and
-  authored date, plus an "Imported from Git" label with a copyable SHA.
+- Web history list, commit page and blame/file history: the imported author
+  (dates need no change, they come from `created_at`), plus an "Imported from Git" label with a copyable SHA.
   vitest.
 - Desktop: History rows and commit detail, the blame gutter
   (`lib/blame.ts`), and the activity feed. New strings go into every

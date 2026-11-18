@@ -58,7 +58,7 @@ func rootImport(projectID snow.ID, id snow.ID, origin string, name string, ch do
 		Origin:      origin,
 		AuthorName:  "Ada Lovelace",
 		AuthorEmail: "ada@example.com",
-		AuthoredAt:  &authored,
+		CreatedAt:   &authored,
 		Nodes:       []usecase.PushNodeRow{{ID: 1, Hash: rootHash, Name: "root", Mode: 0o444}},
 		Files:       []usecase.PushFileRow{{Name: name, Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
 	}
@@ -78,8 +78,7 @@ func TestPushRepositoryPostgres_ApplyImportRoot(t *testing.T) {
 	require.Equal(t, gitOrigin("a"), commit.Origin)
 	require.Equal(t, "Ada Lovelace", commit.AuthorName)
 	require.Equal(t, "ada@example.com", commit.AuthorEmail)
-	require.NotNil(t, commit.AuthoredAt)
-	require.True(t, req.AuthoredAt.Equal(*commit.AuthoredAt))
+	require.True(t, req.CreatedAt.Equal(commit.CreatedAt))
 	require.Nil(t, commit.Parent1ID)
 
 	branch := getBranch(t, f.branches, f.projectID, f.branchID)
@@ -97,7 +96,7 @@ func TestPushRepositoryPostgres_ApplyImportRoot(t *testing.T) {
 	require.Equal(t, "Ada Lovelace", log[0].Commit.AuthorName)
 	require.Equal(t, "ada@example.com", log[0].Commit.AuthorEmail)
 	require.Equal(t, gitOrigin("a"), log[0].Origin)
-	require.NotNil(t, log[0].AuthoredAt)
+	require.True(t, req.CreatedAt.Equal(log[0].Commit.CreatedAt))
 	until, err := f.branches.CommitLogUntil(ctx, f.projectID, commit.ID, 0, 10)
 	require.NoError(t, err)
 	require.Len(t, until, 1)
@@ -143,7 +142,7 @@ func TestPushRepositoryPostgres_ApplyImportChildAndMerge(t *testing.T) {
 	require.Equal(t, root.ID, *child.Parent1ID)
 	require.Nil(t, child.Parent2ID)
 	require.Empty(t, child.AuthorName)
-	require.Nil(t, child.AuthoredAt)
+	require.WithinDuration(t, time.Now(), child.CreatedAt, time.Minute)
 	childRoot := getTreeNode(t, f.branches, child.TreeID)
 	require.Len(t, getFilesByTree(t, f.branches, getTreeChildByName(t, f.branches, childRoot.ID, "dir").ID), 1)
 
@@ -241,7 +240,7 @@ func TestPushRepositoryPostgres_ApplyPushLeavesOriginEmpty(t *testing.T) {
 
 	req := rootImport(f.projectID, snow.ID(1), "", "a.txt", ch, sz, fh)
 	req.BranchID = f.branchID
-	req.AuthorName, req.AuthorEmail, req.AuthoredAt = "", "", nil
+	req.AuthorName, req.AuthorEmail, req.CreatedAt = "", "", nil
 	require.NoError(t, f.repo.ApplyPush(ctx, req))
 
 	commit, err := f.branches.GetCommit(ctx, snow.ID(1))
@@ -249,7 +248,7 @@ func TestPushRepositoryPostgres_ApplyPushLeavesOriginEmpty(t *testing.T) {
 	require.Empty(t, commit.Origin)
 	require.Empty(t, commit.AuthorName)
 	require.Empty(t, commit.AuthorEmail)
-	require.Nil(t, commit.AuthoredAt)
+	require.WithinDuration(t, time.Now(), commit.CreatedAt, time.Minute)
 	require.Equal(t, snow.ID(1), *getBranch(t, f.branches, f.projectID, f.branchID).CommitID)
 
 	var origin sql.NullString

@@ -374,7 +374,6 @@ func commitLogEntryToDomain(row sqlcSqlite.CommitLogRow) *domain.CommitLogEntry 
 
 			AuthorName:  row.CommitAuthorName.String,
 			AuthorEmail: row.CommitAuthorEmail.String,
-			AuthoredAt:  nullTimePtr(row.AuthoredAt),
 			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
@@ -412,7 +411,6 @@ func commitLogUntilEntryToDomain(row sqlcSqlite.CommitLogUntilRow) *domain.Commi
 
 			AuthorName:  row.CommitAuthorName.String,
 			AuthorEmail: row.CommitAuthorEmail.String,
-			AuthoredAt:  nullTimePtr(row.AuthoredAt),
 			Origin:      row.Origin.String,
 		},
 		AuthorName:  row.AuthorName,
@@ -474,7 +472,6 @@ func commitToDomain(c sqlcSqlite.Commit) *domain.Commit {
 
 		AuthorName:  c.AuthorName.String,
 		AuthorEmail: c.AuthorEmail.String,
-		AuthoredAt:  nullTimePtr(c.AuthoredAt),
 		Origin:      c.Origin.String,
 	}
 }

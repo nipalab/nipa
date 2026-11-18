@@ -194,14 +194,14 @@ func TestMigrateCommitOrigin(t *testing.T) {
 	require.NoError(t, m.Migrate(commitOriginVersion))
 
 	cols := sqliteColumns(t, conn, "commits")
-	for _, name := range []string{"author_name", "author_email", "authored_at", "origin"} {
+	for _, name := range []string{"author_name", "author_email", "origin"} {
 		require.True(t, cols[name], name)
 	}
 	require.Contains(t, sqliteIndexes(t, conn)["commits_project_origin"], "WHERE origin IS NOT NULL")
 
 	require.NoError(t, m.Migrate(commitOriginVersion-1))
 	cols = sqliteColumns(t, conn, "commits")
-	for _, name := range []string{"author_name", "author_email", "authored_at", "origin"} {
+	for _, name := range []string{"author_name", "author_email", "origin"} {
 		require.False(t, cols[name], name)
 	}
 	require.NotContains(t, sqliteIndexes(t, conn), "commits_project_origin")

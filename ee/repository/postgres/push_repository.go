@@ -233,7 +233,7 @@ func insertCommit(ctx context.Context, q *sqlcPostgres.Queries, req usecase.Appl
 
 		AuthorName:  optionalString(req.AuthorName),
 		AuthorEmail: optionalString(req.AuthorEmail),
-		AuthoredAt:  timePtrToNullTime(req.AuthoredAt),
+		CreatedAt:   timePtrToNullTime(req.CreatedAt),
 		Origin:      optionalString(req.Origin),
 	}); err != nil {
 		return handleError(err)

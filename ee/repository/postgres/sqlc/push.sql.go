@@ -103,9 +103,9 @@ func (q *Queries) ChunkListByHashesForProject(ctx context.Context, arg ChunkList
 }
 
 const commitInsert = `-- name: CommitInsert :exec
-INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, author_name, author_email, authored_at, origin)
+INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, author_name, author_email, origin, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11::timestamptz, $12)
+        $9, $10, $11, COALESCE($12::timestamptz, now()))
 `
 
 type CommitInsertParams struct {
@@ -119,8 +119,8 @@ type CommitInsertParams struct {
 	Message     string         `json:"message"`
 	AuthorName  sql.NullString `json:"author_name"`
 	AuthorEmail sql.NullString `json:"author_email"`
-	AuthoredAt  sql.NullTime   `json:"authored_at"`
 	Origin      sql.NullString `json:"origin"`
+	CreatedAt   sql.NullTime   `json:"created_at"`
 }
 
 func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) error {
@@ -135,8 +135,8 @@ func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) erro
 		arg.Message,
 		arg.AuthorName,
 		arg.AuthorEmail,
-		arg.AuthoredAt,
 		arg.Origin,
+		arg.CreatedAt,
 	)
 	return err
 }
