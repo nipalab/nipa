@@ -18,7 +18,8 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < :limit
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
-       u.name AS author_name, u.email AS author_email
+       u.name AS author_name, u.email AS author_email,
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -38,7 +39,8 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     WHERE c.parent_1_id IS NOT NULL AND c.id <> :stop_commit_id AND cc.depth + 1 < :limit
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
-       u.name AS author_name, u.email AS author_email
+       u.name AS author_name, u.email AS author_email,
+       c.author_name AS commit_author_name, c.author_email AS commit_author_email, c.authored_at, c.origin
 FROM commits c
 JOIN users u ON c.user_id = u.id
 JOIN commit_chain cc ON c.id = cc.id
@@ -133,3 +135,14 @@ SELECT c.*
 FROM anc
 JOIN commits c ON c.id = anc.id
 WHERE c.project_id = :project_id;
+
+-- name: CommitListByOrigins :many
+SELECT *
+FROM commits
+WHERE project_id = sqlc.arg(project_id) AND origin IN (sqlc.slice('origins'));
+
+-- name: CommitGetByOrigin :one
+SELECT *
+FROM commits
+WHERE project_id = sqlc.arg(project_id) AND origin = sqlc.arg(origin)
+LIMIT 1;

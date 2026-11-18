@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -39,6 +40,21 @@ func NewMockpushRepository(ctrl *gomock.Controller) *MockpushRepository {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockpushRepository) EXPECT() *MockpushRepositoryMockRecorder {
 	return m.recorder
+}
+
+// ApplyImport mocks base method.
+func (m *MockpushRepository) ApplyImport(ctx context.Context, req ApplyPushRequest) (*domain.Commit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyImport", ctx, req)
+	ret0, _ := ret[0].(*domain.Commit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ApplyImport indicates an expected call of ApplyImport.
+func (mr *MockpushRepositoryMockRecorder) ApplyImport(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyImport", reflect.TypeOf((*MockpushRepository)(nil).ApplyImport), ctx, req)
 }
 
 // ApplyPush mocks base method.

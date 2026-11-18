@@ -154,6 +154,21 @@ func (mr *MockbranchRepositoryMockRecorder) CommitLogUntil(ctx, projectID, start
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitLogUntil", reflect.TypeOf((*MockbranchRepository)(nil).CommitLogUntil), ctx, projectID, startCommitID, stopCommitID, limit)
 }
 
+// CommitsByOrigins mocks base method.
+func (m *MockbranchRepository) CommitsByOrigins(ctx context.Context, projectID snow.ID, origins []string) ([]*domain.Commit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitsByOrigins", ctx, projectID, origins)
+	ret0, _ := ret[0].([]*domain.Commit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitsByOrigins indicates an expected call of CommitsByOrigins.
+func (mr *MockbranchRepositoryMockRecorder) CommitsByOrigins(ctx, projectID, origins any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitsByOrigins", reflect.TypeOf((*MockbranchRepository)(nil).CommitsByOrigins), ctx, projectID, origins)
+}
+
 // CreateBranch mocks base method.
 func (m *MockbranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
 	m.ctrl.T.Helper()

@@ -86,6 +86,11 @@ type Commit struct {
 	UserID    snow.ID   `json:"user_id"`
 	Message   string    `json:"message"`
 	CreatedAt time.Time `json:"created_at"`
+
+	AuthorName  string     `json:"author_name,omitempty"`
+	AuthorEmail string     `json:"author_email,omitempty"`
+	AuthoredAt  *time.Time `json:"authored_at,omitempty"`
+	Origin      string     `json:"origin,omitempty"`
 }
 
 type Branch struct {

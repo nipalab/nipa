@@ -54,6 +54,21 @@ func TreeHash(files []FileEntry, trees []TreeEntry) domain.Hash {
 //
 //	BLAKE3(tree_hash (32) || parent count (4 BE) || parent hashes (32 each) || message length (4 BE) || message)
 func CommitHash(treeHash domain.Hash, parentHashes []domain.Hash, message string) domain.Hash {
+	return commitHasher(treeHash, parentHashes, message).finish()
+}
+
+func CommitHashWithOrigin(treeHash domain.Hash, parentHashes []domain.Hash, message, origin string) domain.Hash {
+	h := commitHasher(treeHash, parentHashes, message)
+	if origin != "" {
+		var buf [4]byte
+		binary.BigEndian.PutUint32(buf[:], uint32(len(origin)))
+		h.write(buf[:])
+		h.write([]byte(origin))
+	}
+	return h.finish()
+}
+
+func commitHasher(treeHash domain.Hash, parentHashes []domain.Hash, message string) *hasher {
 	h := newHasher()
 	h.write(treeHash[:])
 
@@ -67,7 +82,7 @@ func CommitHash(treeHash domain.Hash, parentHashes []domain.Hash, message string
 	binary.BigEndian.PutUint32(buf[:], uint32(len(message)))
 	h.write(buf[:])
 	h.write([]byte(message))
-	return h.finish()
+	return h
 }
 
 type hasher struct {

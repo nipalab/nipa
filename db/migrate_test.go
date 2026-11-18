@@ -169,3 +169,42 @@ func TestMigrateRefreshTokenDropPlaintext(t *testing.T) {
 
 	require.NoError(t, m.Migrate(refreshDropPlaintextVersion))
 }
+
+const commitOriginVersion uint = 25
+
+func sqliteColumns(t *testing.T, conn *sql.DB, table string) map[string]bool {
+	t.Helper()
+	rows, err := conn.Query("SELECT name FROM pragma_table_info(?)", table)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		out[name] = true
+	}
+	require.NoError(t, rows.Err())
+	return out
+}
+
+func TestMigrateCommitOrigin(t *testing.T) {
+	conn := openMigrateTestDB(t)
+	m, err := newMigrator(conn, "sqlite3")
+	require.NoError(t, err)
+	require.NoError(t, m.Migrate(commitOriginVersion))
+
+	cols := sqliteColumns(t, conn, "commits")
+	for _, name := range []string{"author_name", "author_email", "authored_at", "origin"} {
+		require.True(t, cols[name], name)
+	}
+	require.Contains(t, sqliteIndexes(t, conn)["commits_project_origin"], "WHERE origin IS NOT NULL")
+
+	require.NoError(t, m.Migrate(commitOriginVersion-1))
+	cols = sqliteColumns(t, conn, "commits")
+	for _, name := range []string{"author_name", "author_email", "authored_at", "origin"} {
+		require.False(t, cols[name], name)
+	}
+	require.NotContains(t, sqliteIndexes(t, conn), "commits_project_origin")
+
+	require.NoError(t, MigrateUp(conn, "sqlite3"))
+}

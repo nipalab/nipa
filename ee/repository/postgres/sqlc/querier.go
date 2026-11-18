@@ -43,7 +43,9 @@ type Querier interface {
 	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error)
+	CommitGetByOrigin(ctx context.Context, arg CommitGetByOriginParams) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
+	CommitListByOrigins(ctx context.Context, arg CommitListByOriginsParams) ([]Commit, error)
 	CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitLogRow, error)
 	// CommitLogUntil walks the first-parent chain from start_commit_id and stops
 	// before stop_commit_id, which a merge request passes as its merge base. Zero

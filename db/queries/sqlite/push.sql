@@ -22,7 +22,9 @@ SET tree_id = :tree_id
 WHERE id = :id;
 
 -- name: CommitInsert :exec
-INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, author_name, author_email, authored_at, origin)
+VALUES (sqlc.arg(id), sqlc.arg(hash), sqlc.arg(project_id), sqlc.arg(tree_id), sqlc.narg(parent_1_id), sqlc.narg(parent_2_id), sqlc.arg(user_id), sqlc.arg(message),
+        sqlc.narg(author_name), sqlc.narg(author_email), sqlc.narg(authored_at), sqlc.narg(origin));
 
 -- name: BranchUpdateCommit :exec
 UPDATE branches
