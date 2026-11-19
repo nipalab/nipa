@@ -242,11 +242,11 @@ func TestAuditedWrites_RollBackOnRecordFailure(t *testing.T) {
 
 	permission := usecase.NewPermission(pbac, NewUserRepository(db), NewGroupRepository(db), usecase.NewOrg(orgRepo, node))
 	projects := usecase.NewProject(projectRepo, node, permission, usecase.NewOrg(orgRepo, node))
-	_, err = projects.WithAudit(bad).Create(ctx, org.ID, "Game", "", "game")
+	_, err = projects.WithAudit(bad).Create(ctx, org.ID, "Game", "", "game", nil)
 	require.Error(t, err)
 	_, err = projectRepo.GetByOrgIDAndSlug(ctx, org.ID, "game")
 	requireRecordNotFound(t, err)
-	project, err := projects.WithAudit(good).Create(ctx, org.ID, "Game", "", "game")
+	project, err := projects.WithAudit(good).Create(ctx, org.ID, "Game", "", "game", nil)
 	require.NoError(t, err)
 
 	branches := usecase.NewBranch(permission, branchRepo, node)
@@ -276,4 +276,41 @@ func TestAuditedWrites_RollBackOnRecordFailure(t *testing.T) {
 	protection := actions[domain.AuditBranchProtectionChanged]
 	require.Equal(t, userID, *protection.ActorUserID)
 	require.Equal(t, org.ID, *protection.OrgID, "the org is resolved from the project")
+}
+
+type refusingStorageAssigner struct{ called int }
+
+func (r *refusingStorageAssigner) Assign(context.Context, snow.ID, snow.ID, *snow.ID) error {
+	r.called++
+	return domain.NewErrorNoPermission()
+}
+
+func TestProjectCreate_StorageAssignerRefusalRollsBack(t *testing.T) {
+	db := newAuditTestDB(t)
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	auditRepo := NewAuditRepository(db)
+	orgRepo := NewOrgRepository(db)
+	projectRepo := NewProjectRepository(db)
+	pbac := NewPBACRepository(db)
+	q := sqlcSqlite.New(db)
+	userID := seedUser(t, q, "bob", "bob@example.com", sql.NullString{})
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: userID, IsSuperAdmin: true})
+	audit := usecase.NewAudit(auditRepo, node, dbtx.NewTransactor(db)).WithProjectOrgs(pbac)
+
+	org, err := usecase.NewOrg(orgRepo, node).Create(ctx, "Studio", "studio")
+	require.NoError(t, err)
+	permission := usecase.NewPermission(pbac, NewUserRepository(db), NewGroupRepository(db), usecase.NewOrg(orgRepo, node))
+	assigner := &refusingStorageAssigner{}
+	projects := usecase.NewProject(projectRepo, node, permission, usecase.NewOrg(orgRepo, node)).WithAudit(audit).WithStorageAssigner(assigner)
+
+	server := snow.ID(5)
+	_, err = projects.Create(ctx, org.ID, "Game", "", "game", &server)
+	require.True(t, domain.IsErrorNoPermission(err))
+	require.Equal(t, 1, assigner.called)
+	_, err = projectRepo.GetByOrgIDAndSlug(ctx, org.ID, "game")
+	requireRecordNotFound(t, err)
+	entries, err := auditRepo.List(context.Background(), domain.AuditFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }

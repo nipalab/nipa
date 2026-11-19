@@ -2265,6 +2265,8 @@ func TestAPIRoutes(t *testing.T) {
 		projectURL := orgURL + "/projects/game"
 		expect(t, http.MethodPost, v1+"/orgs", `{"name":"Maint Co","slug":"maint-co"}`, ownerTok, http.StatusOK)
 		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"Game","slug":"game"}`, ownerTok, http.StatusOK)
+		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"Bad","slug":"bad","storage_server_id":"!!"}`, ownerTok, http.StatusBadRequest)
+		expect(t, http.MethodPost, orgURL+"/projects", `{"name":"Own","slug":"own","storage_server_id":"abc"}`, ownerTok, http.StatusBadRequest)
 		expect(t, http.MethodPost, orgURL+"/members", `{"email":"mt-member@example.com","role":"member"}`, superTok, http.StatusOK)
 		expect(t, http.MethodPost, orgURL+"/members", `{"email":"mt-padmin@example.com","role":"member"}`, superTok, http.StatusOK)
 		expect(t, http.MethodPost, projectURL+"/permissions/rules",

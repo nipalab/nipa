@@ -45,17 +45,24 @@ type Config struct {
 	Prefix          string
 	AccessKeyID     string
 	SecretAccessKey string
+	// Transport carries every request to the backend, including the probe's
+	// presigned transfers; nil keeps minio's tuned transport for the client
+	// and http.DefaultTransport for the probe.
+	Transport http.RoundTripper
+	// SkipProbe skips the bucket check in New.
+	SkipProbe bool
 }
 
 // Store persists chunk content in an S3-compatible bucket.
 type Store struct {
 	client *minio.Client
+	http   *http.Client
 	bucket string
 	prefix string
 }
 
-// New validates the configuration, creates the S3 client and probes the
-// bucket so misconfiguration fails at startup.
+// New validates the configuration, creates the S3 client and, unless
+// SkipProbe is set, checks the bucket so misconfiguration fails at startup.
 func New(ctx context.Context, cfg Config) (*Store, error) {
 	bucket := strings.TrimSpace(cfg.Bucket)
 	if bucket == "" {
@@ -70,21 +77,38 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 		return nil, err
 	}
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  creds,
-		Secure: secure,
-		Region: strings.TrimSpace(cfg.Region),
+		Creds:     creds,
+		Secure:    secure,
+		Region:    strings.TrimSpace(cfg.Region),
+		Transport: cfg.Transport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("s3: create client for %s: %w", endpoint, err)
 	}
-	exists, err := client.BucketExists(ctx, bucket)
+	store := &Store{
+		client: client,
+		http:   &http.Client{Transport: cfg.Transport, Timeout: probeTimeout},
+		bucket: bucket,
+		prefix: normalizePrefix(cfg.Prefix),
+	}
+	if cfg.SkipProbe {
+		return store, nil
+	}
+	if err := store.checkBucket(ctx); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+func (s *Store) checkBucket(ctx context.Context) error {
+	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil {
-		return nil, fmt.Errorf("s3: check bucket %q: %w", bucket, err)
+		return fmt.Errorf("s3: check bucket %q: %w", s.bucket, err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("s3: bucket %q does not exist", bucket)
+		return fmt.Errorf("s3: bucket %q does not exist", s.bucket)
 	}
-	return &Store{client: client, bucket: bucket, prefix: normalizePrefix(cfg.Prefix)}, nil
+	return nil
 }
 
 func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) (err error) {
@@ -196,15 +220,23 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 	if size <= 0 {
 		return storage.UploadTarget{}, fmt.Errorf("s3: invalid chunk size %d", size)
 	}
+	target, err = s.presignPut(ctx, s.key(hash), size, expires)
+	if err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: presign upload for chunk %s: %w", hash, err)
+	}
+	return target, nil
+}
+
+func (s *Store) presignPut(ctx context.Context, key string, size int64, expires time.Duration) (storage.UploadTarget, error) {
 	if expires > maxPresignTTL {
 		expires = maxPresignTTL
 	}
 	signed := http.Header{}
 	signed.Set("If-None-Match", "*")
 	signed.Set("Content-Length", strconv.FormatInt(size, 10))
-	presigned, err := s.client.PresignHeader(ctx, http.MethodPut, s.bucket, s.key(hash), expires, nil, signed)
+	presigned, err := s.client.PresignHeader(ctx, http.MethodPut, s.bucket, key, expires, nil, signed)
 	if err != nil {
-		return storage.UploadTarget{}, fmt.Errorf("s3: presign upload for chunk %s: %w", hash, err)
+		return storage.UploadTarget{}, err
 	}
 	return storage.UploadTarget{
 		URL:     presigned.String(),

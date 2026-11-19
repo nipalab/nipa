@@ -200,10 +200,18 @@ export function listProjects(org: string): Promise<ProjectResponse[]> {
   return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/projects`)
 }
 
-export function createProject(org: string, name: string, description: string, slug: string): Promise<ProjectResponse> {
+export function createProject(
+  org: string,
+  name: string,
+  description: string,
+  slug: string,
+  storageServerID?: string,
+): Promise<ProjectResponse> {
   return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/projects`, {
     method: 'POST',
-    body: JSON.stringify({ name, description, slug }),
+    body: JSON.stringify(
+      storageServerID ? { name, description, slug, storage_server_id: storageServerID } : { name, description, slug },
+    ),
   })
 }
 

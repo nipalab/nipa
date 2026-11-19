@@ -2,10 +2,12 @@ package handler
 
 import (
 	nethttp "net/http"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 func (h *Handler) ListProjects(appCtx http.AppContext) {
@@ -37,8 +39,17 @@ func (h *Handler) CreateProject(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	var storageServerID *snow.ID
+	if raw := strings.TrimSpace(body.StorageServerID); raw != "" {
+		id, err := snow.ParseBase36(raw)
+		if err != nil {
+			appCtx.HandleError(domain.NewErrorUser("invalid storage_server_id"))
+			return
+		}
+		storageServerID = &id
+	}
 	project, err := h.useCase.Project().Create(
-		appCtx.Context(), org.ID, body.Name, body.Description, body.Slug,
+		appCtx.Context(), org.ID, body.Name, body.Description, body.Slug, storageServerID,
 	)
 	if err != nil {
 		appCtx.HandleError(err)

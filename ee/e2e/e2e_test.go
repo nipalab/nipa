@@ -534,3 +534,9 @@ func TestEnterpriseStorageQuota(t *testing.T) {
 	require.NotNil(t, summary.QuotaBytes)
 	require.Equal(t, bigger, *summary.QuotaBytes)
 }
+
+func TestEnterpriseS3Probe(t *testing.T) {
+	store, ok := newS3ChunkStore(t).(*s3store.Store)
+	require.True(t, ok)
+	require.NoError(t, store.Probe(context.Background()))
+}

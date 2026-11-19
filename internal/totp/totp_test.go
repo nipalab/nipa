@@ -2,6 +2,7 @@ package totp
 
 import (
 	"bytes"
+	"encoding/hex"
 	"net/url"
 	"strings"
 	"testing"
@@ -132,4 +133,14 @@ func TestCipher(t *testing.T) {
 	require.NoError(t, err)
 	_, err = other.Open(sealed, []byte("user-1"))
 	assert.ErrorIs(t, err, ErrDecrypt)
+}
+
+func TestCipherOpensSecretsSealedBeforeSealbox(t *testing.T) {
+	sealed, err := hex.DecodeString("cdd866b36c8c844663c4c7c869721eb0535cac718bd19838988225cb0a215f0cec96e2bdee35be677b250f2a")
+	require.NoError(t, err)
+	c, err := NewCipher([]byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	secret, err := c.Open(sealed, []byte("42"))
+	require.NoError(t, err)
+	require.Equal(t, "JBSWY3DPEHPK3PXP", string(secret))
 }

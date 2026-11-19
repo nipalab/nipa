@@ -366,7 +366,7 @@ func TestProjectAudit(t *testing.T) {
 	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(2), "game").Return(nil, domain.NewErrorNotFound("x"))
 	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, p domain.Project, _ domain.Branch) (*domain.Project, error) { return &p, nil })
-	created, err := uc.Create(ctx, 2, "Game", "", "game")
+	created, err := uc.Create(ctx, 2, "Game", "", "game", nil)
 	require.NoError(t, err)
 
 	current := &domain.Project{ID: created.ID, OrgID: 2, Name: "Game", Slug: "game"}
