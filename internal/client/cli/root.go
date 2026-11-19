@@ -23,6 +23,7 @@ type usecaseContainer interface {
 	Tag() *usecase.Tag
 	Version() *usecase.Version
 	Blame() BlameRunner
+	GitImport() GitImporter
 }
 
 type connector interface {
@@ -75,6 +76,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupTagCmd())
 	rootCmd.AddCommand(c.setupGCCmd())
 	rootCmd.AddCommand(c.setupShelveCmd())
+	rootCmd.AddCommand(c.setupImportCmd())
 	rootCmd.AddCommand(c.setupVersionCmd())
 	rootCmd.AddCommand(extra...)
 	return rootCmd.Execute()

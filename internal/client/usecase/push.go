@@ -392,7 +392,7 @@ const (
 type chunkUploader struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
-	client    pushClient
+	client    ChunkUploadClient
 	localRepo pushLocalRepo
 	scope     domain.ChunkScope
 	onChunk   func(ch *serverDomain.ChunkData)
@@ -413,7 +413,7 @@ type chunkUploader struct {
 	err error
 }
 
-func newChunkUploader(ctx context.Context, client pushClient, localRepo pushLocalRepo, scope domain.ChunkScope, onChunk func(*serverDomain.ChunkData)) *chunkUploader {
+func newChunkUploader(ctx context.Context, client ChunkUploadClient, localRepo pushLocalRepo, scope domain.ChunkScope, onChunk func(*serverDomain.ChunkData)) *chunkUploader {
 	uploadCtx, cancel := context.WithCancel(ctx)
 	u := &chunkUploader{
 		ctx:       uploadCtx,

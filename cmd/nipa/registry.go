@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/nipalab/nipa/internal/client/cli"
+	"github.com/nipalab/nipa/internal/client/gitimport"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
@@ -19,6 +20,7 @@ type Registry struct {
 	tagUsecase        *usecase.Tag
 	versionUsecase    *usecase.Version
 	blameUsecase      *usecase.Blame
+	gitImporter       *gitimport.Importer
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -71,4 +73,8 @@ func (r *Registry) Version() *usecase.Version {
 
 func (r *Registry) Blame() cli.BlameRunner {
 	return r.blameUsecase
+}
+
+func (r *Registry) GitImport() cli.GitImporter {
+	return r.gitImporter
 }

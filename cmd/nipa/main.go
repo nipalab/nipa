@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/cli"
 	"github.com/nipalab/nipa/internal/client/config"
+	"github.com/nipalab/nipa/internal/client/gitimport"
 	"github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
@@ -67,6 +68,7 @@ func main() {
 		tagUsecase:        tagUsecase,
 		versionUsecase:    versionUsecase,
 		blameUsecase:      usecase.NewBlame(authUsecase, grpcClient, localrepo.NewLocalRepo()),
+		gitImporter:       gitimport.NewImporter(gitimport.NewGRPCTransport(grpcClient)),
 	}
 
 	newClient := func() *grpc.Client {
