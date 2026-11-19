@@ -46,7 +46,8 @@ type Config struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	// Transport carries every request to the backend, including the probe's
-	// presigned transfers; nil uses http.DefaultTransport.
+	// presigned transfers; nil keeps minio's tuned transport for the client
+	// and http.DefaultTransport for the probe.
 	Transport http.RoundTripper
 	// SkipProbe skips the bucket check in New.
 	SkipProbe bool
@@ -75,22 +76,18 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport := cfg.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:     creds,
 		Secure:    secure,
 		Region:    strings.TrimSpace(cfg.Region),
-		Transport: transport,
+		Transport: cfg.Transport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("s3: create client for %s: %w", endpoint, err)
 	}
 	store := &Store{
 		client: client,
-		http:   &http.Client{Transport: transport, Timeout: probeTimeout},
+		http:   &http.Client{Transport: cfg.Transport, Timeout: probeTimeout},
 		bucket: bucket,
 		prefix: normalizePrefix(cfg.Prefix),
 	}
