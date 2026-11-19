@@ -201,6 +201,17 @@ func (s *State) MarkUploaded(keys []gitimport.BlobKey) error {
 	return nil
 }
 
+func (s *State) RecordLFS(oid, gitSHA string) error {
+	_, err := s.db.Exec(`INSERT INTO lfs (oid, git_sha) VALUES (?, ?) ON CONFLICT (oid) DO NOTHING`, oid, gitSHA)
+	return err
+}
+
+func (s *State) LFSObjects() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM lfs`).Scan(&n)
+	return n, err
+}
+
 func encodeHashes(hashes []serverDomain.Hash) []byte {
 	out := make([]byte, 0, len(hashes)*len(serverDomain.Hash{}))
 	for _, h := range hashes {

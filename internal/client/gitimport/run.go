@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -15,6 +16,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/gitimport"
+	"github.com/nipalab/nipa/internal/gitimport/lfs"
 )
 
 const (
@@ -39,6 +41,8 @@ type Options struct {
 	Since         time.Time
 	Snapshot      bool
 	Symlinks      gitimport.SymlinkPolicy
+	LFS           lfs.Mode
+	DropCache     bool
 	AuthorMap     *AuthorMap
 	Update        bool
 	ResetState    bool
@@ -70,6 +74,9 @@ func (r RefResult) Warning() bool {
 
 type Summary struct {
 	Target        string
+	Source        string
+	Mirror        string
+	CacheRemoved  bool
 	DryRun        bool
 	Commits       int
 	Known         int
@@ -77,6 +84,10 @@ type Summary struct {
 	UploadedBytes int64
 	BlobsRead     int64
 	BlobHits      int64
+	LFSMode       lfs.Mode
+	LFSEndpoint   string
+	LFSRead       int64
+	LFSHits       int64
 	Branches      int
 	Tags          int
 	DefaultBranch string
@@ -95,6 +106,13 @@ func (s *Summary) RefWarnings() []RefResult {
 	return out
 }
 
+func (s *Summary) LFSBlocked() bool {
+	if s.Report == nil || len(s.Report.LFSMissing) == 0 || s.LFSMode == lfs.ModeOff {
+		return false
+	}
+	return s.LFSMode == lfs.ModeLocal || s.LFSEndpoint == ""
+}
+
 func (s *Summary) RefErrors() []RefResult {
 	var out []RefResult
 	for _, r := range s.Refs {
@@ -106,11 +124,35 @@ func (s *Summary) RefErrors() []RefResult {
 }
 
 type Importer struct {
-	transport Transport
+	transport   Transport
+	http        lfs.Doer
+	credentials lfs.CredentialHelper
+	cacheRoot   string
+	lfsBackoff  time.Duration
 }
 
 func NewImporter(t Transport) *Importer {
-	return &Importer{transport: t}
+	return &Importer{transport: t, credentials: lfs.NewGitCredentials()}
+}
+
+func (im *Importer) WithHTTPClient(c lfs.Doer) *Importer {
+	im.http = c
+	return im
+}
+
+func (im *Importer) WithCredentials(c lfs.CredentialHelper) *Importer {
+	im.credentials = c
+	return im
+}
+
+func (im *Importer) WithCacheRoot(dir string) *Importer {
+	im.cacheRoot = dir
+	return im
+}
+
+func (im *Importer) WithLFSBackoff(d time.Duration) *Importer {
+	im.lfsBackoff = d
+	return im
 }
 
 func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*Summary, error) {
@@ -125,13 +167,42 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 		return nil, domain.NewUserError(err.Error())
 	}
 	opts.Symlinks = symlinks
+	if opts.LFS, err = lfs.ParseMode(string(opts.LFS)); err != nil {
+		return nil, domain.NewUserError(err.Error())
+	}
 	if progress == nil {
 		progress = noProgress{}
 	}
-	src, err := gitimport.Open(opts.GitPath)
+	path, display := opts.GitPath, opts.GitPath
+	var remote *remoteSource
+	if IsRemoteURL(opts.GitPath) {
+		if remote, err = im.mirror(ctx, opts.GitPath); err != nil {
+			return nil, err
+		}
+		path, display = remote.dir, remote.display
+	}
+	src, err := gitimport.Open(path)
 	if err != nil {
 		return nil, domain.NewUserError(err.Error())
 	}
+	sum, err := im.run(ctx, src, remote, opts, progress)
+	_ = src.Close()
+	if sum != nil {
+		sum.Source = display
+		if remote != nil {
+			sum.Mirror = remote.dir
+		}
+	}
+	if err == nil && remote != nil && opts.DropCache {
+		if rmErr := os.RemoveAll(remote.dir); rmErr != nil {
+			return sum, fmt.Errorf("remove git mirror: %w", rmErr)
+		}
+		sum.CacheRemoved = true
+	}
+	return sum, err
+}
+
+func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remoteSource, opts Options, progress Progress) (*Summary, error) {
 	sink := NewSink(im.transport, opts.Org, opts.Project)
 	plan, known, err := im.plan(ctx, src, sink, opts)
 	if err != nil {
@@ -146,8 +217,24 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 		Tags:          len(plan.Tags()),
 		DefaultBranch: plan.DefaultBranch,
 		Warnings:      plan.Warnings,
+		LFSMode:       opts.LFS,
 	}
-	preview, err := gitimport.NewConverter(src, gitimport.ConverterOptions{Symlinks: opts.Symlinks})
+	gitDir, err := GitDir(src)
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := im.lfsResolver(src, remote, opts.LFS, gitDir)
+	if err != nil {
+		return nil, err
+	}
+	var lfsSource gitimport.LFSSource
+	if resolver != nil {
+		lfsSource = resolver
+		if c, ok := resolver.Remote.(*lfs.Client); ok {
+			sum.LFSEndpoint = c.Endpoint()
+		}
+	}
+	preview, err := gitimport.NewConverter(src, gitimport.ConverterOptions{Symlinks: opts.Symlinks, LFS: lfsSource})
 	if err != nil {
 		return nil, err
 	}
@@ -161,16 +248,15 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 	if opts.DryRun {
 		return sum, nil
 	}
+	if sum.LFSBlocked() {
+		return sum, missingLFSError(sum.Report.LFSMissing, opts.LFS)
+	}
 	if opts.Confirm != nil {
 		if err := opts.Confirm(sum); err != nil {
 			return sum, err
 		}
 	}
 
-	gitDir, err := GitDir(src)
-	if err != nil {
-		return sum, err
-	}
 	state, err := OpenState(filepath.Join(gitDir, StateDirName), opts.ResetState)
 	if err != nil {
 		return sum, err
@@ -180,8 +266,8 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 		return sum, err
 	}
 
-	if err := im.commit(ctx, src, sink, state, plan, opts, sum, progress); err != nil {
-		return sum, withStateHint(err)
+	if err := im.commit(ctx, src, sink, state, lfsSource, plan, opts, sum, progress); err != nil {
+		return sum, withLFSHint(withStateHint(err))
 	}
 	if err := im.setRefs(ctx, sink, plan, opts, sum); err != nil {
 		return sum, err
@@ -225,13 +311,14 @@ func (im *Importer) plan(ctx context.Context, src *gitimport.Source, sink *Sink,
 	return plan, len(known), nil
 }
 
-func (im *Importer) commit(ctx context.Context, src *gitimport.Source, sink *Sink, state *State, plan *gitimport.Plan, opts Options, sum *Summary, progress Progress) error {
+func (im *Importer) commit(ctx context.Context, src *gitimport.Source, sink *Sink, state *State, lfsSource gitimport.LFSSource, plan *gitimport.Plan, opts Options, sum *Summary, progress Progress) error {
 	var uploaded atomic.Int64
 	var imported atomic.Int64
 	var current *usecase.ChunkUploader
 	conv, err := gitimport.NewConverter(src, gitimport.ConverterOptions{
 		Symlinks: opts.Symlinks,
 		Cache:    state,
+		LFS:      lfsSource,
 		Sink: func(ch chunker.EncodedChunk) error {
 			return current.Add(&serverDomain.ChunkData{Hash: ch.Hash, Data: ch.Data, RawSize: ch.RawSize})
 		},
@@ -242,7 +329,7 @@ func (im *Importer) commit(ctx context.Context, src *gitimport.Source, sink *Sin
 	onChunk := func(ch *serverDomain.ChunkData) { uploaded.Add(int64(len(ch.Data))) }
 	next := func(ctx context.Context, i int) (*grpc.ImportCommit, error) {
 		current = sink.Uploader(ctx, onChunk)
-		ev, err := conv.Convert(plan.Commits[i])
+		ev, err := conv.ConvertContext(ctx, plan.Commits[i])
 		if err != nil {
 			current.Abort()
 			return nil, err
@@ -263,6 +350,7 @@ func (im *Importer) commit(ctx context.Context, src *gitimport.Source, sink *Sin
 	sum.Imported = int(imported.Load())
 	sum.UploadedBytes = uploaded.Load()
 	sum.BlobsRead, sum.BlobHits = stats.BlobsRead, stats.BlobHits
+	sum.LFSRead, sum.LFSHits = stats.LFSRead, stats.LFSHits
 	if err == nil {
 		progress.ImportEnd()
 	}

@@ -1,6 +1,7 @@
 package gitimport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/gitimport/lfs"
 )
 
 const (
@@ -95,12 +97,24 @@ func binaryProfile(path string) string {
 	return fmt.Sprintf("bin-%d-%d-%d", cfg.Min, cfg.Avg, cfg.Max)
 }
 
+const lfsProfilePrefix = "lfs:"
+
 type ChunkSink func(chunker.EncodedChunk) error
+
+type LFSSource interface {
+	Has(p lfs.Pointer) bool
+	Open(ctx context.Context, p lfs.Pointer) (lfs.Object, error)
+}
+
+type LFSRecorder interface {
+	RecordLFS(oid, gitSHA string) error
+}
 
 type ConverterOptions struct {
 	Symlinks SymlinkPolicy
 	Cache    BlobCache
 	Sink     ChunkSink
+	LFS      LFSSource
 }
 
 type File struct {
@@ -142,6 +156,8 @@ func (e *InvalidPathsError) Error() string {
 type Stats struct {
 	BlobsRead int64
 	BlobHits  int64
+	LFSRead   int64
+	LFSHits   int64
 }
 
 type Converter struct {
@@ -170,6 +186,10 @@ func (c *Converter) Stats() Stats {
 }
 
 func (c *Converter) Convert(pc *PlannedCommit) (*Event, error) {
+	return c.ConvertContext(context.Background(), pc)
+}
+
+func (c *Converter) ConvertContext(ctx context.Context, pc *PlannedCommit) (*Event, error) {
 	commit, err := c.src.Commit(pc.Hash)
 	if err != nil {
 		return nil, fmt.Errorf("read commit %s: %w", pc.Hash, err)
@@ -191,7 +211,7 @@ func (c *Converter) Convert(pc *PlannedCommit) (*Event, error) {
 		Warnings:      d.warnings,
 	}
 	for _, f := range d.files {
-		blob, err := c.convertBlob(f.path, f.blob)
+		blob, err := c.convertBlob(ctx, f.path, f.blob)
 		if err != nil {
 			return nil, fmt.Errorf("convert %s in %s: %w", f.path, pc.Hash, err)
 		}
@@ -338,17 +358,22 @@ func moduleURL(modules *config.Modules, path string) string {
 	return ""
 }
 
-func (c *Converter) convertBlob(path string, h plumbing.Hash) (*Blob, error) {
+func (c *Converter) convertBlob(ctx context.Context, path string, h plumbing.Hash) (*Blob, error) {
 	sha := h.String()
-	for _, key := range []BlobKey{{SHA: sha, Profile: textProfile}, {SHA: sha, Profile: binaryProfile(path)}} {
-		b, ok, err := c.opts.Cache.Get(key)
+	if c.opts.LFS != nil {
+		ptr, ok, err := c.pointer(h)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
-			c.count(func(s *Stats) { s.BlobHits++ })
-			return b, nil
+			return c.convertLFS(ctx, path, sha, ptr)
 		}
+	}
+	if b, ok, err := c.cached(sha, "", path); err != nil || ok {
+		if ok {
+			c.count(func(s *Stats) { s.BlobHits++ })
+		}
+		return b, err
 	}
 	gitBlob, err := c.src.repo.BlobObject(h)
 	if err != nil {
@@ -357,6 +382,69 @@ func (c *Converter) convertBlob(path string, h plumbing.Hash) (*Blob, error) {
 	c.count(func(s *Stats) { s.BlobsRead++ })
 	r := &blobReadSeeker{blob: gitBlob}
 	defer func() { _ = r.Close() }()
+	b, err := c.encode(r, path)
+	if err != nil {
+		return nil, err
+	}
+	if b.Size != gitBlob.Size {
+		return nil, fmt.Errorf("blob %s: read %d bytes, want %d", sha, b.Size, gitBlob.Size)
+	}
+	return b, c.opts.Cache.Put(blobKey(sha, "", path, b.IsBinary), b)
+}
+
+func (c *Converter) convertLFS(ctx context.Context, path, sha string, ptr lfs.Pointer) (*Blob, error) {
+	b, ok, err := c.cached(ptr.OID, lfsProfilePrefix, path)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		c.count(func(s *Stats) { s.LFSHits++ })
+		return b, c.record(ptr.OID, sha)
+	}
+	obj, err := c.opts.LFS.Open(ctx, ptr)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = obj.Close() }()
+	c.count(func(s *Stats) { s.LFSRead++ })
+	v := lfs.NewVerifier(obj, ptr)
+	if b, err = c.encode(v, path); err != nil {
+		return nil, err
+	}
+	if err := v.Verify(); err != nil {
+		return nil, err
+	}
+	if err := c.opts.Cache.Put(blobKey(ptr.OID, lfsProfilePrefix, path, b.IsBinary), b); err != nil {
+		return nil, err
+	}
+	return b, c.record(ptr.OID, sha)
+}
+
+func (c *Converter) record(oid, sha string) error {
+	if r, ok := c.opts.Cache.(LFSRecorder); ok {
+		return r.RecordLFS(oid, sha)
+	}
+	return nil
+}
+
+func blobKey(id, prefix, path string, isBinary bool) BlobKey {
+	if isBinary {
+		return BlobKey{SHA: id, Profile: prefix + binaryProfile(path)}
+	}
+	return BlobKey{SHA: id, Profile: prefix + textProfile}
+}
+
+func (c *Converter) cached(id, prefix, path string) (*Blob, bool, error) {
+	for _, key := range []BlobKey{blobKey(id, prefix, path, false), blobKey(id, prefix, path, true)} {
+		b, ok, err := c.opts.Cache.Get(key)
+		if err != nil || ok {
+			return b, ok, err
+		}
+	}
+	return nil, false, nil
+}
+
+func (c *Converter) encode(r io.ReadSeeker, path string) (*Blob, error) {
 	isBinary, err := chunker.ProbeBinary(r)
 	if err != nil {
 		return nil, err
@@ -374,18 +462,37 @@ func (c *Converter) convertBlob(path string, h plumbing.Hash) (*Blob, error) {
 	if err != nil {
 		return nil, err
 	}
-	if b.Size != gitBlob.Size {
-		return nil, fmt.Errorf("blob %s: read %d bytes, want %d", sha, b.Size, gitBlob.Size)
-	}
 	b.FileHash = chunker.FileHash(b.Chunks)
-	key := BlobKey{SHA: sha, Profile: textProfile}
-	if isBinary {
-		key.Profile = binaryProfile(path)
-	}
-	if err := c.opts.Cache.Put(key, b); err != nil {
-		return nil, err
-	}
 	return b, nil
+}
+
+func (c *Converter) pointer(h plumbing.Hash) (lfs.Pointer, bool, error) {
+	return readPointer(c.src, h)
+}
+
+func readPointer(src *Source, h plumbing.Hash) (lfs.Pointer, bool, error) {
+	size, err := src.repo.Storer.EncodedObjectSize(h)
+	if err != nil {
+		return lfs.Pointer{}, false, err
+	}
+	if size > lfs.MaxPointerSize || size == 0 {
+		return lfs.Pointer{}, false, nil
+	}
+	blob, err := src.repo.BlobObject(h)
+	if err != nil {
+		return lfs.Pointer{}, false, err
+	}
+	rc, err := blob.Reader()
+	if err != nil {
+		return lfs.Pointer{}, false, err
+	}
+	defer func() { _ = rc.Close() }()
+	data, err := io.ReadAll(io.LimitReader(rc, lfs.MaxPointerSize+1))
+	if err != nil {
+		return lfs.Pointer{}, false, err
+	}
+	p, ok := lfs.ParsePointer(data)
+	return p, ok, nil
 }
 
 func (c *Converter) count(fn func(*Stats)) {

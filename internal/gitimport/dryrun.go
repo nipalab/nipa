@@ -9,6 +9,13 @@ type PathIssue struct {
 	Path   string
 }
 
+type LFSObject struct {
+	OID    string
+	Size   int64
+	Commit string
+	Path   string
+}
+
 type Report struct {
 	Commits      int
 	Branches     int
@@ -23,6 +30,9 @@ type Report struct {
 	Symlinks     []PathIssue
 	Submodules   []Submodule
 	Warnings     []Warning
+	LFSObjects   int
+	LFSBytes     int64
+	LFSMissing   []LFSObject
 }
 
 func (c *Converter) DryRun(plan *Plan) (*Report, error) {
@@ -41,6 +51,7 @@ func (c *Converter) DryRun(plan *Plan) (*Report, error) {
 	invalid := map[string]bool{}
 	symlinks := map[string]bool{}
 	submodules := map[string]bool{}
+	oids := map[string]bool{}
 	for _, pc := range plan.Commits {
 		commit, err := c.src.Commit(pc.Hash)
 		if err != nil {
@@ -65,7 +76,30 @@ func (c *Converter) DryRun(plan *Plan) (*Report, error) {
 			if err != nil {
 				return nil, fmt.Errorf("size of blob %s: %w", sha, err)
 			}
-			r.Bytes += size
+			ptr, isPointer, err := readPointer(c.src, f.blob)
+			if err != nil {
+				return nil, fmt.Errorf("read blob %s: %w", sha, err)
+			}
+			if !isPointer {
+				r.Bytes += size
+				continue
+			}
+			if c.opts.LFS == nil {
+				r.Bytes += size
+			}
+			if oids[ptr.OID] {
+				continue
+			}
+			oids[ptr.OID] = true
+			r.LFSObjects++
+			r.LFSBytes += ptr.Size
+			if c.opts.LFS == nil {
+				continue
+			}
+			r.Bytes += ptr.Size
+			if !c.opts.LFS.Has(ptr) {
+				r.LFSMissing = append(r.LFSMissing, LFSObject{OID: ptr.OID, Size: ptr.Size, Commit: pc.Hash.String(), Path: f.path})
+			}
 		}
 		for _, p := range d.invalid {
 			if !invalid[p] {
