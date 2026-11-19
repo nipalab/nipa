@@ -156,8 +156,9 @@ rule applies to it like to seats and packs, and a price the server does not
 know (including an own-storage price while the add-on is not offered) makes
 the subscription unmappable.
 
-`Service.OwnStorageActive(owner)` is true when the live subscription carries
-the add-on. It is the `byostorage` entitlement: `nipad-ee` attaches it only
+`Service.OwnStorageActive(owner)` is true when the add-on is offered and the
+live subscription carries it (unsetting the prices makes every own-storage
+project read-only). It is the `byostorage` entitlement: `nipad-ee` attaches it only
 when billing is on, so with `BILLING_PROVIDER=off` own storage is never gated.
 Answers are cached per owner for 60 s; `Apply` (webhooks, plan changes, sync,
 replay) forgets the owner's entry, and a lookup that started before the
@@ -223,7 +224,8 @@ shows a refused code under the field.
 ### Change seats, storage or interval
 
 `PATCH /api/v1/billing/subscription {seats, storage_packs, own_storage?,
-interval?}` (a missing interval or `own_storage` keeps the current one) replaces the whole item list, so an
+interval?}` (a missing interval or `own_storage` keeps the current one; a kept add-on
+the server no longer offers is dropped) replaces the whole item list, so an
 interval change swaps both prices in one update, with
 `proration_billing_mode: prorated_immediately` and
 `on_payment_failure: prevent_change`. It answers:

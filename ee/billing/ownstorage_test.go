@@ -53,6 +53,16 @@ func TestOwnStorageActive_LiveSubscription(t *testing.T) {
 	}
 }
 
+func TestOwnStorageActive_NotOffered(t *testing.T) {
+	svc, repo, _ := ownStorageService()
+	svc.cfg.OwnStorage = false
+	repo.live = &Subscription{Status: StatusActive, OwnStorage: true}
+	active, err := svc.OwnStorageActive(context.Background(), payer)
+	require.NoError(t, err)
+	require.False(t, active)
+	require.Zero(t, liveCalls(repo))
+}
+
 func TestOwnStorageActive_CachesPerOwner(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := ownStorageService()
@@ -169,6 +179,18 @@ func TestChangeSubscription_OwnStorage(t *testing.T) {
 	_, err = svc.ChangeSubscription(ctx, payer, Items{OwnStorage: true})
 	require.NoError(t, err, "the add-on alone is a valid plan")
 	require.Equal(t, Items{OwnStorage: true, Interval: IntervalYear}, provider.updates[2])
+}
+
+func TestChangeSubscription_DropsAddOnNoLongerOffered(t *testing.T) {
+	svc, repo, provider := ownStorageService()
+	svc.cfg.OwnStorage = false
+	repo.live = liveSub()
+	repo.live.OwnStorage = true
+	provider.updated = Subscription{ProviderSubscriptionID: "sub_live", Status: StatusActive, Interval: IntervalYear, Seats: 4, ProviderUpdatedAt: at(2)}
+
+	_, err := svc.ChangeSubscription(context.Background(), payer, Items{Seats: 4, keepOwnStorage: true})
+	require.NoError(t, err)
+	require.Equal(t, Items{Seats: 4, Interval: IntervalYear}, provider.updates[0])
 }
 
 func TestChangeSubscription_ForgetsCachedOwnStorage(t *testing.T) {

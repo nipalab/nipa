@@ -81,7 +81,7 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 		items.Interval = live.Interval
 	}
 	if items.keepOwnStorage {
-		items.OwnStorage = live.OwnStorage
+		items.OwnStorage = live.OwnStorage && s.cfg.OwnStorage
 		items.keepOwnStorage = false
 	}
 	items, err = s.cfg.ValidItems(items)

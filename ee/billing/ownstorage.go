@@ -63,10 +63,13 @@ func (c *ownStorageCache) forget(owner snow.ID) {
 	delete(c.entries, owner)
 }
 
-// OwnStorageActive reports whether the owner's live subscription carries the
-// Own storage add-on. Answers are cached per owner for a minute; applying a
+// OwnStorageActive reports whether the add-on is offered and the owner's live
+// subscription carries it. Answers are cached per owner for a minute; applying a
 // subscription forgets the owner's entry.
 func (s *Service) OwnStorageActive(ctx context.Context, ownerID snow.ID) (bool, error) {
+	if !s.cfg.OwnStorage {
+		return false, nil
+	}
 	active, ok, gen := s.own.get(ownerID)
 	if ok {
 		return active, nil
