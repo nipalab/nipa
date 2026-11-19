@@ -80,4 +80,4 @@ WHERE project_id = sqlc.arg(project_id) AND id = sqlc.arg(id) AND deleted = FALS
 -- name: BranchUpdateCommitIf :execresult
 UPDATE branches
 SET commit_id = sqlc.arg(to_commit_id), updated_at = now()
-WHERE id = sqlc.arg(id) AND deleted = FALSE AND commit_id = sqlc.arg(from_commit_id);
+WHERE id = sqlc.arg(id) AND deleted = FALSE AND commit_id IS NOT DISTINCT FROM sqlc.narg(from_commit_id);

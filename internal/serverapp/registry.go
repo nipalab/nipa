@@ -17,6 +17,7 @@ type Usecases struct {
 	Tag                *usecase.Tag
 	Common             *usecase.Common
 	Push               *usecase.Push
+	Import             *usecase.Import
 	Chunk              *usecase.Chunk
 	Permission         *usecase.Permission
 	Group              *usecase.Group
@@ -75,6 +76,10 @@ func (r *Registry) Common() *usecase.Common {
 
 func (r *Registry) Push() *usecase.Push {
 	return r.uc.Push
+}
+
+func (r *Registry) Import() *usecase.Import {
+	return r.uc.Import
 }
 
 func (r *Registry) Chunk() *usecase.Chunk {

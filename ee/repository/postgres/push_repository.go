@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/pushbatch"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
@@ -280,4 +281,15 @@ func (s pushBatchStore) InsertFiles(ctx context.Context, payload []byte) (map[pu
 
 func (s pushBatchStore) InsertLinks(ctx context.Context, payload []byte) error {
 	return handleError(s.q.FileChunkInsertMany(ctx, payload))
+}
+
+// importAdvisoryNamespace keeps import ref locks apart from the other
+// per-project advisory locks ("NIPIMPT").
+const importAdvisoryNamespace int64 = 0x4e4950494d5054
+
+// LockProject takes the project's transaction-scoped import lock. It must run
+// inside a transaction carried by ctx.
+func (p *PushRepository) LockProject(ctx context.Context, projectID snow.ID) error {
+	_, err := dbtx.New(p.db).ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, projectID.Int64()^importAdvisoryNamespace)
+	return handleError(err)
 }

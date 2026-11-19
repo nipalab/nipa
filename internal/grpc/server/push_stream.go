@@ -76,38 +76,63 @@ type pushReceiver struct {
 }
 
 func (r *pushReceiver) add(msg *pb.PushStreamRequest) error {
-	r.size += proto.Size(msg)
-	if r.size > r.maxBytes {
-		return domain.NewErrorUser(fmt.Sprintf("push manifest is larger than the server limit of %d bytes; push in smaller parts", r.maxBytes))
+	if err := r.grow(proto.Size(msg)); err != nil {
+		return err
 	}
 	switch part := msg.GetPart().(type) {
 	case *pb.PushStreamRequest_Header:
 		return domain.NewErrorUser("push stream has more than one header")
 	case *pb.PushStreamRequest_Files:
-		for _, f := range part.Files.GetFiles() {
-			file, err := pushStreamFile(f)
-			if err != nil {
-				return err
-			}
-			r.files = append(r.files, file)
-		}
+		return r.addFiles(part.Files)
 	case *pb.PushStreamRequest_Chunks:
-		if len(r.files) == 0 {
-			return domain.NewErrorUser("push stream sent chunk hashes before any file")
-		}
-		last := r.files[len(r.files)-1]
-		for _, h := range part.Chunks.GetChunkHashes() {
-			hash, err := rawHash(h)
-			if err != nil {
-				return domain.NewErrorUser("invalid chunk hash for " + last.Path)
-			}
-			last.ChunkHashes = append(last.ChunkHashes, hash)
-		}
+		return r.addChunks(part.Chunks)
 	case *pb.PushStreamRequest_Removed:
-		r.removed = append(r.removed, part.Removed.GetPaths()...)
+		return r.addRemoved(part.Removed)
 	default:
 		return domain.NewErrorUser("push stream sent an empty message")
 	}
+}
+
+func (r *pushReceiver) grow(n int) error {
+	r.size += n
+	if r.size > r.maxBytes {
+		return domain.NewErrorUser(fmt.Sprintf("push manifest is larger than the server limit of %d bytes; push in smaller parts", r.maxBytes))
+	}
+	return nil
+}
+
+func (r *pushReceiver) addFiles(part *pb.PushStreamFiles) error {
+	for _, f := range part.GetFiles() {
+		file, err := pushStreamFile(f)
+		if err != nil {
+			return err
+		}
+		r.files = append(r.files, file)
+	}
+	return r.checkCount()
+}
+
+func (r *pushReceiver) addChunks(part *pb.PushStreamChunks) error {
+	if len(r.files) == 0 {
+		return domain.NewErrorUser("push stream sent chunk hashes before any file")
+	}
+	last := r.files[len(r.files)-1]
+	for _, h := range part.GetChunkHashes() {
+		hash, err := rawHash(h)
+		if err != nil {
+			return domain.NewErrorUser("invalid chunk hash for " + last.Path)
+		}
+		last.ChunkHashes = append(last.ChunkHashes, hash)
+	}
+	return nil
+}
+
+func (r *pushReceiver) addRemoved(part *pb.PushStreamRemoved) error {
+	r.removed = append(r.removed, part.GetPaths()...)
+	return r.checkCount()
+}
+
+func (r *pushReceiver) checkCount() error {
 	if n := len(r.files) + len(r.removed); n > r.maxFiles {
 		return r.tooMany(n)
 	}

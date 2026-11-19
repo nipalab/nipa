@@ -422,7 +422,7 @@ func (q *Queries) BranchUpdate(ctx context.Context, arg BranchUpdateParams) erro
 const branchUpdateCommitIf = `-- name: BranchUpdateCommitIf :execresult
 UPDATE branches
 SET commit_id = ?1, updated_at = CURRENT_TIMESTAMP
-WHERE id = ?2 AND deleted = FALSE AND commit_id = ?3
+WHERE id = ?2 AND deleted = FALSE AND commit_id IS ?3
 `
 
 type BranchUpdateCommitIfParams struct {

@@ -12,6 +12,7 @@ type usecaseContainer interface {
 	Tag() *usecase.Tag
 	Common() *usecase.Common
 	Push() *usecase.Push
+	Import() *usecase.Import
 	Chunk() *usecase.Chunk
 	Permission() *usecase.Permission
 	Group() *usecase.Group

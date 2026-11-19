@@ -75,4 +75,4 @@ WHERE project_id = ? AND id = ? AND deleted = FALSE;
 -- name: BranchUpdateCommitIf :execresult
 UPDATE branches
 SET commit_id = :to_commit_id, updated_at = CURRENT_TIMESTAMP
-WHERE id = :id AND deleted = FALSE AND commit_id = :from_commit_id;
+WHERE id = :id AND deleted = FALSE AND commit_id IS :from_commit_id;

@@ -234,21 +234,7 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	if strings.TrimSpace(message) == "" {
 		return nil, domain.NewErrorUser("commit message is required")
 	}
-	if n := len(files) + len(removed); n > p.MaxFiles() {
-		return nil, tooManyPushFiles(n, p.MaxFiles())
-	}
-	if err := validatePushFiles(files); err != nil {
-		return nil, err
-	}
-	if err := validateRemovedFiles(removed, files); err != nil {
-		return nil, err
-	}
-	for _, f := range files {
-		if got := treehash.FileHash(f.ChunkHashes); got != f.FileHash {
-			return nil, domain.NewErrorUser(fmt.Sprintf("file hash mismatch for %q", f.Path))
-		}
-	}
-	if err := p.ensurePathWrites(ctx, projectID, files, removed); err != nil {
+	if err := checkPushContent(ctx, p.permUc, projectID, files, removed, p.MaxFiles()); err != nil {
 		return nil, err
 	}
 
@@ -536,21 +522,22 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 			parentID2 = &id
 		}
 	}
-	return buildApplyRequest(p.snowNode, projectID, branch.ID, parentID, parentID2, parentHashes, message, root)
+	return buildApplyRequest(p.snowNode, projectID, branch.ID, parentID, parentID2, parentHashes, message, "", root)
 }
 
 // buildApplyRequest turns a built tree into the row-level request the push
-// repository writes. Parent hashes feed the commit hash; parent IDs feed the
-// commit rows.
-func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID, parent2ID *snow.ID, parentHashes []domain.Hash, message string, root *pushTreeNode) ApplyPushRequest {
+// repository writes. Parent hashes and the origin feed the commit hash; parent
+// IDs feed the commit rows.
+func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID, parent2ID *snow.ID, parentHashes []domain.Hash, message, origin string, root *pushTreeNode) ApplyPushRequest {
 	req := ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
 		CommitID:   snowNode.Generate(),
-		CommitHash: treehash.CommitHashWithOrigin(root.Hash, parentHashes, message, ""),
+		CommitHash: treehash.CommitHashWithOrigin(root.Hash, parentHashes, message, origin),
 		ParentID:   parentID,
 		ParentID2:  parent2ID,
 		Message:    message,
+		Origin:     origin,
 	}
 
 	queue := []*pushTreeNode{root}
@@ -596,14 +583,33 @@ func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID
 	return req
 }
 
-func (p *Push) ensurePathWrites(ctx context.Context, projectID snow.ID, files []*domain.PushFile, removed []string) error {
+// checkPushContent runs the file list checks a push and an import share.
+func checkPushContent(ctx context.Context, perm permissionUsecase, projectID snow.ID, files []*domain.PushFile, removed []string, maxFiles int) error {
+	if n := len(files) + len(removed); n > maxFiles {
+		return tooManyPushFiles(n, maxFiles)
+	}
+	if err := validatePushFiles(files); err != nil {
+		return err
+	}
+	if err := validateRemovedFiles(removed, files); err != nil {
+		return err
+	}
+	for _, f := range files {
+		if got := treehash.FileHash(f.ChunkHashes); got != f.FileHash {
+			return domain.NewErrorUser(fmt.Sprintf("file hash mismatch for %q", f.Path))
+		}
+	}
+	return ensurePathWrites(ctx, perm, projectID, files, removed)
+}
+
+func ensurePathWrites(ctx context.Context, perm permissionUsecase, projectID snow.ID, files []*domain.PushFile, removed []string) error {
 	for _, file := range files {
-		if !p.permUc.HasPathAccess(ctx, projectID, file.Path, domain.PermissionWrite) {
+		if !perm.HasPathAccess(ctx, projectID, file.Path, domain.PermissionWrite) {
 			return domain.NewErrorNoPermission()
 		}
 	}
 	for _, path := range removed {
-		if !p.permUc.HasPathAccess(ctx, projectID, path, domain.PermissionWrite) {
+		if !perm.HasPathAccess(ctx, projectID, path, domain.PermissionWrite) {
 			return domain.NewErrorNoPermission()
 		}
 	}

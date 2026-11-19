@@ -185,23 +185,15 @@ func (b *BranchRepository) RequiredChecks(ctx context.Context, branchID snow.ID)
 }
 
 func (b *BranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
-	tx, err := b.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcPostgres.New(tx)
-	if err := q.BranchRemoveDefault(ctx, projectID.Int64()); err != nil {
-		return handleError(err)
-	}
-	if err := q.BranchMarkDefault(ctx, sqlcPostgres.BranchMarkDefaultParams{
-		ProjectID: projectID.Int64(),
-		ID:        branchID.Int64(),
-	}); err != nil {
-		return handleError(err)
-	}
-	return handleError(tx.Commit())
+	return handleError(b.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := b.queries.BranchRemoveDefault(ctx, projectID.Int64()); err != nil {
+			return err
+		}
+		return b.queries.BranchMarkDefault(ctx, sqlcPostgres.BranchMarkDefaultParams{
+			ProjectID: projectID.Int64(),
+			ID:        branchID.Int64(),
+		})
+	}))
 }
 
 func (b *BranchRepository) UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error {

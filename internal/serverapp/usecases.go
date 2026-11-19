@@ -138,6 +138,8 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
 	reviewUsecase = reviewUsecase.WithHooks(hookEmitter)
 	pushUsecase = pushUsecase.WithHooks(hookEmitter)
+	importUsecase := usecase.NewImport(permissionUsecase, repos.Branch, repos.Push, repos.Tag, repos.User, repos.Org, repos.PBAC, repos.Push, transactor, node).
+		WithHooks(hookEmitter).WithAudit(auditUsecase).WithMaxFiles(cfg.PushMaxFiles).WithStorageGate(chunkUsecase)
 	checkUsecase := usecase.NewMergeRequestCheck(repos.MergeRequestCheck, repos.MergeRequest, repos.Branch, permissionUsecase, node).
 		WithHooks(hookEmitter)
 	mergeRequestUsecase = mergeRequestUsecase.WithChecks(checkUsecase)
@@ -151,6 +153,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,
 		Push:               pushUsecase,
+		Import:             importUsecase,
 		Chunk:              chunkUsecase,
 		Permission:         permissionUsecase,
 		Group:              groupUsecase,
