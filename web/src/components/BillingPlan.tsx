@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Banner, Button, FormControl, IconButton, Label, SegmentedControl, Stack, Text, TextInput } from '@primer/react'
+import { Banner, Button, Checkbox, FormControl, IconButton, Label, SegmentedControl, Stack, Text, TextInput } from '@primer/react'
 import { DashIcon, LinkExternalIcon, PlusIcon } from '@primer/octicons-react'
 import { ApiError } from '../api/client'
 import { createCheckout, getMyBilling, openBillingPortal, updateSubscription } from '../api/endpoints'
@@ -75,6 +75,11 @@ export function PlanCard({ summary, config }: { summary: BillingSummary; config?
       {paid && (
         <SettingsRow label="Storage packs">
           <Text>{summary.storage_packs}</Text>
+        </SettingsRow>
+      )}
+      {paid && summary.own_storage && (
+        <SettingsRow label="Add-ons">
+          <Text>Own storage add-on</Text>
         </SettingsRow>
       )}
       {paid && sizes && (
@@ -153,15 +158,18 @@ function usePricePreview(
   const key = interval === 'year' ? 'yearly' : 'monthly'
   const seatPrice = config.prices.seat[key]
   const storagePrice = config.prices.storage[key]
+  const ownStoragePrice = config.prices.own_storage?.[key] ?? null
 
   useEffect(() => {
     if (!paddle) return
     let active = true
     const timer = setTimeout(() => {
-      previewPrices(paddle, [
+      const items = [
         { priceId: seatPrice, quantity: Math.max(seats, 1) },
         { priceId: storagePrice, quantity: Math.max(packs, 1) },
-      ])
+      ]
+      if (ownStoragePrice) items.push({ priceId: ownStoragePrice, quantity: 1 })
+      previewPrices(paddle, items)
         .then((result) => {
           if (!active) return
           setLines(result)
@@ -173,9 +181,14 @@ function usePricePreview(
       active = false
       clearTimeout(timer)
     }
-  }, [paddle, seatPrice, storagePrice, seats, packs])
+  }, [paddle, seatPrice, storagePrice, ownStoragePrice, seats, packs])
 
-  return { seat: lines?.[seatPrice], storage: lines?.[storagePrice], failed }
+  return {
+    seat: lines?.[seatPrice],
+    storage: lines?.[storagePrice],
+    ownStorage: ownStoragePrice ? lines?.[ownStoragePrice] : undefined,
+    failed,
+  }
 }
 
 export function PlanEditor({
@@ -194,10 +207,13 @@ export function PlanEditor({
   const initialSeats = Math.max(paid ? summary.seats : minSeats, minSeats)
   const initialPacks = paid ? summary.storage_packs : 0
   const initialInterval: BillingInterval = summary.interval === 'year' ? 'year' : 'month'
+  const ownStorageOffered = Boolean(config.prices.own_storage)
+  const initialOwnStorage = paid && Boolean(summary.own_storage)
 
   const [seats, setSeats] = useState(initialSeats)
   const [packs, setPacks] = useState(initialPacks)
   const [interval, setBillingInterval] = useState<BillingInterval>(initialInterval)
+  const [ownStorage, setOwnStorage] = useState(initialOwnStorage)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -253,9 +269,12 @@ export function PlanEditor({
     }
   }, [pending, onChanged])
 
-  const unchanged = seats === initialSeats && packs === initialPacks && interval === initialInterval
-  const empty = seats + packs === 0
-  const items = { seats, storage_packs: packs, interval }
+  const unchanged =
+    seats === initialSeats && packs === initialPacks && interval === initialInterval && ownStorage === initialOwnStorage
+  const empty = seats + packs === 0 && !ownStorage
+  const items = ownStorageOffered
+    ? { seats, storage_packs: packs, interval, own_storage: ownStorage }
+    : { seats, storage_packs: packs, interval }
 
   async function upgrade() {
     setBusy(true)
@@ -314,7 +333,7 @@ export function PlanEditor({
       title={paid ? 'Change plan' : 'Upgrade'}
       description={
         paid
-          ? 'Change seats, storage packs or the billing interval. Changes are prorated immediately.'
+          ? 'Change seats, storage packs, add-ons or the billing interval. Changes are prorated immediately.'
           : 'Pick the seats and extra storage you need. Each seat includes storage; packs add more.'
       }
       actions={
@@ -383,9 +402,31 @@ export function PlanEditor({
           </Text>
         )}
       </SettingsRow>
+      {ownStorageOffered && (
+        <SettingsRow label="Own storage">
+          <FormControl id="billing-own-storage">
+            <Checkbox checked={ownStorage} onChange={(event) => setOwnStorage(event.target.checked)} />
+            <FormControl.Label>Own storage add-on</FormControl.Label>
+            <FormControl.Caption>Store project files in your own S3-compatible bucket</FormControl.Caption>
+          </FormControl>
+          {preview.ownStorage && (
+            <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
+              {`${preview.ownStorage.unit} / ${per}`}
+            </Text>
+          )}
+          {initialOwnStorage && !ownStorage && (
+            <div style={{ marginTop: 'var(--base-size-8)' }}>
+              <Banner variant="warning" title="Projects on your own storage become read-only">
+                Pushes and merges to projects that use your own storage servers are refused until the add-on is
+                enabled again. Clones and reads keep working.
+              </Banner>
+            </div>
+          )}
+        </SettingsRow>
+      )}
       {sizes && (
         <SettingsRow label="Your plan">
-          <Text>{`${seats + freeSeats} users · ${planStorageLabel(sizes, seats, packs)} storage`}</Text>
+          <Text>{`${seats + freeSeats} users · ${planStorageLabel(sizes, seats, packs)} storage${ownStorage ? ' · Own storage' : ''}`}</Text>
         </SettingsRow>
       )}
       {!paid && (

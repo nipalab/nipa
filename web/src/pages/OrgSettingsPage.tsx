@@ -47,6 +47,8 @@ import { OrgNav } from '../components/OrgNav'
 import { PickedSubject } from '../components/PickedSubject'
 import { SettingsLayout, type SettingsNavItem } from '../components/SettingsLayout'
 import StorageCard from '../components/StorageCard'
+import { OrgDefaultStorageCard } from '../components/storage/OrgDefaultStorageCard'
+import { useByoStorage } from '../components/storage/storage'
 import { UserGroupPicker, type PickerEntry } from '../components/UserGroupPicker'
 import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../components/ui'
 import { useAction, useAsync } from '../hooks'
@@ -65,17 +67,19 @@ export default function OrgSettingsPage() {
   const { canManage, role, loading: roleLoading } = useOrgRole(org)
   const canMaintain = Boolean(me?.is_super_admin || role === 'owner')
   const { data: storage, reload: reloadStorage } = useAsync(() => getOrgStorage(org), [org])
+  const { enabled: byoStorage } = useByoStorage()
+  const hasStorage = storage !== null || byoStorage
 
   const requested = params.get('tab')
   const tab: OrgTab =
-    isOrgTab(requested) && (requested !== 'storage' || storage !== null) && (requested !== 'maintenance' || canMaintain)
+    isOrgTab(requested) && (requested !== 'storage' || hasStorage) && (requested !== 'maintenance' || canMaintain)
       ? requested
       : 'members'
   const base = `/${org}/settings`
   const items: SettingsNavItem[] = [
     { key: 'members', label: 'Members', to: base, icon: PersonIcon },
     { key: 'groups', label: 'Groups', to: `${base}?tab=groups`, icon: PeopleIcon },
-    { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: storage === null },
+    { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: !hasStorage },
     { key: 'maintenance', label: 'Maintenance', to: `${base}?tab=maintenance`, icon: ToolsIcon, hidden: !canMaintain },
   ]
   const title = `${org} settings`
@@ -94,7 +98,12 @@ export default function OrgSettingsPage() {
       <SettingsLayout items={items} active={tab} label="Organization settings">
         {tab === 'members' && <MembersTab org={org} />}
         {tab === 'groups' && <GroupsTab org={org} />}
-        {tab === 'storage' && storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
+        {tab === 'storage' && (
+          <Stack direction="vertical" gap="spacious">
+            {byoStorage && <OrgDefaultStorageCard org={org} />}
+            {storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
+          </Stack>
+        )}
         {tab === 'maintenance' && <OrgMaintenanceTab org={org} />}
       </SettingsLayout>
     </Page>

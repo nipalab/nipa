@@ -41,7 +41,17 @@ export default function StorageCard({
         </>
       ),
     },
-    { id: 'used', header: 'Used', align: 'end', renderCell: (project) => <Mono>{formatBytes(project.used_bytes)}</Mono> },
+    {
+      id: 'used',
+      header: 'Used',
+      align: 'end',
+      renderCell: (project) =>
+        project.external ? (
+          <Text style={{ color: 'var(--fgColor-muted)' }}>External storage</Text>
+        ) : (
+          <Mono>{formatBytes(project.used_bytes)}</Mono>
+        ),
+    },
   ]
 
   return (
