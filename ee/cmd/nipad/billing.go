@@ -27,6 +27,7 @@ const quotaReconcileTimeout = 10 * time.Minute
 type billingSetup struct {
 	service      *billing.Service
 	capabilities *registration.BillingCapabilities
+	ownStorage   bool
 }
 
 // buildBilling validates the billing settings and wires the Paddle provider.
@@ -47,23 +48,34 @@ func buildBilling(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledge
 		APIKey:        cfg.PaddleAPIKey,
 		WebhookSecret: cfg.PaddleWebhookSecret,
 		Prices: paddle.Prices{
-			SeatMonthly:    cfg.PaddlePriceSeatMonthly,
-			SeatYearly:     cfg.PaddlePriceSeatYearly,
-			StorageMonthly: cfg.PaddlePriceStorageMonthly,
-			StorageYearly:  cfg.PaddlePriceStorageYearly,
+			SeatMonthly:       cfg.PaddlePriceSeatMonthly,
+			SeatYearly:        cfg.PaddlePriceSeatYearly,
+			StorageMonthly:    cfg.PaddlePriceStorageMonthly,
+			StorageYearly:     cfg.PaddlePriceStorageYearly,
+			OwnStorageMonthly: strings.TrimSpace(cfg.PaddlePriceOwnStorageMonthly),
+			OwnStorageYearly:  strings.TrimSpace(cfg.PaddlePriceOwnStorageYearly),
 		},
 	})
 	service := newBillingService(cfg, dbConn, ledger).WithProvider(provider)
-	slog.Info("billing enabled", "provider", provider.Name(), "environment", environment, "free_seats", cfg.BillingFreeSeats)
+	slog.Info("billing enabled", "provider", provider.Name(), "environment", environment, "free_seats", cfg.BillingFreeSeats, "own_storage", cfg.OwnStorageOffered())
+	var ownStorage *registration.IntervalPrices
+	if cfg.OwnStorageOffered() {
+		ownStorage = &registration.IntervalPrices{
+			Monthly: strings.TrimSpace(cfg.PaddlePriceOwnStorageMonthly),
+			Yearly:  strings.TrimSpace(cfg.PaddlePriceOwnStorageYearly),
+		}
+	}
 	return &billingSetup{
-		service: service,
+		service:    service,
+		ownStorage: cfg.OwnStorageOffered(),
 		capabilities: &registration.BillingCapabilities{
 			Provider:    provider.Name(),
 			Environment: environment,
 			ClientToken: cfg.PaddleClientToken,
 			Prices: registration.BillingPrices{
-				Seat:    registration.IntervalPrices{Monthly: cfg.PaddlePriceSeatMonthly, Yearly: cfg.PaddlePriceSeatYearly},
-				Storage: registration.IntervalPrices{Monthly: cfg.PaddlePriceStorageMonthly, Yearly: cfg.PaddlePriceStorageYearly},
+				Seat:       registration.IntervalPrices{Monthly: cfg.PaddlePriceSeatMonthly, Yearly: cfg.PaddlePriceSeatYearly},
+				Storage:    registration.IntervalPrices{Monthly: cfg.PaddlePriceStorageMonthly, Yearly: cfg.PaddlePriceStorageYearly},
+				OwnStorage: ownStorage,
 			},
 			FreeSeats:         cfg.BillingFreeSeats,
 			FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
@@ -99,6 +111,7 @@ func newBillingService(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.
 		FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
 		SeatIncludedBytes: cfg.BillingSeatIncludedBytes,
 		StoragePackBytes:  cfg.BillingStoragePackBytes,
+		OwnStorage:        cfg.OwnStorageOffered(),
 		BillingURL:        cfg.BillingPageURL(),
 	})
 }

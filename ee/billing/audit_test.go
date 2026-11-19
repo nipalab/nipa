@@ -131,7 +131,7 @@ func TestAudit_Checkout(t *testing.T) {
 	require.Empty(t, entry.ActorType)
 	require.Equal(t, payer.Base36(), entry.TargetID)
 	require.Equal(t, map[string]any{
-		"seats": int64(2), "storage_packs": int64(1), "interval": IntervalMonth,
+		"seats": int64(2), "storage_packs": int64(1), "own_storage": false, "interval": IntervalMonth,
 		"transaction_id": "txn_1", "customer_id": "ctm_1",
 	}, entry.Metadata)
 
@@ -162,8 +162,8 @@ func TestAudit_ChangeSubscription(t *testing.T) {
 	changed := rec.entries[1]
 	require.True(t, rec.inTx[1])
 	require.Equal(t, "sub_live", changed.TargetID)
-	require.Equal(t, map[string]any{"seats": int64(4), "storage_packs": int64(1), "interval": IntervalYear}, changed.Metadata["old"])
-	require.Equal(t, map[string]any{"seats": int64(6), "storage_packs": int64(3), "interval": IntervalMonth}, changed.Metadata["new"], "new comes from the provider's answer, not the request")
+	require.Equal(t, map[string]any{"seats": int64(4), "storage_packs": int64(1), "own_storage": false, "interval": IntervalYear}, changed.Metadata["old"])
+	require.Equal(t, map[string]any{"seats": int64(6), "storage_packs": int64(3), "own_storage": false, "interval": IntervalMonth}, changed.Metadata["new"], "new comes from the provider's answer, not the request")
 	require.Empty(t, rec.entries[0].ActorType, "the user who changed the plan is the actor of the apply")
 
 	rec.err = errAudit

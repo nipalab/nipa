@@ -33,6 +33,7 @@ type BillingSummary struct {
 	SeatsUsed         int64      `json:"seats_used"`
 	SeatLimit         int64      `json:"seat_limit"`
 	StoragePacks      int64      `json:"storage_packs"`
+	OwnStorage        bool       `json:"own_storage"`
 	CurrentPeriodEnd  *time.Time `json:"current_period_end"`
 	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
 }

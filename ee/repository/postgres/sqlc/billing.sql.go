@@ -130,7 +130,7 @@ func (q *Queries) GetBillingUser(ctx context.Context, id int64) (GetBillingUserR
 }
 
 const getLiveSubscription = `-- name: GetLiveSubscription :one
-SELECT provider_subscription_id, user_id, plan, status, interval, seats, storage_packs, current_period_end, cancel_at_period_end, provider_updated_at, updated_at FROM billing_subscriptions
+SELECT provider_subscription_id, user_id, plan, status, interval, seats, storage_packs, current_period_end, cancel_at_period_end, provider_updated_at, updated_at, own_storage FROM billing_subscriptions
 WHERE user_id = $1
   AND status IN ('active', 'trialing', 'past_due')
 ORDER BY provider_updated_at DESC, provider_subscription_id DESC
@@ -152,6 +152,7 @@ func (q *Queries) GetLiveSubscription(ctx context.Context, userID int64) (Billin
 		&i.CancelAtPeriodEnd,
 		&i.ProviderUpdatedAt,
 		&i.UpdatedAt,
+		&i.OwnStorage,
 	)
 	return i, err
 }
@@ -311,12 +312,12 @@ func (q *Queries) MarkBillingEventProcessed(ctx context.Context, eventID string)
 const upsertSubscription = `-- name: UpsertSubscription :execrows
 INSERT INTO billing_subscriptions (
     provider_subscription_id, user_id, plan, status, interval, seats, storage_packs,
-    current_period_end, cancel_at_period_end, provider_updated_at, updated_at
+    own_storage, current_period_end, cancel_at_period_end, provider_updated_at, updated_at
 ) VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7,
-    $8::timestamptz, $9,
-    $10, now()
+    $5, $6, $7, $8,
+    $9::timestamptz, $10,
+    $11, now()
 )
 ON CONFLICT (provider_subscription_id) DO UPDATE SET
     plan = EXCLUDED.plan,
@@ -324,6 +325,7 @@ ON CONFLICT (provider_subscription_id) DO UPDATE SET
     interval = EXCLUDED.interval,
     seats = EXCLUDED.seats,
     storage_packs = EXCLUDED.storage_packs,
+    own_storage = EXCLUDED.own_storage,
     current_period_end = EXCLUDED.current_period_end,
     cancel_at_period_end = EXCLUDED.cancel_at_period_end,
     provider_updated_at = EXCLUDED.provider_updated_at,
@@ -340,6 +342,7 @@ type UpsertSubscriptionParams struct {
 	Interval               string       `json:"interval"`
 	Seats                  int64        `json:"seats"`
 	StoragePacks           int64        `json:"storage_packs"`
+	OwnStorage             bool         `json:"own_storage"`
 	CurrentPeriodEnd       sql.NullTime `json:"current_period_end"`
 	CancelAtPeriodEnd      bool         `json:"cancel_at_period_end"`
 	ProviderUpdatedAt      time.Time    `json:"provider_updated_at"`
@@ -354,6 +357,7 @@ func (q *Queries) UpsertSubscription(ctx context.Context, arg UpsertSubscription
 		arg.Interval,
 		arg.Seats,
 		arg.StoragePacks,
+		arg.OwnStorage,
 		arg.CurrentPeriodEnd,
 		arg.CancelAtPeriodEnd,
 		arg.ProviderUpdatedAt,

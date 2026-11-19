@@ -228,6 +228,44 @@ func TestUpdateSubscription(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, errorCode(err))
 }
 
+func ownPrices() Prices {
+	prices := testPrices
+	prices.OwnStorageMonthly = "pri_own_m"
+	prices.OwnStorageYearly = "pri_own_y"
+	return prices
+}
+
+func TestOwnStorageItems(t *testing.T) {
+	var client *Client
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			writeJSON(w, http.StatusOK, `{"data":{"id":"sub_1","status":"active","updated_at":"2026-11-07T12:00:00Z","items":[{"quantity":1,"price":{"id":"pri_seat_y"}},{"quantity":1,"price":{"id":"pri_own_y"}}]}}`)
+			return
+		}
+		writeJSON(w, http.StatusCreated, `{"data":{"id":"txn_1"}}`)
+	}))
+	t.Cleanup(server.Close)
+	client = New(Config{APIKey: testAPIKey, Prices: ownPrices(), BaseURL: server.URL})
+
+	list, err := client.itemList(billing.Items{Seats: 1, OwnStorage: true, Interval: "month"})
+	require.NoError(t, err)
+	require.Equal(t, []itemRequest{{PriceID: "pri_seat_m", Quantity: 1}, {PriceID: "pri_own_m", Quantity: 1}}, list)
+	list, err = client.itemList(billing.Items{OwnStorage: true, Interval: "year"})
+	require.NoError(t, err)
+	require.Equal(t, []itemRequest{{PriceID: "pri_own_y", Quantity: 1}}, list)
+
+	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{OwnStorage: true, Interval: "month"}, "")
+	require.NoError(t, err)
+	sub, err := client.UpdateSubscription(context.Background(), "sub_1", billing.Items{Seats: 1, OwnStorage: true, Interval: "year"})
+	require.NoError(t, err)
+	require.True(t, sub.OwnStorage)
+	require.Equal(t, int64(1), sub.Seats)
+
+	plain := New(Config{Prices: testPrices})
+	_, err = plain.itemList(billing.Items{Seats: 1, OwnStorage: true, Interval: "month"})
+	require.Equal(t, http.StatusBadRequest, errorCode(err), "not offered without prices")
+}
+
 func TestUpdateSubscription_ConflictMapping(t *testing.T) {
 	for _, tc := range []struct {
 		status int

@@ -30,6 +30,7 @@ func (v tokenValidator) ValidateToken(_ context.Context, token string) (*domain.
 
 type httpHarness struct {
 	t        *testing.T
+	svc      *Service
 	server   *httptest.Server
 	repo     *stubRepo
 	ledger   *stubLedger
@@ -52,7 +53,7 @@ func newHTTPHarness(t *testing.T) *httpHarness {
 	container.Add(WebhookService(svc))
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
-	return &httpHarness{t: t, server: server, repo: repo, ledger: ledger, provider: provider}
+	return &httpHarness{t: t, svc: svc, server: server, repo: repo, ledger: ledger, provider: provider}
 }
 
 func (h *httpHarness) do(method, path, token, body string, header http.Header) (int, map[string]any) {

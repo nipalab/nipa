@@ -15,12 +15,14 @@ import (
 type itemsRequest struct {
 	Seats        int64  `json:"seats"`
 	StoragePacks int64  `json:"storage_packs"`
+	OwnStorage   *bool  `json:"own_storage,omitempty"`
 	Interval     string `json:"interval"`
 }
 
 type checkoutRequest struct {
 	Seats        int64  `json:"seats"`
 	StoragePacks int64  `json:"storage_packs"`
+	OwnStorage   bool   `json:"own_storage"`
 	Interval     string `json:"interval"`
 	DiscountCode string `json:"discount_code,omitempty"`
 }
@@ -58,7 +60,7 @@ func RegisterRoutes(ws *restful.WebService, svc *Service) {
 	ws.Route(ws.PATCH("/billing/subscription").
 		To(svc.changeSubscription).
 		Reads(itemsRequest{}).
-		Doc("Change seats, storage packs or the billing interval of the live subscription").
+		Doc("Change seats, storage packs, the Own storage add-on (kept when own_storage is absent) or the billing interval of the live subscription").
 		Operation("changeBillingSubscription"))
 
 	ws.Route(ws.POST("/billing/portal").
@@ -87,7 +89,11 @@ func readItems(req *restful.Request) (Items, error) {
 	if err := req.ReadEntity(&body); err != nil {
 		return Items{}, domain.NewErrorUser("invalid request body")
 	}
-	return Items(body), nil
+	items := Items{Seats: body.Seats, StoragePacks: body.StoragePacks, Interval: body.Interval, keepOwnStorage: body.OwnStorage == nil}
+	if body.OwnStorage != nil {
+		items.OwnStorage = *body.OwnStorage
+	}
+	return items, nil
 }
 
 func caller(req *restful.Request, resp *restful.Response) (snow.ID, bool) {
@@ -118,7 +124,7 @@ func (s *Service) checkout(req *restful.Request, resp *restful.Response) {
 		writeError(resp, domain.NewErrorUser("invalid request body"))
 		return
 	}
-	items := Items{Seats: body.Seats, StoragePacks: body.StoragePacks, Interval: body.Interval}
+	items := Items{Seats: body.Seats, StoragePacks: body.StoragePacks, OwnStorage: body.OwnStorage, Interval: body.Interval}
 	txn, err := s.Checkout(req.Request.Context(), userID, items, body.DiscountCode)
 	if err != nil {
 		writeError(resp, err)

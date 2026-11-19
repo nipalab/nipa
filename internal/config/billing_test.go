@@ -60,6 +60,12 @@ func TestValidateBilling_Errors(t *testing.T) {
 		{"seat yearly", func(c *Config) { c.PaddlePriceSeatYearly = "" }, "PADDLE_PRICE_SEAT_YEARLY"},
 		{"storage monthly", func(c *Config) { c.PaddlePriceStorageMonthly = "" }, "PADDLE_PRICE_STORAGE_MONTHLY"},
 		{"storage yearly", func(c *Config) { c.PaddlePriceStorageYearly = "" }, "PADDLE_PRICE_STORAGE_YEARLY"},
+		{"own storage monthly only", func(c *Config) { c.PaddlePriceOwnStorageMonthly = "pri_own_m" }, "PADDLE_PRICE_OWN_STORAGE_YEARLY"},
+		{"own storage yearly only", func(c *Config) { c.PaddlePriceOwnStorageYearly = "pri_own_y" }, "PADDLE_PRICE_OWN_STORAGE_MONTHLY"},
+		{"own storage duplicate", func(c *Config) {
+			c.PaddlePriceOwnStorageMonthly = "pri_seat_m"
+			c.PaddlePriceOwnStorageYearly = "pri_own_y"
+		}, "distinct"},
 		{"free seats", func(c *Config) { c.BillingFreeSeats = 0 }, "BILLING_FREE_SEATS"},
 		{"seat bytes zero", func(c *Config) { c.BillingSeatIncludedBytes = 0 }, "BILLING_SEAT_INCLUDED_BYTES"},
 		{"pack bytes negative", func(c *Config) { c.BillingStoragePackBytes = -1 }, "BILLING_STORAGE_PACK_BYTES"},
@@ -73,4 +79,13 @@ func TestValidateBilling_Errors(t *testing.T) {
 			require.Contains(t, err.Error(), tc.want)
 		})
 	}
+}
+
+func TestValidateBilling_OwnStorage(t *testing.T) {
+	cfg := validBillingConfig()
+	require.False(t, cfg.OwnStorageOffered())
+	cfg.PaddlePriceOwnStorageMonthly = "pri_own_m"
+	cfg.PaddlePriceOwnStorageYearly = "pri_own_y"
+	require.NoError(t, cfg.ValidateBilling())
+	require.True(t, cfg.OwnStorageOffered())
 }

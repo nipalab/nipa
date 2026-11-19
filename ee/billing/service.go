@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
@@ -53,10 +54,11 @@ type Service struct {
 	cfg      Config
 	provider Provider
 	audit    usecase.AuditRecorder
+	own      *ownStorageCache
 }
 
 func New(repo repository, ledger ledger, tx transactor, cfg Config) *Service {
-	return &Service{repo: repo, ledger: ledger, tx: tx, cfg: cfg}
+	return &Service{repo: repo, ledger: ledger, tx: tx, cfg: cfg, own: newOwnStorageCache(time.Now)}
 }
 
 // WithProvider attaches the billing provider behind checkout, changes, the
@@ -83,6 +85,7 @@ func (s *Service) apply(ctx context.Context, sub Subscription, event *Event) err
 	if strings.TrimSpace(sub.ProviderSubscriptionID) == "" || sub.UserID == 0 || sub.ProviderUpdatedAt.IsZero() {
 		return domain.NewErrorUser("subscription id, user and provider update time are required")
 	}
+	defer s.forgetOwnStorage(sub.UserID)
 	return s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := s.repo.LockOwner(ctx, sub.UserID); err != nil {
 			return err
@@ -169,6 +172,7 @@ func subscriptionFields(sub Subscription) map[string]any {
 		"status":          sub.Status,
 		"seats":           sub.Seats,
 		"storage_packs":   sub.StoragePacks,
+		"own_storage":     sub.OwnStorage,
 		"interval":        sub.Interval,
 	}
 }

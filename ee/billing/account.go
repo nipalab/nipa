@@ -14,7 +14,7 @@ import (
 // the browser completes. A non-empty discount code is resolved before any
 // provider customer is created.
 func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items, discountCode string) (string, error) {
-	items, err := items.Validate()
+	items, err := s.cfg.ValidItems(items)
 	if err != nil {
 		return "", err
 	}
@@ -46,6 +46,7 @@ func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items, dis
 	metadata := map[string]any{
 		"seats":          items.Seats,
 		"storage_packs":  items.StoragePacks,
+		"own_storage":    items.OwnStorage,
 		"interval":       items.Interval,
 		"transaction_id": txn,
 		"customer_id":    account.ProviderCustomerID,
@@ -64,8 +65,10 @@ func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items, dis
 	return txn, nil
 }
 
-// ChangeSubscription replaces the live subscription's seats, storage packs and
-// interval, then applies the provider's answer right away.
+// ChangeSubscription replaces the live subscription's seats, storage packs,
+// Own storage add-on and interval, then applies the provider's answer right
+// away. Dropping the add-on is allowed while the owner still has projects on
+// their own storage: those projects turn read-only.
 func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items Items) (Subscription, error) {
 	live, err := s.repo.LiveSubscription(ctx, userID)
 	if err != nil {
@@ -77,7 +80,11 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 	if items.Interval == "" {
 		items.Interval = live.Interval
 	}
-	items, err = items.Validate()
+	if items.keepOwnStorage {
+		items.OwnStorage = live.OwnStorage && s.cfg.OwnStorage
+		items.keepOwnStorage = false
+	}
+	items, err = s.cfg.ValidItems(items)
 	if err != nil {
 		return Subscription{}, err
 	}
@@ -100,6 +107,7 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 		return Subscription{}, err
 	}
 	sub.UserID = userID
+	defer s.forgetOwnStorage(userID)
 	if err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := s.Apply(ctx, sub); err != nil {
 			return err
@@ -110,8 +118,8 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 			TargetID:   live.ProviderSubscriptionID,
 			Metadata: map[string]any{
 				"owner_id": userID.Base36(),
-				"old":      map[string]any{"seats": live.Seats, "storage_packs": live.StoragePacks, "interval": live.Interval},
-				"new":      map[string]any{"seats": sub.Seats, "storage_packs": sub.StoragePacks, "interval": sub.Interval},
+				"old":      planFields(*live),
+				"new":      planFields(sub),
 			},
 		})
 	}); err != nil {
@@ -158,6 +166,7 @@ func (s *Service) Summary(ctx context.Context, userID snow.ID) (*storageusage.Bi
 		summary.Interval = live.Interval
 		summary.Seats = live.Seats
 		summary.StoragePacks = live.StoragePacks
+		summary.OwnStorage = live.OwnStorage
 		summary.CurrentPeriodEnd = live.CurrentPeriodEnd
 		summary.CancelAtPeriodEnd = live.CancelAtPeriodEnd
 	}
@@ -192,6 +201,10 @@ func (s *Service) Sync(ctx context.Context, userID snow.ID) (int, error) {
 		return 0, err
 	}
 	return len(subs), nil
+}
+
+func planFields(sub Subscription) map[string]any {
+	return map[string]any{"seats": sub.Seats, "storage_packs": sub.StoragePacks, "own_storage": sub.OwnStorage, "interval": sub.Interval}
 }
 
 func (s *Service) checkSeats(ctx context.Context, userID snow.ID, seats int64) error {

@@ -56,6 +56,7 @@ type BillingSubscription struct {
 	CancelAtPeriodEnd      bool         `json:"cancel_at_period_end"`
 	ProviderUpdatedAt      time.Time    `json:"provider_updated_at"`
 	UpdatedAt              time.Time    `json:"updated_at"`
+	OwnStorage             bool         `json:"own_storage"`
 }
 
 type Branch struct {

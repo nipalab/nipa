@@ -37,7 +37,25 @@ func TestItemsValidate(t *testing.T) {
 	}
 	_, err = Items{Interval: "month"}.Validate()
 	require.Equal(t, 400, errorCode(err))
-	require.ErrorContains(t, err, "buy at least one seat or storage pack")
+	require.ErrorContains(t, err, "buy at least one seat, storage pack or the Own storage add-on")
+
+	items, err = Items{OwnStorage: true, Interval: "year"}.Validate()
+	require.NoError(t, err, "the add-on alone is a plan")
+	require.True(t, items.OwnStorage)
+}
+
+func TestConfigValidItems(t *testing.T) {
+	_, err := testConfig.ValidItems(Items{OwnStorage: true, Interval: "month"})
+	require.Equal(t, 400, errorCode(err))
+	require.ErrorContains(t, err, "not offered")
+	_, err = testConfig.ValidItems(Items{Interval: "month"})
+	require.Equal(t, 400, errorCode(err))
+
+	offered := testConfig
+	offered.OwnStorage = true
+	items, err := offered.ValidItems(Items{OwnStorage: true, Interval: "monthly"})
+	require.NoError(t, err)
+	require.Equal(t, IntervalMonth, items.Interval)
 }
 
 func TestCheckout_CreatesCustomerOnce(t *testing.T) {
@@ -305,8 +323,14 @@ func TestSummary(t *testing.T) {
 	require.Equal(t, int64(7), summary.SeatLimit)
 	require.Equal(t, repo.live.Seats, summary.Seats)
 	require.Equal(t, int64(1), summary.StoragePacks)
+	require.False(t, summary.OwnStorage)
 	require.Equal(t, repo.live.CurrentPeriodEnd, summary.CurrentPeriodEnd)
 	require.True(t, summary.CancelAtPeriodEnd)
+
+	repo.live.OwnStorage = true
+	summary, err = svc.Summary(ctx, payer)
+	require.NoError(t, err)
+	require.True(t, summary.OwnStorage)
 
 	repo.countErr = errors.New("boom")
 	_, err = svc.Summary(ctx, payer)

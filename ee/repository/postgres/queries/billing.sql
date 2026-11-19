@@ -69,10 +69,10 @@ LIMIT 1;
 -- name: UpsertSubscription :execrows
 INSERT INTO billing_subscriptions (
     provider_subscription_id, user_id, plan, status, interval, seats, storage_packs,
-    current_period_end, cancel_at_period_end, provider_updated_at, updated_at
+    own_storage, current_period_end, cancel_at_period_end, provider_updated_at, updated_at
 ) VALUES (
     sqlc.arg(provider_subscription_id), sqlc.arg(user_id), sqlc.arg(plan), sqlc.arg(status),
-    sqlc.arg('interval'), sqlc.arg(seats), sqlc.arg(storage_packs),
+    sqlc.arg('interval'), sqlc.arg(seats), sqlc.arg(storage_packs), sqlc.arg(own_storage),
     sqlc.narg(current_period_end)::timestamptz, sqlc.arg(cancel_at_period_end),
     sqlc.arg(provider_updated_at), now()
 )
@@ -82,6 +82,7 @@ ON CONFLICT (provider_subscription_id) DO UPDATE SET
     interval = EXCLUDED.interval,
     seats = EXCLUDED.seats,
     storage_packs = EXCLUDED.storage_packs,
+    own_storage = EXCLUDED.own_storage,
     current_period_end = EXCLUDED.current_period_end,
     cancel_at_period_end = EXCLUDED.cancel_at_period_end,
     provider_updated_at = EXCLUDED.provider_updated_at,

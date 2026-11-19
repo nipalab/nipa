@@ -30,18 +30,34 @@ type subscription struct {
 	} `json:"scheduled_change"`
 }
 
+type itemKind int
+
+const (
+	kindStorage itemKind = iota
+	kindSeat
+	kindOwnStorage
+)
+
 type priceKind struct {
-	seat     bool
+	kind     itemKind
 	interval string
 }
 
 func (c *Client) priceKinds() map[string]priceKind {
-	return map[string]priceKind{
-		c.prices.SeatMonthly:    {seat: true, interval: billing.IntervalMonth},
-		c.prices.SeatYearly:     {seat: true, interval: billing.IntervalYear},
-		c.prices.StorageMonthly: {interval: billing.IntervalMonth},
-		c.prices.StorageYearly:  {interval: billing.IntervalYear},
+	kinds := map[string]priceKind{}
+	for id, kind := range map[string]priceKind{
+		c.prices.SeatMonthly:       {kindSeat, billing.IntervalMonth},
+		c.prices.SeatYearly:        {kindSeat, billing.IntervalYear},
+		c.prices.StorageMonthly:    {kindStorage, billing.IntervalMonth},
+		c.prices.StorageYearly:     {kindStorage, billing.IntervalYear},
+		c.prices.OwnStorageMonthly: {kindOwnStorage, billing.IntervalMonth},
+		c.prices.OwnStorageYearly:  {kindOwnStorage, billing.IntervalYear},
+	} {
+		if id != "" {
+			kinds[id] = kind
+		}
 	}
+	return kinds
 }
 
 func invalidSubscription(id, format string, args ...any) error {
@@ -78,16 +94,19 @@ func (c *Client) mapSubscription(raw subscription) (billing.Subscription, error)
 	kinds := c.priceKinds()
 	for _, item := range raw.Items {
 		kind, ok := kinds[item.Price.ID]
-		if !ok || item.Price.ID == "" {
+		if !ok {
 			return billing.Subscription{}, invalidSubscription(raw.ID, "unknown price %q", item.Price.ID)
 		}
 		if sub.Interval != "" && sub.Interval != kind.interval {
 			return billing.Subscription{}, invalidSubscription(raw.ID, "items mix billing intervals")
 		}
 		sub.Interval = kind.interval
-		if kind.seat {
+		switch kind.kind {
+		case kindSeat:
 			sub.Seats += item.Quantity
-		} else {
+		case kindOwnStorage:
+			sub.OwnStorage = item.Quantity > 0
+		default:
 			sub.StoragePacks += item.Quantity
 		}
 	}

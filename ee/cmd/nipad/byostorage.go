@@ -50,6 +50,27 @@ func buildBYOStorage(cfg *config.Config, dbConn *sql.DB, node snow.Node, default
 	return &byoStorageSetup{service: service, resolver: service.Resolver(defaultStore)}, nil
 }
 
+// entitle gates writes to own storage on the billing Own storage add-on.
+// Without billing the add-on is never checked, so BYO storage stays open.
+func (b *byoStorageSetup) entitle(billingSetup *billingSetup) {
+	if b == nil {
+		return
+	}
+	if e := ownStorageEntitlement(billingSetup); e != nil {
+		b.service.WithEntitlement(e)
+	}
+}
+
+func ownStorageEntitlement(billingSetup *billingSetup) byostorage.Entitlement {
+	if billingSetup == nil {
+		return nil
+	}
+	if !billingSetup.ownStorage {
+		slog.Warn("billing is on but the Own storage add-on has no prices; storage servers stay read-only for everyone")
+	}
+	return billingSetup.service
+}
+
 // wire makes the resolver pick each project's store and the service assign
 // new projects.
 func (b *byoStorageSetup) wire(deps *serverapp.UsecaseDeps) {

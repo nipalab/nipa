@@ -45,6 +45,8 @@ type BillingCapabilities struct {
 type BillingPrices struct {
 	Seat    IntervalPrices `json:"seat"`
 	Storage IntervalPrices `json:"storage"`
+	// OwnStorage is null when the Own storage add-on is not offered.
+	OwnStorage *IntervalPrices `json:"own_storage"`
 }
 
 type IntervalPrices struct {
