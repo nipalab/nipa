@@ -817,8 +817,9 @@ Flow for two-factor authentication (design in `docs/MFA.md`): the pure `internal
 with one step of skew either side, skipping steps at or below `last_step`),
 recovery codes (`NewRecoveryCodes` `XXXXX-XXXXX` from an unambiguous
 alphabet, `NormalizeRecoveryCode`, SHA-256 `HashRecoveryCode`), the
-`otpauth://` `URI` and `Cipher` (AES-256-GCM, key = HKDF-SHA256 of
-`MFA_ENCRYPTION_KEY`, label `nipa mfa totp v1`, the owner id as AAD).
+`otpauth://` `URI` and `Cipher` (over the pure `internal/sealbox`:
+AES-256-GCM, key = HKDF-SHA256 of `MFA_ENCRYPTION_KEY`, label `nipa mfa
+totp v1`, the owner id as AAD).
 `MFA_ENABLED` switches the feature (`Config.MFAEnabledOr`, unset = the
 edition default `UsecaseDeps.MFAEnabledByDefault`: false on `nipad`, true on
 `nipad-ee`); off means `MFA.WithEnabled(false)` (`available: false`,
@@ -918,7 +919,10 @@ works immediately, and `usecase.Permission` grants org owners `PermissionAll`
 on every project in the org (`load` resolves the project's org through
 `pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`), so the creator can
 read/write/admin the project without seeding rules; plain org members still
-need PBAC rules. The free version tracks no storage usage; cloud builds attach
+need PBAC rules. `Project.Create` takes an optional storage server id (REST
+`storage_server_id`) and runs the nil-able `ProjectStorageAssigner`
+(`UsecaseDeps.ProjectStorage`) inside its creation transaction; without one a
+requested id is 400 `storage servers are not available`. The free version tracks no storage usage; cloud builds attach
 quota to `created_by_user_id` through the `usecase.StorageLedger` seam. The SPA
 forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
 `web/src/slug.ts` for `slugify`/`SLUG_PATTERN`, require a valid non-empty slug,
@@ -2403,7 +2407,10 @@ and `nipa mcp` stay silent.
   to use `nipad-ee`. The enterprise `ee/cmd/nipad` is S3-only: empty or `s3`
   selects `ee/storage/s3` (`CHUNK_S3_*`), anything else is a startup error. The
   S3 store keys objects `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket
-  at startup. `internal/` must never import `ee/` — only `ee/cmd/*` does (the
+  at startup (`Config.SkipProbe` skips it; `Config.Transport` carries every
+  request). `Store.Probe` checks every capability below on a throwaway
+  `<prefix>/.nipa-probe-<rand>` object and returns a `*ProbeError` naming the
+  failed check. `internal/` must never import `ee/` — only `ee/cmd/*` does (the
   free `cmd/nipad` links no ee package). A store implementing
   `storage.DirectTransferStore` (the S3 store does) hands clients absolute
   presigned backend URLs: downloads via `PresignedGetObject`, uploads via a

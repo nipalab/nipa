@@ -77,3 +77,23 @@ describe('listProjectMembers', () => {
     ])
   })
 })
+
+describe('createProject', () => {
+  it('sends storage_server_id only when given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const { createProject } = await import('./endpoints')
+
+    await createProject('acme', 'Game', '', 'game')
+    await createProject('acme', 'Own', 'x', 'own', 's1')
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/orgs/acme/projects')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ name: 'Game', description: '', slug: 'game' })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      name: 'Own',
+      description: 'x',
+      slug: 'own',
+      storage_server_id: 's1',
+    })
+  })
+})

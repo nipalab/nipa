@@ -91,7 +91,7 @@ func TestProject_Create_GlobalAdmin(t *testing.T) {
 		},
 	)
 
-	got, err := project.Create(ctx, snow.ID(1), " My Game ", " fun ", "")
+	got, err := project.Create(ctx, snow.ID(1), " My Game ", " fun ", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "my-game", got.Slug)
 }
@@ -108,7 +108,7 @@ func TestProject_Create_OrgOwner(t *testing.T) {
 		},
 	)
 
-	_, err := project.Create(ctx, snow.ID(1), "Assets", "", "assets")
+	_, err := project.Create(ctx, snow.ID(1), "Assets", "", "assets", nil)
 	require.NoError(t, err)
 }
 
@@ -117,7 +117,7 @@ func TestProject_Create_NoPermission(t *testing.T) {
 
 	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(false, nil)
 
-	_, err := project.Create(permissionCtx(42), snow.ID(1), "Assets", "", "")
+	_, err := project.Create(permissionCtx(42), snow.ID(1), "Assets", "", "", nil)
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
@@ -125,13 +125,13 @@ func TestProject_Create_Validation(t *testing.T) {
 	project, _, _, _ := newTestProject(t)
 	ctx := permissionCtx(42, withAdmin())
 
-	_, err := project.Create(ctx, snow.ID(1), "  ", "", "")
+	_, err := project.Create(ctx, snow.ID(1), "  ", "", "", nil)
 	requireUserError(t, err)
 
-	_, err = project.Create(ctx, snow.ID(1), "Assets", "", "Bad Slug")
+	_, err = project.Create(ctx, snow.ID(1), "Assets", "", "Bad Slug", nil)
 	requireUserError(t, err)
 
-	_, err = project.Create(ctx, snow.ID(1), "!!!", "", "")
+	_, err = project.Create(ctx, snow.ID(1), "!!!", "", "", nil)
 	requireUserError(t, err)
 }
 
@@ -140,12 +140,12 @@ func TestProject_Create_ReservedSlug(t *testing.T) {
 	ctx := permissionCtx(42, withAdmin())
 
 	for _, slug := range []string{"new", "settings"} {
-		_, err := project.Create(ctx, snow.ID(1), "Assets", "", slug)
+		_, err := project.Create(ctx, snow.ID(1), "Assets", "", slug, nil)
 		require.Error(t, err, "slug %q must be reserved", slug)
 		requireUserError(t, err)
 	}
 
-	_, err := project.Create(ctx, snow.ID(1), "Settings", "", "")
+	_, err := project.Create(ctx, snow.ID(1), "Settings", "", "", nil)
 	requireUserError(t, err)
 }
 
@@ -155,7 +155,7 @@ func TestProject_Create_DuplicateSlug(t *testing.T) {
 	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").
 		Return(&domain.Project{ID: 9, Slug: "assets"}, nil)
 
-	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", nil)
 	require.True(t, domain.IsErrorConflict(err))
 }
 
@@ -165,7 +165,7 @@ func TestProject_Create_SlugCheckError(t *testing.T) {
 
 	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, wantErr)
 
-	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", nil)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -177,8 +177,79 @@ func TestProject_Create_RepositoryError(t *testing.T) {
 		Return(nil, domain.NewErrorRecordNotFound())
 	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
-	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", nil)
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestProject_Create_StorageAssigner(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+	assigner := NewMockProjectStorageAssigner(gomock.NewController(t))
+	project.WithStorageAssigner(assigner)
+	server := snow.ID(77)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project, _ domain.Branch) (*domain.Project, error) {
+			return &created, nil
+		},
+	)
+	var assigned snow.ID
+	assigner.EXPECT().Assign(gomock.Any(), snow.ID(1), gomock.Any(), &server).DoAndReturn(
+		func(_ context.Context, _, projectID snow.ID, _ *snow.ID) error {
+			assigned = projectID
+			return nil
+		},
+	)
+
+	got, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", &server)
+	require.NoError(t, err)
+	require.Equal(t, got.ID, assigned)
+}
+
+func TestProject_Create_StorageAssignerWithoutRequest(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+	assigner := NewMockProjectStorageAssigner(gomock.NewController(t))
+	project.WithStorageAssigner(assigner)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project, _ domain.Branch) (*domain.Project, error) {
+			return &created, nil
+		},
+	)
+	assigner.EXPECT().Assign(gomock.Any(), snow.ID(1), gomock.Any(), nil).Return(nil)
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", nil)
+	require.NoError(t, err)
+}
+
+func TestProject_Create_StorageAssignerRefuses(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+	assigner := NewMockProjectStorageAssigner(gomock.NewController(t))
+	rec := &captureRecorder{}
+	project.WithStorageAssigner(assigner).WithAudit(rec)
+	server := snow.ID(77)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project, _ domain.Branch) (*domain.Project, error) {
+			return &created, nil
+		},
+	)
+	assigner.EXPECT().Assign(gomock.Any(), snow.ID(1), gomock.Any(), &server).Return(domain.NewErrorNoPermission())
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", &server)
+	require.True(t, domain.IsErrorNoPermission(err))
+	require.Empty(t, rec.entries)
+}
+
+func TestProject_Create_StorageServerWithoutAssigner(t *testing.T) {
+	project, _, _, _ := newTestProject(t)
+	server := snow.ID(77)
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets", &server)
+	requireUserError(t, err)
+	require.Contains(t, err.Error(), "storage servers are not available")
 }
 
 func TestProject_Update_ProjectAdmin(t *testing.T) {

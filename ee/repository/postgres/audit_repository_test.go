@@ -208,11 +208,11 @@ func (s *AuditRepositorySuite) TestAuditedWritesRollBackOnRecordFailure() {
 
 	permission := usecase.NewPermission(pbac, NewUserRepository(db), NewGroupRepository(db), usecase.NewOrg(orgRepo, node))
 	projects := usecase.NewProject(projectRepo, node, permission, usecase.NewOrg(orgRepo, node))
-	_, err = projects.WithAudit(bad).Create(ctx, org.ID, "Game", "", "game")
+	_, err = projects.WithAudit(bad).Create(ctx, org.ID, "Game", "", "game", nil)
 	s.Require().Error(err)
 	_, err = projectRepo.GetByOrgIDAndSlug(ctx, org.ID, "game")
 	requireRecordNotFound(s.T(), err)
-	project, err := projects.WithAudit(good).Create(ctx, org.ID, "Game", "", "game")
+	project, err := projects.WithAudit(good).Create(ctx, org.ID, "Game", "", "game", nil)
 	s.Require().NoError(err)
 
 	branches := usecase.NewBranch(permission, branchRepo, node)

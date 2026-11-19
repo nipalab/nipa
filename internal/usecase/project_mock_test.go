@@ -197,3 +197,41 @@ func (mr *MockprojectAccessMockRecorder) HasProjectAccess(ctx, projectID, permis
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProjectAccess", reflect.TypeOf((*MockprojectAccess)(nil).HasProjectAccess), ctx, projectID, permission)
 }
+
+// MockProjectStorageAssigner is a mock of ProjectStorageAssigner interface.
+type MockProjectStorageAssigner struct {
+	ctrl     *gomock.Controller
+	recorder *MockProjectStorageAssignerMockRecorder
+	isgomock struct{}
+}
+
+// MockProjectStorageAssignerMockRecorder is the mock recorder for MockProjectStorageAssigner.
+type MockProjectStorageAssignerMockRecorder struct {
+	mock *MockProjectStorageAssigner
+}
+
+// NewMockProjectStorageAssigner creates a new mock instance.
+func NewMockProjectStorageAssigner(ctrl *gomock.Controller) *MockProjectStorageAssigner {
+	mock := &MockProjectStorageAssigner{ctrl: ctrl}
+	mock.recorder = &MockProjectStorageAssignerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockProjectStorageAssigner) EXPECT() *MockProjectStorageAssignerMockRecorder {
+	return m.recorder
+}
+
+// Assign mocks base method.
+func (m *MockProjectStorageAssigner) Assign(ctx context.Context, orgID, projectID snow.ID, requested *snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Assign", ctx, orgID, projectID, requested)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Assign indicates an expected call of Assign.
+func (mr *MockProjectStorageAssignerMockRecorder) Assign(ctx, orgID, projectID, requested any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Assign", reflect.TypeOf((*MockProjectStorageAssigner)(nil).Assign), ctx, orgID, projectID, requested)
+}

@@ -38,6 +38,20 @@ type Project struct {
 	perm     projectAccess
 	orgs     orgAuthorizer
 	audit    AuditRecorder
+	storage  ProjectStorageAssigner
+}
+
+// ProjectStorageAssigner picks where a new project's chunk content lives. It
+// runs inside the project's creation transaction; requested is the storage
+// server the caller asked for, nil when none.
+type ProjectStorageAssigner interface {
+	Assign(ctx context.Context, orgID, projectID snow.ID, requested *snow.ID) error
+}
+
+// WithStorageAssigner attaches the storage assignment step of Create.
+func (p *Project) WithStorageAssigner(assigner ProjectStorageAssigner) *Project {
+	p.storage = assigner
+	return p
 }
 
 // WithAudit records project creation, edits and deletion.
@@ -76,9 +90,12 @@ func (p *Project) Get(ctx context.Context, projectID snow.ID) (*domain.Project, 
 	return p.repo.Get(ctx, projectID)
 }
 
-func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, slug string) (*domain.Project, error) {
+func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, slug string, storageServerID *snow.ID) (*domain.Project, error) {
 	if err := p.requireOrgAdmin(ctx, orgID); err != nil {
 		return nil, err
+	}
+	if storageServerID != nil && p.storage == nil {
+		return nil, domain.NewErrorUser("storage servers are not available")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -115,7 +132,10 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 			Name:      defaultBranchName,
 			IsDefault: true,
 		})
-		return err
+		if err != nil || p.storage == nil {
+			return err
+		}
+		return p.storage.Assign(ctx, orgID, projectID, storageServerID)
 	}, func() *domain.AuditEntry {
 		return projectEntityAudit(domain.AuditProjectCreated, created, map[string]any{
 			"name":        created.Name,

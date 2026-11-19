@@ -31,6 +31,13 @@ type fakeS3 struct {
 	failPut  atomic.Bool
 	failGet  atomic.Bool
 	failHead atomic.Bool
+	// ignoreIfNoneMatch overwrites existing objects like a backend without
+	// conditional create; wantLength refuses PUT bodies of any other size,
+	// standing in for a signed Content-Length.
+	ignoreIfNoneMatch atomic.Bool
+	wantLength        atomic.Int64
+	failDelete        atomic.Bool
+	corruptGet        atomic.Bool
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *httptest.Server) {
@@ -72,7 +79,11 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
-		if r.Header.Get("If-None-Match") == "*" && exists {
+		if want := f.wantLength.Load(); want > 0 && r.ContentLength != want {
+			writeS3Error(w, http.StatusForbidden, "SignatureDoesNotMatch")
+			return
+		}
+		if r.Header.Get("If-None-Match") == "*" && exists && !f.ignoreIfNoneMatch.Load() {
 			writeS3Error(w, http.StatusPreconditionFailed, "PreconditionFailed")
 			return
 		}
@@ -119,8 +130,15 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		if f.corruptGet.Load() {
+			data = bytes.Repeat([]byte{'x'}, len(data))
+		}
 		_, _ = w.Write(data)
 	case http.MethodDelete:
+		if f.failDelete.Load() {
+			writeS3Error(w, http.StatusForbidden, "AccessDenied")
+			return
+		}
 		f.mu.Lock()
 		delete(objects, key)
 		f.mu.Unlock()
@@ -680,4 +698,11 @@ func newIntegrationStore(t *testing.T) *Store {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+// TestIntegration_S3Probe runs Probe against the real backend configured by
+// the NIPA_S3_TEST_* variables.
+func TestIntegration_S3Probe(t *testing.T) {
+	store := newIntegrationStore(t)
+	require.NoError(t, store.Probe(context.Background()))
 }

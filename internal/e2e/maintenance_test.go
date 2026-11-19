@@ -81,7 +81,7 @@ func TestEndToEnd_MaintenanceEnforcement(t *testing.T) {
 	super := serverDomain.ContextWithClaim(ctx, serverDomain.Claims{UserID: 1, IsAdmin: true, IsSuperAdmin: true})
 	org, err := uc.Common.ResolveOrg(ctx, e2eOrgSlug)
 	require.NoError(t, err)
-	_, err = uc.Project.Create(super, org.ID, "Other", "", "other")
+	_, err = uc.Project.Create(super, org.ID, "Other", "", "other", nil)
 	require.NoError(t, err)
 
 	grpcClient, auth := newLoggedInClient(t, host)
@@ -190,7 +190,7 @@ func TestEndToEnd_MaintenanceAnnouncements(t *testing.T) {
 	super := serverDomain.ContextWithClaim(ctx, serverDomain.Claims{UserID: 1, IsAdmin: true, IsSuperAdmin: true})
 	org, err := uc.Common.ResolveOrg(ctx, e2eOrgSlug)
 	require.NoError(t, err)
-	other, err := uc.Project.Create(super, org.ID, "Other", "", "other")
+	other, err := uc.Project.Create(super, org.ID, "Other", "", "other", nil)
 	require.NoError(t, err)
 	_, game, err := uc.Common.ResolveBySlug(ctx, e2eOrgSlug, e2eProjectSlug)
 	require.NoError(t, err)

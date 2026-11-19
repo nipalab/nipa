@@ -149,3 +149,41 @@ func TestBuildUsecases_ChunkStores(t *testing.T) {
 	_, err = uc.Branch.FastForward(admin, snow.ID(1), "main", "feature")
 	require.Equal(t, 402, errorCode(err))
 }
+
+type recordingAssigner struct{ projects []snow.ID }
+
+func (r *recordingAssigner) Assign(_ context.Context, _, projectID snow.ID, _ *snow.ID) error {
+	r.projects = append(r.projects, projectID)
+	return nil
+}
+
+func TestBuildUsecases_WiresProjectStorage(t *testing.T) {
+	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+	require.NoError(t, db.MigrateUp(database, "sqlite3"))
+	node, err := snow.NewNode(0)
+	require.NoError(t, err)
+	repos := usecase.Repositories{
+		Org:     sqlite.NewOrgRepository(database),
+		Project: sqlite.NewProjectRepository(database),
+		User:    sqlite.NewUserRepository(database),
+		PBAC:    sqlite.NewPBACRepository(database),
+		Group:   sqlite.NewGroupRepository(database),
+		Audit:   sqlite.NewAuditRepository(database),
+	}
+	admin := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1, IsSuperAdmin: true})
+	server := snow.ID(9)
+
+	uc := BuildUsecases(repos, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node})
+	org, err := uc.Org.Create(admin, "Studio", "studio")
+	require.NoError(t, err)
+	_, err = uc.Project.Create(admin, org.ID, "Game", "", "game", &server)
+	require.Equal(t, 400, errorCode(err))
+
+	assigner := &recordingAssigner{}
+	uc = BuildUsecases(repos, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node, ProjectStorage: assigner})
+	project, err := uc.Project.Create(admin, org.ID, "Game", "", "game", &server)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{project.ID}, assigner.projects)
+}

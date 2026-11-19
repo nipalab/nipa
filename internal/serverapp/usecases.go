@@ -37,7 +37,10 @@ type UsecaseDeps struct {
 	EmailDispatcher   *mail.Dispatcher
 	StorageLedger     usecase.StorageLedger
 	SeatGate          usecase.SeatGate
-	RateLimiter       *ratelimit.Limiter
+	// ProjectStorage assigns new projects to a chunk store; nil keeps every
+	// project on ChunkStore.
+	ProjectStorage usecase.ProjectStorageAssigner
+	RateLimiter    *ratelimit.Limiter
 	// Maintenance is the maintenance state the server enforces; nil builds a
 	// private one that only follows this process's own writes.
 	Maintenance *maintenance.Service
@@ -79,6 +82,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	}
 	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
+	if deps.ProjectStorage != nil {
+		projectUsecase.WithStorageAssigner(deps.ProjectStorage)
+	}
 
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, usecase.NewProjectChunkReader(chunkStores)).WithUsers(repos.User).WithTags(repos.Tag).WithAudit(auditUsecase)
 	fileLockUsecase := usecase.NewFileLock(repos.FileLock, repos.Branch, permissionUsecase, node).WithAudit(auditUsecase)
