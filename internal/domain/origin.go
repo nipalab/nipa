@@ -104,3 +104,50 @@ func isDecimalID(s string) bool {
 	}
 	return true
 }
+
+var originSystemNames = map[string]string{
+	"git": "Git",
+	"hg":  "Mercurial",
+	"svn": "SVN",
+	"p4":  "Perforce",
+}
+
+// OriginSystemName is the display name of an origin's source system.
+func OriginSystemName(origin string) string {
+	system, _, ok := splitOrigin(origin)
+	if !ok {
+		return ""
+	}
+	if name, known := originSystemNames[system]; known {
+		return name
+	}
+	return system
+}
+
+// OriginShortID is the short display id of an origin: 7 hex characters for
+// Git and Mercurial, r<n> for SVN, CL <n> for Perforce.
+func OriginShortID(origin string) string {
+	system, id, ok := splitOrigin(origin)
+	if !ok {
+		return ""
+	}
+	switch system {
+	case "git", "hg":
+		if len(id) > 7 {
+			return id[:7]
+		}
+	case "svn":
+		return "r" + id
+	case "p4":
+		return "CL " + id
+	}
+	return id
+}
+
+func splitOrigin(origin string) (system, id string, ok bool) {
+	parts := strings.SplitN(origin, ":", 4)
+	if len(parts) < 3 || parts[0] == "" || parts[2] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
+}

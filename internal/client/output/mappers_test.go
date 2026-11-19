@@ -230,3 +230,21 @@ func diffLineKinds(lines []DiffLine) []string {
 	}
 	return out
 }
+
+func TestNewLog_Imported(t *testing.T) {
+	origin := "git:default:0123456789abcdef0123456789abcdef01234567"
+	out := NewLog([]*serverDomain.CommitLogEntry{{
+		Commit: serverDomain.Commit{
+			ID:          9003,
+			AuthorName:  "Linus",
+			AuthorEmail: "linus@git.dev",
+			Origin:      origin,
+		},
+		AuthorName:  "Importer",
+		AuthorEmail: "importer@nipa.dev",
+	}})
+	require.Len(t, out.Commits, 1)
+	require.Equal(t, "Linus", out.Commits[0].AuthorName)
+	require.Equal(t, "linus@git.dev", out.Commits[0].AuthorEmail)
+	require.Equal(t, origin, out.Commits[0].Origin)
+}

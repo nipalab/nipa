@@ -16,6 +16,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
+import { ImportedBadge } from "@/components/history/ImportedBadge";
 
 type HistoryViewProps = {
   root: string;
@@ -262,7 +263,10 @@ function CommitRow({ commit, tags, last, selected, onSelect }: { commit: Commit;
             <span className="shrink-0" title={commit.date}>
               {timeAgo(commit.date)}
             </span>
-            <span className="ml-auto shrink-0 font-mono">{shortId(commit.id)}</span>
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              <ImportedBadge origin={commit.origin} />
+              <span className="font-mono">{shortId(commit.id)}</span>
+            </span>
           </span>
         </span>
       </button>

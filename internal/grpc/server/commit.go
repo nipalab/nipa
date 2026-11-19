@@ -58,12 +58,15 @@ func (n *nipaServer) WalkCommits(ctx context.Context, req *pb.WalkCommitsRequest
 
 func domainCommitToDetailPB(commit *domain.Commit, root *domain.TreeNode) *pb.CommitDetail {
 	detail := &pb.CommitDetail{
-		CommitId:   commit.ID.Base36(),
-		CommitHash: commit.Hash.String(),
-		Parent_1Id: snowPtrToStringPtr(commit.Parent1ID),
-		Parent_2Id: snowPtrToStringPtr(commit.Parent2ID),
-		Message:    commit.Message,
-		CreatedAt:  timestamppb.New(commit.CreatedAt),
+		CommitId:    commit.ID.Base36(),
+		CommitHash:  commit.Hash.String(),
+		Parent_1Id:  snowPtrToStringPtr(commit.Parent1ID),
+		Parent_2Id:  snowPtrToStringPtr(commit.Parent2ID),
+		Message:     commit.Message,
+		CreatedAt:   timestamppb.New(commit.CreatedAt),
+		AuthorName:  commit.AuthorName,
+		AuthorEmail: commit.AuthorEmail,
+		Origin:      commit.Origin,
 	}
 	if root != nil {
 		detail.TreeHash = root.Hash.String()
@@ -73,11 +76,14 @@ func domainCommitToDetailPB(commit *domain.Commit, root *domain.TreeNode) *pb.Co
 
 func domainCommitToWalkEntryPB(commit *domain.Commit) *pb.CommitWalkEntry {
 	return &pb.CommitWalkEntry{
-		CommitId:   commit.ID.Base36(),
-		CommitHash: commit.Hash.String(),
-		Parent_1Id: snowPtrToStringPtr(commit.Parent1ID),
-		Parent_2Id: snowPtrToStringPtr(commit.Parent2ID),
-		Message:    commit.Message,
-		CreatedAt:  timestamppb.New(commit.CreatedAt),
+		CommitId:    commit.ID.Base36(),
+		CommitHash:  commit.Hash.String(),
+		Parent_1Id:  snowPtrToStringPtr(commit.Parent1ID),
+		Parent_2Id:  snowPtrToStringPtr(commit.Parent2ID),
+		Message:     commit.Message,
+		CreatedAt:   timestamppb.New(commit.CreatedAt),
+		AuthorName:  commit.AuthorName,
+		AuthorEmail: commit.AuthorEmail,
+		Origin:      commit.Origin,
 	}
 }

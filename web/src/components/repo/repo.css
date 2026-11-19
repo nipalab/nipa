@@ -1192,3 +1192,16 @@
   cursor: pointer;
   text-align: left;
 }
+
+.nipa-imported {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.nipa-imported-id {
+  font-family: var(--fontStack-monospace);
+  font-size: 12px;
+  color: var(--fgColor-muted);
+}

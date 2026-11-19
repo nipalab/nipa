@@ -20,6 +20,10 @@ type CommitDetail struct {
 	Message   string
 	CreatedAt time.Time
 	Tree      *serverDomain.TreeNode
+
+	AuthorName  string
+	AuthorEmail string
+	Origin      string
 }
 
 type CommitWalkEntry struct {
@@ -29,6 +33,10 @@ type CommitWalkEntry struct {
 	Parent2ID string
 	Message   string
 	CreatedAt time.Time
+
+	AuthorName  string
+	AuthorEmail string
+	Origin      string
 }
 
 type CommitRef struct {

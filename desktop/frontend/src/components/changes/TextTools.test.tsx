@@ -41,7 +41,7 @@ const blame = (over: Partial<Blame> = {}): Blame => ({
   path: "src/a.cs",
   revision: "",
   truncated: false,
-  commits: [{ id: "c1", hash: "h1", parents: [], author: "Ana", email: "ana@x", message: "Add A", date: new Date().toISOString() }],
+  commits: [{ id: "c1", hash: "h1", parents: [], author: "Ana", email: "ana@x", message: "Add A", date: new Date().toISOString(), origin: "" }],
   lines: [
     { commitId: "c1", uncommitted: false },
     { commitId: "", uncommitted: true },

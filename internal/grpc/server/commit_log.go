@@ -39,13 +39,15 @@ func (n *nipaServer) GetCommitLog(ctx context.Context, req *pb.GetCommitLogReque
 }
 
 func commitLogEntryToPB(entry *domain.CommitLogEntry) *pb.CommitLogEntry {
+	authorName, authorEmail := entry.DisplayAuthor()
 	c := &pb.CommitLogEntry{
 		CommitId:    entry.ID.Base36(),
 		CommitHash:  entry.Hash.String(),
-		AuthorName:  entry.AuthorName,
-		AuthorEmail: entry.AuthorEmail,
+		AuthorName:  authorName,
+		AuthorEmail: authorEmail,
 		Message:     entry.Message,
 		CreatedAt:   timestamppb.New(entry.CreatedAt),
+		Origin:      entry.Origin,
 	}
 	if entry.Parent1ID != nil {
 		s := entry.Parent1ID.Base36()

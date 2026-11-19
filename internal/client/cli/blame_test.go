@@ -59,7 +59,7 @@ func sampleBlame() *usecase.BlameResult {
 			{Text: "second", Uncommitted: true},
 			{Text: "third"},
 		},
-		Commits:   []usecase.BlameCommit{{ID: "abc123", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@example.com", Message: "Add a\n", CreatedAt: when}},
+		Commits:   []usecase.BlameCommit{{ID: "abc123", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@example.com", Message: "Add a\n", CreatedAt: when, Origin: "git:default:0123456789abcdef0123456789abcdef01234567"}},
 		Truncated: true,
 	}
 }
@@ -89,6 +89,7 @@ func TestBlameCmd_JSON(t *testing.T) {
 	require.Equal(t, 2, got.Lines[1].Line)
 	require.True(t, got.Lines[1].Uncommitted)
 	require.Equal(t, "Add a", got.Commits[0].Message)
+	require.Equal(t, "git:default:0123456789abcdef0123456789abcdef01234567", got.Commits[0].Origin)
 	require.True(t, got.Truncated)
 }
 

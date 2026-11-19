@@ -1272,6 +1272,7 @@ func TestClient_GetCommitLog_Success(t *testing.T) {
 			AuthorEmail: "alice@example.com",
 			Message:     "first commit",
 			CreatedAt:   timestamppb.New(now),
+			Origin:      "git:default:0123456789abcdef0123456789abcdef01234567",
 		},
 	}}
 	addr := startTestServer(t, fs)
@@ -1289,6 +1290,7 @@ func TestClient_GetCommitLog_Success(t *testing.T) {
 	require.Equal(t, "Alice", e.AuthorName)
 	require.Equal(t, "alice@example.com", e.AuthorEmail)
 	require.Equal(t, "first commit", e.Message)
+	require.Equal(t, "git:default:0123456789abcdef0123456789abcdef01234567", e.Origin)
 	require.Equal(t, now, e.CreatedAt)
 	require.Equal(t, "main", fs.lastCommitLogReq.GetBranch())
 	require.Equal(t, int32(10), fs.lastCommitLogReq.GetLimit())

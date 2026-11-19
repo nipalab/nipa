@@ -1004,6 +1004,55 @@ describe('CommitsPage', () => {
   })
 })
 
+describe('imported commits', () => {
+  const origin = 'git:default:0123456789abcdef0123456789abcdef01234567'
+
+  it('labels imported commits in the history and on the commit page', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/commits/c3/diff')) return jsonResponse({ commit_id: 'c3', files: [] })
+      if (url.includes('/commits?')) {
+        return jsonResponse([
+          { id: 'c3', message: 'imported change', author_name: 'Linus', created_at: new Date().toISOString(), origin },
+          { id: 'c2', message: 'native change', author_name: 'Bob', created_at: new Date().toISOString() },
+        ])
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/commits?branch=main')
+    await waitForText(container, 'imported change')
+    expect(container.textContent).toContain('Linus committed')
+    expect(container.querySelectorAll('.nipa-imported')).toHaveLength(1)
+    expect(container.textContent).toContain('Imported from Git')
+    expect(container.querySelector('.nipa-imported-id')?.textContent).toBe('0123456')
+    expect(byName('Copy Git origin 0123456')).not.toBeNull()
+    act(() => root.unmount())
+
+    const detail = await renderApp('/acme/game/commits/c3')
+    await waitForText(detail.container, 'Linus committed')
+    expect(detail.container.querySelector('.nipa-imported')?.getAttribute('title')).toBe(origin)
+    act(() => detail.root.unmount())
+  })
+
+  it('labels an imported latest commit in the commit bar', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/tree')) {
+        return jsonResponse({
+          path: '',
+          entries: [{ name: 'main.ts', path: 'main.ts', type: 'file', size: 10 }],
+          latest_commit: { id: 'abcdef1234', message: 'from svn', author_name: 'Sally', created_at: new Date().toISOString(), origin: 'svn:repo:1234:trunk' },
+        })
+      }
+      return null
+    })
+    const { container, root } = await renderApp('/acme/game/tree/main')
+    await waitForText(container, 'main.ts')
+    expect(container.textContent).toContain('Imported from SVN')
+    expect(container.querySelector('.nipa-imported-id')?.textContent).toBe('r1234')
+    act(() => root.unmount())
+  })
+})
+
 describe('RepoPage toolbar', () => {
   it('offers clone instructions, branch counts and a parent directory row', async () => {
     stubRepoRoutes((url) => {

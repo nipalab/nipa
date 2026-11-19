@@ -11,6 +11,8 @@ import { RepoBreadcrumb } from './RepoBreadcrumb'
 import { RepoNav } from './RepoNav'
 import { fileIcon } from './fileIcon'
 import { commitTitle, formatBytes, relativeTime, shortSha } from './format'
+import { originShortId, originSystemName } from './origin'
+import { ImportedLabel } from './ImportedLabel'
 import { blobUrl, commitsUrl, parentPath, repoUrl, treeUrl } from './repoPaths'
 import type { BranchResponse, CommitResponse } from '../../api/models'
 
@@ -213,6 +215,42 @@ describe('MergeRequestCommits', () => {
       <MergeRequestCommits org="acme" project="game" commits={[]} />,
     )
     expect(container.textContent).toContain('No commits on this request.')
+    act(() => root.unmount())
+  })
+})
+
+describe('origin', () => {
+  const sha = '0123456789abcdef0123456789abcdef01234567'
+  it.each([
+    [`git:default:${sha}`, 'Git', '0123456'],
+    [`hg:default:${sha}`, 'Mercurial', '0123456'],
+    ['svn:repo:1234:trunk', 'SVN', 'r1234'],
+    ['p4:depot:58211://depot/main', 'Perforce', 'CL 58211'],
+    ['cvs:src:abc', 'cvs', 'abc'],
+    ['git:default', '', ''],
+    ['', '', ''],
+    [undefined, '', ''],
+  ])('formats %s', (origin, system, short) => {
+    expect(originSystemName(origin)).toBe(system)
+    expect(originShortId(origin)).toBe(short)
+  })
+
+  it('renders nothing for native commits', async () => {
+    const { container, root } = await render(<ImportedLabel />)
+    expect(container.textContent).toBe('')
+    act(() => root.unmount())
+  })
+
+  it('copies the full origin', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { container, root } = await render(<ImportedLabel origin={`git:default:${sha}`} />)
+    expect(container.textContent).toContain('Imported from Git')
+    const button = container.querySelector('.nipa-imported button') as HTMLButtonElement
+    await act(async () => {
+      button.click()
+    })
+    expect(writeText).toHaveBeenCalledWith(`git:default:${sha}`)
     act(() => root.unmount())
   })
 })

@@ -14,7 +14,7 @@ const repo = (root: string, over: Partial<Repo> = {}): Repo => ({ root, name: ro
 const game = repo("/game");
 const tools = repo("/tools");
 const hit = (path: string, kind = "text"): FileHit => ({ path, name: path.slice(path.lastIndexOf("/") + 1), size: 1, binary: kind !== "text", kind });
-const commit = (id: string, message: string): Commit => ({ id, hash: "ab".repeat(32), parents: [], author: "Ann", email: "", message, date: "" });
+const commit = (id: string, message: string): Commit => ({ id, hash: "ab".repeat(32), parents: [], author: "Ann", email: "", message, date: "", origin: "" });
 const mr = (number: number, title: string): MergeRequest =>
   ({ number, title, description: "", status: "open", draft: number === 9, source: "feature", target: "main", assignees: [] }) as unknown as MergeRequest;
 

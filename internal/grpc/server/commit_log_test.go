@@ -209,3 +209,29 @@ func TestGetCommitLog_PathDenied(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestCommitLogEntryToPB_PrefersImportedAuthor(t *testing.T) {
+	origin := "git:default:0123456789abcdef0123456789abcdef01234567"
+	native := commitLogEntryToPB(&domain.CommitLogEntry{
+		Commit:      domain.Commit{ID: snow.ID(1)},
+		AuthorName:  "Ann",
+		AuthorEmail: "ann@nipa.dev",
+	})
+	require.Equal(t, "Ann", native.AuthorName)
+	require.Equal(t, "ann@nipa.dev", native.AuthorEmail)
+	require.Empty(t, native.Origin)
+
+	imported := commitLogEntryToPB(&domain.CommitLogEntry{
+		Commit: domain.Commit{
+			ID:          snow.ID(2),
+			AuthorName:  "Linus",
+			AuthorEmail: "linus@git.dev",
+			Origin:      origin,
+		},
+		AuthorName:  "Importer",
+		AuthorEmail: "importer@nipa.dev",
+	})
+	require.Equal(t, "Linus", imported.AuthorName)
+	require.Equal(t, "linus@git.dev", imported.AuthorEmail)
+	require.Equal(t, origin, imported.Origin)
+}

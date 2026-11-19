@@ -28,6 +28,7 @@ const commit = (id: string, message: string, parents: string[] = [], author = "A
   email: `${author.toLowerCase()}@studio.dev`,
   message,
   date: "2026-11-04T09:00:00Z",
+  origin: "",
 });
 
 const c3 = commit("c3", "Merge feature\n\nBrings the new level", ["c2", "f1"], "Bo");
@@ -261,6 +262,26 @@ describe("HistoryView", () => {
     api.history.mockRejectedValueOnce(new Error("gone"));
     await userEvent.click(screen.getByRole("button", { name: /merged f1/ }));
     expect(await screen.findByText("This commit could not be loaded")).toBeInTheDocument();
+  });
+});
+
+describe("imported commits", () => {
+  const origin = "git:default:0123456789abcdef0123456789abcdef01234567";
+
+  it("labels imported commits and copies the full origin", async () => {
+    const imported = { ...commit("c9", "Imported change", [], "Linus"), origin };
+    api.history.mockResolvedValue({ commits: [imported, c1], next: "" });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    view();
+    const list = await commitList();
+    expect(within(list).getByText("Git")).toBeInTheDocument();
+    expect(within(list).getAllByText("0123456")).toHaveLength(1);
+    expect(await screen.findByRole("heading", { name: "Imported change" })).toBeInTheDocument();
+    expect(screen.getByText("Imported from Git")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Copy the full Git origin" }));
+    expect(writeText).toHaveBeenCalledWith(origin);
+    expect(await screen.findByRole("button", { name: "Origin copied" })).toBeInTheDocument();
   });
 });
 

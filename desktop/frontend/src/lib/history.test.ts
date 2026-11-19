@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Commit } from "@/api/desktop";
 import { commitBody, commitTitle, filterCommits, isImagePath, shortId, tagsByCommit } from "./history";
 
-const commit = (id: string, author: string, message: string): Commit => ({ id, hash: `h${id}`, parents: [], author, email: `${author.toLowerCase()}@studio.dev`, message, date: "" });
+const commit = (id: string, author: string, message: string): Commit => ({ id, hash: `h${id}`, parents: [], author, email: `${author.toLowerCase()}@studio.dev`, message, date: "", origin: "" });
 
 describe("history helpers", () => {
   it("splits commit messages", () => {

@@ -626,6 +626,7 @@ func toServerCommitLogEntry(e *pb.CommitLogEntry) *serverDomain.CommitLogEntry {
 			Parent2ID: parent2ID,
 			Message:   e.GetMessage(),
 			CreatedAt: e.GetCreatedAt().AsTime(),
+			Origin:    e.GetOrigin(),
 		},
 		AuthorName:  e.GetAuthorName(),
 		AuthorEmail: e.GetAuthorEmail(),

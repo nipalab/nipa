@@ -29,6 +29,7 @@ type Commit struct {
 	Email   string   `json:"email"`
 	Message string   `json:"message"`
 	Date    string   `json:"date"` // RFC 3339
+	Origin  string   `json:"origin"`
 }
 
 // HistoryQuery pages through a branch's commits; Path narrows them to the
@@ -107,7 +108,7 @@ func (s *Service) History(ctx context.Context, root string, q HistoryQuery) (*Hi
 }
 
 func toCommit(e *pb.CommitLogEntry) Commit {
-	c := Commit{ID: e.GetCommitId(), Hash: e.GetCommitHash(), Parents: []string{}, Author: e.GetAuthorName(), Email: e.GetAuthorEmail(), Message: e.GetMessage(), Date: rfc3339(e.GetCreatedAt())}
+	c := Commit{ID: e.GetCommitId(), Hash: e.GetCommitHash(), Parents: []string{}, Author: e.GetAuthorName(), Email: e.GetAuthorEmail(), Message: e.GetMessage(), Date: rfc3339(e.GetCreatedAt()), Origin: e.GetOrigin()}
 	for _, p := range []string{e.GetParent_1Id(), e.GetParent_2Id()} {
 		if p != "" {
 			c.Parents = append(c.Parents, p)

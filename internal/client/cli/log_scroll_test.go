@@ -410,3 +410,17 @@ func TestHeightRows(t *testing.T) {
 		t.Errorf("heightRows(0) = %d, want 1", h)
 	}
 }
+
+func TestFormatCommit_ImportedAuthor(t *testing.T) {
+	e := testEntries()[0]
+	e.Commit.AuthorName = "Linus"
+	e.Commit.AuthorEmail = "linus@git.dev"
+	e.Origin = "svn:repo:1234:trunk"
+	lines := formatCommitFull(e, true)
+	if lines[0] != ansiColorYellow+"commit 6y1"+ansiColorReset+" (imported r1234)" {
+		t.Fatalf("unexpected commit line %q", lines[0])
+	}
+	if lines[1] != "Author: Linus <linus@git.dev>" {
+		t.Fatalf("unexpected author line %q", lines[1])
+	}
+}

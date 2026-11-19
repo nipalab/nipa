@@ -177,6 +177,7 @@ export interface CommitResponse {
   author_name?: string
   author_email?: string
   created_at: string
+  origin?: string
 }
 
 export type DiffLineKind = 'context' | 'add' | 'remove'

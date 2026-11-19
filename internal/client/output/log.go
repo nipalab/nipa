@@ -16,6 +16,7 @@ type LogCommit struct {
 	Message     string   `json:"message"`
 	AuthorName  string   `json:"author_name,omitempty"`
 	AuthorEmail string   `json:"author_email,omitempty"`
+	Origin      string   `json:"origin,omitempty"`
 	CreatedAt   string   `json:"created_at"`
 	ParentIDs   []string `json:"parent_ids"`
 }
@@ -26,12 +27,14 @@ func NewLog(entries []*serverDomain.CommitLogEntry) Log {
 		if e == nil {
 			continue
 		}
+		authorName, authorEmail := e.DisplayAuthor()
 		out.Commits = append(out.Commits, LogCommit{
 			ID:          e.ID.Base36(),
 			Hash:        e.Hash.String(),
 			Message:     e.Message,
-			AuthorName:  e.AuthorName,
-			AuthorEmail: e.AuthorEmail,
+			AuthorName:  authorName,
+			AuthorEmail: authorEmail,
+			Origin:      e.Origin,
 			CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
 			ParentIDs:   parentIDs(e),
 		})

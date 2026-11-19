@@ -61,3 +61,40 @@ func TestParseOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestOriginDisplay(t *testing.T) {
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	cases := []struct {
+		origin, system, short string
+	}{
+		{"git:default:" + sha, "Git", "0123456"},
+		{"hg:default:" + sha, "Mercurial", "0123456"},
+		{"svn:repo:1234:trunk", "SVN", "r1234"},
+		{"p4:depot:58211://depot/main", "Perforce", "CL 58211"},
+		{"cvs:src:abc", "cvs", "abc"},
+		{"git:default:abc", "Git", "abc"},
+		{"", "", ""},
+		{"git:default", "", ""},
+		{"git::", "", ""},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.system, OriginSystemName(tc.origin), tc.origin)
+		require.Equal(t, tc.short, OriginShortID(tc.origin), tc.origin)
+	}
+}
+
+func TestCommitLogEntryDisplayAuthor(t *testing.T) {
+	native := &CommitLogEntry{AuthorName: "Ann", AuthorEmail: "ann@nipa.dev"}
+	name, email := native.DisplayAuthor()
+	require.Equal(t, "Ann", name)
+	require.Equal(t, "ann@nipa.dev", email)
+
+	imported := &CommitLogEntry{
+		Commit:      Commit{AuthorName: "Linus", AuthorEmail: "linus@git.dev"},
+		AuthorName:  "Importer",
+		AuthorEmail: "importer@nipa.dev",
+	}
+	name, email = imported.DisplayAuthor()
+	require.Equal(t, "Linus", name)
+	require.Equal(t, "linus@git.dev", email)
+}
