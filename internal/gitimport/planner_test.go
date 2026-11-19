@@ -1,6 +1,8 @@
 package gitimport
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -223,11 +225,20 @@ func TestPlanKnownPrunes(t *testing.T) {
 	m := f.commit(map[string]entry{"m": reg("m")}, "merge", cs[3], side)
 	f.branch("master", m)
 
-	p := plan(t, f, Options{Known: map[string]bool{f.origin(cs[2]): true}})
+	closed := map[string]bool{f.origin(cs[0]): true, f.origin(cs[1]): true, f.origin(cs[2]): true}
+	p := plan(t, f, Options{Known: closed})
 	assert.Equal(t, []plumbing.Hash{cs[3], side, m}, hashes(p.Commits))
 	assert.Equal(t, []string{f.origin(cs[2])}, p.Commits[0].ParentOrigins)
 	assert.Equal(t, []string{f.origin(cs[1])}, p.Commits[1].ParentOrigins)
 	assert.Equal(t, []string{f.origin(cs[3]), f.origin(side)}, p.Commits[2].ParentOrigins)
+
+	f.ref("refs/tags/old", cs[0])
+	p = plan(t, f, Options{Known: map[string]bool{f.origin(cs[2]): true}})
+	assert.Equal(t, []plumbing.Hash{cs[3], side, m}, hashes(p.Commits))
+	assert.Empty(t, p.Commits[1].ParentOrigins)
+	outside := warningsOf(p.Warnings, WarnRefOutsideWindow)
+	require.Len(t, outside, 1)
+	assert.Equal(t, "refs/tags/old", outside[0].Ref)
 
 	p = plan(t, f, Options{Known: map[string]bool{f.origin(m): true}})
 	assert.Empty(t, p.Commits)
@@ -241,9 +252,30 @@ func TestPlanKnownPrunesEveryForkAncestor(t *testing.T) {
 	feature := f.commit(map[string]entry{"x": reg("x")}, "feature", cs[3])
 	f.branch("feature", feature)
 
-	p := plan(t, f, Options{Known: map[string]bool{f.origin(cs[5]): true}})
+	known := map[string]bool{}
+	for _, h := range cs {
+		known[f.origin(h)] = true
+	}
+	p := plan(t, f, Options{Known: known})
 	assert.Equal(t, []plumbing.Hash{feature}, hashes(p.Commits))
 	assert.Equal(t, []string{f.origin(cs[3])}, p.Commits[0].ParentOrigins)
+}
+
+func TestPlanKnownStopsAtImportedHistory(t *testing.T) {
+	f := newFixture(t, false)
+	cs := linear(f, 4)
+	known := map[string]bool{}
+	for _, h := range cs[:3] {
+		known[f.origin(h)] = true
+	}
+	for _, h := range cs[:2] {
+		s := h.String()
+		require.NoError(t, os.Remove(filepath.Join(f.dir, ".git", "objects", s[:2], s[2:])))
+	}
+
+	p := plan(t, f, Options{Known: known})
+	assert.Equal(t, []plumbing.Hash{cs[3]}, hashes(p.Commits))
+	assert.Equal(t, []string{f.origin(cs[2])}, p.Commits[0].ParentOrigins)
 }
 
 func TestPlanDefaultBranch(t *testing.T) {
