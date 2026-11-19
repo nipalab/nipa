@@ -53,11 +53,16 @@ type Querier interface {
 	// stays out of the plain branch history.
 	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
 	CountOwnerSeats(ctx context.Context, ownerID int64) (int64, error)
+	CountStorageServersByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
+	CreateStorageServer(ctx context.Context, arg CreateStorageServerParams) (StorageServer, error)
+	DeleteDeletedOrgStorageDefaults(ctx context.Context, id int64) error
+	DeleteOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
 	DeleteProjectChunks(ctx context.Context, projectID int64) error
+	DeleteStorageServer(ctx context.Context, id int64) (int64, error)
 	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
 	EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCreateParams) (EmailDelivery, error)
 	EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error)
@@ -100,6 +105,7 @@ type Querier interface {
 	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
 	GetLiveSubscription(ctx context.Context, userID int64) (BillingSubscription, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
+	GetOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
 	GetOrgUsage(ctx context.Context, orgID int64) (int64, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
@@ -109,6 +115,8 @@ type Querier interface {
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
 	GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error)
 	GetProjectOrgID(ctx context.Context, id int64) (int64, error)
+	GetProjectStorageServer(ctx context.Context, projectID int64) (StorageServer, error)
+	GetStorageServer(ctx context.Context, id int64) (StorageServer, error)
 	GroupCreate(ctx context.Context, arg GroupCreateParams) (Group, error)
 	GroupGet(ctx context.Context, id int64) (Group, error)
 	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
@@ -121,16 +129,20 @@ type Querier interface {
 	InsertBillingAccount(ctx context.Context, arg InsertBillingAccountParams) error
 	InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (int64, error)
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
+	InsertProjectStorage(ctx context.Context, arg InsertProjectStorageParams) error
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
+	ListExternalProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	ListQuotaOwners(ctx context.Context, arg ListQuotaOwnersParams) ([]int64, error)
+	ListStorageServersByOwner(ctx context.Context, ownerUserID int64) ([]StorageServer, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
 	LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
+	LockStorageServerOwner(ctx context.Context, lockKey int64) error
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
 	MFAChallengeCreate(ctx context.Context, arg MFAChallengeCreateParams) error
 	MFAChallengeDelete(ctx context.Context, tokenHash string) (int64, error)
@@ -274,6 +286,7 @@ type Querier interface {
 	SignupWaitlistList(ctx context.Context, arg SignupWaitlistListParams) ([]SignupWaitlist, error)
 	SignupWaitlistMarkNotified(ctx context.Context, arg SignupWaitlistMarkNotifiedParams) error
 	SignupWaitlistPending(ctx context.Context, limit int64) ([]SignupWaitlist, error)
+	StorageServerInUse(ctx context.Context, id int64) (bool, error)
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)
@@ -286,7 +299,9 @@ type Querier interface {
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
+	UpdateStorageServer(ctx context.Context, arg UpdateStorageServerParams) (StorageServer, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error
+	UpsertOrgStorageDefault(ctx context.Context, arg UpsertOrgStorageDefaultParams) error
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (int64, error)
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserCreateUnverified(ctx context.Context, arg UserCreateUnverifiedParams) (int64, error)

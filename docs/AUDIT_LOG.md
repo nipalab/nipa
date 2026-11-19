@@ -88,6 +88,12 @@ customer, subscription and transaction ids and item quantities are recorded.
 | `billing.event.replayed` | `Service.Replay` (admin replay route) | super admin | target = event; `event_id`, `event_type`, `outcome` (`processed`/`failed`), `error` |
 | `billing.seat.denied` | `Service.Admit` refusal | the caller adding the user | `org_id`, target = user; `billing_owner_id`, `used`, `limit` |
 | `billing.quotas.reconciled` | `Service.ReconcileQuotas` at startup, only when a quota changed (also after a partial run) | system | `updated`, `complete: false` on a partial run |
+| `storage_server.created` | `byostorage.Service.Create` (`POST /me/storage-servers`), after the probe passed | user | target = storage server; `name`, `endpoint`, `bucket`, `prefix` (never keys) |
+| `storage_server.updated` | `byostorage.Service.Update` (`PATCH`; skipped when nothing changed) | user | target = storage server; `name`, `endpoint`, `bucket`, `prefix`, `changed` (field names; `secret_access_key` when rotated) |
+| `storage_server.deleted` | `byostorage.Service.Delete` | user | target = storage server; `name`, `endpoint`, `bucket`, `prefix` |
+| `org.storage_default.set` | `byostorage.Service.SetOrgDefault` (`PUT /orgs/{org}/storage-server`; skipped when unchanged) | org owner and billing owner | `org_id`; `storage_server_id`, `previous_server_id` |
+| `org.storage_default.cleared` | `SetOrgDefault` with no server (`DELETE`; skipped without a default) | org owner | `org_id` |
+| `project.storage_server.set` | `byostorage.Service.Assign` inside `Project.Create` | the creator | `org_id`, `project_id`; `storage_server_id`, `source` (`requested`/`org_default`) |
 
 `billing.subscription.applied` is attributed to the authenticated caller when
 there is one (a plan change, an admin sync or a replay; the replay keeps the

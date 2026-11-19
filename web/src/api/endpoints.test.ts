@@ -97,3 +97,46 @@ describe('createProject', () => {
     })
   })
 })
+
+describe('storage servers', () => {
+  it('calls the storage server routes', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return { ok: true, status: 204 } as Response
+      const body = url === '/api/v1/me/storage-servers' && !init?.method ? { servers: [{ id: 's1' }] } : { id: 's1' }
+      return { ok: true, status: 200, json: async () => body } as Response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const endpoints = await import('./endpoints')
+
+    expect(await endpoints.listStorageServers()).toEqual([{ id: 's1' }])
+    await endpoints.getStorageServer('s 1')
+    await endpoints.createStorageServer({
+      name: 'R2',
+      endpoint: 'https://acct.r2.cloudflarestorage.com',
+      bucket: 'assets',
+      access_key_id: 'a',
+      secret_access_key: 's',
+    })
+    await endpoints.updateStorageServer('s1', { name: 'Renamed' })
+    expect(await endpoints.deleteStorageServer('s1')).toBeUndefined()
+    await endpoints.testStorageServer('s1')
+    await endpoints.getOrgStorageServer('acme')
+    await endpoints.setOrgStorageServer('acme', 's1')
+    await endpoints.clearOrgStorageServer('acme')
+    await endpoints.getProjectStorage('acme', 'game')
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+      ['/api/v1/me/storage-servers', 'GET'],
+      ['/api/v1/me/storage-servers/s%201', 'GET'],
+      ['/api/v1/me/storage-servers', 'POST'],
+      ['/api/v1/me/storage-servers/s1', 'PATCH'],
+      ['/api/v1/me/storage-servers/s1', 'DELETE'],
+      ['/api/v1/me/storage-servers/s1/test', 'POST'],
+      ['/api/v1/orgs/acme/storage-server', 'GET'],
+      ['/api/v1/orgs/acme/storage-server', 'PUT'],
+      ['/api/v1/orgs/acme/storage-server', 'DELETE'],
+      ['/api/v1/orgs/acme/projects/game/storage', 'GET'],
+    ])
+    expect(JSON.parse(fetchMock.mock.calls[7][1].body)).toEqual({ storage_server_id: 's1' })
+  })
+})

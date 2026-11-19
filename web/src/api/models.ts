@@ -65,6 +65,7 @@ export interface OnboardingCapabilities {
   invite_only?: boolean
   providers: string[]
   billing?: BillingCapabilities
+  byo_storage?: boolean
   terms?: { version: string }
 }
 
@@ -555,6 +556,60 @@ export interface ProjectStorageResponse {
   name: string
   deleted: boolean
   used_bytes: number
+  // external projects live on their own storage server and count nothing.
+  external?: boolean
+}
+
+export interface StorageServerResponse {
+  id: string
+  name: string
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  access_key_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateStorageServerInput {
+  name: string
+  endpoint: string
+  region?: string
+  bucket: string
+  prefix?: string
+  access_key_id: string
+  secret_access_key: string
+}
+
+// Bucket and prefix are fixed once saved; the secret is write-only.
+export interface UpdateStorageServerInput {
+  name?: string
+  endpoint?: string
+  region?: string
+  access_key_id?: string
+  secret_access_key?: string
+}
+
+export interface StorageServerSummary {
+  id: string
+  name: string
+}
+
+export interface StorageServerTestResponse {
+  ok: boolean
+  check?: string
+  error?: string
+}
+
+export interface OrgStorageServerResponse {
+  server: StorageServerSummary | null
+  can_manage: boolean
+}
+
+export interface ProjectStorageLocationResponse {
+  external: boolean
+  server: StorageServerSummary | null
 }
 
 export interface OrgStorageResponse {

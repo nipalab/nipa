@@ -62,12 +62,15 @@ func newRegistrationServer(t *testing.T, providers func() []string) *registratio
 	return newRegistrationServerWith(t, providers, nil)
 }
 
-func newRegistrationServerWith(t *testing.T, providers func() []string, billing *BillingCapabilities) *registrationServer {
+func newRegistrationServerWith(t *testing.T, providers func() []string, billing *BillingCapabilities, options ...func(*Handler)) *registrationServer {
 	t.Helper()
 
 	env := newRegistrationEnv(t)
 	auth := usecase.NewAuth("test-secret", stubHasher{}, env.users, stubSessionStore{})
 	handler := NewHandler(env.registration, auth)
+	for _, option := range options {
+		option(handler)
+	}
 	if providers != nil {
 		handler = handler.WithProviders(providers)
 	}
@@ -134,6 +137,13 @@ func TestCapabilitiesReportsBilling(t *testing.T) {
 		"provider": "paddle", "environment": "sandbox", "client_token": "test_token",
 		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}},
 		"free_seats": 3, "free_quota_bytes": 10, "seat_included_bytes": 50, "storage_pack_bytes": 100}}`, body)
+}
+
+func TestCapabilitiesReportsBYOStorage(t *testing.T) {
+	server := newRegistrationServerWith(t, nil, nil, func(h *Handler) { h.WithBYOStorage(true) })
+	resp, body := server.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.JSONEq(t, `{"registration": true, "providers": [], "byo_storage": true}`, body)
 }
 
 func TestRegisterEndpoint(t *testing.T) {

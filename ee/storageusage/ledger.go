@@ -61,6 +61,7 @@ type ProjectUsage struct {
 	Name      string
 	Deleted   bool
 	UsedBytes int64
+	External  bool
 }
 
 // OrgUsage is one organization's storage usage.
@@ -262,6 +263,7 @@ func (l *Ledger) OrgStorage(ctx context.Context, orgID snow.ID) (*OrgStorage, er
 			Name:      row.Name,
 			Deleted:   row.Deleted,
 			UsedBytes: row.UsedBytes,
+			External:  row.External,
 		})
 	}
 	return &OrgStorage{

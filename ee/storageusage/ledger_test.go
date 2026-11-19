@@ -273,6 +273,10 @@ func (s *ledgerSuite) TestOrgStorage_DoesNotSeedTheOwnerMapping() {
 	s.Require().NoError(err)
 	s.Equal(snow.ID(1), summary.OwnerID)
 	s.Zero(mapped(), "a report never writes, so it works on a frozen database")
+	looked, err := s.ledger.LookupBillingOwner(ctx, snow.ID(1))
+	s.Require().NoError(err)
+	s.Equal(snow.ID(1), looked)
+	s.Zero(mapped())
 
 	owner, err := s.ledger.BillingOwner(ctx, snow.ID(1))
 	s.Require().NoError(err)
@@ -281,4 +285,43 @@ func (s *ledgerSuite) TestOrgStorage_DoesNotSeedTheOwnerMapping() {
 	summary, err = s.ledger.OrgStorage(ctx, snow.ID(1))
 	s.Require().NoError(err)
 	s.Equal(snow.ID(1), summary.OwnerID)
+}
+
+func (s *ledgerSuite) TestRecountOrg_SkipsExternalProjects() {
+	ctx := context.Background()
+	org := snow.ID(1)
+	nipaProject := snow.ID(1)
+	external := s.seedProject(org)
+
+	rootID := s.seedTreeNode(nil)
+	_, keepID := s.seedChunk(10)
+	_, byoID := s.seedChunk(40)
+	s.seedFile(rootID, keepID)
+	s.seedCommit(nipaProject, rootID)
+	byoRoot := s.seedTreeNode(nil)
+	s.seedFile(byoRoot, byoID)
+	s.seedCommit(external, byoRoot)
+	s.seedLink(external, byoID, 40)
+
+	_, err := s.db.ExecContext(ctx, `INSERT INTO storage_servers (id, owner_user_id, name, endpoint, bucket, access_key_id, secret_sealed)
+		VALUES (77, 1, 'byo', 'https://s3.example.com', 'b', 'a', '\x00')`)
+	s.Require().NoError(err)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO project_storage (project_id, storage_server_id) VALUES ($1, 77)`, external.Int64())
+	s.Require().NoError(err)
+
+	s.NoError(s.ledger.RecountOrg(ctx, org))
+	s.Equal(int64(10), s.orgUsed(org))
+	s.Equal(int64(0), s.projectUsed(external))
+	s.Equal(0, s.linkCount(external))
+
+	summary, err := s.ledger.OrgStorage(ctx, org)
+	s.Require().NoError(err)
+	s.Equal(int64(10), summary.UsedBytes)
+	byExternal := map[bool]ProjectUsage{}
+	for _, project := range summary.Projects {
+		byExternal[project.External] = project
+	}
+	s.Equal(external, byExternal[true].ProjectID)
+	s.Zero(byExternal[true].UsedBytes)
+	s.Equal(int64(10), byExternal[false].UsedBytes)
 }

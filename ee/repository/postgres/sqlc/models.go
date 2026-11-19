@@ -348,6 +348,13 @@ type OrgMember struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type OrgStorageDefault struct {
+	OrgID           int64     `json:"org_id"`
+	StorageServerID int64     `json:"storage_server_id"`
+	SetBy           int64     `json:"set_by"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type OrgUsage struct {
 	OrgID     int64 `json:"org_id"`
 	UsedBytes int64 `json:"used_bytes"`
@@ -428,6 +435,12 @@ type ProjectServiceToken struct {
 	CreatedAt  time.Time    `json:"created_at"`
 }
 
+type ProjectStorage struct {
+	ProjectID       int64     `json:"project_id"`
+	StorageServerID int64     `json:"storage_server_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type ProjectUsage struct {
 	ProjectID int64 `json:"project_id"`
 	UsedBytes int64 `json:"used_bytes"`
@@ -486,6 +499,20 @@ type SshPublicKey struct {
 	Fingerprint string    `json:"fingerprint"`
 	Comment     string    `json:"comment"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+type StorageServer struct {
+	ID           int64     `json:"id"`
+	OwnerUserID  int64     `json:"owner_user_id"`
+	Name         string    `json:"name"`
+	Endpoint     string    `json:"endpoint"`
+	Region       string    `json:"region"`
+	Bucket       string    `json:"bucket"`
+	Prefix       string    `json:"prefix"`
+	AccessKeyID  string    `json:"access_key_id"`
+	SecretSealed []byte    `json:"secret_sealed"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Tag struct {

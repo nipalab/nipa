@@ -74,6 +74,13 @@ const (
 	AuditBillingEventReplayed        = "billing.event.replayed"
 	AuditBillingSeatDenied           = "billing.seat.denied"
 	AuditBillingQuotasReconciled     = "billing.quotas.reconciled"
+
+	AuditStorageServerCreated     = "storage_server.created"
+	AuditStorageServerUpdated     = "storage_server.updated"
+	AuditStorageServerDeleted     = "storage_server.deleted"
+	AuditOrgStorageDefaultSet     = "org.storage_default.set"
+	AuditOrgStorageDefaultCleared = "org.storage_default.cleared"
+	AuditProjectStorageServerSet  = "project.storage_server.set"
 )
 
 // Audit target types.
@@ -92,4 +99,5 @@ const (
 	AuditTargetSubscription   = "subscription"
 	AuditTargetBillingEvent   = "billing_event"
 	AuditTargetMaintenance    = "maintenance_window"
+	AuditTargetStorageServer  = "storage_server"
 )
