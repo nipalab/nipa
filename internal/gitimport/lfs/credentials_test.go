@@ -82,9 +82,9 @@ func TestCredentialHelpers(t *testing.T) {
 	assert.False(t, same("https://example.com:8443/a", "https://example.com/a"))
 	assert.True(t, same("ftp://h/a", "ftp://h/b"))
 
-	if _, err := exec.LookPath("git"); err == nil {
+	if bin, err := exec.LookPath("git"); err == nil {
 		assert.NotNil(t, NewGitCredentials())
-		out, err := runGit(context.Background(), "", "--version")
+		out, err := gitRunner(bin)(context.Background(), "", "--version")
 		require.NoError(t, err)
 		assert.Contains(t, out, "git version")
 	}

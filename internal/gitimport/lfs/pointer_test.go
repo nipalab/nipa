@@ -26,6 +26,11 @@ func TestParsePointer(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, int64(5), p.Size)
 
+	crlf := "version https://git-lfs.github.com/spec/v1\r\noid sha256:" + oid + "\r\nsize 5\r\n"
+	p, ok = ParsePointer([]byte(crlf))
+	require.True(t, ok)
+	assert.Equal(t, Pointer{OID: oid, Size: 5}, p)
+
 	ext := "version https://git-lfs.github.com/spec/v1\next-0-foo sha256:" + oid + "\noid sha256:" + oid + "\nsize 0\n"
 	p, ok = ParsePointer([]byte(ext))
 	require.True(t, ok)

@@ -1,7 +1,6 @@
 package lfs
 
 import (
-	"bytes"
 	"strconv"
 	"strings"
 )
@@ -22,7 +21,8 @@ func ParsePointer(data []byte) (Pointer, bool) {
 	if len(data) == 0 || len(data) > MaxPointerSize {
 		return Pointer{}, false
 	}
-	text := string(bytes.TrimSuffix(data, []byte("\n")))
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	text = strings.TrimSuffix(text, "\n")
 	lines := strings.Split(text, "\n")
 	if len(lines) < 3 {
 		return Pointer{}, false

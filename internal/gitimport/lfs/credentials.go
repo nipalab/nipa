@@ -43,14 +43,21 @@ type GitCredentials struct {
 }
 
 func NewGitCredentials() CredentialHelper {
-	if _, err := exec.LookPath("git"); err != nil {
+	bin, err := exec.LookPath("git")
+	if err != nil {
 		return nil
 	}
-	return &GitCredentials{Run: runGit}
+	return &GitCredentials{Run: gitRunner(bin)}
 }
 
-func runGit(ctx context.Context, stdin string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+func gitRunner(bin string) CommandRunner {
+	return func(ctx context.Context, stdin string, args ...string) (string, error) {
+		return runCommand(ctx, bin, stdin, args...)
+	}
+}
+
+func runCommand(ctx context.Context, bin, stdin string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Stderr = os.Stderr
 	var out bytes.Buffer

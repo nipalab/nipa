@@ -185,14 +185,8 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 	if err != nil {
 		return nil, domain.NewUserError(err.Error())
 	}
-	sum, err := im.run(ctx, src, remote, opts, progress)
+	sum, err := im.run(ctx, src, remote, display, opts, progress)
 	_ = src.Close()
-	if sum != nil {
-		sum.Source = display
-		if remote != nil {
-			sum.Mirror = remote.dir
-		}
-	}
 	if err == nil && remote != nil && opts.DropCache {
 		if rmErr := os.RemoveAll(remote.dir); rmErr != nil {
 			return sum, fmt.Errorf("remove git mirror: %w", rmErr)
@@ -202,7 +196,7 @@ func (im *Importer) Run(ctx context.Context, opts Options, progress Progress) (*
 	return sum, err
 }
 
-func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remoteSource, opts Options, progress Progress) (*Summary, error) {
+func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remoteSource, display string, opts Options, progress Progress) (*Summary, error) {
 	sink := NewSink(im.transport, opts.Org, opts.Project)
 	plan, known, err := im.plan(ctx, src, sink, opts)
 	if err != nil {
@@ -218,6 +212,10 @@ func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remo
 		DefaultBranch: plan.DefaultBranch,
 		Warnings:      plan.Warnings,
 		LFSMode:       opts.LFS,
+		Source:        display,
+	}
+	if remote != nil {
+		sum.Mirror = remote.dir
 	}
 	gitDir, err := GitDir(src)
 	if err != nil {

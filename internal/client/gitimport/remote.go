@@ -29,17 +29,14 @@ import (
 const mirrorCacheDir = "nipa/git-import"
 
 var (
-	remotePrefixes = []string{"https://", "http://", "ssh://", "git://", "file://"}
-	scpURL         = regexp.MustCompile(`^([^@/\\:\s]+)@([^@/\\:\s]+):(.+)$`)
-	userinfoRe     = regexp.MustCompile(`://[^/@]*@`)
+	remoteSchemes = map[string]bool{"https": true, "http": true, "ssh": true, "git": true, "file": true}
+	scpURL        = regexp.MustCompile(`^([^@/\\:\s]+)@([^@/\\:\s]+):(.+)$`)
+	userinfoRe    = regexp.MustCompile(`://[^/@]*@`)
 )
 
 func IsRemoteURL(s string) bool {
-	lower := strings.ToLower(s)
-	for _, p := range remotePrefixes {
-		if strings.HasPrefix(lower, p) {
-			return true
-		}
+	if scheme, _, ok := strings.Cut(s, "://"); ok && remoteSchemes[strings.ToLower(scheme)] {
+		return true
 	}
 	if _, err := os.Stat(s); err == nil {
 		return false

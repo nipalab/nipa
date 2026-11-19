@@ -84,11 +84,15 @@ func TestRun_FileRemoteMirrorsAndFetches(t *testing.T) {
 	cache := t.TempDir()
 	srv := newFakeServer()
 	opts := baseOptions(fileURL(repo.dir))
+	var previewSource, previewMirror string
+	opts.Confirm = func(s *Summary) error { previewSource, previewMirror = s.Source, s.Mirror; return nil }
 
 	sum, err := NewImporter(srv).WithCacheRoot(cache).Run(context.Background(), opts, nil)
 	require.NoError(t, err)
 	require.Equal(t, 4, sum.Imported)
 	require.Equal(t, fileURL(repo.dir), sum.Source)
+	require.Equal(t, fileURL(repo.dir), previewSource)
+	require.Equal(t, MirrorDir(cache, opts.GitPath), previewMirror)
 	require.Equal(t, MirrorDir(cache, opts.GitPath), sum.Mirror)
 	require.False(t, sum.CacheRemoved)
 	_, err = os.Stat(filepath.Join(sum.Mirror, StateDirName, StateFileName))
