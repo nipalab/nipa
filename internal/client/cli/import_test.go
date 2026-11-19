@@ -17,6 +17,7 @@ import (
 	clientgitimport "github.com/nipalab/nipa/internal/client/gitimport"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/gitimport"
+	"github.com/nipalab/nipa/internal/gitimport/lfs"
 )
 
 type fakeGitImporter struct {
@@ -268,4 +269,55 @@ func TestImportCmdRegistered(t *testing.T) {
 	sub, _, err := cmd.Find([]string{"git"})
 	require.NoError(t, err)
 	require.Equal(t, "git", sub.Name())
+}
+
+func TestImportGitCmd_LFSAndRemote(t *testing.T) {
+	sum := importSummary()
+	sum.Source = "https://example.com/org/game.git"
+	sum.Mirror = "/cache/abc"
+	sum.CacheRemoved = true
+	sum.LFSMode = lfs.ModeAuto
+	sum.LFSEndpoint = "https://example.com/org/game.git/info/lfs"
+	sum.LFSRead, sum.LFSHits = 2, 1
+	sum.Report.LFSObjects, sum.Report.LFSBytes = 3, 4096
+	sum.Report.LFSMissing = []gitimport.LFSObject{{OID: "abc123", Size: 2048, Commit: "0123456789", Path: "art/hero.png"}}
+	imp := &fakeGitImporter{sum: sum}
+	out, _, err := runImportCmd(t, imp, importRun{}, "https://ann:pw@example.com/org/game.git", importURL, "-y", "--lfs", "local", "--keep-cache=false")
+	require.NoError(t, err)
+	require.Equal(t, lfs.ModeLocal, imp.opts.LFS)
+	require.True(t, imp.opts.DropCache)
+	require.Contains(t, out, "  source:   https://example.com/org/game.git\n")
+	require.Contains(t, out, "  lfs:      3 objects, 4.0 KiB, 1 to download from https://example.com/org/game.git/info/lfs\n")
+	require.Contains(t, out, "  lfs objects: 2 converted, 1 reused\n")
+	require.Contains(t, out, "removed the git mirror /cache/abc")
+
+	out, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "-y", "--json")
+	require.NoError(t, err)
+	require.False(t, imp.opts.DropCache)
+	require.Equal(t, lfs.ModeAuto, imp.opts.LFS)
+	var got importJSON
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Equal(t, "https://example.com/org/game.git", got.Source)
+	require.True(t, got.CacheRemoved)
+	require.Equal(t, "auto", got.LFSMode)
+	require.Equal(t, int64(2), got.LFSRead)
+	require.Equal(t, 3, got.Report.LFSObjects)
+	require.Equal(t, 1, got.Report.LFSMissingN)
+	require.Equal(t, "abc123", got.Report.LFSMissing[0].OID)
+
+	_, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "-y", "--lfs", "remote")
+	require.ErrorContains(t, err, "invalid lfs mode")
+
+	sum.DryRun = true
+	sum.Refs = nil
+	sum.LFSEndpoint = ""
+	out, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "--dry-run")
+	require.Equal(t, 1, ExitCode(err))
+	require.Contains(t, out, "1 missing locally")
+	require.Contains(t, out, "lfs object not in the local store: abc123 2.0 KiB (art/hero.png, commit 0123456)")
+
+	sum.LFSMode = lfs.ModeOff
+	out, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "--dry-run", "--lfs", "off")
+	require.NoError(t, err)
+	require.Contains(t, out, "kept as pointer files")
 }

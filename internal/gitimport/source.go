@@ -3,6 +3,7 @@ package gitimport
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/go-git/go-git/v5"
@@ -47,6 +48,13 @@ func NewSource(repo *git.Repository) *Source {
 
 func (s *Source) Repository() *git.Repository {
 	return s.repo
+}
+
+func (s *Source) Close() error {
+	if c, ok := s.repo.Storer.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 func (s *Source) Commit(h plumbing.Hash) (*object.Commit, error) {

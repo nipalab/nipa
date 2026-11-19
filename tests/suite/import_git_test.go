@@ -3,6 +3,10 @@ package suite_test
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -19,12 +23,16 @@ import (
 )
 
 type importJSONResult struct {
-	Commits  int `json:"commits"`
-	Known    int `json:"known"`
-	Imported int `json:"imported"`
-	Branches int `json:"branches"`
-	Tags     int `json:"tags"`
-	Refs     []struct {
+	Source       string `json:"source"`
+	Mirror       string `json:"mirror"`
+	CacheRemoved bool   `json:"cache_removed"`
+	LFSRead      int64  `json:"lfs_read"`
+	Commits      int    `json:"commits"`
+	Known        int    `json:"known"`
+	Imported     int    `json:"imported"`
+	Branches     int    `json:"branches"`
+	Tags         int    `json:"tags"`
+	Refs         []struct {
 		Kind   string `json:"kind"`
 		Name   string `json:"name"`
 		Status string `json:"status"`
@@ -35,9 +43,11 @@ type importJSONResult struct {
 		Status string `json:"status"`
 	} `json:"ref_warnings"`
 	Report struct {
-		Commits int   `json:"commits"`
-		Blobs   int   `json:"blobs"`
-		Bytes   int64 `json:"bytes"`
+		Commits         int   `json:"commits"`
+		Blobs           int   `json:"blobs"`
+		Bytes           int64 `json:"bytes"`
+		LFSObjects      int   `json:"lfs_objects"`
+		LFSMissingCount int   `json:"lfs_missing_count"`
 	} `json:"report"`
 }
 
@@ -242,6 +252,23 @@ func runImport(args ...string) (importJSONResult, commandResult) {
 	return out, res
 }
 
+func runImportEnv(env []string, args ...string) (importJSONResult, commandResult) {
+	GinkgoHelper()
+	var out importJSONResult
+	res := runNipaEnv(workspace(), env, append([]string{"import", "git"}, args...)...)
+	Expect(res.ExitCode).To(Equal(0), res.Output())
+	Expect(json.Unmarshal([]byte(res.Stdout), &out)).To(Succeed(), "stdout: %s", res.Stdout)
+	return out, res
+}
+
+func lfsPointer(gitDir string, content []byte) []byte {
+	GinkgoHelper()
+	sum := sha256.Sum256(content)
+	oid := hex.EncodeToString(sum[:])
+	writeBytes(filepath.Join(gitDir, "lfs", "objects", oid[:2], oid[2:4]), oid, content)
+	return []byte(fmt.Sprintf("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n", oid, len(content)))
+}
+
 var _ = Describe("nipa import git", func() {
 	ann := gitAuthor{name: "Ann Author", email: "ann@example.com", when: time.Date(2019, 5, 6, 7, 8, 9, 0, time.UTC)}
 	bob := gitAuthor{name: "Bob Builder", email: "bob@example.com", when: time.Date(2019, 6, 7, 8, 9, 10, 0, time.UTC)}
@@ -360,5 +387,46 @@ var _ = Describe("nipa import git", func() {
 		var log logJSON
 		runJSONInto(admin, &log, "log", "--json")
 		Expect(log.Commits).To(HaveLen(1))
+	})
+
+	It("imports a file:// URL through a cached mirror and resolves LFS objects", func() {
+		project := newProject("import-git-url")
+		url := repoURLFor(orgSlug, project)
+		src := newGitSource()
+		hero := randomBytes(200 << 10)
+		src.commit(ann, "first", map[string][]byte{"README.md": []byte("# lfs game\n"), "art/hero.png": lfsPointer(filepath.Join(src.dir, ".git"), hero)})
+		remote := "file://" + filepath.ToSlash(src.dir)
+		env := []string{"XDG_CACHE_HOME=" + workspace()}
+
+		dry, _ := runImportEnv(env, remote, url, "--dry-run", "--json", "--lfs", "local")
+		Expect(dry.Source).To(Equal(remote))
+		Expect(dry.Report.LFSObjects).To(Equal(1))
+		Expect(dry.Report.LFSMissingCount).To(Equal(0))
+		Expect(dry.Report.Bytes).To(BeNumerically(">=", len(hero)))
+
+		first, _ := runImportEnv(env, remote, url, "--yes", "--json")
+		Expect(first.Imported).To(Equal(1))
+		Expect(first.LFSRead).To(Equal(int64(1)))
+		Expect(first.Mirror).NotTo(BeEmpty())
+		Expect(filepath.Join(first.Mirror, "nipa-import", "state.db")).To(BeAnExistingFile())
+
+		main := cloneRepo(workspace(), url, "lfs-main")
+		files := workingFiles(main)
+		Expect(files["art/hero.png"]).To(Equal(hero), "the lfs object, not the pointer, is imported")
+
+		src.commit(bob, "second", map[string][]byte{"notes.txt": []byte("fetched\n")})
+		up, _ := runImportEnv(env, remote, url, "--update", "--yes", "--json")
+		Expect(up.Imported).To(Equal(1), "the mirror fetches the new commit")
+		Expect(up.status("branch", "main")).To(Equal("updated"))
+		Expect(up.Mirror).To(Equal(first.Mirror))
+
+		last, _ := runImportEnv(env, remote, url, "--update", "--yes", "--json", "--keep-cache=false")
+		Expect(last.Commits).To(Equal(0))
+		Expect(last.CacheRemoved).To(BeTrue())
+		Expect(last.Mirror).NotTo(BeADirectory())
+
+		missing := runNipaEnv(workspace(), env, "import", "git", "file://"+filepath.ToSlash(filepath.Join(workspace(), "none")), url, "--yes")
+		Expect(missing.ExitCode).To(Equal(1), missing.Output())
+		Expect(missing.Output()).To(ContainSubstring("not found"))
 	})
 })

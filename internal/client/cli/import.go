@@ -15,6 +15,7 @@ import (
 	clientgitimport "github.com/nipalab/nipa/internal/client/gitimport"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/gitimport"
+	"github.com/nipalab/nipa/internal/gitimport/lfs"
 )
 
 type GitImporter interface {
@@ -32,9 +33,11 @@ func (c *Cli) setupImportCmd() *cobra.Command {
 
 func (c *Cli) setupImportGitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "git <git-path> <nipa-url>",
+		Use:   "git <git-path-or-url> <nipa-url>",
 		Short: "Import a Git repository's history, branches and tags into a project",
-		Long: "Import the commits, branches and tags of a local Git repository into an existing Nipa project. " +
+		Long: "Import the commits, branches and tags of a Git repository into an existing Nipa project. " +
+			"A remote URL (https://, ssh://, git@host:path, file://) is mirrored into the user cache folder and " +
+			"fetched again on later runs. Git LFS pointers are replaced by their objects (--lfs). " +
 			"Authors and dates are kept, and each Git commit is imported once: a rerun resumes an interrupted " +
 			"import, and --update imports new Git commits and fast-forwards the branches. A branch that moved in " +
 			"Nipa (diverged) or is protected is reported and left alone. Requires project admin.",
@@ -50,6 +53,8 @@ func (c *Cli) setupImportGitCmd() *cobra.Command {
 	f.String("since", "", "Import only commits committed on or after this date (YYYY-MM-DD or RFC 3339)")
 	f.Bool("snapshot", false, "Import one commit per ref tip, without history")
 	f.String("symlinks", string(gitimport.SymlinksSkip), "How to import symlinks: skip, or file (store the target path)")
+	f.String("lfs", string(lfs.ModeAuto), "Git LFS objects: auto (local store, then the LFS server), local (local store only), or off (keep the pointer files)")
+	f.Bool("keep-cache", true, "Keep the mirror of a remote git URL for later runs")
 	f.String("author-map", "", "Mailmap-style file mapping Git authors to Nipa users: Name <email> = user-id")
 	f.String("source-key", gitimport.DefaultSourceKey, "Name of the imported source, kept in every commit's origin")
 	f.Bool("update", false, "Fast-forward branches that already exist in the project")
@@ -109,6 +114,9 @@ func (c *Cli) runImportGit(cmd *cobra.Command, args []string) error {
 	if sum.DryRun && len(sum.Report.InvalidPaths) > 0 {
 		return &ExitError{Code: 1, Err: fmt.Errorf("the git history has %d path(s) Nipa cannot store", len(sum.Report.InvalidPaths))}
 	}
+	if sum.DryRun && sum.LFSBlocked() {
+		return &ExitError{Code: 1, Err: fmt.Errorf("%d lfs object(s) are not in the local lfs store", len(sum.Report.LFSMissing))}
+	}
 	if bad := sum.RefErrors(); len(bad) > 0 {
 		return &ExitError{Code: 1, Err: fmt.Errorf("%d ref(s) could not be set", len(bad))}
 	}
@@ -124,6 +132,14 @@ func importOptions(cmd *cobra.Command, gitPath string) (clientgitimport.Options,
 	opts.Snapshot, _ = f.GetBool("snapshot")
 	symlinks, _ := f.GetString("symlinks")
 	opts.Symlinks = gitimport.SymlinkPolicy(symlinks)
+	mode, _ := f.GetString("lfs")
+	lfsMode, err := lfs.ParseMode(mode)
+	if err != nil {
+		return opts, domain.NewUserError(err.Error())
+	}
+	opts.LFS = lfsMode
+	keep, _ := f.GetBool("keep-cache")
+	opts.DropCache = !keep
 	opts.SourceKey, _ = f.GetString("source-key")
 	opts.Update, _ = f.GetBool("update")
 	opts.ResetState, _ = f.GetBool("reset-state")
@@ -188,11 +204,17 @@ func (c *Cli) confirmImport(cmd *cobra.Command, out io.Writer) error {
 func writeImportPreview(w io.Writer, sum *clientgitimport.Summary) {
 	r := sum.Report
 	_, _ = fmt.Fprintf(w, "Import into %s:\n", sum.Target)
+	if sum.Source != "" {
+		_, _ = fmt.Fprintf(w, "  source:   %s\n", sum.Source)
+	}
 	_, _ = fmt.Fprintf(w, "  commits:  %d to import, %d already on the server\n", sum.Commits, sum.Known)
 	_, _ = fmt.Fprintf(w, "  refs:     %d branches, %d tags (default branch %s)\n", sum.Branches, sum.Tags, orNone(sum.DefaultBranch))
 	if r != nil {
 		_, _ = fmt.Fprintf(w, "  content:  %d distinct blobs, %s\n", r.Blobs, humanBytes(r.Bytes))
 		_, _ = fmt.Fprintf(w, "  changes:  %d files written, %d removed, %d empty commits\n", r.Files, r.Removed, len(r.EmptyCommits))
+		if r.LFSObjects > 0 {
+			_, _ = fmt.Fprintf(w, "  lfs:      %s\n", describeLFS(sum))
+		}
 	}
 	for _, warning := range sum.Warnings {
 		_, _ = fmt.Fprintf(w, "warning: %s\n", describeWarning(warning))
@@ -205,10 +227,19 @@ func writeImportSummary(w io.Writer, sum *clientgitimport.Summary) {
 		for _, p := range sum.Report.InvalidPaths {
 			_, _ = fmt.Fprintf(w, "invalid path: %s (commit %s)\n", p.Path, shortSHA(p.Commit))
 		}
+		for _, o := range sum.Report.LFSMissing {
+			_, _ = fmt.Fprintf(w, "lfs object not in the local store: %s %s (%s, commit %s)\n", o.OID, humanBytes(o.Size), o.Path, shortSHA(o.Commit))
+		}
 		_, _ = fmt.Fprintln(w, "Dry run: nothing was imported.")
 		return
 	}
 	_, _ = fmt.Fprintf(w, "Imported %d commits into %s (%d already there, %s uploaded)\n", sum.Imported, sum.Target, sum.Known, humanBytes(sum.UploadedBytes))
+	if sum.LFSRead+sum.LFSHits > 0 {
+		_, _ = fmt.Fprintf(w, "  lfs objects: %d converted, %d reused\n", sum.LFSRead, sum.LFSHits)
+	}
+	if sum.CacheRemoved {
+		_, _ = fmt.Fprintf(w, "  removed the git mirror %s\n", sum.Mirror)
+	}
 	for _, r := range sum.Refs {
 		line := fmt.Sprintf("  %s %s: %s", r.Kind, r.Name, r.Status)
 		if r.Message != "" && !r.Warning() && r.Status != clientgitimport.RefInvalid {
@@ -222,6 +253,20 @@ func writeImportSummary(w io.Writer, sum *clientgitimport.Summary) {
 	for _, r := range sum.RefErrors() {
 		_, _ = fmt.Fprintf(w, "error: %s %s: %s\n", r.Kind, r.Name, r.Message)
 	}
+}
+
+func describeLFS(sum *clientgitimport.Summary) string {
+	r := sum.Report
+	text := fmt.Sprintf("%d objects, %s", r.LFSObjects, humanBytes(r.LFSBytes))
+	switch {
+	case sum.LFSMode == lfs.ModeOff:
+		text += ", kept as pointer files (--lfs off)"
+	case len(r.LFSMissing) > 0 && sum.LFSEndpoint != "" && sum.LFSMode == lfs.ModeAuto:
+		text += fmt.Sprintf(", %d to download from %s", len(r.LFSMissing), sum.LFSEndpoint)
+	case len(r.LFSMissing) > 0:
+		text += fmt.Sprintf(", %d missing locally", len(r.LFSMissing))
+	}
+	return text
 }
 
 func describeWarning(w gitimport.Warning) string {
@@ -327,10 +372,24 @@ type importReportJSON struct {
 	InvalidPaths []importPathJSON      `json:"invalid_paths"`
 	Symlinks     []importPathJSON      `json:"symlinks"`
 	Submodules   []importSubmoduleJSON `json:"submodules"`
+	LFSObjects   int                   `json:"lfs_objects"`
+	LFSBytes     int64                 `json:"lfs_bytes"`
+	LFSMissing   []importLFSJSON       `json:"lfs_missing"`
+	LFSMissingN  int                   `json:"lfs_missing_count"`
+}
+
+type importLFSJSON struct {
+	OID    string `json:"oid"`
+	Size   int64  `json:"size"`
+	Commit string `json:"commit"`
+	Path   string `json:"path"`
 }
 
 type importJSON struct {
 	Target        string              `json:"target"`
+	Source        string              `json:"source,omitempty"`
+	Mirror        string              `json:"mirror,omitempty"`
+	CacheRemoved  bool                `json:"cache_removed,omitempty"`
 	DryRun        bool                `json:"dry_run"`
 	Commits       int                 `json:"commits"`
 	Known         int                 `json:"known"`
@@ -338,6 +397,10 @@ type importJSON struct {
 	UploadedBytes int64               `json:"uploaded_bytes"`
 	BlobsRead     int64               `json:"blobs_read"`
 	BlobHits      int64               `json:"blob_hits"`
+	LFSMode       string              `json:"lfs_mode,omitempty"`
+	LFSEndpoint   string              `json:"lfs_endpoint,omitempty"`
+	LFSRead       int64               `json:"lfs_read"`
+	LFSHits       int64               `json:"lfs_hits"`
 	Branches      int                 `json:"branches"`
 	Tags          int                 `json:"tags"`
 	DefaultBranch string              `json:"default_branch"`
@@ -350,6 +413,9 @@ type importJSON struct {
 func importJSONOf(sum *clientgitimport.Summary) importJSON {
 	out := importJSON{
 		Target:        sum.Target,
+		Source:        sum.Source,
+		Mirror:        sum.Mirror,
+		CacheRemoved:  sum.CacheRemoved,
 		DryRun:        sum.DryRun,
 		Commits:       sum.Commits,
 		Known:         sum.Known,
@@ -357,6 +423,10 @@ func importJSONOf(sum *clientgitimport.Summary) importJSON {
 		UploadedBytes: sum.UploadedBytes,
 		BlobsRead:     sum.BlobsRead,
 		BlobHits:      sum.BlobHits,
+		LFSMode:       string(sum.LFSMode),
+		LFSEndpoint:   sum.LFSEndpoint,
+		LFSRead:       sum.LFSRead,
+		LFSHits:       sum.LFSHits,
 		Branches:      sum.Branches,
 		Tags:          sum.Tags,
 		DefaultBranch: sum.DefaultBranch,
@@ -376,6 +446,13 @@ func importJSONOf(sum *clientgitimport.Summary) importJSON {
 			InvalidPaths: pathsJSON(r.InvalidPaths),
 			Symlinks:     pathsJSON(r.Symlinks),
 			Submodules:   []importSubmoduleJSON{},
+			LFSObjects:   r.LFSObjects,
+			LFSBytes:     r.LFSBytes,
+			LFSMissing:   []importLFSJSON{},
+			LFSMissingN:  len(r.LFSMissing),
+		}
+		for _, o := range r.LFSMissing {
+			rep.LFSMissing = append(rep.LFSMissing, importLFSJSON{OID: o.OID, Size: o.Size, Commit: o.Commit, Path: o.Path})
 		}
 		for _, s := range r.Submodules {
 			rep.Submodules = append(rep.Submodules, importSubmoduleJSON{Commit: s.Commit, Path: s.Path, URL: s.URL})
