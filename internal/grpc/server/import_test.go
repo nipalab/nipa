@@ -32,6 +32,7 @@ type importDeps struct {
 	orgs     *MockimportOrgMembers
 	projects *MockimportProjectOrgs
 	locker   *MockimportLocker
+	quota    *MockimportQuota
 }
 
 type passTx struct{}
@@ -50,10 +51,11 @@ func newImportServer(t *testing.T) (*nipaServer, *importDeps) {
 		orgs:     NewMockimportOrgMembers(ctrl),
 		projects: NewMockimportProjectOrgs(ctrl),
 		locker:   NewMockimportLocker(ctrl),
+		quota:    NewMockimportQuota(ctrl),
 	}
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
-	uc := usecase.NewImport(d.perm, d.branches, d.push, d.tags, d.users, d.orgs, d.projects, d.locker, passTx{}, node)
+	uc := usecase.NewImport(d.perm, d.branches, d.push, d.tags, d.users, d.orgs, d.projects, d.locker, passTx{}, node).WithQuota(d.quota)
 	return New(&mockUsecaseContainer{common: newTestCommon(), importer: uc}), d
 }
 
@@ -69,7 +71,7 @@ func projectCtx() *pb.ProjectContext { return &pb.ProjectContext{Org: "org", Pro
 func TestImportLookupHandler(t *testing.T) {
 	t.Run("returns known origins in request order", func(t *testing.T) {
 		srv, d := newImportServer(t)
-		d.perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+		d.admin(true)
 		d.branches.EXPECT().CommitsByOrigins(gomock.Any(), snow.ID(42), []string{origin('b'), origin('c'), origin('a')}).Return([]*domain.Commit{
 			{ID: 1, ProjectID: 42, Origin: origin('a'), Hash: domain.Hash{1}},
 			{ID: 2, ProjectID: 42, Origin: origin('b'), Hash: domain.Hash{2}},
@@ -80,16 +82,40 @@ func TestImportLookupHandler(t *testing.T) {
 		require.Equal(t, origin('b'), res.GetCommits()[0].GetOrigin())
 		require.Equal(t, snow.ID(2).Base36(), res.GetCommits()[0].GetCommitId())
 		require.Equal(t, domain.Hash{2}.String(), res.GetCommits()[0].GetCommitHash())
+		require.False(t, res.GetQuotaChecked())
+	})
+	t.Run("checks the upload estimate", func(t *testing.T) {
+		srv, d := newImportServer(t)
+		d.admin(true)
+		d.quota.EXPECT().CheckUploadHeadroom(gomock.Any(), gomock.Any(), gomock.Any(), int64(500)).
+			DoAndReturn(func(_ context.Context, org *domain.Organization, project *domain.Project, _ int64) (bool, error) {
+				require.Equal(t, snow.ID(1), org.ID)
+				require.Equal(t, snow.ID(42), project.ID)
+				return true, nil
+			})
+		res, err := srv.ImportLookup(pushCtx(), &pb.ImportLookupRequest{Context: projectCtx(), EstimatedUploadBytes: 500})
+		require.NoError(t, err)
+		require.Empty(t, res.GetCommits())
+		require.True(t, res.GetQuotaChecked())
+	})
+	t.Run("estimate over the quota", func(t *testing.T) {
+		srv, d := newImportServer(t)
+		d.admin(true)
+		d.quota.EXPECT().CheckUploadHeadroom(gomock.Any(), gomock.Any(), gomock.Any(), int64(500)).
+			Return(true, domain.NewErrorQuotaExceeded("storage quota exceeded"))
+		_, err := srv.ImportLookup(pushCtx(), &pb.ImportLookupRequest{Context: projectCtx(), EstimatedUploadBytes: 500})
+		require.Equal(t, codes.ResourceExhausted, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "storage quota exceeded")
 	})
 	t.Run("unknown project", func(t *testing.T) {
 		srv, _ := newImportServer(t)
 		_, err := srv.ImportLookup(pushCtx(), &pb.ImportLookupRequest{Context: &pb.ProjectContext{Org: "org", Project: "nope"}})
 		require.Error(t, err)
 	})
-	t.Run("no read access", func(t *testing.T) {
+	t.Run("not admin", func(t *testing.T) {
 		srv, d := newImportServer(t)
-		d.perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(false)
-		_, err := srv.ImportLookup(pushCtx(), &pb.ImportLookupRequest{Context: projectCtx()})
+		d.admin(false)
+		_, err := srv.ImportLookup(pushCtx(), &pb.ImportLookupRequest{Context: projectCtx(), EstimatedUploadBytes: 500})
 		require.Equal(t, codes.PermissionDenied, status.Code(err))
 	})
 }

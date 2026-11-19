@@ -224,6 +224,9 @@ message PushResponse {
 message ImportLookupRequest {
     ProjectContext context = 1;
     repeated string origins = 2; // at most 1000
+    // When above zero, the server checks that the storage quota has room for
+    // this many new bytes and answers ResourceExhausted otherwise.
+    int64 estimated_upload_bytes = 3;
 }
 
 message ImportedCommit {
@@ -234,6 +237,7 @@ message ImportedCommit {
 
 message ImportLookupResponse {
     repeated ImportedCommit commits = 1; // only the origins already imported
+    bool quota_checked = 2; // the estimate was checked against a storage quota
 }
 
 // ImportStream carries one commit at a time: a header, its file parts, then an

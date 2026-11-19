@@ -73,27 +73,30 @@ func (r RefResult) Warning() bool {
 }
 
 type Summary struct {
-	Target        string
-	Source        string
-	Mirror        string
-	CacheRemoved  bool
-	DryRun        bool
-	Commits       int
-	Known         int
-	Imported      int
-	UploadedBytes int64
-	BlobsRead     int64
-	BlobHits      int64
-	LFSMode       lfs.Mode
-	LFSEndpoint   string
-	LFSRead       int64
-	LFSHits       int64
-	Branches      int
-	Tags          int
-	DefaultBranch string
-	Refs          []RefResult
-	Warnings      []gitimport.Warning
-	Report        *gitimport.Report
+	Target         string
+	Source         string
+	Mirror         string
+	CacheRemoved   bool
+	DryRun         bool
+	Commits        int
+	Known          int
+	Imported       int
+	UploadedBytes  int64
+	BlobsRead      int64
+	BlobHits       int64
+	LFSMode        lfs.Mode
+	LFSEndpoint    string
+	LFSRead        int64
+	LFSHits        int64
+	Branches       int
+	Tags           int
+	DefaultBranch  string
+	Refs           []RefResult
+	Warnings       []gitimport.Warning
+	Report         *gitimport.Report
+	UploadEstimate int64
+	QuotaChecked   bool
+	QuotaExceeded  string
 }
 
 func (s *Summary) RefWarnings() []RefResult {
@@ -243,6 +246,9 @@ func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remo
 	if len(sum.Report.InvalidPaths) > 0 && !opts.DryRun {
 		return sum, invalidPathsError(sum.Report.InvalidPaths)
 	}
+	if err := im.estimate(ctx, sink, sum); err != nil {
+		return sum, err
+	}
 	if opts.DryRun {
 		return sum, nil
 	}
@@ -271,6 +277,31 @@ func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remo
 		return sum, err
 	}
 	return sum, nil
+}
+
+func (im *Importer) estimate(ctx context.Context, sink *Sink, sum *Summary) error {
+	sum.UploadEstimate = sum.Report.Bytes
+	if sum.UploadEstimate <= 0 {
+		return nil
+	}
+	checked, err := sink.Estimate(ctx, sum.UploadEstimate)
+	sum.QuotaChecked = checked
+	var de *domain.Error
+	if err == nil || !errors.As(err, &de) || de.Code != 402 {
+		return err
+	}
+	sum.QuotaChecked = true
+	if sum.DryRun {
+		sum.QuotaExceeded = de.Message
+		return nil
+	}
+	refused := &domain.Error{Code: de.Code, Message: "nothing was imported: " + de.Message, Cause: err}
+	return refused.WithHint("the upload estimate counts the content of every imported commit before deduplication",
+		"free storage or ask the organization's billing owner for more, or import less history with --since, --depth or --snapshot")
+}
+
+func (s *Summary) QuotaBlocked() bool {
+	return s.QuotaExceeded != ""
 }
 
 func (im *Importer) plan(ctx context.Context, src *gitimport.Source, sink *Sink, opts Options) (*gitimport.Plan, int, error) {

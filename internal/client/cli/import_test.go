@@ -321,3 +321,33 @@ func TestImportGitCmd_LFSAndRemote(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "kept as pointer files")
 }
+
+func TestImportGitCmd_QuotaEstimate(t *testing.T) {
+	sum := importSummary()
+	sum.UploadEstimate, sum.QuotaChecked = 4096, true
+	out, _, err := runImportCmd(t, &fakeGitImporter{sum: sum}, importRun{}, "../game", importURL, "-y")
+	require.NoError(t, err)
+	require.Contains(t, out, "  quota:    up to 4.0 KiB to upload fits the remaining storage quota\n")
+
+	sum = importSummary()
+	sum.DryRun, sum.Refs = true, nil
+	sum.UploadEstimate, sum.QuotaChecked, sum.QuotaExceeded = 4096, true, "storage quota exceeded: 1.0 GiB of 1.0 GiB used"
+	imp := &fakeGitImporter{sum: sum}
+	out, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "--dry-run")
+	require.Equal(t, 1, ExitCode(err))
+	require.ErrorContains(t, err, "does not fit the remaining storage quota")
+	require.Contains(t, out, "  quota:    up to 4.0 KiB to upload does not fit: storage quota exceeded: 1.0 GiB of 1.0 GiB used\n")
+
+	out, _, err = runImportCmd(t, imp, importRun{}, "../game", importURL, "--dry-run", "--json")
+	require.Equal(t, 1, ExitCode(err))
+	var got importJSON
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Equal(t, int64(4096), got.UploadEstimate)
+	require.True(t, got.QuotaChecked)
+	require.Contains(t, got.QuotaExceeded, "storage quota exceeded")
+
+	sum = importSummary()
+	out, _, err = runImportCmd(t, &fakeGitImporter{sum: sum}, importRun{}, "../game", importURL, "-y")
+	require.NoError(t, err)
+	require.NotContains(t, out, "quota:")
+}

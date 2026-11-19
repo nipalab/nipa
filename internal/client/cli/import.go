@@ -114,6 +114,9 @@ func (c *Cli) runImportGit(cmd *cobra.Command, args []string) error {
 	if sum.DryRun && len(sum.Report.InvalidPaths) > 0 {
 		return &ExitError{Code: 1, Err: fmt.Errorf("the git history has %d path(s) Nipa cannot store", len(sum.Report.InvalidPaths))}
 	}
+	if sum.DryRun && sum.QuotaBlocked() {
+		return &ExitError{Code: 1, Err: fmt.Errorf("the import does not fit the remaining storage quota")}
+	}
 	if sum.DryRun && sum.LFSBlocked() {
 		return &ExitError{Code: 1, Err: fmt.Errorf("%d lfs object(s) are not in the local lfs store", len(sum.Report.LFSMissing))}
 	}
@@ -215,6 +218,12 @@ func writeImportPreview(w io.Writer, sum *clientgitimport.Summary) {
 		if r.LFSObjects > 0 {
 			_, _ = fmt.Fprintf(w, "  lfs:      %s\n", describeLFS(sum))
 		}
+	}
+	switch {
+	case sum.QuotaBlocked():
+		_, _ = fmt.Fprintf(w, "  quota:    up to %s to upload does not fit: %s\n", humanBytes(sum.UploadEstimate), sum.QuotaExceeded)
+	case sum.QuotaChecked:
+		_, _ = fmt.Fprintf(w, "  quota:    up to %s to upload fits the remaining storage quota\n", humanBytes(sum.UploadEstimate))
 	}
 	for _, warning := range sum.Warnings {
 		_, _ = fmt.Fprintf(w, "warning: %s\n", describeWarning(warning))
@@ -386,53 +395,59 @@ type importLFSJSON struct {
 }
 
 type importJSON struct {
-	Target        string              `json:"target"`
-	Source        string              `json:"source,omitempty"`
-	Mirror        string              `json:"mirror,omitempty"`
-	CacheRemoved  bool                `json:"cache_removed,omitempty"`
-	DryRun        bool                `json:"dry_run"`
-	Commits       int                 `json:"commits"`
-	Known         int                 `json:"known"`
-	Imported      int                 `json:"imported"`
-	UploadedBytes int64               `json:"uploaded_bytes"`
-	BlobsRead     int64               `json:"blobs_read"`
-	BlobHits      int64               `json:"blob_hits"`
-	LFSMode       string              `json:"lfs_mode,omitempty"`
-	LFSEndpoint   string              `json:"lfs_endpoint,omitempty"`
-	LFSRead       int64               `json:"lfs_read"`
-	LFSHits       int64               `json:"lfs_hits"`
-	Branches      int                 `json:"branches"`
-	Tags          int                 `json:"tags"`
-	DefaultBranch string              `json:"default_branch"`
-	Refs          []importRefJSON     `json:"refs"`
-	RefWarnings   []importRefJSON     `json:"ref_warnings"`
-	Warnings      []importWarningJSON `json:"warnings"`
-	Report        *importReportJSON   `json:"report,omitempty"`
+	Target         string              `json:"target"`
+	Source         string              `json:"source,omitempty"`
+	Mirror         string              `json:"mirror,omitempty"`
+	CacheRemoved   bool                `json:"cache_removed,omitempty"`
+	DryRun         bool                `json:"dry_run"`
+	Commits        int                 `json:"commits"`
+	Known          int                 `json:"known"`
+	Imported       int                 `json:"imported"`
+	UploadedBytes  int64               `json:"uploaded_bytes"`
+	BlobsRead      int64               `json:"blobs_read"`
+	BlobHits       int64               `json:"blob_hits"`
+	LFSMode        string              `json:"lfs_mode,omitempty"`
+	LFSEndpoint    string              `json:"lfs_endpoint,omitempty"`
+	LFSRead        int64               `json:"lfs_read"`
+	LFSHits        int64               `json:"lfs_hits"`
+	Branches       int                 `json:"branches"`
+	Tags           int                 `json:"tags"`
+	DefaultBranch  string              `json:"default_branch"`
+	Refs           []importRefJSON     `json:"refs"`
+	RefWarnings    []importRefJSON     `json:"ref_warnings"`
+	Warnings       []importWarningJSON `json:"warnings"`
+	Report         *importReportJSON   `json:"report,omitempty"`
+	UploadEstimate int64               `json:"upload_estimate_bytes"`
+	QuotaChecked   bool                `json:"quota_checked"`
+	QuotaExceeded  string              `json:"quota_exceeded,omitempty"`
 }
 
 func importJSONOf(sum *clientgitimport.Summary) importJSON {
 	out := importJSON{
-		Target:        sum.Target,
-		Source:        sum.Source,
-		Mirror:        sum.Mirror,
-		CacheRemoved:  sum.CacheRemoved,
-		DryRun:        sum.DryRun,
-		Commits:       sum.Commits,
-		Known:         sum.Known,
-		Imported:      sum.Imported,
-		UploadedBytes: sum.UploadedBytes,
-		BlobsRead:     sum.BlobsRead,
-		BlobHits:      sum.BlobHits,
-		LFSMode:       string(sum.LFSMode),
-		LFSEndpoint:   sum.LFSEndpoint,
-		LFSRead:       sum.LFSRead,
-		LFSHits:       sum.LFSHits,
-		Branches:      sum.Branches,
-		Tags:          sum.Tags,
-		DefaultBranch: sum.DefaultBranch,
-		Refs:          refsJSON(sum.Refs),
-		RefWarnings:   refsJSON(sum.RefWarnings()),
-		Warnings:      []importWarningJSON{},
+		Target:         sum.Target,
+		Source:         sum.Source,
+		Mirror:         sum.Mirror,
+		CacheRemoved:   sum.CacheRemoved,
+		DryRun:         sum.DryRun,
+		Commits:        sum.Commits,
+		Known:          sum.Known,
+		Imported:       sum.Imported,
+		UploadedBytes:  sum.UploadedBytes,
+		BlobsRead:      sum.BlobsRead,
+		BlobHits:       sum.BlobHits,
+		LFSMode:        string(sum.LFSMode),
+		LFSEndpoint:    sum.LFSEndpoint,
+		LFSRead:        sum.LFSRead,
+		LFSHits:        sum.LFSHits,
+		Branches:       sum.Branches,
+		Tags:           sum.Tags,
+		DefaultBranch:  sum.DefaultBranch,
+		Refs:           refsJSON(sum.Refs),
+		RefWarnings:    refsJSON(sum.RefWarnings()),
+		Warnings:       []importWarningJSON{},
+		UploadEstimate: sum.UploadEstimate,
+		QuotaChecked:   sum.QuotaChecked,
+		QuotaExceeded:  sum.QuotaExceeded,
 	}
 	for _, w := range sum.Warnings {
 		out.Warnings = append(out.Warnings, importWarningJSON{Kind: string(w.Kind), Ref: w.Ref, Commit: w.Commit, Path: w.Path, Message: w.Message})

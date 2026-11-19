@@ -111,28 +111,35 @@ func echoApply(f *importFixture, capture *ApplyPushRequest) {
 }
 
 func TestImportLookup(t *testing.T) {
-	t.Run("needs read access", func(t *testing.T) {
+	t.Run("writer is not enough", func(t *testing.T) {
 		f := newImportFixture(t)
-		f.perm.EXPECT().HasProjectAccess(gomock.Any(), importProject, domain.PermissionRead).Return(false)
-		_, err := f.uc.Lookup(importCtx(), importProject, []string{gitOrigin(1)})
+		f.perm.EXPECT().AdminHasProject(gomock.Any(), importProject).Return(false)
+		_, err := f.uc.Lookup(importCtx(), importProject, nil)
 		require.True(t, domain.IsErrorNoPermission(err))
+	})
+	t.Run("read-only store", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.perm.EXPECT().AdminHasProject(gomock.Any(), importProject).Return(true)
+		f.storage.EXPECT().RequireWritable(gomock.Any(), importProject).Return(domain.NewErrorQuotaExceeded("read only"))
+		_, err := f.uc.Lookup(importCtx(), importProject, []string{gitOrigin(1)})
+		require.ErrorContains(t, err, "read only")
 	})
 	t.Run("caps the batch", func(t *testing.T) {
 		f := newImportFixture(t)
-		f.perm.EXPECT().HasProjectAccess(gomock.Any(), importProject, domain.PermissionRead).Return(true)
+		f.admin()
 		_, err := f.uc.Lookup(importCtx(), importProject, make([]string, MaxImportLookup+1))
 		require.ErrorContains(t, err, "more than the limit")
 	})
 	t.Run("empty", func(t *testing.T) {
 		f := newImportFixture(t)
-		f.perm.EXPECT().HasProjectAccess(gomock.Any(), importProject, domain.PermissionRead).Return(true)
+		f.admin()
 		got, err := f.uc.Lookup(importCtx(), importProject, nil)
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
 	t.Run("project scoped", func(t *testing.T) {
 		f := newImportFixture(t)
-		f.perm.EXPECT().HasProjectAccess(gomock.Any(), importProject, domain.PermissionRead).Return(true)
+		f.admin()
 		other := storedCommit(3, gitOrigin(3))
 		other.ProjectID = 99
 		f.branches.EXPECT().CommitsByOrigins(gomock.Any(), importProject, []string{gitOrigin(1), gitOrigin(2), gitOrigin(3)}).
@@ -143,10 +150,55 @@ func TestImportLookup(t *testing.T) {
 	})
 	t.Run("repository error", func(t *testing.T) {
 		f := newImportFixture(t)
-		f.perm.EXPECT().HasProjectAccess(gomock.Any(), importProject, domain.PermissionRead).Return(true)
+		f.admin()
 		f.branches.EXPECT().CommitsByOrigins(gomock.Any(), importProject, gomock.Any()).Return(nil, errors.New("db"))
 		_, err := f.uc.Lookup(importCtx(), importProject, []string{gitOrigin(1)})
 		require.Error(t, err)
+	})
+}
+
+func TestImportEstimateUpload(t *testing.T) {
+	org := &domain.Organization{ID: 7}
+	project := &domain.Project{ID: importProject}
+	t.Run("writer is not enough", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.perm.EXPECT().AdminHasProject(gomock.Any(), importProject).Return(false)
+		_, err := f.uc.EstimateUpload(importCtx(), org, project, 10)
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+	t.Run("no quota seam", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.admin()
+		checked, err := f.uc.EstimateUpload(importCtx(), org, project, 10)
+		require.NoError(t, err)
+		require.False(t, checked)
+	})
+	t.Run("nothing to upload", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.admin()
+		quota := NewMockimportQuota(gomock.NewController(t))
+		f.uc.WithQuota(quota)
+		checked, err := f.uc.EstimateUpload(importCtx(), org, project, 0)
+		require.NoError(t, err)
+		require.False(t, checked)
+	})
+	t.Run("within quota", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.admin()
+		quota := NewMockimportQuota(gomock.NewController(t))
+		quota.EXPECT().CheckUploadHeadroom(gomock.Any(), org, project, int64(10)).Return(true, nil)
+		checked, err := f.uc.WithQuota(quota).EstimateUpload(importCtx(), org, project, 10)
+		require.NoError(t, err)
+		require.True(t, checked)
+	})
+	t.Run("over quota", func(t *testing.T) {
+		f := newImportFixture(t)
+		f.admin()
+		quota := NewMockimportQuota(gomock.NewController(t))
+		quota.EXPECT().CheckUploadHeadroom(gomock.Any(), org, project, int64(10)).Return(true, domain.NewErrorQuotaExceeded("storage quota exceeded"))
+		checked, err := f.uc.WithQuota(quota).EstimateUpload(importCtx(), org, project, 10)
+		require.True(t, checked)
+		require.ErrorContains(t, err, "storage quota exceeded")
 	})
 }
 

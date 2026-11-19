@@ -278,3 +278,42 @@ func (mr *MockimportStorageGateMockRecorder) RequireWritable(ctx, projectID any)
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequireWritable", reflect.TypeOf((*MockimportStorageGate)(nil).RequireWritable), ctx, projectID)
 }
+
+// MockimportQuota is a mock of importQuota interface.
+type MockimportQuota struct {
+	ctrl     *gomock.Controller
+	recorder *MockimportQuotaMockRecorder
+	isgomock struct{}
+}
+
+// MockimportQuotaMockRecorder is the mock recorder for MockimportQuota.
+type MockimportQuotaMockRecorder struct {
+	mock *MockimportQuota
+}
+
+// NewMockimportQuota creates a new mock instance.
+func NewMockimportQuota(ctrl *gomock.Controller) *MockimportQuota {
+	mock := &MockimportQuota{ctrl: ctrl}
+	mock.recorder = &MockimportQuotaMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockimportQuota) EXPECT() *MockimportQuotaMockRecorder {
+	return m.recorder
+}
+
+// CheckUploadHeadroom mocks base method.
+func (m *MockimportQuota) CheckUploadHeadroom(ctx context.Context, org *domain.Organization, project *domain.Project, bytes int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckUploadHeadroom", ctx, org, project, bytes)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckUploadHeadroom indicates an expected call of CheckUploadHeadroom.
+func (mr *MockimportQuotaMockRecorder) CheckUploadHeadroom(ctx, org, project, bytes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckUploadHeadroom", reflect.TypeOf((*MockimportQuota)(nil).CheckUploadHeadroom), ctx, org, project, bytes)
+}

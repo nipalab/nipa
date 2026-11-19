@@ -30,6 +30,12 @@ func TestSink_LookupBatches(t *testing.T) {
 	require.Len(t, srv.lookups, 3)
 	require.Len(t, srv.lookups[0], 1000)
 	require.Len(t, srv.lookups[2], 500)
+
+	srv.lookups = nil
+	known, err = NewSink(srv, "o", "p").Lookup(context.Background(), nil)
+	require.NoError(t, err)
+	require.Empty(t, known)
+	require.Len(t, srv.lookups, 1)
 }
 
 type gatedStream struct {
@@ -159,6 +165,7 @@ func TestGRPCTransportDelegates(t *testing.T) {
 	tr := NewGRPCTransport(nil)
 	require.NotNil(t, tr)
 	require.Panics(t, func() { _, _ = tr.ImportLookup(context.Background(), "o", "p", nil) })
+	require.Panics(t, func() { _, _ = tr.ImportEstimate(context.Background(), "o", "p", 1) })
 	require.Panics(t, func() { _, _ = tr.OpenImport(context.Background(), "o", "p") })
 	require.Panics(t, func() { _, _ = tr.ImportSetRefs(context.Background(), "o", "p", grpc.ImportRefs{}) })
 	require.Panics(t, func() {

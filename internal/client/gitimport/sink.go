@@ -17,6 +17,7 @@ const (
 
 type Transport interface {
 	ImportLookup(ctx context.Context, org, project string, origins []string) (map[string]grpc.ImportedCommit, error)
+	ImportEstimate(ctx context.Context, org, project string, bytes int64) (bool, error)
 	OpenImport(ctx context.Context, org, project string) (CommitStream, error)
 	ImportSetRefs(ctx context.Context, org, project string, refs grpc.ImportRefs) ([]grpc.ImportRefResult, error)
 	UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error)
@@ -39,6 +40,10 @@ func NewGRPCTransport(c *grpc.Client) Transport {
 
 func (t grpcTransport) ImportLookup(ctx context.Context, org, project string, origins []string) (map[string]grpc.ImportedCommit, error) {
 	return t.c.ImportLookup(ctx, org, project, origins)
+}
+
+func (t grpcTransport) ImportEstimate(ctx context.Context, org, project string, bytes int64) (bool, error) {
+	return t.c.ImportEstimate(ctx, org, project, bytes)
 }
 
 func (t grpcTransport) OpenImport(ctx context.Context, org, project string) (CommitStream, error) {
@@ -65,7 +70,7 @@ func NewSink(t Transport, org, project string) *Sink {
 
 func (s *Sink) Lookup(ctx context.Context, origins []string) (map[string]bool, error) {
 	known := make(map[string]bool)
-	for start := 0; start < len(origins); start += lookupBatch {
+	for start := 0; start == 0 || start < len(origins); start += lookupBatch {
 		found, err := s.transport.ImportLookup(ctx, s.org, s.project, origins[start:min(start+lookupBatch, len(origins))])
 		if err != nil {
 			return nil, err
@@ -75,6 +80,10 @@ func (s *Sink) Lookup(ctx context.Context, origins []string) (map[string]bool, e
 		}
 	}
 	return known, nil
+}
+
+func (s *Sink) Estimate(ctx context.Context, bytes int64) (bool, error) {
+	return s.transport.ImportEstimate(ctx, s.org, s.project, bytes)
 }
 
 func (s *Sink) Uploader(ctx context.Context, onChunk func(*serverDomain.ChunkData)) *usecase.ChunkUploader {

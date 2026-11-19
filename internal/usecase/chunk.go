@@ -116,6 +116,24 @@ func (c *Chunk) writableStore(ctx context.Context, projectID snow.ID) (ProjectSt
 	return resolved, nil
 }
 
+// CheckUploadHeadroom asks the storage ledger whether the project's owner has
+// room for bytes new bytes. It reports false when no quota applies to the
+// project (no ledger, or an external store).
+func (c *Chunk) CheckUploadHeadroom(ctx context.Context, org *domain.Organization, project *domain.Project, bytes int64) (bool, error) {
+	resolved, err := c.writableStore(ctx, project.ID)
+	if err != nil {
+		return false, err
+	}
+	ledger := c.ledgerFor(resolved)
+	if ledger == nil {
+		return false, nil
+	}
+	if bytes <= 0 {
+		return true, nil
+	}
+	return true, ledger.Headroom(ctx, org, project, bytes)
+}
+
 func (c *Chunk) ledgerFor(resolved ProjectStore) StorageLedger {
 	if resolved.External {
 		return nil

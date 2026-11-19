@@ -2030,11 +2030,14 @@ func (x *PushResponse) GetTreeHash() string {
 // Import writes commits from another version control system (docs/GIT_IMPORT.md).
 // An origin is "<system>:<source>:<native-id>[:<qualifier>]".
 type ImportLookupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Origins       []string               `protobuf:"bytes,2,rep,name=origins,proto3" json:"origins,omitempty"` // at most 1000
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Context *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Origins []string               `protobuf:"bytes,2,rep,name=origins,proto3" json:"origins,omitempty"` // at most 1000
+	// When above zero, the server checks that the storage quota has room for
+	// this many new bytes and answers ResourceExhausted otherwise.
+	EstimatedUploadBytes int64 `protobuf:"varint,3,opt,name=estimated_upload_bytes,json=estimatedUploadBytes,proto3" json:"estimated_upload_bytes,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ImportLookupRequest) Reset() {
@@ -2079,6 +2082,13 @@ func (x *ImportLookupRequest) GetOrigins() []string {
 		return x.Origins
 	}
 	return nil
+}
+
+func (x *ImportLookupRequest) GetEstimatedUploadBytes() int64 {
+	if x != nil {
+		return x.EstimatedUploadBytes
+	}
+	return 0
 }
 
 type ImportedCommit struct {
@@ -2143,7 +2153,8 @@ func (x *ImportedCommit) GetCommitHash() string {
 
 type ImportLookupResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Commits       []*ImportedCommit      `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"` // only the origins already imported
+	Commits       []*ImportedCommit      `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`                                // only the origins already imported
+	QuotaChecked  bool                   `protobuf:"varint,2,opt,name=quota_checked,json=quotaChecked,proto3" json:"quota_checked,omitempty"` // the estimate was checked against a storage quota
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2183,6 +2194,13 @@ func (x *ImportLookupResponse) GetCommits() []*ImportedCommit {
 		return x.Commits
 	}
 	return nil
+}
+
+func (x *ImportLookupResponse) GetQuotaChecked() bool {
+	if x != nil {
+		return x.QuotaChecked
+	}
+	return false
 }
 
 // ImportStream carries one commit at a time: a header, its file parts, then an
@@ -13077,17 +13095,19 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
 	"commitHash\x12\x1b\n" +
-	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\"`\n" +
+	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\"\x96\x01\n" +
 	"\x13ImportLookupRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x18\n" +
-	"\aorigins\x18\x02 \x03(\tR\aorigins\"f\n" +
+	"\aorigins\x18\x02 \x03(\tR\aorigins\x124\n" +
+	"\x16estimated_upload_bytes\x18\x03 \x01(\x03R\x14estimatedUploadBytes\"f\n" +
 	"\x0eImportedCommit\x12\x16\n" +
 	"\x06origin\x18\x01 \x01(\tR\x06origin\x12\x1b\n" +
 	"\tcommit_id\x18\x02 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x03 \x01(\tR\n" +
-	"commitHash\"G\n" +
+	"commitHash\"l\n" +
 	"\x14ImportLookupResponse\x12/\n" +
-	"\acommits\x18\x01 \x03(\v2\x15.greet.ImportedCommitR\acommits\"\xdd\x02\n" +
+	"\acommits\x18\x01 \x03(\v2\x15.greet.ImportedCommitR\acommits\x12#\n" +
+	"\rquota_checked\x18\x02 \x01(\bR\fquotaChecked\"\xdd\x02\n" +
 	"\x12ImportCommitHeader\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06origin\x18\x02 \x01(\tR\x06origin\x12%\n" +

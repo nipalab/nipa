@@ -16,7 +16,7 @@ import (
 )
 
 func (n *nipaServer) ImportLookup(ctx context.Context, req *pb.ImportLookupRequest) (*pb.ImportLookupResponse, error) {
-	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.GetContext().GetOrg(), req.GetContext().GetProject())
+	org, project, err := n.uc.Common().ResolveBySlug(ctx, req.GetContext().GetOrg(), req.GetContext().GetProject())
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -25,6 +25,11 @@ func (n *nipaServer) ImportLookup(ctx context.Context, req *pb.ImportLookupReque
 		return nil, handleError(err)
 	}
 	res := &pb.ImportLookupResponse{Commits: make([]*pb.ImportedCommit, 0, len(found))}
+	if req.GetEstimatedUploadBytes() > 0 {
+		if res.QuotaChecked, err = n.uc.Import().EstimateUpload(ctx, org, project, req.GetEstimatedUploadBytes()); err != nil {
+			return nil, handleError(err)
+		}
+	}
 	for _, origin := range req.GetOrigins() {
 		if c, ok := found[origin]; ok {
 			res.Commits = append(res.Commits, &pb.ImportedCommit{Origin: c.Origin, CommitId: c.CommitID.Base36(), CommitHash: c.CommitHash.String()})

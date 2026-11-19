@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,6 +50,9 @@ type importJSONResult struct {
 		LFSObjects      int   `json:"lfs_objects"`
 		LFSMissingCount int   `json:"lfs_missing_count"`
 	} `json:"report"`
+	UploadEstimate int64  `json:"upload_estimate_bytes"`
+	QuotaChecked   bool   `json:"quota_checked"`
+	QuotaExceeded  string `json:"quota_exceeded"`
 }
 
 func (r importJSONResult) status(kind, name string) string {
@@ -380,13 +384,71 @@ var _ = Describe("nipa import git", func() {
 		grantRule(admin, "--user", writer.userID, "--permission", "read,write")
 
 		src.commit(bob, "second", map[string][]byte{"b.txt": []byte("b\n")})
-		res := runNipaAs(writer, workspace(), "import", "git", src.dir, url, "--update", "--yes")
-		Expect(res.ExitCode).NotTo(Equal(0), res.Output())
-		Expect(strings.ToLower(res.Output())).To(ContainSubstring("permission"))
+		state := filepath.Join(src.dir, ".git", "nipa-import")
+		Expect(os.RemoveAll(state)).To(Succeed())
+		for _, extra := range [][]string{{"--dry-run"}, {"--yes"}} {
+			args := append([]string{"import", "git", src.dir, url, "--update"}, extra...)
+			res := runNipaAs(writer, workspace(), args...)
+			Expect(res.ExitCode).NotTo(Equal(0), res.Output())
+			Expect(strings.ToLower(res.Output())).To(ContainSubstring("permission"))
+			Expect(res.Output()).NotTo(ContainSubstring("Import into"), "refused by the lookup, before the preview")
+			Expect(res.Output()).NotTo(ContainSubstring("Importing"))
+			_, err := os.Stat(state)
+			Expect(os.IsNotExist(err)).To(BeTrue(), "no import state means no chunk was uploaded")
+		}
 
 		var log logJSON
 		runJSONInto(admin, &log, "log", "--json")
 		Expect(log.Commits).To(HaveLen(1))
+	})
+
+	It("checks the estimated upload against the storage quota before writing", func() {
+		project := newProject("import-git-quota")
+		url := repoURLFor(orgSlug, project)
+		src := newGitSource()
+		src.commit(ann, "big", map[string][]byte{"big.txt": []byte(hex.EncodeToString(randomBytes(4096)))})
+
+		if cli.edition == "free" {
+			dry, _ := runImport(src.dir, url, "--dry-run", "--json")
+			Expect(dry.QuotaChecked).To(BeFalse(), "the free server has no storage quota")
+			Expect(dry.UploadEstimate).To(Equal(dry.Report.Bytes))
+			return
+		}
+		storageLedgerEnabled()
+		userID := api.me()
+		small := int64(64)
+		status, _ := api.setOwnerQuota(userID, &small)
+		Expect(status).To(Equal(http.StatusOK))
+		DeferCleanup(func() {
+			status, _ := api.setOwnerQuota(userID, nil)
+			Expect(status).To(Equal(http.StatusOK))
+		})
+
+		res := runNipa(workspace(), "import", "git", src.dir, url, "--dry-run", "--json")
+		Expect(res.ExitCode).To(Equal(1), res.Output())
+		var dry importJSONResult
+		Expect(json.Unmarshal([]byte(res.Stdout), &dry)).To(Succeed(), "stdout: %s", res.Stdout)
+		Expect(dry.QuotaChecked).To(BeTrue())
+		Expect(dry.UploadEstimate).To(BeNumerically(">=", 8192))
+		Expect(dry.QuotaExceeded).To(ContainSubstring("quota exceeded"))
+		text := runNipa(workspace(), "import", "git", src.dir, url, "--dry-run")
+		Expect(text.ExitCode).To(Equal(1), text.Output())
+		Expect(text.Output()).To(ContainSubstring("to upload does not fit"))
+
+		state := filepath.Join(src.dir, ".git", "nipa-import")
+		refused := runNipa(workspace(), "import", "git", src.dir, url, "--yes")
+		Expect(refused.ExitCode).NotTo(Equal(0), refused.Output())
+		Expect(refused.Output()).To(ContainSubstring("quota exceeded"))
+		Expect(refused.Output()).To(ContainSubstring("nothing was imported"))
+		_, err := os.Stat(state)
+		Expect(os.IsNotExist(err)).To(BeTrue(), "refused before any upload")
+
+		bigger := int64(64 << 20)
+		status, _ = api.setOwnerQuota(userID, &bigger)
+		Expect(status).To(Equal(http.StatusOK))
+		done, _ := runImport(src.dir, url, "--yes", "--json")
+		Expect(done.QuotaChecked).To(BeTrue())
+		Expect(done.Imported).To(Equal(1))
 	})
 
 	It("imports a file:// URL through a cached mirror and resolves LFS objects", func() {
