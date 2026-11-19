@@ -52,7 +52,7 @@ edition.
 | `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/dashboard` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read; org owners also get a Repositories / Settings tab bar |
-| `/:org/new` | new repository | org owners only; name + slug + description |
+| `/:org/new` | new repository | org owners only; name + slug + description, plus a Storage select when own storage is enabled and the caller has servers (sent as `storage_server_id`) |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
 | `/:org/:project/tree/:rev/*` | tree browser | branch/commit + directory; per-file last commit, README, go-to-file |
 | `/:org/:project/tree` | tree browser | rev-less form of the tree route (`?path=`) |
@@ -65,13 +65,13 @@ edition.
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
-| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
-| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
+| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (Default storage card when own storage is enabled; usage, quota, per-project breakdown with own-storage projects marked "External storage"; the tab is hidden when the server has neither) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/admin/maintenance` | maintenance | super admins (user menu "Maintenance"): server window form (frozen included, locked while `MAINTENANCE_FILE` controls it or the server is frozen) plus the org and project windows; reachable while the server is closed |
-| `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Security (`?tab=security`, linked from the MFA notice emails: the "Two-factor authentication" card), Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
-| `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set an owner quota override, set it to unlimited or remove it; when capabilities carries `billing`, also the plan card (plan, status, interval, renewal/cancel date, seats used/limit, storage packs, past-due warning) and the plan editor (seat and storage-pack steppers, monthly/yearly toggle, Paddle.js price preview, Upgrade → checkout overlay on the free plan, Update plan + Manage billing on a paid plan); linked from the header and profile settings, shows an empty state when the server has no ledger |
+| `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Security (`?tab=security`, linked from the MFA notice emails: the "Two-factor authentication" card), Connected accounts (link/unlink; hidden when the server has no social login) SSH keys (list/add/remove) and Storage servers (own storage only); Billing shares the same sidebar |
+| `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set an owner quota override, set it to unlimited or remove it; when capabilities carries `billing`, also the plan card (plan, status, interval, renewal/cancel date, seats used/limit, storage packs, "Own storage add-on" when active, past-due warning) and the plan editor (seat and storage-pack steppers, the Own storage checkbox when offered, monthly/yearly toggle, Paddle.js price preview, Upgrade → checkout overlay on the free plan, Update plan + Manage billing on a paid plan); linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Maintenance
 
@@ -220,13 +220,35 @@ editor, and is always linked (header + profile settings) — on servers without 
 ledger it explains that storage billing is not enabled. `clearOwnerQuota`
 (`DELETE /admin/billing/owners/{user}/quota`) removes the override.
 
+## Own storage servers
+
+Shown only when `GET /auth/capabilities` carries `byo_storage`
+(`components/storage/storage.tsx` `useByoStorage`). The account settings
+"Storage servers" tab (`StorageServersCard`) lists `/me/storage-servers`
+(never a secret), adds and edits through `StorageServerDialog` (bucket and
+prefix read-only once saved, an empty secret keeps the stored one, PATCH sends
+only changed fields), tests a server (`POST .../test`) and deletes after a
+confirmation (409 = still used by a repository or an org default). A failed
+probe (400 `storage server check <name> failed`, or `{ok:false, check}` from a
+test) is shown with a per-check explanation (`checkInfo`), and a 402 own storage
+answer renders `OwnStorageBanner` linking to `/settings/billing`. The org
+`OrgDefaultStorageCard` reads `/orgs/{org}/storage-server` and, with
+`can_manage`, PUTs or DELETEs the default (new repositories only). The new
+repository page preselects the org default when it is one of the caller's
+servers; otherwise the empty choice is "Nipa storage" or "Organization default
+(name)", since omitting `storage_server_id` falls back to the org default.
+`ProjectStorageCard` shows `/projects/{p}/storage` in project settings.
+
 ## Billing API
 
 With `BILLING_PROVIDER=paddle` (`docs/BILLING.md`), `GET /auth/capabilities`
 adds `billing: {provider, environment, client_token, prices}` (typed as
 `OnboardingCapabilities.billing`) and `GET /billing/me` adds the
 `BillingSummary` fields (`plan`, `status`, `interval`, `seats`, `seats_used`,
-`seat_limit`, `storage_packs`, `current_period_end`, `cancel_at_period_end`).
+`seat_limit`, `storage_packs`, `own_storage`, `current_period_end`,
+`cancel_at_period_end`). `prices.own_storage` is null when the Own storage
+add-on is not offered; the plan editor then sends no `own_storage`, otherwise
+checkout and `PATCH /billing/subscription` always carry the checkbox value.
 The SPA helpers are `createCheckout` (`POST /billing/checkout` →
 `{transaction_id}`), `updateSubscription` (`PATCH /billing/subscription` →
 summary) and `openBillingPortal` (`POST /billing/portal` → `{url}`). The

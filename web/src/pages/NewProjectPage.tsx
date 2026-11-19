@@ -5,6 +5,8 @@ import { ApiError } from '../api/client'
 import { createProject } from '../api/endpoints'
 import { FormCard } from '../components/SettingsCard'
 import { SlugFields, useSlugFields } from '../components/SlugFields'
+import { ProjectStorageField, useProjectStorageChoice } from '../components/storage/ProjectStorageField'
+import { isOwnStorageError, OwnStorageBanner } from '../components/storage/storage'
 import { ErrorBanner, NoPermission, Page } from '../components/ui'
 import { errorMessage } from '../hooks'
 import { useOrgRole } from '../orgHooks'
@@ -18,6 +20,8 @@ export default function NewProjectPage() {
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [ownStorage, setOwnStorage] = useState(false)
+  const storage = useProjectStorageChoice(org)
 
   const crumbs = [{ label: org, to: `/${org}` }, { label: 'New repository' }]
   const title = `New repository in ${org}`
@@ -36,12 +40,21 @@ export default function NewProjectPage() {
     if (!canSubmit) return
     setSaving(true)
     setActionError(null)
+    setOwnStorage(false)
     try {
-      const project = await createProject(org, slugFields.name.trim(), description, slugFields.slug)
+      const project = await createProject(
+        org,
+        slugFields.name.trim(),
+        description,
+        slugFields.slug,
+        storage.value || undefined,
+      )
       navigate(`/${org}/${project.slug}`)
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         slugFields.markTaken()
+      } else if (isOwnStorageError(err)) {
+        setOwnStorage(true)
       } else {
         setActionError(errorMessage(err))
       }
@@ -51,13 +64,15 @@ export default function NewProjectPage() {
 
   return (
     <Page title={title} subtitle="Create a repository in this organization" breadcrumbs={crumbs}>
-      <ErrorBanner error={actionError} />
+      {ownStorage && <OwnStorageBanner />}
+      <ErrorBanner error={actionError} title="Could not create the repository" />
       <FormCard onSubmit={handleSubmit}>
         <SlugFields state={slugFields} autoFocus />
         <FormControl>
           <FormControl.Label>Description</FormControl.Label>
           <Textarea block rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
         </FormControl>
+        <ProjectStorageField choice={storage} />
         <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving} style={{ alignSelf: 'flex-start' }}>
           Create repository
         </Button>

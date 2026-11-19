@@ -156,6 +156,18 @@ const TEAM = {
   current_period_end: '2026-12-01T00:00:00Z',
 }
 
+const OWN_STORAGE_CAPABILITIES = {
+  ...CAPABILITIES,
+  billing: {
+    ...CAPABILITIES.billing,
+    prices: { ...CAPABILITIES.billing.prices, own_storage: { monthly: 'pri_own_m', yearly: 'pri_own_y' } },
+  },
+}
+
+function ownStorageBox(): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>('#billing-own-storage')
+}
+
 interface Call {
   method: string
   url: string
@@ -216,6 +228,8 @@ beforeEach(() => {
     pri_seat_y: { unit: '$100.00', total: '$300.00' },
     pri_storage_m: { unit: '$5.00', total: '$5.00' },
     pri_storage_y: { unit: '$50.00', total: '$50.00' },
+    pri_own_m: { unit: '$8.00', total: '$8.00' },
+    pri_own_y: { unit: '$80.00', total: '$80.00' },
   })
   billingTiming.pollMs = 10
   billingTiming.previewDebounceMs = 0
@@ -610,5 +624,90 @@ describe('BillingPage', () => {
     expect(document.body.textContent).toContain('Past due')
     expect(document.body.textContent).toContain('Cancels on')
     expect(document.body.textContent).not.toContain('Renews on')
+  })
+
+  it('checks out a plan of only the Own storage add-on with its price', async () => {
+    const calls = stubServer({
+      capabilities: OWN_STORAGE_CAPABILITIES,
+      billing: () => FREE,
+      handle: (call) =>
+        call.url.endsWith('/api/v1/billing/checkout') ? jsonResponse({ transaction_id: 'txn_own' }) : undefined,
+    })
+    await renderBilling()
+    await waitForText('Store project files in your own S3-compatible bucket')
+    await waitForText('$8.00 / month')
+    expect(paddle.preview).toHaveBeenCalledWith(
+      paddleInstance,
+      expect.arrayContaining([{ priceId: 'pri_own_m', quantity: 1 }]),
+    )
+    expect(document.body.textContent).toContain('3 users · 50 GiB storage')
+    expect(disabled(button('Upgrade'))).toBe(true)
+    await click(ownStorageBox())
+    expect(ownStorageBox()?.checked).toBe(true)
+    expect(document.body.textContent).toContain('3 users · 50 GiB storage · Own storage')
+    expect(document.body.textContent).not.toContain('become read-only')
+    expect(disabled(button('Upgrade'))).toBe(false)
+    await click(button('Upgrade'))
+    await waitUntil(() => paddle.open.mock.calls.length > 0)
+    const checkout = calls.find((call) => call.url.endsWith('/api/v1/billing/checkout'))
+    expect(checkout?.body).toEqual({ seats: 0, storage_packs: 0, interval: 'month', own_storage: true })
+    expect(paddle.open).toHaveBeenCalledWith({ transactionId: 'txn_own' })
+
+    const yearly = Array.from(document.querySelectorAll('button')).find((item) => item.textContent === 'Yearly')
+    await click(yearly)
+    await waitForText('$80.00 / year')
+  })
+
+  it('shows an active add-on and warns before turning it off', async () => {
+    const calls = stubServer({
+      capabilities: OWN_STORAGE_CAPABILITIES,
+      billing: () => ({ ...TEAM, own_storage: true }),
+      handle: (call) =>
+        call.url.endsWith('/api/v1/billing/subscription') ? jsonResponse({ ...TEAM, own_storage: false }) : undefined,
+    })
+    await renderBilling()
+    await waitForText('Renews on')
+    expect(document.body.textContent).toContain('Own storage add-on')
+    expect(ownStorageBox()?.checked).toBe(true)
+    expect(disabled(button('Update plan'))).toBe(true)
+    await click(ownStorageBox())
+    await waitForText('Projects on your own storage become read-only')
+    expect(document.body.textContent).toContain('Pushes and merges')
+    expect(disabled(button('Update plan'))).toBe(false)
+    await click(button('Update plan'))
+    await waitUntil(() => calls.some((call) => call.url.endsWith('/api/v1/billing/subscription')))
+    const patch = calls.find((call) => call.url.endsWith('/api/v1/billing/subscription'))
+    expect(patch).toMatchObject({
+      method: 'PATCH',
+      body: { seats: 4, storage_packs: 1, interval: 'month', own_storage: false },
+    })
+  })
+
+  it('sends the current add-on with other plan changes', async () => {
+    const calls = stubServer({
+      capabilities: OWN_STORAGE_CAPABILITIES,
+      billing: () => ({ ...TEAM, own_storage: true }),
+      handle: (call) => (call.url.endsWith('/api/v1/billing/subscription') ? jsonResponse(TEAM) : undefined),
+    })
+    await renderBilling()
+    await waitForText('Renews on')
+    await click(iconButton('Increase seats'))
+    await click(button('Update plan'))
+    await waitUntil(() => calls.some((call) => call.url.endsWith('/api/v1/billing/subscription')))
+    expect(calls.find((call) => call.url.endsWith('/api/v1/billing/subscription'))?.body).toEqual({
+      seats: 5,
+      storage_packs: 1,
+      interval: 'month',
+      own_storage: true,
+    })
+  })
+
+  it('hides the add-on toggle when the server does not offer it', async () => {
+    stubServer({ capabilities: CAPABILITIES, billing: () => FREE })
+    await renderBilling()
+    await waitForText('2 of 3 seats used')
+    expect(ownStorageBox()).toBeNull()
+    expect(document.body.textContent).not.toContain('S3-compatible')
+    expect(paddle.preview.mock.calls.flatMap((call) => call[1]).some((item) => item.priceId === 'pri_own_m')).toBe(false)
   })
 })

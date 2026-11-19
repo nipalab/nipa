@@ -100,13 +100,14 @@ function billingSummary(data: OwnerStorageResponse): BillingSummary | null {
     seats_used: data.seats_used ?? 0,
     seat_limit: data.seat_limit ?? 0,
     storage_packs: data.storage_packs ?? 0,
+    own_storage: data.own_storage ?? false,
     current_period_end: data.current_period_end ?? null,
     cancel_at_period_end: data.cancel_at_period_end ?? false,
   }
 }
 
 function planKey(summary: BillingSummary): string {
-  return [summary.plan, summary.status, summary.interval, summary.seats, summary.storage_packs, summary.seats_used].join(':')
+  return [summary.plan, summary.status, summary.interval, summary.seats, summary.storage_packs, summary.own_storage, summary.seats_used].join(':')
 }
 
 function AdminQuotaCard({ onChanged, onError }: { onChanged: () => void; onError: (message: string) => void }) {

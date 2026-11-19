@@ -354,8 +354,8 @@ blue/green colors must use the same values.
 capabilities carries `billing` and `/billing/me` carries `plan`, it adds:
 
 - a plan card (plan, status, interval, "Renews on" or "Cancels on", seats used
-  of the limit, storage packs, included storage on a paid plan, a "Payment
-  past due" warning),
+  of the limit, storage packs, included storage on a paid plan, "Own storage
+  add-on" while the subscription carries it, a "Payment past due" warning),
 - an editor with paid-seat and storage-pack steppers (free seats come from
   capabilities `free_seats`, falling back to `seat_limit - seats` on a paid
   plan and `seat_limit` on free for older servers; each row shows the storage
@@ -363,7 +363,11 @@ capabilities carries `billing` and `/billing/me` carries `plan`, it adds:
   `Config.Entitlement` with "Unlimited" when `free_quota_bytes` is 0
   (`web/src/billing/entitlement.ts`); paid seats
   never below the seats in use minus the free seats; the button is disabled at
-  0 seats and 0 packs), a monthly/yearly toggle and a price preview from
+  0 seats and 0 packs unless Own storage is checked), an "Own storage"
+  checkbox when capabilities `prices.own_storage` is set (its preview price,
+  "Own storage" in the "Your plan" row, sent as `own_storage` on checkout and
+  on every plan change; unchecking an active add-on warns that projects on
+  own storage become read-only until it is enabled again), a monthly/yearly toggle and a price preview from
   `Paddle.PricePreview` with the configured price ids (a fallback note when the
   preview fails),
 - on the free plan, Upgrade (checkout, then the Paddle overlay, then a pending

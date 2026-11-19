@@ -25,6 +25,7 @@ import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
 import { ServiceTokenSettings } from '../components/repo/ServiceTokenSettings'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
+import { ProjectStorageCard } from '../components/storage/ProjectStorageCard'
 import { SettingsLayout } from '../components/SettingsLayout'
 import { UserGroupPicker, type PickerEntry } from '../components/UserGroupPicker'
 import { EmptyState, ErrorBanner, Loading, Mono, NoPermission } from '../components/ui'
@@ -184,7 +185,12 @@ export default function ProjectSettingsPage() {
         }))}
       >
         <Stack direction="vertical" gap="spacious">
-          {tab === 'general' && <ProjectGeneralSettings org={org} project={project} />}
+          {tab === 'general' && (
+            <>
+              <ProjectGeneralSettings org={org} project={project} />
+              <ProjectStorageCard org={org} project={project} />
+            </>
+          )}
 
           {tab === 'access' && (
             <>

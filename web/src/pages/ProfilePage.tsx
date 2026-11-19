@@ -8,6 +8,7 @@ import { IdentitiesCard } from '../components/IdentitiesCard'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, passwordLengthProblem } from '../components/PasswordFields'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
 import { SSHKeysCard } from '../components/SSHKeysCard'
+import { StorageServersTab } from '../components/storage/StorageServersCard'
 import { TwoFactorCard } from '../components/TwoFactorCard'
 import { isUserTab, UserSettingsLayout, type UserTab } from '../components/UserSettingsLayout'
 import { EmptyState, ErrorBanner, Loading } from '../components/ui'
@@ -26,6 +27,7 @@ export default function ProfilePage() {
       {tab === 'security' && <SecurityTab />}
       {tab === 'accounts' && <IdentitiesCard />}
       {tab === 'keys' && <SSHKeysCard />}
+      {tab === 'storage' && <StorageServersTab />}
     </UserSettingsLayout>
   )
 }
