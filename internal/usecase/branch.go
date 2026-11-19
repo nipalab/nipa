@@ -181,7 +181,7 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 		return nil, domain.NewErrorNoPermission()
 	}
 	name = strings.TrimSpace(name)
-	if err := validateBranchName(name); err != nil {
+	if err := domain.ValidateBranchName(name); err != nil {
 		return nil, err
 	}
 
@@ -224,7 +224,7 @@ func (b *Branch) Rename(ctx context.Context, projectID snow.ID, name, newName st
 		return nil, err
 	}
 	newName = strings.TrimSpace(newName)
-	if err := validateBranchName(newName); err != nil {
+	if err := domain.ValidateBranchName(newName); err != nil {
 		return nil, err
 	}
 	if newName == branch.Name {
@@ -553,24 +553,6 @@ func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork B
 		return nil, err
 	}
 	return def.CommitID, nil
-}
-
-func validateBranchName(name string) error {
-	if name == "" {
-		return domain.NewErrorUser("branch name must not be empty")
-	}
-	if strings.ContainsRune(name, '/') {
-		return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
-	}
-	if name == "." || name == ".." {
-		return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
-	}
-	for _, r := range name {
-		if r <= 0x20 || r == 0x7f {
-			return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
-		}
-	}
-	return nil
 }
 
 func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchName string, paths []string, treeHash string, recursive bool) (*domain.TreeNode, error) {

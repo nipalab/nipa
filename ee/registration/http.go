@@ -22,6 +22,7 @@ type Handler struct {
 	auth      *usecase.Auth
 	providers func() []string
 	billing   *BillingCapabilities
+	byo       bool
 	invites   *SignupInvites
 	waitlist  *Waitlist
 }
@@ -69,11 +70,18 @@ func (h *Handler) WithBilling(billing *BillingCapabilities) *Handler {
 	return h
 }
 
+// WithBYOStorage reports bring-your-own storage servers as available.
+func (h *Handler) WithBYOStorage(enabled bool) *Handler {
+	h.byo = enabled
+	return h
+}
+
 type capabilitiesResponse struct {
 	Registration bool                 `json:"registration"`
 	InviteOnly   bool                 `json:"invite_only,omitempty"`
 	Providers    []string             `json:"providers"`
 	Billing      *BillingCapabilities `json:"billing,omitempty"`
+	BYOStorage   bool                 `json:"byo_storage,omitempty"`
 	Terms        *termsCapabilities   `json:"terms,omitempty"`
 }
 
@@ -197,7 +205,7 @@ func (h *Handler) Capabilities(appCtx httpApp.AppContext) {
 	if providers == nil {
 		providers = []string{}
 	}
-	response := capabilitiesResponse{Registration: true, InviteOnly: h.reg.InviteOnly(), Providers: providers, Billing: h.billing}
+	response := capabilitiesResponse{Registration: true, InviteOnly: h.reg.InviteOnly(), Providers: providers, Billing: h.billing, BYOStorage: h.byo}
 	if version := h.reg.TermsVersion(); version != "" {
 		response.Terms = &termsCapabilities{Version: version}
 	}

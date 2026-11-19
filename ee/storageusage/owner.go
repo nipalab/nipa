@@ -27,6 +27,13 @@ func (l *Ledger) BillingOwner(ctx context.Context, orgID snow.ID) (snow.ID, erro
 	return snow.ID(seeded), nil
 }
 
+// LookupBillingOwner resolves the billing owner without seeding the mapping,
+// so read paths never write.
+func (l *Ledger) LookupBillingOwner(ctx context.Context, orgID snow.ID) (snow.ID, error) {
+	owner, _, err := l.lookupBillingOwner(ctx, orgID)
+	return owner, err
+}
+
 // lookupBillingOwner reads the mapping and falls back to the organization's
 // creator without storing it, so reports never write.
 func (l *Ledger) lookupBillingOwner(ctx context.Context, orgID snow.ID) (snow.ID, bool, error) {

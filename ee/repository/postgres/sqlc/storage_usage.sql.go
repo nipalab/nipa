@@ -276,6 +276,35 @@ func (q *Queries) InsertProjectChunks(ctx context.Context, arg InsertProjectChun
 	return items, nil
 }
 
+const listExternalProjectIDsByOrg = `-- name: ListExternalProjectIDsByOrg :many
+SELECT p.id FROM projects p
+JOIN project_storage ps ON ps.project_id = p.id
+WHERE p.org_id = $1
+`
+
+func (q *Queries) ListExternalProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listExternalProjectIDsByOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOwnerOrgUsage = `-- name: ListOwnerOrgUsage :many
 SELECT o.id AS org_id, o.slug, o.name,
        COALESCE(u.used_bytes, 0)::BIGINT AS used_bytes
@@ -322,7 +351,9 @@ func (q *Queries) ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOw
 }
 
 const listProjectIDsByOrg = `-- name: ListProjectIDsByOrg :many
-SELECT id FROM projects WHERE org_id = $1
+SELECT p.id FROM projects p
+WHERE p.org_id = $1
+  AND NOT EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id)
 `
 
 func (q *Queries) ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error) {
@@ -350,9 +381,11 @@ func (q *Queries) ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64
 
 const listProjectUsage = `-- name: ListProjectUsage :many
 SELECT p.id AS project_id, p.slug, p.name, p.deleted,
-       COALESCE(u.used_bytes, 0)::BIGINT AS used_bytes
+       (CASE WHEN ps.project_id IS NULL THEN COALESCE(u.used_bytes, 0) ELSE 0 END)::BIGINT AS used_bytes,
+       (ps.project_id IS NOT NULL)::BOOLEAN AS external
 FROM projects p
 LEFT JOIN project_usage u ON u.project_id = p.id
+LEFT JOIN project_storage ps ON ps.project_id = p.id
 WHERE p.org_id = $1
 ORDER BY used_bytes DESC, p.slug
 `
@@ -363,6 +396,7 @@ type ListProjectUsageRow struct {
 	Name      string `json:"name"`
 	Deleted   bool   `json:"deleted"`
 	UsedBytes int64  `json:"used_bytes"`
+	External  bool   `json:"external"`
 }
 
 func (q *Queries) ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error) {
@@ -380,6 +414,7 @@ func (q *Queries) ListProjectUsage(ctx context.Context, orgID int64) ([]ListProj
 			&i.Name,
 			&i.Deleted,
 			&i.UsedBytes,
+			&i.External,
 		); err != nil {
 			return nil, err
 		}
@@ -440,6 +475,7 @@ SELECT $1, COALESCE(SUM(COALESCE(pu.used_bytes, 0)), 0)::BIGINT
 FROM projects p
 LEFT JOIN project_usage pu ON pu.project_id = p.id
 WHERE p.org_id = $1
+  AND NOT EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id)
 ON CONFLICT (org_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes
 `
 

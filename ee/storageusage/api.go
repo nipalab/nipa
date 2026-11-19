@@ -102,6 +102,7 @@ type projectUsageResponse struct {
 	Name      string `json:"name"`
 	Deleted   bool   `json:"deleted"`
 	UsedBytes int64  `json:"used_bytes"`
+	External  bool   `json:"external,omitempty"`
 }
 
 type orgStorageResponse struct {
@@ -302,6 +303,7 @@ func toOrgStorageResponse(summary *OrgStorage) orgStorageResponse {
 			Name:      project.Name,
 			Deleted:   project.Deleted,
 			UsedBytes: project.UsedBytes,
+			External:  project.External,
 		})
 	}
 	return orgStorageResponse{

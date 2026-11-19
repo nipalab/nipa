@@ -87,7 +87,7 @@ func (t *Tag) CreateTag(ctx context.Context, projectID snow.ID, name string, tar
 		return nil, domain.NewErrorNoPermission()
 	}
 	name = strings.TrimSpace(name)
-	if err := validateTagName(name); err != nil {
+	if err := domain.ValidateTagName(name); err != nil {
 		return nil, err
 	}
 
@@ -200,24 +200,6 @@ func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTa
 		return nil, err
 	}
 	return def.CommitID, nil
-}
-
-func validateTagName(name string) error {
-	if name == "" {
-		return domain.NewErrorUser("tag name must not be empty")
-	}
-	if strings.ContainsRune(name, '/') {
-		return domain.NewErrorUser(fmt.Sprintf("invalid tag name %q", name))
-	}
-	if name == "." || name == ".." {
-		return domain.NewErrorUser(fmt.Sprintf("invalid tag name %q", name))
-	}
-	for _, r := range name {
-		if r <= 0x20 || r == 0x7f {
-			return domain.NewErrorUser(fmt.Sprintf("invalid tag name %q", name))
-		}
-	}
-	return nil
 }
 
 // emitHook publishes a tag event. The change is already stored, so a delivery

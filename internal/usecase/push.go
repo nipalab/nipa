@@ -629,7 +629,7 @@ func (p *Push) TooManyFiles(n int) error {
 func validatePushFiles(files []*domain.PushFile) error {
 	seen := map[string]struct{}{}
 	for _, f := range files {
-		if err := validateRepoPath(f.Path); err != nil {
+		if err := domain.ValidateRepoPath(f.Path); err != nil {
 			return err
 		}
 		if _, ok := seen[f.Path]; ok {
@@ -661,7 +661,7 @@ func validateRemovedFiles(removed []string, files []*domain.PushFile) error {
 	}
 	seen := map[string]bool{}
 	for _, r := range removed {
-		if err := validateRepoPath(r); err != nil {
+		if err := domain.ValidateRepoPath(r); err != nil {
 			return err
 		}
 		if _, ok := changed[r]; ok {
@@ -671,22 +671,6 @@ func validateRemovedFiles(removed []string, files []*domain.PushFile) error {
 			return domain.NewErrorUser(fmt.Sprintf("duplicate removed path %q", r))
 		}
 		seen[r] = true
-	}
-	return nil
-}
-
-func validateRepoPath(p string) error {
-	p = strings.TrimPrefix(p, "/")
-	if p == "" {
-		return domain.NewErrorUser("file path must not be empty")
-	}
-	if strings.HasPrefix(p, "/") || strings.Contains(p, "\\") {
-		return domain.NewErrorUser(fmt.Sprintf("invalid file path %q", p))
-	}
-	for _, seg := range strings.Split(p, "/") {
-		if seg == "" || seg == "." || seg == ".." {
-			return domain.NewErrorUser(fmt.Sprintf("invalid file path %q", p))
-		}
 	}
 	return nil
 }

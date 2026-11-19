@@ -172,9 +172,11 @@ func startEnterpriseServerWithUsecases(t *testing.T, dbConn *sql.DB, chunkStore 
 // serverOptions extends the smoke server: rest replaces the chunk-only HTTP
 // handler with a full REST container built from the registry.
 type serverOptions struct {
-	ledger   *storageusage.Ledger
-	seatGate serverusecase.SeatGate
-	rest     func(reg *serverapp.Registry) http.Handler
+	ledger         *storageusage.Ledger
+	seatGate       serverusecase.SeatGate
+	chunkStores    serverusecase.ChunkStores
+	projectStorage serverusecase.ProjectStorageAssigner
+	rest           func(reg *serverapp.Registry) http.Handler
 }
 
 func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
@@ -208,6 +210,8 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		deps.StorageLedger = ledger
 	}
 	deps.SeatGate = opts.seatGate
+	deps.ChunkStores = opts.chunkStores
+	deps.ProjectStorage = opts.projectStorage
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),

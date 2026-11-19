@@ -10,6 +10,7 @@ import type {
   CommitContainsResponse,
   CommitDiffResponse,
   CreateServiceTokenInput,
+  CreateStorageServerInput,
   CommitResponse,
   CreateWebhookInput,
   FileLockRequestResponse,
@@ -25,7 +26,12 @@ import type {
   MergeRequestResponse,
   OnboardingCapabilities,
   OrgStorageResponse,
+  OrgStorageServerResponse,
   OwnerStorageResponse,
+  ProjectStorageLocationResponse,
+  StorageServerResponse,
+  StorageServerTestResponse,
+  UpdateStorageServerInput,
   ReviewRequestResponse,
   ReviewResponse,
   ReviewStateResponse,
@@ -1057,6 +1063,56 @@ export function recountOrgStorage(org: string): Promise<OrgStorageResponse> {
     method: 'POST',
     body: JSON.stringify({}),
   })
+}
+
+// Storage servers (bring-your-own S3). The routes exist only while
+// capabilities.byo_storage is set.
+function storageServerPath(id: string): string {
+  return `/api/v1/me/storage-servers/${encodeURIComponent(id)}`
+}
+
+export async function listStorageServers(): Promise<StorageServerResponse[]> {
+  const body = await apiJson<{ servers: StorageServerResponse[] }>('/api/v1/me/storage-servers')
+  return body.servers
+}
+
+export function getStorageServer(id: string): Promise<StorageServerResponse> {
+  return apiJson(storageServerPath(id))
+}
+
+export function createStorageServer(input: CreateStorageServerInput): Promise<StorageServerResponse> {
+  return apiJson('/api/v1/me/storage-servers', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function updateStorageServer(id: string, input: UpdateStorageServerInput): Promise<StorageServerResponse> {
+  return apiJson(storageServerPath(id), { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export function deleteStorageServer(id: string): Promise<void> {
+  return apiJson(storageServerPath(id), { method: 'DELETE' })
+}
+
+export function testStorageServer(id: string): Promise<StorageServerTestResponse> {
+  return apiJson(`${storageServerPath(id)}/test`, { method: 'POST', body: JSON.stringify({}) })
+}
+
+export function getOrgStorageServer(org: string): Promise<OrgStorageServerResponse> {
+  return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/storage-server`)
+}
+
+export function setOrgStorageServer(org: string, storageServerID: string): Promise<OrgStorageServerResponse> {
+  return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/storage-server`, {
+    method: 'PUT',
+    body: JSON.stringify({ storage_server_id: storageServerID }),
+  })
+}
+
+export function clearOrgStorageServer(org: string): Promise<void> {
+  return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/storage-server`, { method: 'DELETE' })
+}
+
+export function getProjectStorage(org: string, project: string): Promise<ProjectStorageLocationResponse> {
+  return apiJson(`${projectBase(org, project)}/storage`)
 }
 
 export function listAuditEntries(filters: AuditListFilters = {}): Promise<AuditListResponse> {

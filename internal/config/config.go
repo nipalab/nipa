@@ -22,6 +22,8 @@ type Config struct {
 	JWTKey                          string  `mapstructure:"JWT_KEY"`
 	MFAEncryptionKey                string  `mapstructure:"MFA_ENCRYPTION_KEY"`
 	MFAEnabled                      bool    `mapstructure:"MFA_ENABLED"`
+	BYOStorageEncryptionKey         string  `mapstructure:"BYO_STORAGE_ENCRYPTION_KEY"`
+	BYOStorageAllowPrivate          bool    `mapstructure:"BYO_STORAGE_ALLOW_PRIVATE"`
 	MFAEnabledSet                   bool    `mapstructure:"-"`
 	LogLevel                        string  `mapstructure:"LOG_LEVEL"`
 	LogFormat                       string  `mapstructure:"LOG_FORMAT"`
@@ -335,7 +337,13 @@ func (c *Config) MFAEnabledOr(def bool) bool {
 // not). It returns nil without an error when the key is unset, which leaves
 // two-factor authentication unavailable.
 func (c *Config) MFAKey() ([]byte, error) {
-	raw := strings.TrimSpace(c.MFAEncryptionKey)
+	return decodeKey("MFA_ENCRYPTION_KEY", c.MFAEncryptionKey)
+}
+
+// decodeKey decodes base64 key material of at least minMFAKeyBytes; empty
+// means unset.
+func decodeKey(name, value string) ([]byte, error) {
+	raw := strings.TrimSpace(value)
 	if raw == "" {
 		return nil, nil
 	}
@@ -345,9 +353,9 @@ func (c *Config) MFAKey() ([]byte, error) {
 			continue
 		}
 		if len(key) < minMFAKeyBytes {
-			return nil, fmt.Errorf("MFA_ENCRYPTION_KEY must decode to at least %d bytes; generate one with `openssl rand -base64 32`", minMFAKeyBytes)
+			return nil, fmt.Errorf("%s must decode to at least %d bytes; generate one with `openssl rand -base64 32`", name, minMFAKeyBytes)
 		}
 		return key, nil
 	}
-	return nil, fmt.Errorf("MFA_ENCRYPTION_KEY must be base64; generate one with `openssl rand -base64 32`")
+	return nil, fmt.Errorf("%s must be base64; generate one with `openssl rand -base64 32`", name)
 }

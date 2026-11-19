@@ -159,6 +159,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	byoSetup, err := buildBYOStorage(cfg, dbConn, snowUser, chunkStore, storageLedger)
+	if err != nil {
+		panic(err)
+	}
 
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
@@ -208,6 +212,7 @@ func main() {
 	if billingSetup != nil {
 		deps.SeatGate = billingSetup.service
 	}
+	byoSetup.wire(&deps)
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),
@@ -263,12 +268,13 @@ func main() {
 		}))
 	}
 	runOpts = append(runOpts, billingSetup.runOptions()...)
+	runOpts = append(runOpts, byoSetup.runOptions(uc)...)
 	if cfg.SaaSMode {
 		termsSource := newTermsSource(cfg)
 		if termsSource.URL() != "" {
 			dispatchers = append(dispatchers, registration.NewTermsRefreshJob(termsSource, registration.TermsRefreshInterval))
 		}
-		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, rateLimiter, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil(), termsSource)...)
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, rateLimiter, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil(), byoSetup.enabled(), termsSource)...)
 	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
@@ -280,7 +286,7 @@ func main() {
 // the caller's transaction.
 func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
 	authUsecase *usecase.Auth, audit usecase.AuditRecorder, limiter *ratelimit.Limiter, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
-	billingCapabilities *registration.BillingCapabilities, termsSource *registration.TermsVersionSource,
+	billingCapabilities *registration.BillingCapabilities, byoStorage bool, termsSource *registration.TermsVersionSource,
 ) []serverapp.Option {
 	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
 		panic("SAAS_MODE requires EMAIL_BASE_URL: the confirmation link has no public base URL")
@@ -306,7 +312,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		InviteOnly:     !cfg.RegistrationEnabled,
 		Invited:        invited,
 	}).WithAudit(audit).WithTermsVersion(termsSource.Version).WithLimiter(limiter).WithWaitlist(waitlist)
-	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities).
+	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities).WithBYOStorage(byoStorage).
 		WithSignupInvites(signupInvites).WithWaitlist(waitlist)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)

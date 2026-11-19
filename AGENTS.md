@@ -1463,6 +1463,49 @@ effective quota is `COALESCE(override_bytes, quota_bytes)`, with the same
 NULL/0/missing-row semantics; `Ledger.BillingOwner` is the exported org →
 owner resolution.
 
+Flow for bring-your-own storage (`nipad-ee`, SAAS_MODE=1 with
+`BYO_STORAGE_ENCRYPTION_KEY` set, `config.ValidateBYOStorage`; guide in
+`docs/BYO_STORAGE.md`): postgres migration `000013_byo_storage` adds
+`storage_servers` (owner user, name unique per owner, endpoint, region,
+bucket, prefix, access key id, `secret_sealed` = `sealbox` label `nipa byo
+storage secret v1`, AAD `storage_server:<id>`), `org_storage_defaults`
+(org → server, `set_by`) and `project_storage` (project → server, written
+once at creation; FKs `ON DELETE RESTRICT` on the server), served by the
+dbtx-aware `postgres.NewBYOStorageRepository`. `ee/byostorage.Service` (stub
+tested): `Create`/`Update` validate (`NormalizeEndpoint`: https only, no
+userinfo/path/query, public literal IPs and names), probe through
+`s3.Store.Probe` (a failed check is a `*ProbeFailure`, REST 400 `{error,
+check}`), seal the secret and audit `storage_server.created|updated`
+(metadata never holds keys); at most 20 servers per owner (advisory lock),
+bucket/prefix in a PATCH are a 400, `Delete` is a 409 while a project or a
+live org default uses the server, `Test` re-probes (200 `{ok, check,
+error}`). Every customer request goes through `NewTransport`: no proxy and a
+`net.Dialer.Control` that refuses loopback/private/link-local/CGNAT/metadata
+addresses at connect time (`BYO_STORAGE_ALLOW_PRIVATE` lifts it and allows
+http, tests only). `SetOrgDefault` needs an org owner who is the org's
+billing owner (`Ledger.BillingOwner`) setting a server of their own (audits
+`org.storage_default.set|cleared`). `Service.Assign` is the
+`ProjectStorageAssigner`: a requested server must be the caller's and the
+caller the billing owner, else the org default applies while its server
+still belongs to the billing owner, else nothing (Nipa storage); it writes
+`project_storage` in the creation transaction and audits
+`project.storage_server.set`. `Service.Resolver(defaultStore)` is the
+`ChunkStores`: project → server rows cached `ResolverTTL` (60 s), opened S3
+stores cached per server and replaced when `updated_at` changes, `External:
+true`, `ReadOnly` when the optional `Entitlement.OwnStorageActive` says no
+(nil = always active); an unopenable server is 502 `storage server
+unavailable`. The ledger excludes these projects: `ListProjectIDsByOrg` and
+`SetOrgUsageFromProjects` skip them, `RecountOrg` drops their links, and
+`OrgStorage` lists them with `external: true` and 0 bytes. Routes (only when
+on, `ee/cmd/nipad/byostorage.go` `buildBYOStorage`): `GET|POST
+/me/storage-servers`, `GET|PATCH|DELETE /me/storage-servers/{id}`, `POST
+.../{id}/test`, `GET|PUT|DELETE /orgs/{org}/storage-server` (GET for org
+members: `{server: {id, name}, can_manage}`), `GET
+/orgs/{org}/projects/{project}/storage` (project read: `{external,
+server}`); capabilities carry `byo_storage: true`; SPA helpers in
+`web/src/api/endpoints.ts`; `ee/e2e/byostorage_test.go` pushes through a
+second minio bucket.
+
 Flow for billing (design in `docs/BILLING.md`, plan in
 `docs/plans/BILLING.md`): the only free-side change is the nil-able `usecase.SeatGate` seam
 (`Admit(ctx, orgID, userID, insert)`), attached through
