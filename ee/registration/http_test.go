@@ -135,8 +135,19 @@ func TestCapabilitiesReportsBilling(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.JSONEq(t, `{"registration": true, "providers": [], "billing": {
 		"provider": "paddle", "environment": "sandbox", "client_token": "test_token",
-		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}},
+		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}, "own_storage": null},
 		"free_seats": 3, "free_quota_bytes": 10, "seat_included_bytes": 50, "storage_pack_bytes": 100}}`, body)
+
+	withOwn := newRegistrationServerWith(t, nil, &BillingCapabilities{
+		Provider: "paddle", Prices: BillingPrices{OwnStorage: &IntervalPrices{Monthly: "pri_om", Yearly: "pri_oy"}},
+	})
+	resp, body = withOwn.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var got struct {
+		Billing BillingCapabilities `json:"billing"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &got))
+	require.Equal(t, &IntervalPrices{Monthly: "pri_om", Yearly: "pri_oy"}, got.Billing.Prices.OwnStorage)
 }
 
 func TestCapabilitiesReportsBYOStorage(t *testing.T) {

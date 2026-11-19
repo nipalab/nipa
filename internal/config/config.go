@@ -82,6 +82,8 @@ type Config struct {
 	PaddlePriceSeatYearly           string  `mapstructure:"PADDLE_PRICE_SEAT_YEARLY"`
 	PaddlePriceStorageMonthly       string  `mapstructure:"PADDLE_PRICE_STORAGE_MONTHLY"`
 	PaddlePriceStorageYearly        string  `mapstructure:"PADDLE_PRICE_STORAGE_YEARLY"`
+	PaddlePriceOwnStorageMonthly    string  `mapstructure:"PADDLE_PRICE_OWN_STORAGE_MONTHLY"`
+	PaddlePriceOwnStorageYearly     string  `mapstructure:"PADDLE_PRICE_OWN_STORAGE_YEARLY"`
 	OAuthBaseURL                    string  `mapstructure:"OAUTH_BASE_URL"`
 	OAuthGoogleClientID             string  `mapstructure:"OAUTH_GOOGLE_CLIENT_ID"`
 	OAuthGoogleClientSecret         string  `mapstructure:"OAUTH_GOOGLE_CLIENT_SECRET"`

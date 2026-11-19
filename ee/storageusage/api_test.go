@@ -260,7 +260,7 @@ func TestAPI_OwnerStorageBillingFields(t *testing.T) {
 				return nil, domain.NewErrorConflict("nope")
 			}
 			return &BillingSummary{Plan: "team", Status: "active", Interval: "month", SeatsUsed: 2, SeatLimit: 5,
-				StoragePacks: 1, CurrentPeriodEnd: &end, CancelAtPeriodEnd: true}, nil
+				StoragePacks: 1, OwnStorage: true, CurrentPeriodEnd: &end, CancelAtPeriodEnd: true}, nil
 		}
 	})
 
@@ -276,6 +276,7 @@ func TestAPI_OwnerStorageBillingFields(t *testing.T) {
 	require.Equal(t, float64(2), got["seats_used"])
 	require.Equal(t, float64(5), got["seat_limit"])
 	require.Equal(t, float64(1), got["storage_packs"])
+	require.Equal(t, true, got["own_storage"])
 	require.Equal(t, "2027-01-01T00:00:00Z", got["current_period_end"])
 	require.Equal(t, true, got["cancel_at_period_end"])
 

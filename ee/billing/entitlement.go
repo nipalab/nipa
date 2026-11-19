@@ -21,6 +21,8 @@ type Config struct {
 	FreeQuotaBytes    int64
 	SeatIncludedBytes int64
 	StoragePackBytes  int64
+	// OwnStorage is true when the Own storage add-on has prices.
+	OwnStorage bool
 	// BillingURL is where an owner adds seats; seat limit errors name it.
 	BillingURL string
 }

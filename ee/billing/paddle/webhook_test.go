@@ -131,6 +131,30 @@ func TestMapSubscription(t *testing.T) {
 	require.Equal(t, int64(3), sub.StoragePacks)
 	require.Equal(t, billing.IntervalMonth, sub.Interval)
 
+	ownClient := New(Config{Prices: ownPrices()})
+	withOwn := base()
+	withOwn.Items = append(withOwn.Items, item("pri_seat_y", 2), item("pri_own_y", 1))
+	sub, err = ownClient.mapSubscription(withOwn)
+	require.NoError(t, err)
+	require.True(t, sub.OwnStorage)
+	require.Equal(t, int64(2), sub.Seats)
+	require.Equal(t, billing.IntervalYear, sub.Interval)
+
+	ownOnly := base()
+	ownOnly.Items = append(ownOnly.Items, item("pri_own_m", 1))
+	sub, err = ownClient.mapSubscription(ownOnly)
+	require.NoError(t, err)
+	require.True(t, sub.OwnStorage)
+	require.Zero(t, sub.Seats+sub.StoragePacks)
+
+	mixed := base()
+	mixed.Items = append(mixed.Items, item("pri_seat_m", 1), item("pri_own_y", 1))
+	_, err = ownClient.mapSubscription(mixed)
+	require.Equal(t, http.StatusBadRequest, errorCode(err), "the add-on follows the interval rule")
+
+	_, err = client.mapSubscription(ownOnly)
+	require.Equal(t, http.StatusBadRequest, errorCode(err), "an own-storage price the server does not offer is unknown")
+
 	for name, mutate := range map[string]func(*subscription){
 		"missing id":     func(s *subscription) { s.ID = "" },
 		"unknown price":  func(s *subscription) { s.Items = append(s.Items, item("pri_other", 1)) },

@@ -16,6 +16,7 @@ type BillingSubscription struct {
 	Interval               string
 	Seats                  int64
 	StoragePacks           int64
+	OwnStorage             bool
 	CurrentPeriodEnd       *time.Time
 	CancelAtPeriodEnd      bool
 	ProviderUpdatedAt      time.Time

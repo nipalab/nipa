@@ -203,7 +203,7 @@ func (s *BillingRepositorySuite) TestSubscriptions_NewerWinsAndLiveSelection() {
 	end := at(30)
 	written, err := s.repo.UpsertSubscription(ctx, domain.BillingSubscription{
 		ProviderSubscriptionID: "sub_a", UserID: owner, Plan: "team", Status: "active", Interval: "month",
-		Seats: 4, StoragePacks: 1, CurrentPeriodEnd: &end, CancelAtPeriodEnd: true, ProviderUpdatedAt: at(5),
+		Seats: 4, StoragePacks: 1, OwnStorage: true, CurrentPeriodEnd: &end, CancelAtPeriodEnd: true, ProviderUpdatedAt: at(5),
 	})
 	s.Require().NoError(err)
 	s.True(written)
@@ -239,6 +239,7 @@ func (s *BillingRepositorySuite) TestSubscriptions_NewerWinsAndLiveSelection() {
 	s.Equal("month", live.Interval)
 	s.Equal(int64(4), live.Seats)
 	s.Equal(int64(1), live.StoragePacks)
+	s.True(live.OwnStorage)
 	s.True(live.CancelAtPeriodEnd)
 	s.Require().NotNil(live.CurrentPeriodEnd)
 	s.True(end.Equal(*live.CurrentPeriodEnd))
@@ -251,6 +252,7 @@ func (s *BillingRepositorySuite) TestSubscriptions_NewerWinsAndLiveSelection() {
 	live, err = s.repo.LiveSubscription(ctx, owner)
 	s.Require().NoError(err)
 	s.Equal("sub_b", live.ProviderSubscriptionID, "the newest live subscription wins")
+	s.False(live.OwnStorage)
 
 	for _, id := range []string{"sub_a", "sub_b"} {
 		written, err = s.repo.UpsertSubscription(ctx, domain.BillingSubscription{

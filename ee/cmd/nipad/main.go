@@ -212,6 +212,7 @@ func main() {
 	if billingSetup != nil {
 		deps.SeatGate = billingSetup.service
 	}
+	byoSetup.entitle(billingSetup)
 	byoSetup.wire(&deps)
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),

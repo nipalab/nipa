@@ -53,6 +53,7 @@ export interface BillingCapabilities {
   prices: {
     seat: BillingIntervalPrices
     storage: BillingIntervalPrices
+    own_storage?: BillingIntervalPrices | null
   }
   free_seats?: number
   free_quota_bytes?: number
@@ -636,6 +637,7 @@ export interface BillingSummary {
   seats_used: number
   seat_limit: number
   storage_packs: number
+  own_storage?: boolean
   current_period_end: string | null
   cancel_at_period_end: boolean
 }
@@ -650,6 +652,7 @@ export interface OwnerStorageResponse extends Partial<BillingSummary> {
 export interface BillingItemsRequest {
   seats: number
   storage_packs: number
+  own_storage?: boolean
   interval?: BillingInterval
 }
 

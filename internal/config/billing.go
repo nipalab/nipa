@@ -57,6 +57,9 @@ func (c *Config) ValidateBilling() error {
 			return fmt.Errorf("%s is required", setting.key)
 		}
 	}
+	if err := c.validateOwnStoragePrices(); err != nil {
+		return err
+	}
 	if c.BillingFreeSeats < 1 {
 		return fmt.Errorf("BILLING_FREE_SEATS must be at least 1 (the owner is a seat)")
 	}
@@ -70,6 +73,31 @@ func (c *Config) ValidateBilling() error {
 		if setting.value <= 0 {
 			return fmt.Errorf("%s must be greater than 0 (0 means unlimited in the ledger)", setting.key)
 		}
+	}
+	return nil
+}
+
+// OwnStorageOffered reports whether the Own storage add-on has prices.
+func (c *Config) OwnStorageOffered() bool {
+	return strings.TrimSpace(c.PaddlePriceOwnStorageMonthly) != "" && strings.TrimSpace(c.PaddlePriceOwnStorageYearly) != ""
+}
+
+func (c *Config) validateOwnStoragePrices() error {
+	monthly := strings.TrimSpace(c.PaddlePriceOwnStorageMonthly)
+	yearly := strings.TrimSpace(c.PaddlePriceOwnStorageYearly)
+	if monthly == "" && yearly == "" {
+		return nil
+	}
+	if monthly == "" || yearly == "" {
+		return fmt.Errorf("set both PADDLE_PRICE_OWN_STORAGE_MONTHLY and PADDLE_PRICE_OWN_STORAGE_YEARLY or neither")
+	}
+	seen := map[string]bool{}
+	for _, id := range []string{c.PaddlePriceSeatMonthly, c.PaddlePriceSeatYearly, c.PaddlePriceStorageMonthly, c.PaddlePriceStorageYearly, monthly, yearly} {
+		id = strings.TrimSpace(id)
+		if seen[id] {
+			return fmt.Errorf("PADDLE_PRICE_* ids must be distinct, %q is used twice", id)
+		}
+		seen[id] = true
 	}
 	return nil
 }

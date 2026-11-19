@@ -31,9 +31,13 @@ private or loopback addresses and is for tests only.
   projects created later only.
 - When a server cannot be reached, that project's transfers fail with 502
   `storage server unavailable`.
-- `byostorage.Service.WithEntitlement` can make these projects read-only
-  without an Own storage add-on, but billing has no such add-on yet, so
-  `nipad-ee` wires none and every owner may write.
+- With billing on, writing to own storage needs the Own storage add-on
+  (`billing.Service.OwnStorageActive`, wired through
+  `byostorage.Service.WithEntitlement`, see `docs/BILLING.md`). Without it,
+  projects on own storage are read-only (pushes and merges get 402, reads keep
+  working) and creating, editing or assigning servers gets 402; deleting
+  stays allowed. With `BILLING_PROVIDER=off` nothing is gated. Billing on
+  without add-on prices logs a warning: every owner is then read-only.
 
 ## S3 requirements
 

@@ -39,6 +39,9 @@ type Prices struct {
 	SeatYearly     string
 	StorageMonthly string
 	StorageYearly  string
+	// OwnStorage* are optional; empty means the add-on is not offered.
+	OwnStorageMonthly string
+	OwnStorageYearly  string
 }
 
 type Config struct {
@@ -238,9 +241,9 @@ func (c *Client) itemList(items billing.Items) ([]itemRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	seat, storage := c.prices.SeatMonthly, c.prices.StorageMonthly
+	seat, storage, own := c.prices.SeatMonthly, c.prices.StorageMonthly, c.prices.OwnStorageMonthly
 	if items.Interval == billing.IntervalYear {
-		seat, storage = c.prices.SeatYearly, c.prices.StorageYearly
+		seat, storage, own = c.prices.SeatYearly, c.prices.StorageYearly, c.prices.OwnStorageYearly
 	}
 	var list []itemRequest
 	if items.Seats > 0 {
@@ -248,6 +251,12 @@ func (c *Client) itemList(items billing.Items) ([]itemRequest, error) {
 	}
 	if items.StoragePacks > 0 {
 		list = append(list, itemRequest{PriceID: storage, Quantity: items.StoragePacks})
+	}
+	if items.OwnStorage {
+		if strings.TrimSpace(own) == "" {
+			return nil, domain.NewErrorUser("the Own storage add-on is not offered")
+		}
+		list = append(list, itemRequest{PriceID: own, Quantity: 1})
 	}
 	return list, nil
 }

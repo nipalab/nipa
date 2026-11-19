@@ -1493,7 +1493,8 @@ still belongs to the billing owner, else nothing (Nipa storage); it writes
 `ChunkStores`: project → server rows cached `ResolverTTL` (60 s), opened S3
 stores cached per server and replaced when `updated_at` changes, `External:
 true`, `ReadOnly` when the optional `Entitlement.OwnStorageActive` says no
-(nil = always active); an unopenable server is 502 `storage server
+(nil = always active; `nipad-ee` attaches `billing.Service` only when billing
+is on, see the billing flow); an unopenable server is 502 `storage server
 unavailable`. The ledger excludes these projects: `ListProjectIDsByOrg` and
 `SetOrgUsageFromProjects` skip them, `RecountOrg` drops their links, and
 `OrgStorage` lists them with `external: true` and 0 bytes. Routes (only when
@@ -1504,7 +1505,8 @@ members: `{server: {id, name}, can_manage}`), `GET
 /orgs/{org}/projects/{project}/storage` (project read: `{external,
 server}`); capabilities carry `byo_storage: true`; SPA helpers in
 `web/src/api/endpoints.ts`; `ee/e2e/byostorage_test.go` pushes through a
-second minio bucket.
+second minio bucket, `ee/e2e/byostorage_billing_test.go` gates it on the
+Own storage add-on.
 
 Flow for billing (design in `docs/BILLING.md`, plan in
 `docs/plans/BILLING.md`): the only free-side change is the nil-able `usecase.SeatGate` seam
@@ -1546,9 +1548,20 @@ bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
 `/billing/me` hook. The provider seam is `billing.Provider`
 (`ee/billing/provider.go`: `EnsureCustomer`, `ResolveDiscount`,
 `CreateCheckout` (optional discount id), `UpdateSubscription`, `Get/ListSubscriptions`, `PortalURL`, `ParseWebhook`,
-`DecodeEvent`, `EventSubscription`; `Items{seats, storage_packs, interval
-month|year}`, seats = paid seats, `Validate` needs seats + packs ≥ 1, price
-ids always come from config). `ee/billing/paddle`
+`DecodeEvent`, `EventSubscription`; `Items{seats, storage_packs, own_storage,
+interval month|year}`, seats = paid seats, `Validate` needs seats + packs ≥ 1
+or `own_storage`, `Config.ValidItems` also refuses `own_storage` when the
+add-on is not offered, price ids always come from config). Own storage
+add-on: optional `PADDLE_PRICE_OWN_STORAGE_MONTHLY`/`_YEARLY` (both or
+neither, all price ids distinct, `Config.OwnStorageOffered`), one item of
+quantity 1, `billing_subscriptions.own_storage` (postgres `000014`);
+`Service.OwnStorageActive(owner)` (live subscription with the add-on, cached
+per owner 60 s in `ownstorage.go`, forgotten by `Apply` and
+`ChangeSubscription`, a lookup older than the last forget is not stored) is
+the `byostorage` entitlement wired by `byoStorageSetup.entitle` only when
+billing is on (billing off = BYO never gated; billing on without add-on prices
+warns); dropping the add-on is allowed and turns own-storage projects
+read-only; no admin override. `ee/billing/paddle`
 implements it over the Paddle Billing REST API (`sandbox-api.paddle.com` /
 `api.paddle.com` by `PADDLE_ENVIRONMENT`, bearer key, 15 s timeout):
 `POST /customers` (a `customer_already_exists` 409 adopts the `ctm_` id from
@@ -1556,11 +1569,12 @@ the error detail, else `GET /customers?email=`), `GET
 /discounts?code=&status=active` (first match that is enabled for checkout, not
 expired and under its usage limit, else 400 `discount code is not valid`),
 `POST /transactions` with `custom_data.user_id` (base36; seat/storage items
-only for a non-zero quantity; `discount_id` only when set), `PATCH /subscriptions/{id}`
+only for a non-zero quantity, the own-storage item when set; `discount_id` only when set), `PATCH /subscriptions/{id}`
 (`prorated_immediately`, `on_payment_failure: prevent_change`, full item list),
 `GET /subscriptions?customer_id=` (cursor `after`), `POST
 /customers/{id}/portal-sessions` (`urls.general.overview`). Mapping: seats and
-packs are the quantities of the configured seat/storage prices, the interval
+packs are the quantities of the configured seat/storage prices, the
+own-storage price sets `OwnStorage`, the interval
 is the matched price's, an unknown price, mixed intervals or no items is an
 error (packs-only maps to 0 seats),
 `cancel_at_period_end` = `scheduled_change.action == "cancel"`. Paddle 409s and
@@ -1569,12 +1583,14 @@ error (packs-only maps to 0 seats),
 502 (detail internal, never the key). Webhooks verify `Paddle-Signature`
 (`ts=…;h1=…`, HMAC-SHA256 over `ts:rawBody`, any `h1`, 5 min tolerance;
 `paddle.Sign` builds one for tests). `Service`: `Checkout` (body
-`{seats, storage_packs, interval, discount_code?}`; 409 with a live
+`{seats, storage_packs, own_storage, interval, discount_code?}`; 409 with a live
 subscription or when paid seats < seats used − free seats; a trimmed
 non-empty code is resolved after those checks and before the customer is
 ensured, audited as `discount_code`; customer stored in
 `billing_accounts` once), `ChangeSubscription` (404 without a live
-subscription, 409 for the same seat rule or below used bytes, applies the PATCH answer immediately), `Portal`,
+subscription, 409 for the same seat rule or below used bytes, a missing
+`own_storage` keeps the live one, applies the PATCH answer immediately; audit
+metadata carries `own_storage`), `Portal`,
 `Summary`, `Sync`, `HandleEvent` (stores `billing_events` first, a
 processed/failed duplicate is a no-op, an unfinished one is retried; user from
 `billing_accounts.provider_customer_id` (`custom_data` must match it, unknown customers are rejected, upserts never change `user_id`); 4xx outcomes such
@@ -1591,9 +1607,9 @@ is its own WebService (`billing.WebhookService` through
 /admin/billing/events/{id}/replay`; `GET /billing/me` stays in
 `ee/storageusage` and merges `storageusage.BillingSummary` (plan, status,
 interval, seats (paid quantity), seats_used, seat_limit (paid + free), storage_packs,
-current_period_end, cancel_at_period_end) through `RoutesConfig.Billing` only when set;
+own_storage, current_period_end, cancel_at_period_end) through `RoutesConfig.Billing` only when set;
 `registration.WithBilling` adds `billing: {provider, environment,
-client_token, prices, free_seats, free_quota_bytes, seat_included_bytes,
+client_token, prices (`own_storage` null when not offered), free_seats, free_quota_bytes, seat_included_bytes,
 storage_pack_bytes}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`
 smoke (`TestEnterpriseBillingPaddleSmoke`) drives signed fake events against a
 fake Paddle. The SPA side is the `/settings/billing` plan card and editor (see

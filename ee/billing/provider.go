@@ -28,7 +28,10 @@ var ErrInvalidSignature = errors.New("invalid webhook signature")
 type Items struct {
 	Seats        int64
 	StoragePacks int64
+	OwnStorage   bool
 	Interval     string
+
+	keepOwnStorage bool
 }
 
 // Validate normalizes the interval and checks the quantities.
@@ -47,8 +50,20 @@ func (i Items) Validate() (Items, error) {
 	if i.StoragePacks < 0 {
 		return i, domain.NewErrorUser("storage_packs must not be negative")
 	}
-	if i.Seats+i.StoragePacks < 1 {
-		return i, domain.NewErrorUser("buy at least one seat or storage pack; cancel the subscription to return to Free")
+	if i.Seats+i.StoragePacks < 1 && !i.OwnStorage {
+		return i, domain.NewErrorUser("buy at least one seat, storage pack or the Own storage add-on; cancel the subscription to return to Free")
+	}
+	return i, nil
+}
+
+// ValidItems validates the items against what this server offers.
+func (c Config) ValidItems(i Items) (Items, error) {
+	i, err := i.Validate()
+	if err != nil {
+		return i, err
+	}
+	if i.OwnStorage && !c.OwnStorage {
+		return i, domain.NewErrorUser("the Own storage add-on is not offered")
 	}
 	return i, nil
 }

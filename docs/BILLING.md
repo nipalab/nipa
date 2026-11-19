@@ -144,6 +144,29 @@ the free entitlement. A failure is only logged; the next start finishes the
 remaining owners. The admin sync route stays for re-reading one owner's
 subscriptions from Paddle.
 
+### Own storage add-on
+
+The optional Own storage add-on (`PADDLE_PRICE_OWN_STORAGE_MONTHLY` and
+`_YEARLY`, both or neither; unset = not offered) is what lets an owner write
+to their own S3 servers (`docs/BYO_STORAGE.md`). It is one Paddle item of
+quantity 1 at the subscription's interval, mapped to `Items.OwnStorage` and
+stored as `billing_subscriptions.own_storage` (postgres migration `000014`).
+It adds no seats or bytes, and the add-on alone is a valid plan. The interval
+rule applies to it like to seats and packs, and a price the server does not
+know (including an own-storage price while the add-on is not offered) makes
+the subscription unmappable.
+
+`Service.OwnStorageActive(owner)` is true when the live subscription carries
+the add-on. It is the `byostorage` entitlement: `nipad-ee` attaches it only
+when billing is on, so with `BILLING_PROVIDER=off` own storage is never gated.
+Answers are cached per owner for 60 s; `Apply` (webhooks, plan changes, sync,
+replay) forgets the owner's entry, and a lookup that started before the
+change is not cached. Without the add-on, projects on own storage are
+read-only: pushes and merges get 402, clones and reads keep working, and
+creating, editing or assigning storage servers gets 402. Dropping the add-on
+is allowed while projects still use own storage. There is no super-admin
+override for the add-on.
+
 ### Admin override
 
 `owner_quota.override_bytes` is the super-admin override and always wins:
@@ -199,14 +222,15 @@ shows a refused code under the field.
 
 ### Change seats, storage or interval
 
-`PATCH /api/v1/billing/subscription {seats, storage_packs, interval?}`
-(missing interval keeps the current one) replaces the whole item list, so an
+`PATCH /api/v1/billing/subscription {seats, storage_packs, own_storage?,
+interval?}` (a missing interval or `own_storage` keeps the current one) replaces the whole item list, so an
 interval change swaps both prices in one update, with
 `proration_billing_mode: prorated_immediately` and
 `on_payment_failure: prevent_change`. It answers:
 
 - 404 without a live subscription,
-- 400 for negative quantities or zero seats and zero packs,
+- 400 for negative quantities, an empty plan (no seat, pack or add-on) or an
+  add-on the server does not offer,
 - 409 when paid plus free seats would drop below the seats in use, when the computed quota
   would drop below the bytes in use, or when Paddle refuses (a 409 or a
   `subscription_locked*` / `subscription_update_when*` error, for example a
@@ -230,12 +254,13 @@ cancellation. 404 when the user never checked out.
 summary (`user_id`, `used_bytes`, `quota_bytes`, `orgs`) and, when billing is
 on, `plan` (`free` without a live subscription, otherwise `team`), `status`,
 `interval`, `seats` (subscribed paid quantity, 0 on free), `seats_used`,
-`seat_limit` (paid plus free seats), `storage_packs`, `current_period_end` and
+`seat_limit` (paid plus free seats), `storage_packs`, `own_storage`, `current_period_end` and
 `cancel_at_period_end`. It answers 404 when the storage ledger is off.
 
 `GET /api/v1/auth/capabilities` (owned by `ee/registration`) carries
 `billing: {provider, environment, client_token, prices: {seat: {monthly,
-yearly}, storage: {monthly, yearly}}, free_seats, free_quota_bytes,
+yearly}, storage: {monthly, yearly}, own_storage: {monthly, yearly} | null},
+free_seats, free_quota_bytes,
 seat_included_bytes, storage_pack_bytes}` when billing is on, and omits it
 otherwise. Price ids and the client token are public by design; the SPA needs
 them for Paddle.js price previews. The four sizes (`BILLING_FREE_SEATS`,
@@ -310,6 +335,7 @@ back to a built-in value.
 | `PADDLE_CLIENT_TOKEN` | client-side token for Paddle.js (public) |
 | `PADDLE_PRICE_SEAT_MONTHLY`, `PADDLE_PRICE_SEAT_YEARLY` | seat price ids |
 | `PADDLE_PRICE_STORAGE_MONTHLY`, `PADDLE_PRICE_STORAGE_YEARLY` | storage pack price ids |
+| `PADDLE_PRICE_OWN_STORAGE_MONTHLY`, `PADDLE_PRICE_OWN_STORAGE_YEARLY` | optional Own storage add-on price ids, both or neither; every price id must be distinct |
 | `BILLING_FREE_SEATS` | seats free on every plan, at least 1 (the owner is a seat); paid seats add to them |
 | `BILLING_SEAT_INCLUDED_BYTES` | storage each paid seat adds, > 0 |
 | `BILLING_STORAGE_PACK_BYTES` | storage each pack adds, > 0 |
