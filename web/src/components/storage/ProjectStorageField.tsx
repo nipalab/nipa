@@ -17,10 +17,10 @@ export function useProjectStorageChoice(org: string): ProjectStorageChoice {
   const { enabled } = useByoStorage()
   const { data } = useAsync(async () => {
     if (!enabled) return null
-    const [servers, orgDefault] = await Promise.all([
-      listStorageServers().catch(() => [] as StorageServerResponse[]),
-      getOrgStorageServer(org).catch(() => null),
-    ])
+    const orgDefault = await getOrgStorageServer(org).catch(() => null)
+    const servers = orgDefault?.can_manage
+      ? await listStorageServers().catch(() => [] as StorageServerResponse[])
+      : []
     return { servers, orgDefault: orgDefault?.server ?? null }
   }, [enabled, org])
   const servers = data?.servers ?? []

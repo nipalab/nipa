@@ -361,12 +361,16 @@ describe('pages', () => {
     expect(text()).toContain('Nipa storage')
   })
 
-  async function newProject(servers: StorageServerResponse[], orgDefault: { id: string; name: string } | null) {
+  async function newProject(
+    servers: StorageServerResponse[],
+    orgDefault: { id: string; name: string } | null,
+    canManage = true,
+  ) {
     byo()
     auth.me = { id: '1', is_admin: true, is_super_admin: false }
     api.listOrgs.mockResolvedValue([])
     api.listStorageServers.mockResolvedValue(servers)
-    api.getOrgStorageServer.mockResolvedValue({ server: orgDefault, can_manage: true })
+    api.getOrgStorageServer.mockResolvedValue({ server: orgDefault, can_manage: canManage })
     const view = await renderRoute('/:org/new', '/acme/new', <NewProjectPage />)
     await waitFor(() => document.querySelector('form') !== null)
     await type(field('Name'), 'Game')
@@ -409,6 +413,17 @@ describe('pages', () => {
   it('names an org default the user does not own', async () => {
     await newProject([server()], { id: 's9', name: 'Owner bucket' })
     await waitFor(() => document.querySelector('option[value=""]')?.textContent === 'Organization default (Owner bucket)')
+  })
+
+  it('offers no servers to an org owner who is not the billing owner', async () => {
+    api.createProject.mockResolvedValue({ slug: 'game' } as never)
+    const view = await newProject([server()], { id: 's9', name: 'Owner bucket' }, false)
+    await waitFor(() => text().includes('stored on Owner bucket'))
+    expect(document.querySelector('select')).toBeNull()
+    expect(api.listStorageServers).not.toHaveBeenCalled()
+    await click(buttonByText(document.body, 'Create repository'))
+    await waitFor(() => view.location() === '/acme/game')
+    expect(api.createProject).toHaveBeenCalledWith('acme', 'Game', '', 'game', undefined)
   })
 
   it('mentions the org default when the user has no servers', async () => {
