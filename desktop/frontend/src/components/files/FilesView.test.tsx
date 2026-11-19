@@ -82,7 +82,7 @@ const lockStatus = (): LockStatus => ({
   files: [],
 });
 
-const commit = (id: string, message: string): Commit => ({ id, hash: `${id}hash`, parents: [], author: "Mina", email: "mina@x", message, date: new Date().toISOString() });
+const commit = (id: string, message: string): Commit => ({ id, hash: `${id}hash`, parents: [], author: "Mina", email: "mina@x", message, date: new Date().toISOString(), origin: "" });
 
 let changed: ((c: RepoChanged) => void) | undefined;
 const props = { busy: false, notify: vi.fn(), onHistory: vi.fn(), onRestore: vi.fn(), onAddSparse: vi.fn() };

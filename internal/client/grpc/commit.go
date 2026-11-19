@@ -42,12 +42,15 @@ func (c *Client) WalkCommits(ctx context.Context, org, project, startCommitID, s
 			continue
 		}
 		entries = append(entries, &clientDomain.CommitWalkEntry{
-			ID:        e.GetCommitId(),
-			Hash:      e.GetCommitHash(),
-			Parent1ID: e.GetParent_1Id(),
-			Parent2ID: e.GetParent_2Id(),
-			Message:   e.GetMessage(),
-			CreatedAt: e.GetCreatedAt().AsTime(),
+			ID:          e.GetCommitId(),
+			Hash:        e.GetCommitHash(),
+			Parent1ID:   e.GetParent_1Id(),
+			Parent2ID:   e.GetParent_2Id(),
+			Message:     e.GetMessage(),
+			CreatedAt:   e.GetCreatedAt().AsTime(),
+			AuthorName:  e.GetAuthorName(),
+			AuthorEmail: e.GetAuthorEmail(),
+			Origin:      e.GetOrigin(),
 		})
 	}
 	return entries, nil
@@ -59,13 +62,16 @@ func toCommitDetail(res *pb.GetCommitResponse) *clientDomain.CommitDetail {
 	}
 	commit := res.GetCommit()
 	return &clientDomain.CommitDetail{
-		ID:        commit.GetCommitId(),
-		Hash:      commit.GetCommitHash(),
-		TreeHash:  commit.GetTreeHash(),
-		Parent1ID: commit.GetParent_1Id(),
-		Parent2ID: commit.GetParent_2Id(),
-		Message:   commit.GetMessage(),
-		CreatedAt: commit.GetCreatedAt().AsTime(),
-		Tree:      toServerTreeNode(res.GetRootTree()),
+		ID:          commit.GetCommitId(),
+		Hash:        commit.GetCommitHash(),
+		TreeHash:    commit.GetTreeHash(),
+		Parent1ID:   commit.GetParent_1Id(),
+		Parent2ID:   commit.GetParent_2Id(),
+		Message:     commit.GetMessage(),
+		CreatedAt:   commit.GetCreatedAt().AsTime(),
+		AuthorName:  commit.GetAuthorName(),
+		AuthorEmail: commit.GetAuthorEmail(),
+		Origin:      commit.GetOrigin(),
+		Tree:        toServerTreeNode(res.GetRootTree()),
 	}
 }

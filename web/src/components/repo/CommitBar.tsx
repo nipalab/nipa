@@ -3,6 +3,7 @@ import { HistoryIcon } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import type { CommitResponse } from '../../api/models'
 import { ActorAvatar } from '../ActorAvatar'
+import { ImportedLabel } from './ImportedLabel'
 import { absoluteTime, commitTitle, relativeTime, shortSha } from './format'
 import { commitUrl, commitsUrl } from './repoPaths'
 
@@ -39,6 +40,7 @@ export function CommitBar({
         {' · '}
         <span title={absoluteTime(commit.created_at)}>{relativeTime(commit.created_at)}</span>
       </Text>
+      <ImportedLabel origin={commit.origin} />
       <PrimerLink as={Link} to={commitsUrl(org, project, rev, path)} className="nipa-commit-bar-history">
         <HistoryIcon /> History
       </PrimerLink>

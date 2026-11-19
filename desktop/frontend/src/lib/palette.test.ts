@@ -3,7 +3,7 @@ import type { Commit, FileHit } from "@/api/desktop";
 import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "./palette";
 
 const hit = (path: string): FileHit => ({ path, name: path.slice(path.lastIndexOf("/") + 1), size: 1, binary: false, kind: "text" });
-const commit = (id: string, message: string, hash = "f".repeat(64)): Commit => ({ id, hash, parents: [], author: "Ann", email: "", message, date: "" });
+const commit = (id: string, message: string, hash = "f".repeat(64)): Commit => ({ id, hash, parents: [], author: "Ann", email: "", message, date: "", origin: "" });
 
 describe("mergeFileHits", () => {
   it("ranks every clone's hits together and keeps clone order on ties", () => {

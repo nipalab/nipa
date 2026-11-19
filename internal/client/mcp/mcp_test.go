@@ -586,6 +586,30 @@ func TestLog_Success(t *testing.T) {
 	require.Equal(t, "Alice", log.Commits[0].AuthorName)
 }
 
+func TestLog_Imported(t *testing.T) {
+	root := setupRepo(t, nil)
+	origin := "git:default:0123456789abcdef0123456789abcdef01234567"
+	entries := []*serverDomain.CommitLogEntry{{
+		Commit:     serverDomain.Commit{ID: 9001, Message: "imported", AuthorName: "Linus", AuthorEmail: "linus@git.dev", Origin: origin},
+		AuthorName: "Importer",
+	}}
+	session := connect(t, Options{NewUseCases: func() UseCases {
+		return UseCases{
+			Repo:      usecase.NewRepo(loggedInAuth(), fakeRepoClient{log: entries}, localrepo.NewLocalRepo()),
+			Connector: fakeConnector{},
+		}
+	}})
+
+	res := call(t, session, "nipa_log", map[string]any{"repo": root})
+	require.False(t, res.IsError)
+	var log output.Log
+	require.NoError(t, json.Unmarshal([]byte(toolText(t, res)), &log))
+	require.Len(t, log.Commits, 1)
+	require.Equal(t, "Linus", log.Commits[0].AuthorName)
+	require.Equal(t, "linus@git.dev", log.Commits[0].AuthorEmail)
+	require.Equal(t, origin, log.Commits[0].Origin)
+}
+
 func TestLog_NotConfigured(t *testing.T) {
 	root := setupRepo(t, nil)
 	session := connect(t, Options{NewUseCases: func() UseCases { return UseCases{} }})

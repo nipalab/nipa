@@ -448,6 +448,7 @@ const commit = (n: number, minutes: number, author: string, message: string): Co
   email: `${author.split(" ")[0].toLowerCase()}@acme.dev`,
   message,
   date: ago(minutes),
+  origin: "",
 });
 
 export const commits: Commit[] = [

@@ -41,6 +41,7 @@ type CommitResponse struct {
 	AuthorName  string    `json:"author_name,omitempty"`
 	AuthorEmail string    `json:"author_email,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
+	Origin      string    `json:"origin,omitempty"`
 }
 
 type DiffLineResponse struct {

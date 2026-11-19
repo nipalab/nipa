@@ -4631,6 +4631,7 @@ type CommitLogEntry struct {
 	AuthorEmail   string                 `protobuf:"bytes,6,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
 	Message       string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Origin        string                 `protobuf:"bytes,9,opt,name=origin,proto3" json:"origin,omitempty"` // source-system commit for imported commits, see docs/GIT_IMPORT.md
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4719,6 +4720,13 @@ func (x *CommitLogEntry) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *CommitLogEntry) GetOrigin() string {
+	if x != nil {
+		return x.Origin
+	}
+	return ""
 }
 
 type GetCommitLogRequest struct {
@@ -4858,6 +4866,9 @@ type CommitDetail struct {
 	Parent_2Id    *string                `protobuf:"bytes,5,opt,name=parent_2_id,json=parent2Id,proto3,oneof" json:"parent_2_id,omitempty"` // base36 snow ID; set for merge commits
 	Message       string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	AuthorName    string                 `protobuf:"bytes,8,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"` // source author of an imported commit; empty for native commits
+	AuthorEmail   string                 `protobuf:"bytes,9,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
+	Origin        string                 `protobuf:"bytes,10,opt,name=origin,proto3" json:"origin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4939,6 +4950,27 @@ func (x *CommitDetail) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *CommitDetail) GetAuthorName() string {
+	if x != nil {
+		return x.AuthorName
+	}
+	return ""
+}
+
+func (x *CommitDetail) GetAuthorEmail() string {
+	if x != nil {
+		return x.AuthorEmail
+	}
+	return ""
+}
+
+func (x *CommitDetail) GetOrigin() string {
+	if x != nil {
+		return x.Origin
+	}
+	return ""
 }
 
 type GetCommitRequest struct {
@@ -5053,6 +5085,9 @@ type CommitWalkEntry struct {
 	Parent_2Id    *string                `protobuf:"bytes,4,opt,name=parent_2_id,json=parent2Id,proto3,oneof" json:"parent_2_id,omitempty"` // base36 snow ID; set for merge commits
 	Message       string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	AuthorName    string                 `protobuf:"bytes,7,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"` // source author of an imported commit; empty for native commits
+	AuthorEmail   string                 `protobuf:"bytes,8,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
+	Origin        string                 `protobuf:"bytes,9,opt,name=origin,proto3" json:"origin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5127,6 +5162,27 @@ func (x *CommitWalkEntry) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *CommitWalkEntry) GetAuthorName() string {
+	if x != nil {
+		return x.AuthorName
+	}
+	return ""
+}
+
+func (x *CommitWalkEntry) GetAuthorEmail() string {
+	if x != nil {
+		return x.AuthorEmail
+	}
+	return ""
+}
+
+func (x *CommitWalkEntry) GetOrigin() string {
+	if x != nil {
+		return x.Origin
+	}
+	return ""
 }
 
 type WalkCommitsRequest struct {
@@ -13221,7 +13277,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\"n\n" +
 	"\x18MergeFastForwardResponse\x12%\n" +
 	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\x12+\n" +
-	"\x12moved_to_commit_id\x18\x02 \x01(\tR\x0fmovedToCommitId\"\xd1\x02\n" +
+	"\x12moved_to_commit_id\x18\x02 \x01(\tR\x0fmovedToCommitId\"\xe9\x02\n" +
 	"\x0eCommitLogEntry\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
@@ -13233,7 +13289,8 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\fauthor_email\x18\x06 \x01(\tR\vauthorEmail\x12\x18\n" +
 	"\amessage\x18\a \x01(\tR\amessage\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x0e\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x16\n" +
+	"\x06origin\x18\t \x01(\tR\x06originB\x0e\n" +
 	"\f_parent_1_idB\x0e\n" +
 	"\f_parent_2_id\"\xc9\x01\n" +
 	"\x13GetCommitLogRequest\x12/\n" +
@@ -13245,7 +13302,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x10_start_commit_id\"_\n" +
 	"\x14GetCommitLogResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x12/\n" +
-	"\acommits\x18\x02 \x03(\v2\x15.greet.CommitLogEntryR\acommits\"\xa8\x02\n" +
+	"\acommits\x18\x02 \x03(\v2\x15.greet.CommitLogEntryR\acommits\"\x84\x03\n" +
 	"\fCommitDetail\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
@@ -13255,7 +13312,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\vparent_2_id\x18\x05 \x01(\tH\x01R\tparent2Id\x88\x01\x01\x12\x18\n" +
 	"\amessage\x18\x06 \x01(\tR\amessage\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x0e\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1f\n" +
+	"\vauthor_name\x18\b \x01(\tR\n" +
+	"authorName\x12!\n" +
+	"\fauthor_email\x18\t \x01(\tR\vauthorEmail\x12\x16\n" +
+	"\x06origin\x18\n" +
+	" \x01(\tR\x06originB\x0e\n" +
 	"\f_parent_1_idB\x0e\n" +
 	"\f_parent_2_id\"`\n" +
 	"\x10GetCommitRequest\x12/\n" +
@@ -13263,7 +13325,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tcommit_id\x18\x02 \x01(\tR\bcommitId\"r\n" +
 	"\x11GetCommitResponse\x12+\n" +
 	"\x06commit\x18\x01 \x01(\v2\x13.greet.CommitDetailR\x06commit\x120\n" +
-	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\x8e\x02\n" +
+	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\xea\x02\n" +
 	"\x0fCommitWalkEntry\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
@@ -13272,7 +13334,11 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\vparent_2_id\x18\x04 \x01(\tH\x01R\tparent2Id\x88\x01\x01\x12\x18\n" +
 	"\amessage\x18\x05 \x01(\tR\amessage\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x0e\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1f\n" +
+	"\vauthor_name\x18\a \x01(\tR\n" +
+	"authorName\x12!\n" +
+	"\fauthor_email\x18\b \x01(\tR\vauthorEmail\x12\x16\n" +
+	"\x06origin\x18\t \x01(\tR\x06originB\x0e\n" +
 	"\f_parent_1_idB\x0e\n" +
 	"\f_parent_2_id\"\xc1\x01\n" +
 	"\x12WalkCommitsRequest\x12/\n" +

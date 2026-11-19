@@ -11968,6 +11968,7 @@ type BlameCommit struct {
 	AuthorEmail   string                 `protobuf:"bytes,4,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
 	Message       string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC 3339
+	Origin        string                 `protobuf:"bytes,7,opt,name=origin,proto3" json:"origin,omitempty"`                        // source-system commit for imported commits
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12040,6 +12041,13 @@ func (x *BlameCommit) GetMessage() string {
 func (x *BlameCommit) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *BlameCommit) GetOrigin() string {
+	if x != nil {
+		return x.Origin
 	}
 	return ""
 }
@@ -13101,7 +13109,7 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\tBlameLine\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1b\n" +
 	"\tcommit_id\x18\x02 \x01(\tR\bcommitId\x12 \n" +
-	"\vuncommitted\x18\x03 \x01(\bR\vuncommitted\"\xae\x01\n" +
+	"\vuncommitted\x18\x03 \x01(\bR\vuncommitted\"\xc6\x01\n" +
 	"\vBlameCommit\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\tR\x04hash\x12\x1f\n" +
@@ -13110,7 +13118,8 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\fauthor_email\x18\x04 \x01(\tR\vauthorEmail\x12\x18\n" +
 	"\amessage\x18\x05 \x01(\tR\amessage\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\tR\tcreatedAt\"\xbb\x01\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x16\n" +
+	"\x06origin\x18\a \x01(\tR\x06origin\"\xbb\x01\n" +
 	"\vBlameResult\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\tR\brevision\x12+\n" +

@@ -1,5 +1,6 @@
 import type { Blame, Commit, FileDiff } from "@/api/desktop";
 import { commitTitle, shortId } from "@/lib/history";
+import { originShortId, originSystemName } from "@/lib/origin";
 import { timeAgo } from "@/lib/time";
 import { translate , locale } from "@/i18n";
 
@@ -36,6 +37,8 @@ export function blameCells(blame: Blame, now: number = Date.now()): BlameCells {
     } else if (commit) {
       label = translate("blame.text", { email: commit.author || commit.email, value: timeAgo(commit.date, now) });
       title = translate("blame.text2", { value: shortId(commit.id), value2: commitTitle(commit.message), email: commit.author || commit.email, toLocaleString: new Date(commit.date).toLocaleString(locale()) });
+      const system = originSystemName(commit.origin);
+      if (system) title += `\n${translate("history.importedFrom", { system })} ${originShortId(commit.origin)}`;
     } else {
       label = translate("blame.older");
       title = translate("blame.olderThanTheHistoryNipa");

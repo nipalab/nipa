@@ -315,3 +315,13 @@ func TestService_HistoryWithoutDaemon(t *testing.T) {
 	_, err = svc.CommitFiles(ctx, "/work/game", "c1", "")
 	require.Error(t, err)
 }
+
+func TestToCommit_Origin(t *testing.T) {
+	e := logEntry("c4")
+	e.AuthorName = "Linus"
+	e.Origin = "git:default:0123456789abcdef0123456789abcdef01234567"
+	c := toCommit(e)
+	require.Equal(t, "Linus", c.Author)
+	require.Equal(t, "git:default:0123456789abcdef0123456789abcdef01234567", c.Origin)
+	require.Empty(t, toCommit(logEntry("c5")).Origin)
+}

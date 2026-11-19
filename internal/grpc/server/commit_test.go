@@ -187,3 +187,27 @@ func TestWalkCommits_NoPermission(t *testing.T) {
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
+
+func TestDomainCommitToPB_ImportedFields(t *testing.T) {
+	origin := "git:default:0123456789abcdef0123456789abcdef01234567"
+	commit := &domain.Commit{
+		ID:          snow.ID(7),
+		Message:     "imported",
+		AuthorName:  "Linus",
+		AuthorEmail: "linus@git.dev",
+		Origin:      origin,
+	}
+	detail := domainCommitToDetailPB(commit, nil)
+	require.Equal(t, "Linus", detail.AuthorName)
+	require.Equal(t, "linus@git.dev", detail.AuthorEmail)
+	require.Equal(t, origin, detail.Origin)
+
+	walk := domainCommitToWalkEntryPB(commit)
+	require.Equal(t, "Linus", walk.AuthorName)
+	require.Equal(t, "linus@git.dev", walk.AuthorEmail)
+	require.Equal(t, origin, walk.Origin)
+
+	native := domainCommitToWalkEntryPB(&domain.Commit{ID: snow.ID(8)})
+	require.Empty(t, native.AuthorName)
+	require.Empty(t, native.Origin)
+}

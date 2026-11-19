@@ -485,6 +485,7 @@ message CommitLogEntry {
     string author_email = 6;
     string message = 7;
     google.protobuf.Timestamp created_at = 8;
+    string origin = 9; // source-system commit for imported commits, see docs/GIT_IMPORT.md
 }
 
 message GetCommitLogRequest {
@@ -508,6 +509,9 @@ message CommitDetail {
     optional string parent_2_id = 5; // base36 snow ID; set for merge commits
     string message = 6;
     google.protobuf.Timestamp created_at = 7;
+    string author_name = 8; // source author of an imported commit; empty for native commits
+    string author_email = 9;
+    string origin = 10;
 }
 
 message GetCommitRequest {
@@ -527,6 +531,9 @@ message CommitWalkEntry {
     optional string parent_2_id = 4; // base36 snow ID; set for merge commits
     string message = 5;
     google.protobuf.Timestamp created_at = 6;
+    string author_name = 7; // source author of an imported commit; empty for native commits
+    string author_email = 8;
+    string origin = 9;
 }
 
 message WalkCommitsRequest {

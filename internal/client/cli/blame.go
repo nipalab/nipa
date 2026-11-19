@@ -95,6 +95,7 @@ type blameJSONCommit struct {
 	AuthorEmail string    `json:"author_email"`
 	Message     string    `json:"message"`
 	CreatedAt   time.Time `json:"created_at"`
+	Origin      string    `json:"origin,omitempty"`
 }
 
 type blameJSONResult struct {
@@ -111,7 +112,7 @@ func blameJSON(res *usecase.BlameResult) blameJSONResult {
 		out.Lines = append(out.Lines, blameJSONLine{Line: i + 1, Text: l.Text, CommitID: l.CommitID, Uncommitted: l.Uncommitted})
 	}
 	for _, c := range res.Commits {
-		out.Commits = append(out.Commits, blameJSONCommit{ID: c.ID, Hash: c.Hash, AuthorName: c.AuthorName, AuthorEmail: c.AuthorEmail, Message: strings.TrimSpace(c.Message), CreatedAt: c.CreatedAt})
+		out.Commits = append(out.Commits, blameJSONCommit{ID: c.ID, Hash: c.Hash, AuthorName: c.AuthorName, AuthorEmail: c.AuthorEmail, Message: strings.TrimSpace(c.Message), CreatedAt: c.CreatedAt, Origin: c.Origin})
 	}
 	return out
 }

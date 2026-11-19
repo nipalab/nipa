@@ -83,6 +83,7 @@ func blameResult(res *usecase.BlameResult) *daemonpb.BlameResult {
 			AuthorEmail: c.AuthorEmail,
 			Message:     c.Message,
 			CreatedAt:   c.CreatedAt.UTC().Format(time.RFC3339),
+			Origin:      c.Origin,
 		})
 	}
 	return out

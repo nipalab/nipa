@@ -36,6 +36,7 @@ type BlameCommit struct {
 	AuthorEmail string
 	Message     string
 	CreatedAt   time.Time
+	Origin      string
 }
 
 // BlameLine is one line of the blamed version. CommitID is empty when the line
@@ -395,7 +396,8 @@ func tooLargeToBlame(p string) error {
 }
 
 func blameCommit(e *serverDomain.CommitLogEntry) BlameCommit {
-	c := BlameCommit{ID: e.ID.Base36(), AuthorName: e.AuthorName, AuthorEmail: e.AuthorEmail, Message: e.Message, CreatedAt: e.CreatedAt}
+	name, email := e.DisplayAuthor()
+	c := BlameCommit{ID: e.ID.Base36(), AuthorName: name, AuthorEmail: email, Message: e.Message, CreatedAt: e.CreatedAt, Origin: e.Origin}
 	if e.Hash != (serverDomain.Hash{}) {
 		c.Hash = e.Hash.String()
 	}

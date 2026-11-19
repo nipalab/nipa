@@ -8,6 +8,7 @@ import { CopyButton } from '../components/CopyButton'
 import { LoadMore } from '../components/LoadMore'
 import { BranchSelector } from '../components/repo/BranchSelector'
 import { DiffView } from '../components/repo/DiffView'
+import { ImportedLabel } from '../components/repo/ImportedLabel'
 import { absoluteTime, commitTitle, relativeTime, shortSha } from '../components/repo/format'
 import { commitUrl, commitsUrl, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -81,6 +82,7 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
               <ActorAvatar actor={{ user_id: commit.author_email ?? authorOf(commit), name: authorOf(commit) }} size={20} />
               <strong>{authorOf(commit)}</strong> committed{' '}
               <span title={absoluteTime(commit.created_at)}>{relativeTime(commit.created_at)}</span>
+              <ImportedLabel origin={commit.origin} />
             </span>
           )}
           <span className="nipa-commit-ids">
@@ -193,6 +195,7 @@ export default function CommitsPage() {
                         <ActorAvatar actor={{ user_id: entry.author_email ?? authorOf(entry), name: authorOf(entry) }} size={16} />
                         <strong>{authorOf(entry)}</strong> committed{' '}
                         <span title={absoluteTime(entry.created_at)}>{relativeTime(entry.created_at)}</span>
+                        <ImportedLabel origin={entry.origin} />
                       </div>
                     </div>
                     <span className="nipa-sha-group">

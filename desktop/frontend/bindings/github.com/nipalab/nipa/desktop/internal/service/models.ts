@@ -220,6 +220,7 @@ export interface Commit {
      * RFC 3339
      */
     "date": string;
+    "origin": string;
 }
 
 export interface ConflictFile {

@@ -310,12 +310,14 @@ func toBranchResponse(branch *domain.Branch) model.BranchResponse {
 }
 
 func toCommitResponse(entry *domain.CommitLogEntry) model.CommitResponse {
+	authorName, authorEmail := entry.DisplayAuthor()
 	resp := model.CommitResponse{
 		ID:          entry.ID.Base36(),
 		Message:     entry.Message,
-		AuthorName:  entry.AuthorName,
-		AuthorEmail: entry.AuthorEmail,
+		AuthorName:  authorName,
+		AuthorEmail: authorEmail,
 		CreatedAt:   entry.CreatedAt,
+		Origin:      entry.Origin,
 	}
 	if entry.Parent1ID != nil {
 		resp.Parent1ID = entry.Parent1ID.Base36()

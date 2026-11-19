@@ -44,12 +44,15 @@ func TestClient_GetCommit_Success(t *testing.T) {
 	parent := snow.ID(3).Base36()
 	fs := &fakeServer{getCommitResp: &pb.GetCommitResponse{
 		Commit: &pb.CommitDetail{
-			CommitId:   snow.ID(7).Base36(),
-			CommitHash: commitHash.String(),
-			TreeHash:   treeHash.String(),
-			Parent_1Id: &parent,
-			Message:    "hello",
-			CreatedAt:  timestamppb.New(now),
+			CommitId:    snow.ID(7).Base36(),
+			CommitHash:  commitHash.String(),
+			TreeHash:    treeHash.String(),
+			Parent_1Id:  &parent,
+			Message:     "hello",
+			CreatedAt:   timestamppb.New(now),
+			AuthorName:  "Linus",
+			AuthorEmail: "linus@git.dev",
+			Origin:      "git:default:0123456789abcdef0123456789abcdef01234567",
 		},
 		RootTree: &pb.TreeManifest{
 			TreeHash: treeHash.String(),
@@ -74,6 +77,9 @@ func TestClient_GetCommit_Success(t *testing.T) {
 	require.Equal(t, "3", got.Parent1ID)
 	require.Empty(t, got.Parent2ID)
 	require.Equal(t, "hello", got.Message)
+	require.Equal(t, "Linus", got.AuthorName)
+	require.Equal(t, "linus@git.dev", got.AuthorEmail)
+	require.Equal(t, "git:default:0123456789abcdef0123456789abcdef01234567", got.Origin)
 	require.True(t, now.Equal(got.CreatedAt))
 	require.NotNil(t, got.Tree)
 	require.Len(t, got.Tree.FileChildren, 1)
@@ -99,7 +105,7 @@ func TestClient_WalkCommits_Success(t *testing.T) {
 	p1, p2 := snow.ID(1).Base36(), snow.ID(2).Base36()
 	fs := &fakeServer{walkCommitsResp: &pb.WalkCommitsResponse{
 		Commits: []*pb.CommitWalkEntry{
-			{CommitId: "2", CommitHash: serverDomain.Hash{0x02}.String(), Parent_1Id: &p1, Message: "two", CreatedAt: timestamppb.New(now)},
+			{CommitId: "2", CommitHash: serverDomain.Hash{0x02}.String(), Parent_1Id: &p1, Message: "two", CreatedAt: timestamppb.New(now), AuthorName: "Linus", AuthorEmail: "linus@git.dev", Origin: "svn:repo:12:trunk"},
 			{CommitId: "1", CommitHash: serverDomain.Hash{0x01}.String(), Message: "one", CreatedAt: timestamppb.New(now)},
 		},
 	}}
@@ -117,6 +123,9 @@ func TestClient_WalkCommits_Success(t *testing.T) {
 	require.Equal(t, p1, got[0].Parent1ID)
 	require.Empty(t, got[0].Parent2ID)
 	require.Equal(t, "two", got[0].Message)
+	require.Equal(t, "Linus", got[0].AuthorName)
+	require.Equal(t, "linus@git.dev", got[0].AuthorEmail)
+	require.Equal(t, "svn:repo:12:trunk", got[0].Origin)
 	require.Equal(t, "1", got[1].ID)
 	require.True(t, now.Equal(got[1].CreatedAt))
 }

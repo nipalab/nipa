@@ -54,7 +54,7 @@ func TestService_Blame(t *testing.T) {
 			Revision:  "c9",
 			Truncated: true,
 			Lines:     []*daemonpb.BlameLine{{Text: "x", CommitId: "c1"}, {Text: "y", Uncommitted: true}, {Text: "z"}},
-			Commits:   []*daemonpb.BlameCommit{{Id: "c1", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@x", Message: "m", CreatedAt: "2026-11-04T09:00:00Z"}},
+			Commits:   []*daemonpb.BlameCommit{{Id: "c1", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@x", Message: "m", CreatedAt: "2026-11-04T09:00:00Z", Origin: "git:default:abc"}},
 		}}},
 	}
 	got, err := svc.Blame(ctx, "/work/game", "src/a.cs", "c9")
@@ -64,7 +64,7 @@ func TestService_Blame(t *testing.T) {
 	require.Equal(t, "c9", got.Revision)
 	require.True(t, got.Truncated)
 	require.Equal(t, []BlameLine{{CommitID: "c1"}, {Uncommitted: true}, {}}, got.Lines)
-	require.Equal(t, []Commit{{ID: "c1", Hash: "ff", Parents: []string{}, Author: "Ana", Email: "ana@x", Message: "m", Date: "2026-11-04T09:00:00Z"}}, got.Commits)
+	require.Equal(t, []Commit{{ID: "c1", Hash: "ff", Parents: []string{}, Author: "Ana", Email: "ana@x", Message: "m", Date: "2026-11-04T09:00:00Z", Origin: "git:default:abc"}}, got.Commits)
 }
 
 func TestService_BlameFailures(t *testing.T) {

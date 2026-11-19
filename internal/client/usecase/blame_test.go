@@ -393,3 +393,15 @@ func TestSplitBlameLines(t *testing.T) {
 	require.Equal(t, "", parentDir("a.txt"))
 	require.Equal(t, "x/y", parentDir("x/y/a.txt"))
 }
+
+func TestBlameCommit_ImportedAuthor(t *testing.T) {
+	c := blameCommit(&serverDomain.CommitLogEntry{
+		Commit:      serverDomain.Commit{ID: snow.ID(5), AuthorName: "Linus", AuthorEmail: "linus@git.dev", Origin: "git:default:0123456789abcdef0123456789abcdef01234567"},
+		AuthorName:  "Importer",
+		AuthorEmail: "importer@nipa.dev",
+	})
+	require.Equal(t, "Linus", c.AuthorName)
+	require.Equal(t, "linus@git.dev", c.AuthorEmail)
+	require.Equal(t, "git:default:0123456789abcdef0123456789abcdef01234567", c.Origin)
+	require.Empty(t, c.Hash)
+}

@@ -354,7 +354,8 @@ func (c *Collector) summarize(ctx context.Context, root string, text []aiprompt.
 }
 
 func commitOf(e *serverDomain.CommitLogEntry) aiprompt.Commit {
-	return aiprompt.Commit{ID: e.ID.Base36(), Subject: aiprompt.Subject(e.Message), Author: e.AuthorName}
+	name, _ := e.DisplayAuthor()
+	return aiprompt.Commit{ID: e.ID.Base36(), Subject: aiprompt.Subject(e.Message), Author: name}
 }
 
 func threadOf(t *domain.MergeRequestThread) aiprompt.Thread {

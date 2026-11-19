@@ -55,7 +55,7 @@ func TestServer_BlameStreamsProgressThenResult(t *testing.T) {
 		Path:     "tracked.txt",
 		Revision: "abc",
 		Lines:    []usecase.BlameLine{{Text: "a", CommitID: "c1"}, {Text: "b", Uncommitted: true}},
-		Commits:  []usecase.BlameCommit{{ID: "c1", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@x", Message: "m", CreatedAt: when}},
+		Commits:  []usecase.BlameCommit{{ID: "c1", Hash: "ff", AuthorName: "Ana", AuthorEmail: "ana@x", Message: "m", CreatedAt: when, Origin: "svn:repo:12:trunk"}},
 	}}
 	srv := newOpServer(t, RepoOps{Blame: SerialBlame(blamer)})
 	_, err := srv.repos.watch(root)
@@ -74,6 +74,7 @@ func TestServer_BlameStreamsProgressThenResult(t *testing.T) {
 	require.True(t, res.GetLines()[1].GetUncommitted())
 	require.Equal(t, "2026-01-02T03:04:05Z", res.GetCommits()[0].GetCreatedAt())
 	require.Equal(t, "Ana", res.GetCommits()[0].GetAuthorName())
+	require.Equal(t, "svn:repo:12:trunk", res.GetCommits()[0].GetOrigin())
 	require.Equal(t, []string{"tracked.txt@abc"}, blamer.calls)
 }
 

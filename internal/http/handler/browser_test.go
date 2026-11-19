@@ -289,3 +289,27 @@ func TestEtagMatches(t *testing.T) {
 	require.False(t, etagMatches(`"a"`, `"b"`))
 	require.False(t, etagMatches(``, `"b"`))
 }
+
+func TestHandler_ListCommits_ImportedAuthor(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	first := env.seedFiles(t, map[string]string{"a.txt": "one"})
+	second := env.seedPushTo(t, "main", first.CommitID.Base36(), map[string]string{"a.txt": "two"})
+	origin := "git:default:0123456789abcdef0123456789abcdef01234567"
+	_, err := env.db.Exec(`UPDATE commits SET author_name = ?, author_email = ?, origin = ? WHERE id = ?`,
+		"Linus", "linus@git.dev", origin, first.CommitID.Int64())
+	require.NoError(t, err)
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	appCtx := browserAppCtx(claims, map[string]string{"org": "default", "project": "default"}, map[string]string{"branch": "main"})
+	env.handler.ListCommits(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	commits := appCtx.response.([]model.CommitResponse)
+	require.Len(t, commits, 2)
+	require.Equal(t, second.CommitID.Base36(), commits[0].ID)
+	require.Empty(t, commits[0].Origin)
+	require.NotEqual(t, "Linus", commits[0].AuthorName)
+	require.NotEmpty(t, commits[0].AuthorName)
+	require.Equal(t, "Linus", commits[1].AuthorName)
+	require.Equal(t, "linus@git.dev", commits[1].AuthorEmail)
+	require.Equal(t, origin, commits[1].Origin)
+}

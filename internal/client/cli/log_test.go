@@ -14,6 +14,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -259,4 +260,30 @@ func TestIsTTY_NonTerminal(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 	require.False(t, isTTY(f))
+}
+
+func importedEntries() []*serverDomain.CommitLogEntry {
+	entries := testEntries()
+	entries[0].Origin = "git:default:0123456789abcdef0123456789abcdef01234567"
+	return entries
+}
+
+func TestSetupLogCmd_Imported(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newLogCli(importedEntries(), nil)
+
+	out, err := runLogCmd(t, cli, root, "--no-pager")
+	require.NoError(t, err)
+	require.Contains(t, out, "commit 6y1 (imported 0123456)\n")
+	require.Contains(t, out, "commit 6y2\n")
+
+	out, err = runLogCmd(t, cli, root, "--oneline", "--no-pager")
+	require.NoError(t, err)
+	require.Contains(t, out, "6y1 (imported 0123456) first commit")
+	require.Contains(t, out, "6y2 second commit")
+
+	t.Setenv(output.EnvFormat, "json")
+	out, err = runLogCmd(t, cli, root)
+	require.NoError(t, err)
+	require.Contains(t, out, `"origin":"git:default:0123456789abcdef0123456789abcdef01234567"`)
 }

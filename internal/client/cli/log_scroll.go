@@ -168,14 +168,21 @@ const (
 )
 
 func authorLine(e *serverDomain.CommitLogEntry) string {
-	name := e.AuthorName
+	name, email := e.DisplayAuthor()
 	if name == "" {
 		name = "unknown"
 	}
-	if e.AuthorEmail != "" {
-		return fmt.Sprintf("%s <%s>", name, e.AuthorEmail)
+	if email != "" {
+		return fmt.Sprintf("%s <%s>", name, email)
 	}
 	return name
+}
+
+func importedSuffix(e *serverDomain.CommitLogEntry) string {
+	if short := serverDomain.OriginShortID(e.Origin); short != "" {
+		return fmt.Sprintf(" (imported %s)", short)
+	}
+	return ""
 }
 
 func commitSubject(e *serverDomain.CommitLogEntry) string {
@@ -195,7 +202,7 @@ func formatCommitFull(e *serverDomain.CommitLogEntry, color bool) []string {
 		commitLine = ansiColorYellow + commitLine + ansiColorReset
 	}
 	lines := []string{
-		commitLine,
+		commitLine + importedSuffix(e),
 		fmt.Sprintf("Author: %s", authorLine(e)),
 		fmt.Sprintf("Date:   %s", e.CreatedAt.Format("Mon Jan 2 15:04:05 2006 -0700")),
 		"",
@@ -214,7 +221,7 @@ func formatCommitOneline(e *serverDomain.CommitLogEntry, color bool) string {
 	if color {
 		idStr = ansiColorYellow + idStr + ansiColorReset
 	}
-	return fmt.Sprintf("%s %s", idStr, commitSubject(e))
+	return fmt.Sprintf("%s%s %s", idStr, importedSuffix(e), commitSubject(e))
 }
 
 func logLines(entries []*serverDomain.CommitLogEntry, oneline bool, color bool) []string {

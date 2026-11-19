@@ -1223,6 +1223,7 @@ message BlameCommit {
     string author_email = 4;
     string message = 5;
     string created_at = 6; // RFC 3339
+    string origin = 7; // source-system commit for imported commits
 }
 
 message BlameResult {

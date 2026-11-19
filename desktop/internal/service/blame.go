@@ -62,7 +62,7 @@ func toBlame(res *daemonpb.BlameResult) *Blame {
 		out.Lines[i] = BlameLine{CommitID: l.GetCommitId(), Uncommitted: l.GetUncommitted()}
 	}
 	for _, c := range res.GetCommits() {
-		out.Commits = append(out.Commits, Commit{ID: c.GetId(), Hash: c.GetHash(), Parents: []string{}, Author: c.GetAuthorName(), Email: c.GetAuthorEmail(), Message: c.GetMessage(), Date: c.GetCreatedAt()})
+		out.Commits = append(out.Commits, Commit{ID: c.GetId(), Hash: c.GetHash(), Parents: []string{}, Author: c.GetAuthorName(), Email: c.GetAuthorEmail(), Message: c.GetMessage(), Date: c.GetCreatedAt(), Origin: c.GetOrigin()})
 	}
 	return out
 }

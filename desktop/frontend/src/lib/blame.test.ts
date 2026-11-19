@@ -11,6 +11,7 @@ const commit = (id: string, author: string, minutes: number) => ({
   email: `${id}@x`,
   message: `Change ${id}\n\nbody`,
   date: new Date(now - minutes * 60_000).toISOString(),
+  origin: "",
 });
 
 describe("blameCells", () => {
@@ -50,6 +51,21 @@ describe("blameCells", () => {
     expect(cells.get(6)).toMatchObject({ first: true, label: "Older" });
     expect(cells.get(7)).toMatchObject({ first: true, label: "Older" });
     expect(cells.get(7)?.commit).toBeUndefined();
+  });
+});
+
+describe("blameCells imported commits", () => {
+  it("names the source of an imported commit in the title", () => {
+    const blame: Blame = {
+      path: "a.cs",
+      revision: "",
+      truncated: false,
+      commits: [{ ...commit("c1", "Linus", 60), origin: "git:default:0123456789abcdef0123456789abcdef01234567" }],
+      lines: [{ commitId: "c1", uncommitted: false }],
+    };
+    const cell = blameCells(blame, now).get(1);
+    expect(cell?.label).toBe("Linus · 1 h ago");
+    expect(cell?.title).toContain("Imported from Git 0123456");
   });
 });
 
