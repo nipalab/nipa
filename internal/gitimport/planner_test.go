@@ -234,16 +234,19 @@ func TestPlanKnownPrunes(t *testing.T) {
 
 	f.ref("refs/tags/old", cs[0])
 	p = plan(t, f, Options{Known: map[string]bool{f.origin(cs[2]): true}})
-	assert.Equal(t, []plumbing.Hash{cs[3], side, m}, hashes(p.Commits))
-	assert.Empty(t, p.Commits[1].ParentOrigins)
-	outside := warningsOf(p.Warnings, WarnRefOutsideWindow)
-	require.Len(t, outside, 1)
-	assert.Equal(t, "refs/tags/old", outside[0].Ref)
+	assert.Equal(t, []plumbing.Hash{cs[0], cs[1], cs[3], side, m}, hashes(p.Commits))
+	assert.Empty(t, p.Commits[0].ParentOrigins)
+	assert.Equal(t, []string{f.origin(cs[0])}, p.Commits[1].ParentOrigins)
+	assert.Equal(t, []string{f.origin(cs[2])}, p.Commits[2].ParentOrigins)
+	assert.Equal(t, []string{f.origin(cs[1])}, p.Commits[3].ParentOrigins)
+	assert.Empty(t, warningsOf(p.Warnings, WarnRefOutsideWindow))
+	assert.Len(t, p.Refs, 2)
 
 	p = plan(t, f, Options{Known: map[string]bool{f.origin(m): true}})
-	assert.Empty(t, p.Commits)
-	require.Len(t, p.Refs, 1)
+	assert.Equal(t, []plumbing.Hash{cs[0]}, hashes(p.Commits))
+	require.Len(t, p.Refs, 2)
 	assert.Equal(t, f.origin(m), p.Refs[0].Origin)
+	assert.Equal(t, f.origin(cs[0]), p.Refs[1].Origin)
 }
 
 func TestPlanKnownPrunesEveryForkAncestor(t *testing.T) {
@@ -264,18 +267,17 @@ func TestPlanKnownPrunesEveryForkAncestor(t *testing.T) {
 func TestPlanKnownStopsAtImportedHistory(t *testing.T) {
 	f := newFixture(t, false)
 	cs := linear(f, 4)
-	known := map[string]bool{}
-	for _, h := range cs[:3] {
-		known[f.origin(h)] = true
-	}
 	for _, h := range cs[:2] {
 		s := h.String()
 		require.NoError(t, os.Remove(filepath.Join(f.dir, ".git", "objects", s[:2], s[2:])))
 	}
 
-	p := plan(t, f, Options{Known: known})
-	assert.Equal(t, []plumbing.Hash{cs[3]}, hashes(p.Commits))
-	assert.Equal(t, []string{f.origin(cs[2])}, p.Commits[0].ParentOrigins)
+	closed := map[string]bool{f.origin(cs[0]): true, f.origin(cs[1]): true, f.origin(cs[2]): true}
+	for _, known := range []map[string]bool{closed, {f.origin(cs[2]): true}} {
+		p := plan(t, f, Options{Known: known})
+		assert.Equal(t, []plumbing.Hash{cs[3]}, hashes(p.Commits))
+		assert.Equal(t, []string{f.origin(cs[2])}, p.Commits[0].ParentOrigins)
+	}
 }
 
 func TestPlanDefaultBranch(t *testing.T) {
