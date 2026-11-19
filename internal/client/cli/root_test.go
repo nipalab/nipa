@@ -23,6 +23,7 @@ type fakeUsecaseContainer struct {
 	tag        *usecase.Tag
 	version    *usecase.Version
 	blame      BlameRunner
+	gitImport  GitImporter
 }
 
 func (f *fakeUsecaseContainer) Auth() *usecase.Auth     { return f.auth }
@@ -40,6 +41,7 @@ func (f *fakeUsecaseContainer) Lock() *usecase.FileLock   { return f.lock }
 func (f *fakeUsecaseContainer) Tag() *usecase.Tag         { return f.tag }
 func (f *fakeUsecaseContainer) Version() *usecase.Version { return f.version }
 func (f *fakeUsecaseContainer) Blame() BlameRunner        { return f.blame }
+func (f *fakeUsecaseContainer) GitImport() GitImporter    { return f.gitImport }
 
 func TestNewCli(t *testing.T) {
 	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
