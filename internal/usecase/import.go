@@ -492,7 +492,7 @@ func (i *Import) refTargets(ctx context.Context, projectID snow.ID, in SetRefsIn
 
 func (i *Import) setBranch(ctx context.Context, projectID snow.ID, ref ImportRef, target *domain.Commit, update bool) (ImportRefResult, *importRefEvent, error) {
 	res := ImportRefResult{Kind: ImportRefBranch, Name: ref.Name, CommitID: target.ID}
-	if err := validateBranchName(ref.Name); err != nil {
+	if err := domain.ValidateBranchName(ref.Name); err != nil {
 		res.Status, res.Message = ImportRefInvalid, err.Error()
 		return res, nil, nil
 	}
@@ -553,7 +553,7 @@ func (i *Import) setBranch(ctx context.Context, projectID snow.ID, ref ImportRef
 
 func (i *Import) setTag(ctx context.Context, projectID snow.ID, ref ImportRef, target *domain.Commit, actor snow.ID) (ImportRefResult, *importRefEvent, error) {
 	res := ImportRefResult{Kind: ImportRefTag, Name: ref.Name, CommitID: target.ID}
-	if err := validateTagName(ref.Name); err != nil {
+	if err := domain.ValidateTagName(ref.Name); err != nil {
 		res.Status, res.Message = ImportRefInvalid, err.Error()
 		return res, nil, nil
 	}
