@@ -58,6 +58,7 @@ type Querier interface {
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateStorageServer(ctx context.Context, arg CreateStorageServerParams) (StorageServer, error)
 	DeleteDeletedOrgStorageDefaults(ctx context.Context, id int64) error
+	DeleteDeletedProjectStorage(ctx context.Context, id int64) error
 	DeleteOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error

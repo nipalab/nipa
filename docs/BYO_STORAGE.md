@@ -20,8 +20,9 @@ private or loopback addresses and is for tests only.
 - Creating or editing a server probes it first; a failed probe names the
   check (`bucket`, `signed_content_length`, `presigned_put`,
   `conditional_create`, `presigned_get`, `stat`, `delete`, or `open`).
-- A server can be deleted only while no project and no organization default
-  uses it.
+- A server can be deleted only while no live project and no live
+  organization's default uses it; deleting it drops the assignments of
+  deleted projects and the defaults of deleted organizations.
 - A project's store is chosen once, at creation: the requested server (the
   caller must own it and be the org's billing owner), else the org default,
   else Nipa storage. It never changes afterwards.
@@ -30,6 +31,9 @@ private or loopback addresses and is for tests only.
   projects created later only.
 - When a server cannot be reached, that project's transfers fail with 502
   `storage server unavailable`.
+- `byostorage.Service.WithEntitlement` can make these projects read-only
+  without an Own storage add-on, but billing has no such add-on yet, so
+  `nipad-ee` wires none and every owner may write.
 
 ## S3 requirements
 

@@ -157,3 +157,25 @@ func (s *BYOStorageRepositorySuite) TestDeleteDropsDeletedOrgDefaults() {
 	s.Require().NoError(err)
 	s.Nil(def)
 }
+
+func (s *BYOStorageRepositorySuite) TestDeleteDropsDeletedProjectAssignments() {
+	ctx := context.Background()
+	s.server(400, "old")
+	s.Require().NoError(s.repo.AssignProject(ctx, 1, 400))
+
+	s.exec(`UPDATE organizations SET deleted = true WHERE id = 1`)
+	inUse, err := s.repo.ServerInUse(ctx, 400)
+	s.Require().NoError(err)
+	s.False(inUse)
+	s.exec(`UPDATE organizations SET deleted = false WHERE id = 1`)
+
+	s.exec(`UPDATE projects SET deleted = true WHERE id = 1`)
+	inUse, err = s.repo.ServerInUse(ctx, 400)
+	s.Require().NoError(err)
+	s.False(inUse)
+	s.Require().NoError(s.repo.DeleteServer(ctx, 400))
+
+	var rows int
+	s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT count(*) FROM project_storage WHERE project_id = 1`).Scan(&rows))
+	s.Zero(rows)
+}

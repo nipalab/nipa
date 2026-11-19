@@ -99,10 +99,14 @@ func (r *BYOStorageRepository) ServerInUse(ctx context.Context, id snow.ID) (boo
 	return inUse, handleError(err)
 }
 
-// DeleteServer drops the defaults deleted organizations still hold, then the
-// server. A reference that appeared meanwhile is a 409.
+// DeleteServer drops the defaults deleted organizations and the assignments
+// deleted projects still hold, then the server. A reference that appeared
+// meanwhile is a 409.
 func (r *BYOStorageRepository) DeleteServer(ctx context.Context, id snow.ID) error {
 	if err := r.queries.DeleteDeletedOrgStorageDefaults(ctx, id.Int64()); err != nil {
+		return handleError(err)
+	}
+	if err := r.queries.DeleteDeletedProjectStorage(ctx, id.Int64()); err != nil {
 		return handleError(err)
 	}
 	n, err := r.queries.DeleteStorageServer(ctx, id.Int64())

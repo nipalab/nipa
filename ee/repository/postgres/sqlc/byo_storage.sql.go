@@ -78,6 +78,18 @@ func (q *Queries) DeleteDeletedOrgStorageDefaults(ctx context.Context, id int64)
 	return err
 }
 
+const deleteDeletedProjectStorage = `-- name: DeleteDeletedProjectStorage :exec
+DELETE FROM project_storage ps
+USING projects p, organizations o
+WHERE ps.project_id = p.id AND o.id = p.org_id AND ps.storage_server_id = $1
+  AND (p.deleted = true OR o.deleted = true)
+`
+
+func (q *Queries) DeleteDeletedProjectStorage(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteDeletedProjectStorage, id)
+	return err
+}
+
 const deleteOrgStorageDefault = `-- name: DeleteOrgStorageDefault :execrows
 DELETE FROM org_storage_defaults WHERE org_id = $1
 `
@@ -227,7 +239,10 @@ func (q *Queries) LockStorageServerOwner(ctx context.Context, lockKey int64) err
 }
 
 const storageServerInUse = `-- name: StorageServerInUse :one
-SELECT (EXISTS (SELECT 1 FROM project_storage ps WHERE ps.storage_server_id = $1)
+SELECT (EXISTS (SELECT 1 FROM project_storage ps
+                JOIN projects p ON p.id = ps.project_id
+                JOIN organizations o ON o.id = p.org_id
+                WHERE ps.storage_server_id = $1 AND p.deleted = false AND o.deleted = false)
      OR EXISTS (SELECT 1 FROM org_storage_defaults d JOIN organizations o ON o.id = d.org_id
                 WHERE d.storage_server_id = $1 AND o.deleted = false))::BOOLEAN AS in_use
 `

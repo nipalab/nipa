@@ -23,7 +23,10 @@ SELECT count(*)::BIGINT FROM storage_servers WHERE owner_user_id = sqlc.arg(owne
 SELECT pg_advisory_xact_lock(sqlc.arg(lock_key)::bigint);
 
 -- name: StorageServerInUse :one
-SELECT (EXISTS (SELECT 1 FROM project_storage ps WHERE ps.storage_server_id = sqlc.arg(id))
+SELECT (EXISTS (SELECT 1 FROM project_storage ps
+                JOIN projects p ON p.id = ps.project_id
+                JOIN organizations o ON o.id = p.org_id
+                WHERE ps.storage_server_id = sqlc.arg(id) AND p.deleted = false AND o.deleted = false)
      OR EXISTS (SELECT 1 FROM org_storage_defaults d JOIN organizations o ON o.id = d.org_id
                 WHERE d.storage_server_id = sqlc.arg(id) AND o.deleted = false))::BOOLEAN AS in_use;
 
@@ -31,6 +34,12 @@ SELECT (EXISTS (SELECT 1 FROM project_storage ps WHERE ps.storage_server_id = sq
 DELETE FROM org_storage_defaults d
 USING organizations o
 WHERE d.org_id = o.id AND o.deleted = true AND d.storage_server_id = sqlc.arg(id);
+
+-- name: DeleteDeletedProjectStorage :exec
+DELETE FROM project_storage ps
+USING projects p, organizations o
+WHERE ps.project_id = p.id AND o.id = p.org_id AND ps.storage_server_id = sqlc.arg(id)
+  AND (p.deleted = true OR o.deleted = true);
 
 -- name: DeleteStorageServer :execrows
 DELETE FROM storage_servers WHERE id = sqlc.arg(id);

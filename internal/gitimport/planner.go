@@ -252,7 +252,7 @@ func (p *Planner) pruneAncestors(nodes map[plumbing.Hash]*planNode, frontier []p
 	for _, h := range queue {
 		seen[h] = true
 	}
-	for len(queue) > 0 && len(pruned) < len(nodes) {
+	for len(queue) > 0 && len(nodes) > 0 {
 		h := queue[0]
 		queue = queue[1:]
 		var parents []plumbing.Hash

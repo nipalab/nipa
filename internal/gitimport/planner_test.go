@@ -235,6 +235,17 @@ func TestPlanKnownPrunes(t *testing.T) {
 	assert.Equal(t, f.origin(m), p.Refs[0].Origin)
 }
 
+func TestPlanKnownPrunesEveryForkAncestor(t *testing.T) {
+	f := newFixture(t, false)
+	cs := linear(f, 6)
+	feature := f.commit(map[string]entry{"x": reg("x")}, "feature", cs[3])
+	f.branch("feature", feature)
+
+	p := plan(t, f, Options{Known: map[string]bool{f.origin(cs[5]): true}})
+	assert.Equal(t, []plumbing.Hash{feature}, hashes(p.Commits))
+	assert.Equal(t, []string{f.origin(cs[3])}, p.Commits[0].ParentOrigins)
+}
+
 func TestPlanDefaultBranch(t *testing.T) {
 	f := newFixture(t, false)
 	a := f.commit(map[string]entry{"a": reg("a")}, "a")
