@@ -398,9 +398,10 @@ run and when no commit is left to import, so a project writer who is not an
 admin is refused before any chunk upload. After the dry-run report the client
 sends `ImportLookup` again with `estimated_upload_bytes` = the report's
 `Bytes` (distinct blob bytes of the commits still to import, LFS objects
-counted at their real size when `--lfs` resolves them). It is an upper bound:
-it ignores dedup against content the server already holds and what an
-interrupted run already uploaded. The server answers `quota_checked` and asks
+counted at their real size when `--lfs` resolves them), leaving out blobs and
+LFS objects the import state of the same target marks uploaded, so a resumed
+run only counts what is left. It is an upper bound: it ignores dedup against
+content the server already holds. The server answers `quota_checked` and asks
 `Chunk.CheckUploadHeadroom`, which calls `StorageLedger.Headroom` for the
 project's billing owner; no ledger (the free `nipad`) or an own-storage project
 means no check. Over the quota the RPC fails with `ResourceExhausted` (402):

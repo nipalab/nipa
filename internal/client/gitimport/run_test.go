@@ -408,6 +408,35 @@ func TestRun_QuotaEstimate(t *testing.T) {
 		require.EqualError(t, err, "unavailable")
 		require.Zero(t, srv.uploads)
 	})
+	t.Run("resume counts only what is left", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.failAt = 2
+		_, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.ErrorContains(t, err, "injected failure")
+		srv.failAt = -1
+
+		dry := baseOptions(repo.dir)
+		dry.DryRun = true
+		dry.ResetState = true
+		full, err := NewImporter(srv).Run(context.Background(), dry, nil)
+		require.NoError(t, err)
+		other := dry
+		other.ResetState = false
+		other.Project = "other"
+		unrelated, err := NewImporter(srv).Run(context.Background(), other, nil)
+		require.NoError(t, err)
+		require.Equal(t, full.UploadEstimate, unrelated.UploadEstimate, "another target's state is not trusted")
+		dry.ResetState = false
+		left, err := NewImporter(srv).Run(context.Background(), dry, nil)
+		require.NoError(t, err)
+		require.Less(t, left.UploadEstimate, full.UploadEstimate)
+
+		srv.hasQuota, srv.quota = true, left.UploadEstimate
+		sum, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		require.Equal(t, 2, sum.Imported)
+	})
 	t.Run("nothing to upload", func(t *testing.T) {
 		repo := newSampleRepo(t)
 		srv := newFakeServer()

@@ -381,7 +381,8 @@ in [GIT_IMPORT.md](GIT_IMPORT.md).
    them in Git, e.g. with `git filter-repo`), missing LFS objects, or a quota
    that is too small (free storage, ask the billing owner for more, or import
    less with `--since`, `--depth` or `--snapshot`). The estimate is an upper
-   bound: content the server already holds is not uploaded again.
+   bound: content the server already holds is not uploaded again. A rerun
+   after an interruption only counts what is left to upload.
 4. **Import.** The same command without `--dry-run` shows the preview and
    asks `Import? [y/N]` (`--yes` in scripts; `--json` prints the summary as
    JSON). Interrupting it is safe: run the same command again and it resumes

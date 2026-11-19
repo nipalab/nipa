@@ -218,6 +218,7 @@ func TestRun_LFSBatchAPIAndResume(t *testing.T) {
 	sum, err = NewImporter(srv).Run(context.Background(), opts, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, sum.Imported)
+	require.Zero(t, sum.UploadEstimate, "uploaded lfs objects leave the estimate")
 	require.Zero(t, sum.LFSRead)
 	require.Equal(t, int64(1), sum.LFSHits)
 	require.Equal(t, 2, lfsSrv.downloads, "a resumed import neither downloads nor rechunks lfs objects")

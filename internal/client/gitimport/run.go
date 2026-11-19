@@ -235,11 +235,7 @@ func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remo
 			sum.LFSEndpoint = c.Endpoint()
 		}
 	}
-	preview, err := gitimport.NewConverter(src, gitimport.ConverterOptions{Symlinks: opts.Symlinks, LFS: lfsSource})
-	if err != nil {
-		return nil, err
-	}
-	if sum.Report, err = preview.DryRun(plan); err != nil {
+	if sum.Report, err = im.preview(src, plan, gitDir, lfsSource, opts); err != nil {
 		return nil, err
 	}
 	sum.Warnings = sum.Report.Warnings
@@ -277,6 +273,25 @@ func (im *Importer) run(ctx context.Context, src *gitimport.Source, remote *remo
 		return sum, err
 	}
 	return sum, nil
+}
+
+func (im *Importer) preview(src *gitimport.Source, plan *gitimport.Plan, gitDir string, lfsSource gitimport.LFSSource, opts Options) (*gitimport.Report, error) {
+	copts := gitimport.ConverterOptions{Symlinks: opts.Symlinks, LFS: lfsSource}
+	if !opts.ResetState {
+		resumed, err := OpenResumeState(filepath.Join(gitDir, StateDirName), StateTarget{Host: opts.Host, Org: opts.Org, Project: opts.Project, SourceKey: opts.SourceKey})
+		if err != nil {
+			return nil, err
+		}
+		if resumed != nil {
+			defer func() { _ = resumed.Close() }()
+			copts.Cache = resumed
+		}
+	}
+	conv, err := gitimport.NewConverter(src, copts)
+	if err != nil {
+		return nil, err
+	}
+	return conv.DryRun(plan)
 }
 
 func (im *Importer) estimate(ctx context.Context, sink *Sink, sum *Summary) error {
