@@ -140,15 +140,8 @@ func (p *Planner) Plan(opts Options) (*Plan, error) {
 		nodes, err = p.snapshotNodes(refs, opts, known)
 	} else {
 		var walkWarnings []Warning
-		var frontier []plumbing.Hash
-		nodes, frontier, walkWarnings, err = p.walk(refs, opts, known)
+		nodes, walkWarnings, err = p.walk(refs, opts, known)
 		plan.Warnings = append(plan.Warnings, walkWarnings...)
-		if err == nil && len(frontier) > 0 {
-			var pruned map[plumbing.Hash]bool
-			pruned, err = p.pruneAncestors(nodes, frontier)
-			direct := known
-			known = func(h plumbing.Hash) bool { return pruned[h] || direct(h) }
-		}
 	}
 	if err != nil {
 		return nil, err
@@ -196,10 +189,9 @@ type walkItem struct {
 	dist int
 }
 
-func (p *Planner) walk(refs []PlannedRef, opts Options, known func(plumbing.Hash) bool) (map[plumbing.Hash]*planNode, []plumbing.Hash, []Warning, error) {
+func (p *Planner) walk(refs []PlannedRef, opts Options, known func(plumbing.Hash) bool) (map[plumbing.Hash]*planNode, []Warning, error) {
 	nodes := map[plumbing.Hash]*planNode{}
 	seen := map[plumbing.Hash]bool{}
-	var frontier []plumbing.Hash
 	var warnings []Warning
 	var queue []walkItem
 	for _, r := range refs {
@@ -212,7 +204,6 @@ func (p *Planner) walk(refs []PlannedRef, opts Options, known func(plumbing.Hash
 		item := queue[0]
 		queue = queue[1:]
 		if known(item.hash) {
-			frontier = append(frontier, item.hash)
 			continue
 		}
 		if opts.Depth > 0 && item.dist >= opts.Depth {
@@ -220,7 +211,7 @@ func (p *Planner) walk(refs []PlannedRef, opts Options, known func(plumbing.Hash
 		}
 		c, err := p.src.Commit(item.hash)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("read commit %s: %w", item.hash, err)
+			return nil, nil, fmt.Errorf("read commit %s: %w", item.hash, err)
 		}
 		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
 			continue
@@ -242,39 +233,7 @@ func (p *Planner) walk(refs []PlannedRef, opts Options, known func(plumbing.Hash
 			}
 		}
 	}
-	return nodes, frontier, warnings, nil
-}
-
-func (p *Planner) pruneAncestors(nodes map[plumbing.Hash]*planNode, frontier []plumbing.Hash) (map[plumbing.Hash]bool, error) {
-	pruned := map[plumbing.Hash]bool{}
-	seen := map[plumbing.Hash]bool{}
-	queue := append([]plumbing.Hash(nil), frontier...)
-	for _, h := range queue {
-		seen[h] = true
-	}
-	for len(queue) > 0 && len(nodes) > 0 {
-		h := queue[0]
-		queue = queue[1:]
-		var parents []plumbing.Hash
-		if n, ok := nodes[h]; ok {
-			pruned[h] = true
-			delete(nodes, h)
-			parents = n.parents
-		} else {
-			c, err := p.src.Commit(h)
-			if err != nil {
-				return nil, fmt.Errorf("read commit %s: %w", h, err)
-			}
-			parents = c.ParentHashes
-		}
-		for _, parent := range parents {
-			if !seen[parent] {
-				seen[parent] = true
-				queue = append(queue, parent)
-			}
-		}
-	}
-	return pruned, nil
+	return nodes, warnings, nil
 }
 
 func dedupe(hashes []plumbing.Hash) []plumbing.Hash {

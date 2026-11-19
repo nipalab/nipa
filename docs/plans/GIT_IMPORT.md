@@ -205,8 +205,9 @@ PR5/PR6 can run in parallel with PR7–PR9.
   - parents trimmed to the window;
   - octopus warnings;
   - the ref → tip map and the default branch from `HEAD`.
-- `Options.Known` (origins the server already has) prunes them and their
-  ancestors for resume/update.
+- `Options.Known` (origins the server already has) stops the walk at those
+  commits for resume/update; history below an earlier `--depth`/`--since`
+  window is cut only by the current run's own window.
 
 **Tests (go-git fixtures in `t.TempDir()`):**
 - linear history, branches and a merge, an octopus, orphan roots;
