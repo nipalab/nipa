@@ -1,8 +1,7 @@
 # Git import (`nipa import git`)
 
 Design for moving a Git repository (history, branches, tags, LFS content)
-into a Nipa project. Status: **implemented** (PR 1–13 of
-`docs/plans/GIT_IMPORT.md`). Where the code differs from the design below,
+into a Nipa project. Status: **implemented**. Where the code differs from the design below,
 ["As implemented"](#as-implemented) at the end of this document is
 authoritative. The user how-to is the "Migrating from Git" section of
 `docs/CLIENT_GUIDE.md`.
@@ -43,7 +42,10 @@ parents and origin metadata, and moves refs only at the end.
 - Two-way sync, or exporting Nipa back to Git.
 - Importing pull requests, issues or reviews from GitHub/GitLab.
 - Server-side "import from URL" in v1. The core is designed so a later
-  server job can reuse it (phase 6 of the plan).
+  server job can reuse it: an `import_jobs` table with progress,
+  cancellation, encrypted remote credentials, a scratch disk limit and
+  per-org concurrency, plus an "Import from Git" step in new-project
+  creation. It needs its own design for SaaS disk and abuse limits.
 - Rewriting history (filter-repo-style path removal). Users run
   `git filter-repo` first if they need it.
 

@@ -3,7 +3,7 @@
 Operator guide for putting a Nipa server (free `nipad` or `nipad-ee`), an
 organization or a project into maintenance without stopping the process, and
 for the planned operations that rely on it: moving the database, upgrades and
-hard downtime behind Caddy. Design notes: `docs/plans/MAINTENANCE_MODE.md`.
+hard downtime behind Caddy.
 
 ## Concepts
 
