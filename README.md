@@ -250,7 +250,7 @@ The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
   clone keeps a JSON `config`, a SQLite database (tree snapshot, staged files,
   stat cache, pending merge/revert state) and a content cache in `.nipa/`.
 
-[`AGENTS.md`](AGENTS.md) has a detailed walkthrough of every flow.
+[`AGENTS.md`](AGENTS.md) is the agent quick reference; [`docs/internals/`](docs/internals) has a detailed walkthrough of every flow.
 
 ## Development
 
