@@ -2243,7 +2243,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("issue tracker", func(t *testing.T) {
 		superLogin, _ := loginAs(t, "nipa")
-		testIssueTrackerRoutes(t, server.URL, superLogin.AccessToken, fakeJira, func(t *testing.T, email string) string {
+		testIssueTrackerRoutes(t, dbConn, server.URL, superLogin.AccessToken, fakeJira, func(t *testing.T, email string) string {
 			tok, _ := loginAs(t, email)
 			return tok.AccessToken
 		})

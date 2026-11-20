@@ -31,17 +31,19 @@ type BranchResponse struct {
 	RequiredChecks        []string              `json:"required_checks,omitempty"`
 	CommitID              string                `json:"commit_id,omitempty"`
 	UpdatedAt             time.Time             `json:"updated_at"`
+	IssueKeys             []IssueKeyResponse    `json:"issue_keys,omitempty"`
 }
 
 type CommitResponse struct {
-	ID          string    `json:"id"`
-	Parent1ID   string    `json:"parent_1_id,omitempty"`
-	Parent2ID   string    `json:"parent_2_id,omitempty"`
-	Message     string    `json:"message"`
-	AuthorName  string    `json:"author_name,omitempty"`
-	AuthorEmail string    `json:"author_email,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	Origin      string    `json:"origin,omitempty"`
+	ID          string             `json:"id"`
+	Parent1ID   string             `json:"parent_1_id,omitempty"`
+	Parent2ID   string             `json:"parent_2_id,omitempty"`
+	Message     string             `json:"message"`
+	AuthorName  string             `json:"author_name,omitempty"`
+	AuthorEmail string             `json:"author_email,omitempty"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Origin      string             `json:"origin,omitempty"`
+	IssueKeys   []IssueKeyResponse `json:"issue_keys,omitempty"`
 }
 
 type DiffLineResponse struct {

@@ -30,7 +30,7 @@ func newTestIssueTracker(t *testing.T, db *sql.DB, orgs *usecase.Org, perm *usec
 	return uc, fake
 }
 
-func testIssueTrackerRoutes(t *testing.T, base, superTok string, fake *jiratest.Server, login func(t *testing.T, email string) string) {
+func testIssueTrackerRoutes(t *testing.T, db *sql.DB, base, superTok string, fake *jiratest.Server, login func(t *testing.T, email string) string) {
 	newUser := func(name string) (model.UserResponse, string) {
 		resp := doMethod(t, http.MethodPost, base+"/api/v1/users",
 			`{"name":"`+name+`","email":"`+name+`@example.com","password":"password123"}`, superTok)
@@ -64,7 +64,7 @@ func testIssueTrackerRoutes(t *testing.T, base, superTok string, fake *jiratest.
 		`{"user_id":"`+padmin.ID+`","path_prefix":"","permission":`+strconv.FormatUint(uint64(domain.PermissionAll), 10)+`}`, ownerTok, http.StatusOK)
 
 	status(http.MethodGet, trackerURL, "", ownerTok, http.StatusNotFound)
-	status(http.MethodGet, trackerURL, "", strangerTok, http.StatusForbidden)
+	status(http.MethodGet, trackerURL, "", strangerTok, http.StatusNotFound)
 	status(http.MethodPost, trackerURL+"/test", "{}", ownerTok, http.StatusNotFound)
 	status(http.MethodPut, projectURL, `{"keys":["GAME"]}`, padminTok, http.StatusBadRequest)
 
@@ -117,10 +117,43 @@ func testIssueTrackerRoutes(t *testing.T, base, superTok string, fake *jiratest.
 	read := decodeBody[model.ProjectIssueTrackerResponse](t, expect(http.MethodGet, projectURL, "", padminTok, http.StatusOK))
 	require.Equal(t, settings.Keys, read.Keys)
 
+	issuesURL := orgURL + "/projects/game/issues"
+	fake.AddIssue(jiratest.Issue{Key: "GAME-1", Summary: "New rig", Status: "Done"})
+	resolved := decodeBody[model.IssueListResponse](t, expect(http.MethodGet, issuesURL+"?keys=game-1,GAME-2,OTHER-1", "", padminTok, http.StatusOK))
+	require.Len(t, resolved.Issues, 2)
+	require.Equal(t, model.IssueResponse{Key: "GAME-1", URL: fake.URL + "/browse/GAME-1", State: "ok", Title: "New rig", Type: "Task", Status: "Done", StatusCategory: "done"}, resolved.Issues[0])
+	require.Equal(t, "not_found", resolved.Issues[1].State)
+	status(http.MethodGet, issuesURL+"?keys=GAME-1", "", memberTok, http.StatusForbidden)
+	status(http.MethodGet, issuesURL+"?keys="+strings.Repeat("GAME-1,", 51), "", padminTok, http.StatusBadRequest)
+	found := decodeBody[model.IssueSearchResponse](t, expect(http.MethodGet, issuesURL+"/search?q=rig", "", padminTok, http.StatusOK))
+	require.True(t, found.Supported)
+	require.Len(t, found.Issues, 1)
+	status(http.MethodGet, issuesURL+"/search", "", padminTok, http.StatusBadRequest)
+
+	branches := decodeBody[[]model.BranchResponse](t, expect(http.MethodGet, orgURL+"/projects/game/branches", "", padminTok, http.StatusOK))
+	require.NotEmpty(t, branches)
+	require.Empty(t, branches[0].IssueKeys)
+	branchID, err := snow.ParseBase36(branches[0].ID)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO issue_links (id, project_id, tracker_id, issue_key, subject_kind, subject_id, relation, created_at)
+		SELECT 1, project_id, ?, 'GAME-1', 'branch', id, 'mentions', CURRENT_TIMESTAMP FROM branches WHERE id = ?`, mustParseID(t, created.ID).Int64(), branchID.Int64())
+	require.NoError(t, err)
+	branches = decodeBody[[]model.BranchResponse](t, expect(http.MethodGet, orgURL+"/projects/game/branches", "", padminTok, http.StatusOK))
+	require.Equal(t, []model.IssueKeyResponse{{Key: "GAME-1", URL: fake.URL + "/browse/GAME-1"}}, branches[0].IssueKeys)
+	links := decodeBody[model.IssueLinksResponse](t, expect(http.MethodGet, issuesURL+"/GAME-1/links?limit=1", "", padminTok, http.StatusOK))
+	require.Len(t, links.Links, 1)
+	require.Equal(t, branches[0].Name, links.Links[0].Branch.Name)
+	require.Empty(t, links.NextCursor)
+	status(http.MethodGet, issuesURL+"/OTHER-1/links", "", padminTok, http.StatusBadRequest)
+	status(http.MethodGet, issuesURL+"/GAME-1/links?after=!!", "", padminTok, http.StatusBadRequest)
+
 	status(http.MethodDelete, trackerURL, "", ownerTok, http.StatusConflict)
 	status(http.MethodDelete, projectURL, "", memberTok, http.StatusForbidden)
 	status(http.MethodDelete, projectURL, "", padminTok, http.StatusNoContent)
 	status(http.MethodDelete, projectURL, "", padminTok, http.StatusNotFound)
+	status(http.MethodGet, issuesURL+"?keys=GAME-1", "", padminTok, http.StatusNotFound)
+	branches = decodeBody[[]model.BranchResponse](t, expect(http.MethodGet, orgURL+"/projects/game/branches", "", padminTok, http.StatusOK))
+	require.Empty(t, branches[0].IssueKeys)
 	status(http.MethodGet, v1+"/orgs/it-co/projects/missing/issue-tracker", "", padminTok, http.StatusNotFound)
 
 	for _, action := range []string{"issue_tracker.created", "project.issue_tracker.set", "project.issue_tracker.cleared"} {
@@ -142,4 +175,11 @@ func testIssueTrackerRoutes(t *testing.T, base, superTok string, fake *jiratest.
 	status(http.MethodPost, v1+"/orgs/missing/issue-tracker/test", "{}", ownerTok, http.StatusNotFound)
 	status(http.MethodPut, v1+"/orgs/it-co/projects/missing/issue-tracker", `{}`, ownerTok, http.StatusNotFound)
 	status(http.MethodDelete, v1+"/orgs/it-co/projects/missing/issue-tracker", "", ownerTok, http.StatusNotFound)
+}
+
+func mustParseID(t *testing.T, raw string) snow.ID {
+	t.Helper()
+	id, err := snow.ParseBase36(raw)
+	require.NoError(t, err)
+	return id
 }

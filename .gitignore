@@ -62,3 +62,4 @@ ee/web/marketing/dist/*
 plugins/unity/dotnet/**/bin/
 plugins/unity/dotnet/**/obj/
 plugins/unity/dotnet/TestResults/
+*.tsbuildinfo

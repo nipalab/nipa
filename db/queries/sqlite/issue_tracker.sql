@@ -51,3 +51,44 @@ RETURNING *;
 -- name: ProjectIssueTrackerDelete :execrows
 DELETE FROM project_issue_trackers
 WHERE project_id = sqlc.arg(project_id);
+
+-- name: IssueTrackerGetByID :one
+SELECT *
+FROM issue_trackers
+WHERE id = sqlc.arg(id);
+
+-- name: IssueLinkUpsert :exec
+INSERT INTO issue_links (id, project_id, tracker_id, issue_key, subject_kind, subject_id, relation, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(project_id), sqlc.arg(tracker_id), sqlc.arg(issue_key), sqlc.arg(subject_kind), sqlc.arg(subject_id), sqlc.arg(relation), sqlc.arg(created_at))
+ON CONFLICT (project_id, issue_key, subject_kind, subject_id) DO UPDATE
+SET relation = excluded.relation, tracker_id = excluded.tracker_id;
+
+-- name: IssueLinkListBySubject :many
+SELECT *
+FROM issue_links
+WHERE project_id = sqlc.arg(project_id) AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+ORDER BY issue_key;
+
+-- name: IssueLinkListBySubjects :many
+SELECT *
+FROM issue_links
+WHERE project_id = sqlc.arg(project_id) AND subject_kind = sqlc.arg(subject_kind) AND subject_id IN (sqlc.slice(subject_ids))
+ORDER BY subject_id, issue_key;
+
+-- name: IssueLinkDeleteKeys :execrows
+DELETE FROM issue_links
+WHERE project_id = sqlc.arg(project_id) AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND issue_key IN (sqlc.slice(issue_keys));
+
+-- name: IssueLinkListSubjects :many
+SELECT l.id, l.subject_kind, l.subject_id, l.relation, l.created_at,
+    c.message AS commit_message, c.created_at AS commit_created_at,
+    mr.number AS mr_number, mr.title AS mr_title, mr.status AS mr_status,
+    b.name AS branch_name
+FROM issue_links l
+LEFT JOIN commits c ON l.subject_kind = 'commit' AND c.id = l.subject_id AND c.project_id = l.project_id
+LEFT JOIN merge_requests mr ON l.subject_kind = 'merge_request' AND mr.id = l.subject_id AND mr.project_id = l.project_id
+LEFT JOIN branches b ON l.subject_kind = 'branch' AND b.id = l.subject_id AND b.project_id = l.project_id AND b.deleted = FALSE
+WHERE l.project_id = sqlc.arg(project_id) AND l.issue_key = sqlc.arg(issue_key) AND l.id < sqlc.arg(before_id)
+ORDER BY l.id DESC
+LIMIT sqlc.arg(row_limit);

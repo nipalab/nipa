@@ -9,6 +9,7 @@ import { LoadMore } from '../components/LoadMore'
 import { BranchSelector } from '../components/repo/BranchSelector'
 import { DiffView } from '../components/repo/DiffView'
 import { ImportedLabel } from '../components/repo/ImportedLabel'
+import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { absoluteTime, commitTitle, relativeTime, shortSha } from '../components/repo/format'
 import { commitUrl, commitsUrl, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -52,6 +53,7 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
   )
   const { data: diff, error: diffError, loading: diffLoading } = useAsync(() => getCommitDiff(org, project, id), [org, project, id])
   const commit = entries?.[0]
+  const issues = useIssues(org, project, commit ? collectIssueKeys([commit]) : [])
   const body = commit ? commitBody(commit.message) : ''
   const parents = commit ? [commit.parent_1_id, commit.parent_2_id].filter((parent): parent is string => Boolean(parent)) : []
   const files = diff?.files ?? []
@@ -71,6 +73,7 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
               {commit ? commitTitle(commit.message) : <Mono>{shortSha(id, 10)}</Mono>}
             </Text>
             {body && <pre className="nipa-commit-body">{body}</pre>}
+            {commit && <IssueChips refs={commit.issue_keys} issues={issues} />}
           </div>
           <Button as={Link} to={treeUrl(org, project, id)} leadingVisual={FileCodeIcon}>
             Browse files
@@ -149,6 +152,7 @@ export default function CommitsPage() {
   )
 
   const rev = branch || defaultBranch
+  const issues = useIssues(org, project, collectIssueKeys(commits))
 
   return (
     <RepoPageShell org={org} project={project} active="commits" rev={rev} wide={Boolean(commit)} canAdmin={canAdmin}>
@@ -196,6 +200,7 @@ export default function CommitsPage() {
                         <strong>{authorOf(entry)}</strong> committed{' '}
                         <span title={absoluteTime(entry.created_at)}>{relativeTime(entry.created_at)}</span>
                         <ImportedLabel origin={entry.origin} />
+                        <IssueChips refs={entry.issue_keys} issues={issues} />
                       </div>
                     </div>
                     <span className="nipa-sha-group">

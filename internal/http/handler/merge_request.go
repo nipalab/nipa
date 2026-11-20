@@ -75,9 +75,12 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	keys := h.mergeRequestIssueKeys(appCtx.Context(), project.ID, requests)
 	resp := model.MergeRequestListResponse{MergeRequests: make([]model.MergeRequestResponse, 0, len(requests))}
 	for _, request := range requests {
-		resp.MergeRequests = append(resp.MergeRequests, toMergeRequestResponse(request, nil))
+		item := toMergeRequestResponse(request, nil)
+		item.IssueKeys = keys[snow.ID(request.ID)]
+		resp.MergeRequests = append(resp.MergeRequests, item)
 	}
 	if hasMore {
 		resp.NextCursor = strconv.FormatInt(requests[len(requests)-1].Number, 10)
@@ -289,7 +292,9 @@ func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
+	resp := toMergeRequestResponse(request, info)
+	resp.IssueKeys = h.mergeRequestIssueKeys(appCtx.Context(), project.ID, []*domain.MergeRequest{request})[snow.ID(request.ID)]
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CheckMergeRequest(appCtx http.AppContext) {
@@ -390,11 +395,7 @@ func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	resp := make([]model.CommitResponse, 0, len(commits))
-	for _, commit := range commits {
-		resp = append(resp, toCommitResponse(commit))
-	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, h.commitResponses(appCtx.Context(), project.ID, commits))
 }
 
 func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number int64) (*domain.MergeRequest, error)) {

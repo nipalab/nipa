@@ -198,9 +198,17 @@ describe('ProjectSettingsPage github-style navigation', () => {
     const nav = settingsNav()
     expect(nav).not.toBeNull()
     const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
-    expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Service tokens', 'Email deliveries'])
+    expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Service tokens', 'Email deliveries', 'Issue tracker'])
     expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
     expect(document.body.textContent).not.toContain('Branch protection rules')
+
+    act(() => root.unmount())
+  })
+
+  it('shows the issue tracker section for ?tab=issues', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=issues')
+    await waitForText('has no issue tracker connection')
+    expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Issue tracker')
 
     act(() => root.unmount())
   })

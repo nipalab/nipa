@@ -678,6 +678,7 @@ func (i *Import) emit(ctx context.Context, projectID, actor snow.ID, events []im
 				Before:    ev.before,
 				AfterID:   ev.after.ID,
 				Message:   ev.after.Message,
+				Imported:  true,
 			})
 		}
 		if err != nil {

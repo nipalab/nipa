@@ -46,6 +46,12 @@ type issueTrackerRepository interface {
 	GetProject(ctx context.Context, projectID snow.ID) (*domain.ProjectIssueTracker, error)
 	UpsertProject(ctx context.Context, s domain.ProjectIssueTracker) (*domain.ProjectIssueTracker, error)
 	DeleteProject(ctx context.Context, projectID snow.ID) (bool, error)
+	GetByID(ctx context.Context, id snow.ID) (*domain.IssueTracker, error)
+	UpsertIssueLink(ctx context.Context, link domain.IssueLink) error
+	ListIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID) ([]domain.IssueLink, error)
+	DeleteIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID, keys []string) (int64, error)
+	ListIssueLinksBySubjects(ctx context.Context, projectID snow.ID, kind string, subjectIDs []snow.ID) ([]domain.IssueLink, error)
+	ListIssueSubjects(ctx context.Context, projectID snow.ID, key string, before snow.ID, limit int) ([]domain.IssueLinkSubject, error)
 }
 
 type issueTrackerOrgs interface {
@@ -55,6 +61,7 @@ type issueTrackerOrgs interface {
 
 type issueTrackerAccess interface {
 	AdminHasProject(ctx context.Context, projectID snow.ID) bool
+	HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool
 }
 
 // IssueTrackerFactory builds a tracker client for a stored connection.
@@ -129,6 +136,8 @@ type IssueTracker struct {
 	node    snow.Node
 	audit   AuditRecorder
 	now     func() time.Time
+	clients *issueClientCache
+	issues  *issueCache
 }
 
 // NewIssueTracker builds the usecase; a nil box makes every call answer 503.
@@ -141,6 +150,8 @@ func NewIssueTracker(repo issueTrackerRepository, orgs issueTrackerOrgs, perm is
 		factory: GuardedIssueTrackerFactory(nil),
 		node:    node,
 		now:     time.Now,
+		clients: newIssueClientCache(),
+		issues:  newIssueCache(issueCacheTTL, issueCacheMaxEntries),
 	}
 }
 
@@ -171,6 +182,7 @@ func (u *IssueTracker) WithFactory(f IssueTrackerFactory) *IssueTracker {
 
 func (u *IssueTracker) WithClock(now func() time.Time) *IssueTracker {
 	u.now = now
+	u.issues.now = now
 	return u
 }
 
@@ -225,7 +237,7 @@ func (u *IssueTracker) Get(ctx context.Context, orgID snow.ID) (*IssueTrackerVie
 			return nil, err
 		}
 		if !member {
-			return nil, domain.NewErrorNoPermission()
+			return nil, domain.NewErrorNotFound("org not found")
 		}
 	}
 	tracker, err := u.lookup(ctx, orgID)

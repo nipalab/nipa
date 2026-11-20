@@ -426,6 +426,19 @@ describe('CommitsPage and BranchesPage paging', () => {
     expect(api.listCommits).toHaveBeenLastCalledWith('acme', 'game', '', '', { start: 'k51', limit: 51 })
   })
 
+  it('shows issue chips with statuses resolved in one call', async () => {
+    const keyed = { ...commit(1), issue_keys: [{ key: 'GAME-1', url: 'https://j/browse/GAME-1' }] }
+    api.listCommits.mockResolvedValue([keyed, { ...commit(2), issue_keys: [{ key: 'GAME-1', url: 'https://j/browse/GAME-1' }] }])
+    api.resolveIssues.mockResolvedValue({
+      issues: [{ key: 'GAME-1', url: 'https://j/browse/GAME-1', state: 'ok', status: 'Done', status_category: 'done' }],
+    })
+    const { container } = await renderRoute('/:org/:project/commits', '/acme/game/commits', <CommitsPage />)
+    await waitFor(() => (container.textContent ?? '').includes('GAME-1Done'))
+    expect(api.resolveIssues).toHaveBeenCalledTimes(1)
+    expect(api.resolveIssues).toHaveBeenCalledWith('acme', 'game', ['GAME-1'])
+    expect(container.querySelectorAll('a.nipa-issue-chip')).toHaveLength(2)
+  })
+
   it('loads more branches using the last visible branch as the cursor', async () => {
     const many = Array.from({ length: 51 }, (_, i) => branch({ id: `b${i}`, name: `br-${i}`, is_default: i === 0 }))
     api.listBranches.mockImplementation(async (_org, _project, options) =>

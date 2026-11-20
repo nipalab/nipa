@@ -154,6 +154,10 @@ func TestEndToEnd_AuditLog(t *testing.T) {
 		testIssueTrackerConnection(t, server.URL, superToken, dbConn)
 	})
 
+	t.Run("issue tracker links", func(t *testing.T) {
+		testIssueTrackerLinks(t, server.URL, host, superToken, dbConn)
+	})
+
 	t.Run("deactivated admin loses access", func(t *testing.T) {
 		testDeactivatedAdminLosesAccess(t, server.URL, host, superToken)
 	})

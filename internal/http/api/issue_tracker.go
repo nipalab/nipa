@@ -57,4 +57,26 @@ func setupIssueTrackerRouter(ws *restful.WebService, h *handler.Handler) {
 		To(Wrap(h.DeleteProjectIssueTracker)).
 		Doc("Stop using the issue tracker in this project (project admin)").
 		Operation("deleteProjectIssueTracker"))
+
+	ws.Route(project(ws.GET("/orgs/{org}/projects/{project}/issues")).
+		To(Wrap(h.ResolveIssues)).
+		Param(ws.QueryParameter("keys", "comma-separated issue keys, at most 50; keys outside the project's keys are left out")).
+		Doc("Resolve title, status, type and assignee of issue keys through a 60 s cache; a tracker that is down answers key and url only (project read)").
+		Returns(http.StatusOK, "issues", model.IssueListResponse{}).
+		Operation("resolveIssues"))
+	ws.Route(project(ws.GET("/orgs/{org}/projects/{project}/issues/search")).
+		To(Wrap(h.SearchIssues)).
+		Param(ws.QueryParameter("q", "search text")).
+		Param(ws.QueryParameter("limit", "at most 50, default 20")).
+		Doc("Search the project's issues for pickers; supported is false when the tracker cannot search (project read)").
+		Returns(http.StatusOK, "issues", model.IssueSearchResponse{}).
+		Operation("searchIssues"))
+	ws.Route(project(ws.GET("/orgs/{org}/projects/{project}/issues/{key}/links")).
+		To(Wrap(h.ListIssueLinks)).
+		Param(ws.PathParameter("key", "issue key")).
+		Param(ws.QueryParameter("after", "next_cursor of the previous page")).
+		Param(ws.QueryParameter("limit", "at most 100, default 50")).
+		Doc("Commits, branches and merge requests linked to an issue, newest first (project read)").
+		Returns(http.StatusOK, "links", model.IssueLinksResponse{}).
+		Operation("listIssueLinks"))
 }

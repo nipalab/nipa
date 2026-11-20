@@ -87,6 +87,21 @@ func (mr *MockissueTrackerRepositoryMockRecorder) Delete(ctx, orgID, id any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockissueTrackerRepository)(nil).Delete), ctx, orgID, id)
 }
 
+// DeleteIssueLinks mocks base method.
+func (m *MockissueTrackerRepository) DeleteIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID, keys []string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteIssueLinks", ctx, projectID, kind, subjectID, keys)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteIssueLinks indicates an expected call of DeleteIssueLinks.
+func (mr *MockissueTrackerRepositoryMockRecorder) DeleteIssueLinks(ctx, projectID, kind, subjectID, keys any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIssueLinks", reflect.TypeOf((*MockissueTrackerRepository)(nil).DeleteIssueLinks), ctx, projectID, kind, subjectID, keys)
+}
+
 // DeleteProject mocks base method.
 func (m *MockissueTrackerRepository) DeleteProject(ctx context.Context, projectID snow.ID) (bool, error) {
 	m.ctrl.T.Helper()
@@ -100,6 +115,21 @@ func (m *MockissueTrackerRepository) DeleteProject(ctx context.Context, projectI
 func (mr *MockissueTrackerRepositoryMockRecorder) DeleteProject(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteProject", reflect.TypeOf((*MockissueTrackerRepository)(nil).DeleteProject), ctx, projectID)
+}
+
+// GetByID mocks base method.
+func (m *MockissueTrackerRepository) GetByID(ctx context.Context, id snow.ID) (*domain.IssueTracker, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(*domain.IssueTracker)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockissueTrackerRepositoryMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockissueTrackerRepository)(nil).GetByID), ctx, id)
 }
 
 // GetByOrg mocks base method.
@@ -132,6 +162,51 @@ func (mr *MockissueTrackerRepositoryMockRecorder) GetProject(ctx, projectID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProject", reflect.TypeOf((*MockissueTrackerRepository)(nil).GetProject), ctx, projectID)
 }
 
+// ListIssueLinks mocks base method.
+func (m *MockissueTrackerRepository) ListIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID) ([]domain.IssueLink, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIssueLinks", ctx, projectID, kind, subjectID)
+	ret0, _ := ret[0].([]domain.IssueLink)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIssueLinks indicates an expected call of ListIssueLinks.
+func (mr *MockissueTrackerRepositoryMockRecorder) ListIssueLinks(ctx, projectID, kind, subjectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIssueLinks", reflect.TypeOf((*MockissueTrackerRepository)(nil).ListIssueLinks), ctx, projectID, kind, subjectID)
+}
+
+// ListIssueLinksBySubjects mocks base method.
+func (m *MockissueTrackerRepository) ListIssueLinksBySubjects(ctx context.Context, projectID snow.ID, kind string, subjectIDs []snow.ID) ([]domain.IssueLink, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIssueLinksBySubjects", ctx, projectID, kind, subjectIDs)
+	ret0, _ := ret[0].([]domain.IssueLink)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIssueLinksBySubjects indicates an expected call of ListIssueLinksBySubjects.
+func (mr *MockissueTrackerRepositoryMockRecorder) ListIssueLinksBySubjects(ctx, projectID, kind, subjectIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIssueLinksBySubjects", reflect.TypeOf((*MockissueTrackerRepository)(nil).ListIssueLinksBySubjects), ctx, projectID, kind, subjectIDs)
+}
+
+// ListIssueSubjects mocks base method.
+func (m *MockissueTrackerRepository) ListIssueSubjects(ctx context.Context, projectID snow.ID, key string, before snow.ID, limit int) ([]domain.IssueLinkSubject, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIssueSubjects", ctx, projectID, key, before, limit)
+	ret0, _ := ret[0].([]domain.IssueLinkSubject)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIssueSubjects indicates an expected call of ListIssueSubjects.
+func (mr *MockissueTrackerRepositoryMockRecorder) ListIssueSubjects(ctx, projectID, key, before, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIssueSubjects", reflect.TypeOf((*MockissueTrackerRepository)(nil).ListIssueSubjects), ctx, projectID, key, before, limit)
+}
+
 // LockOrg mocks base method.
 func (m *MockissueTrackerRepository) LockOrg(ctx context.Context, orgID snow.ID) error {
 	m.ctrl.T.Helper()
@@ -159,6 +234,20 @@ func (m *MockissueTrackerRepository) Update(ctx context.Context, t domain.IssueT
 func (mr *MockissueTrackerRepositoryMockRecorder) Update(ctx, t any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockissueTrackerRepository)(nil).Update), ctx, t)
+}
+
+// UpsertIssueLink mocks base method.
+func (m *MockissueTrackerRepository) UpsertIssueLink(ctx context.Context, link domain.IssueLink) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertIssueLink", ctx, link)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertIssueLink indicates an expected call of UpsertIssueLink.
+func (mr *MockissueTrackerRepositoryMockRecorder) UpsertIssueLink(ctx, link any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertIssueLink", reflect.TypeOf((*MockissueTrackerRepository)(nil).UpsertIssueLink), ctx, link)
 }
 
 // UpsertProject mocks base method.
@@ -266,4 +355,18 @@ func (m *MockissueTrackerAccess) AdminHasProject(ctx context.Context, projectID 
 func (mr *MockissueTrackerAccessMockRecorder) AdminHasProject(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdminHasProject", reflect.TypeOf((*MockissueTrackerAccess)(nil).AdminHasProject), ctx, projectID)
+}
+
+// HasProjectAccess mocks base method.
+func (m *MockissueTrackerAccess) HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasProjectAccess", ctx, projectID, permission)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasProjectAccess indicates an expected call of HasProjectAccess.
+func (mr *MockissueTrackerAccessMockRecorder) HasProjectAccess(ctx, projectID, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProjectAccess", reflect.TypeOf((*MockissueTrackerAccess)(nil).HasProjectAccess), ctx, projectID, permission)
 }

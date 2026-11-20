@@ -175,3 +175,25 @@ describe('issue tracker', () => {
     expect(JSON.parse(fetchMock.mock.calls[5][1].body)).toEqual({ keys: ['GAME'], link_commits: 'all' })
   })
 })
+
+describe('issues', () => {
+  it('calls the resolve, search and links routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const { listIssueLinks, resolveIssues, searchIssues } = await import('./endpoints')
+
+    await resolveIssues('acme', 'game', ['GAME-1', 'GAME-2'])
+    await searchIssues('acme', 'game', 'rig')
+    await searchIssues('acme', 'game', 'rig', 5)
+    await listIssueLinks('acme', 'game', 'GAME-1')
+    await listIssueLinks('acme', 'game', 'GAME-1', 'abc')
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      '/api/v1/orgs/acme/projects/game/issues?keys=GAME-1%2CGAME-2',
+      '/api/v1/orgs/acme/projects/game/issues/search?q=rig',
+      '/api/v1/orgs/acme/projects/game/issues/search?q=rig&limit=5',
+      '/api/v1/orgs/acme/projects/game/issues/GAME-1/links',
+      '/api/v1/orgs/acme/projects/game/issues/GAME-1/links?after=abc',
+    ])
+  })
+})

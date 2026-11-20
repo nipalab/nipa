@@ -65,8 +65,8 @@ edition.
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
-| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
-| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (Default storage card when own storage is enabled; usage, quota, per-project breakdown with own-storage projects marked "External storage"; the tab is hidden when the server has neither) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Issue tracker (`?tab=issues`: Jira project keys, link/comment toggles, opened/merged statuses, active, with the visibility notes; 503 shows an "integration is off" banner), Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
+| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (Default storage card when own storage is enabled; usage, quota, per-project breakdown with own-storage projects marked "External storage"; the tab is hidden when the server has neither), Issue tracker (`?tab=issues`: the Jira connection form with a write-only token, Test, Delete) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/admin/maintenance` | maintenance | super admins (user menu "Maintenance"): server window form (frozen included, locked while `MAINTENANCE_FILE` controls it or the server is frozen) plus the org and project windows; reachable while the server is closed |
@@ -241,16 +241,28 @@ servers; otherwise the empty choice is "Nipa storage" or "Organization default
 
 ## Issue tracker API
 
-`endpoints.ts` wraps the routes (pages come with the settings tabs):
+`endpoints.ts` wraps the routes (`components/IssueTrackerSettings.tsx` holds
+the org and project settings tabs):
 `getIssueTracker`/`putIssueTracker`/`deleteIssueTracker`/`testIssueTracker`
 on `/orgs/{org}/issue-tracker` (GET for org members returns kind, name and
-base URL only; `can_manage` marks the owner view; the token is write-only and
+base URL only, non-members get 404; `can_manage` marks the owner view; the token is write-only and
 an omitted one keeps the stored token unless the base URL changes; a failed
 probe is a 400 `{error, check}` with `check` = `auth`, `reach` or `tls`;
 DELETE is a 409 while a project uses the connection) and
 `getProjectIssueTracker`/`putProjectIssueTracker`/`deleteProjectIssueTracker`
 on `/orgs/{org}/projects/{project}/issue-tracker` (project admin). Every route
 answers 503 when the server has no `INTEGRATIONS_ENCRYPTION_KEY`.
+
+Commit, branch and merge request payloads carry `issue_keys: [{key, url}]`
+when the project has active settings. `components/repo/IssueChips.tsx`
+renders them (key + status label, opens the tracker in a new tab with
+`rel="noopener noreferrer"`) on commit rows, the commit page, merge request
+rows and the merge request header; `useIssues` resolves the statuses of a
+page through `resolveIssues` (`GET .../issues?keys=`, batches of 50, only
+keys it has not asked for yet, failures leave plain key links).
+`searchIssues` (`.../issues/search?q=`, `supported: false` when the tracker
+cannot search) and `listIssueLinks` (`.../issues/{key}/links`, `after`
+cursor) are wrapped for later pickers and issue views.
 
 ## Billing API
 

@@ -93,9 +93,15 @@ type Querier interface {
 	GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
+	IssueLinkDeleteKeys(ctx context.Context, arg IssueLinkDeleteKeysParams) (int64, error)
+	IssueLinkListBySubject(ctx context.Context, arg IssueLinkListBySubjectParams) ([]IssueLink, error)
+	IssueLinkListBySubjects(ctx context.Context, arg IssueLinkListBySubjectsParams) ([]IssueLink, error)
+	IssueLinkListSubjects(ctx context.Context, arg IssueLinkListSubjectsParams) ([]IssueLinkListSubjectsRow, error)
+	IssueLinkUpsert(ctx context.Context, arg IssueLinkUpsertParams) error
 	IssueTrackerCountProjects(ctx context.Context, trackerID int64) (int64, error)
 	IssueTrackerCreate(ctx context.Context, arg IssueTrackerCreateParams) (IssueTracker, error)
 	IssueTrackerDelete(ctx context.Context, arg IssueTrackerDeleteParams) (int64, error)
+	IssueTrackerGetByID(ctx context.Context, id int64) (IssueTracker, error)
 	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
 	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)

@@ -50,9 +50,16 @@ func (h *Handler) ListProjectBranches(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	ids := make([]snow.ID, len(branches))
+	for i, branch := range branches {
+		ids[i] = branch.ID
+	}
+	keys := h.issueKeys(appCtx.Context(), project.ID, domain.IssueSubjectBranch, ids)
 	resp := make([]model.BranchResponse, 0, len(branches))
 	for _, branch := range branches {
-		resp = append(resp, toBranchResponse(branch))
+		item := toBranchResponse(branch)
+		item.IssueKeys = keys[branch.ID]
+		resp = append(resp, item)
 	}
 	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
@@ -93,11 +100,7 @@ func (h *Handler) ListCommits(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	resp := make([]model.CommitResponse, 0, len(entries))
-	for _, entry := range entries {
-		resp = append(resp, toCommitResponse(entry))
-	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, h.commitResponses(appCtx.Context(), project.ID, entries))
 }
 
 func (h *Handler) GetCommitDiff(appCtx http.AppContext) {
