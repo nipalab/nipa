@@ -158,6 +158,24 @@ describe('OrgSettingsPage storage', () => {
   })
 })
 
+describe('OrgSettingsPage issue tracker', () => {
+  it('opens the connection form for ?tab=issues', async () => {
+    stubOrgSettings()
+    window.history.pushState({}, '', '/sticker/settings?tab=issues')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Connect one Jira site')
+
+    expect(findButton('Connect').disabled).toBe(true)
+    act(() => root.unmount())
+  })
+})
+
 describe('OrgSettingsPage groups', () => {
   it('shows the server-resolved member count in the groups table', async () => {
     stubOrgSettings()

@@ -14,6 +14,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { listMergeRequests } from '../api/endpoints'
 import type { MergeRequestResponse } from '../api/models'
 import { ActorAvatar, actorName } from '../components/ActorAvatar'
+import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { FilterButton, branchOptions, memberOptions } from '../components/repo/MemberPicker'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
@@ -71,6 +72,7 @@ export default function MergeRequestsPage() {
   const { data: members } = useOrgMembers(org)
 
   const requests = [...(data?.merge_requests ?? []), ...extra]
+  const issues = useIssues(org, project, collectIssueKeys(requests))
   const filtered = Boolean(search || author || assignee || source || target || status !== 'open')
   const nextCursor = extraCursor ?? data?.next_cursor ?? ''
 
@@ -227,6 +229,11 @@ export default function MergeRequestsPage() {
                     </span>
                   ) : null}
                 </div>
+                {(request.issue_keys ?? []).length > 0 && (
+                  <div className="nipa-list-row-meta">
+                    <IssueChips refs={request.issue_keys} issues={issues} />
+                  </div>
+                )}
               </div>
               {(request.assignees ?? []).length > 0 && (
                 <span className="nipa-list-row-assignees">

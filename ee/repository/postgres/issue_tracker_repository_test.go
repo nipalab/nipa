@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -174,4 +175,83 @@ func (s *IssueTrackerRepositorySuite) TestLockOrg_SerializesPerOrg() {
 	}), "other orgs are not blocked")
 
 	s.Require().NoError(tx.Rollback())
+}
+
+func (s *IssueTrackerRepositorySuite) TestLinks() {
+	ctx := context.Background()
+	repo := NewIssueTrackerRepository(s.db)
+	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	orgID := seedOrg(s.T(), s.q, "Studio", "studio")
+	game := seedProject(s.T(), s.q, orgID.Int64(), "game")
+	art := seedProject(s.T(), s.q, orgID.Int64(), "art")
+	_, err := repo.Create(ctx, s.tracker(1, orgID, now))
+	s.Require().NoError(err)
+	got, err := repo.GetByID(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal(orgID, got.OrgID)
+	_, err = repo.GetByID(ctx, 99)
+	s.Error(err)
+
+	treeID := seedTreeNode(s.T(), s.db, "", sql.NullInt64{})
+	commitID := seedCommit(s.T(), s.db, s.q, game, treeID)
+	branchID := seedBranch(s.T(), s.db, game, "GAME-1-rig", sql.NullInt64{})
+	oldBranch := seedBranch(s.T(), s.db, game, "GAME-1-old", sql.NullInt64{})
+	userID := seedUser(s.T(), s.q, "author", "author@example.com", sql.NullString{})
+	_, err = s.db.ExecContext(ctx, `UPDATE branches SET deleted = true WHERE id = $1`, oldBranch)
+	s.Require().NoError(err)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO merge_requests (id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, status, created_by)
+		VALUES (600, 3, $1, $2, $2, 'GAME-1-rig', 'main', 'New rig', 'open', $3)`, game, branchID, userID)
+	s.Require().NoError(err)
+
+	link := func(id int64, key, kind string, subject snow.ID, relation string) domain.IssueLink {
+		return domain.IssueLink{ID: snow.ID(id), ProjectID: game, TrackerID: 1, IssueKey: key, SubjectKind: kind, SubjectID: subject, Relation: relation, CreatedAt: now}
+	}
+	for _, l := range []domain.IssueLink{
+		link(1, "GAME-1", domain.IssueSubjectCommit, commitID, "closes"),
+		link(2, "GAME-2", domain.IssueSubjectCommit, commitID, "mentions"),
+		link(3, "GAME-1", domain.IssueSubjectMergeRequest, 600, "mentions"),
+		link(4, "GAME-1", domain.IssueSubjectBranch, branchID, "mentions"),
+		link(5, "GAME-1", domain.IssueSubjectBranch, oldBranch, "mentions"),
+	} {
+		s.Require().NoError(repo.UpsertIssueLink(ctx, l))
+	}
+	s.Require().NoError(repo.UpsertIssueLink(ctx, link(9, "GAME-1", domain.IssueSubjectMergeRequest, 600, "closes")))
+	other := link(8, "GAME-1", domain.IssueSubjectCommit, commitID, "mentions")
+	other.ProjectID = art
+	s.Require().NoError(repo.UpsertIssueLink(ctx, other))
+
+	mr, err := repo.ListIssueLinks(ctx, game, domain.IssueSubjectMergeRequest, 600)
+	s.Require().NoError(err)
+	s.Require().Len(mr, 1)
+	s.Equal(snow.ID(3), mr[0].ID)
+	s.Equal("closes", mr[0].Relation)
+
+	batch, err := repo.ListIssueLinksBySubjects(ctx, game, domain.IssueSubjectCommit, []snow.ID{commitID, 12345})
+	s.Require().NoError(err)
+	s.Require().Len(batch, 2)
+	s.Equal("GAME-1", batch[0].IssueKey)
+	s.Equal("GAME-2", batch[1].IssueKey)
+
+	page, err := repo.ListIssueSubjects(ctx, game, "GAME-1", 0, 2)
+	s.Require().NoError(err)
+	s.Require().Len(page, 2)
+	s.True(page[0].Missing)
+	s.Equal("GAME-1-rig", page[1].BranchName)
+	rest, err := repo.ListIssueSubjects(ctx, game, "GAME-1", page[1].ID, 10)
+	s.Require().NoError(err)
+	s.Require().Len(rest, 2)
+	s.Equal(int64(3), rest[0].MRNumber)
+	s.Equal("New rig", rest[0].MRTitle)
+	s.Equal("initial commit", rest[1].CommitMessage)
+	s.False(rest[1].Missing)
+
+	n, err := repo.DeleteIssueLinks(ctx, game, domain.IssueSubjectCommit, commitID, []string{"GAME-2", "GAME-9"})
+	s.Require().NoError(err)
+	s.Equal(int64(1), n)
+	n, err = repo.DeleteIssueLinks(ctx, game, domain.IssueSubjectCommit, commitID, nil)
+	s.Require().NoError(err)
+	s.Zero(n)
+	left, err := repo.ListIssueLinks(ctx, game, domain.IssueSubjectCommit, commitID)
+	s.Require().NoError(err)
+	s.Len(left, 1)
 }

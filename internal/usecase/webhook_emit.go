@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -56,6 +57,9 @@ type PushEvent struct {
 	// HeadBinary marks the touched paths that already existed in the old head;
 	// its value is their binary flag.
 	HeadBinary map[string]bool
+	// Imported marks ref moves of a Git import; their commits are never
+	// linked to issues.
+	Imported bool
 }
 
 // HookEmitter fans events out to the project webhooks that subscribe to them.
@@ -69,6 +73,7 @@ type HookEmitter struct {
 	users    userLookup
 	sender   hookSender
 	notifier emailNotifier
+	issues   issueSyncSink
 	now      func() time.Time
 }
 
@@ -91,7 +96,26 @@ func (e *HookEmitter) WithNotifier(notifier emailNotifier) *HookEmitter {
 	return e
 }
 
+// WithIssueSync records issue links for pushes, branches and merge requests
+// next to webhook deliveries. A nil sink leaves it off.
+func (e *HookEmitter) WithIssueSync(sink issueSyncSink) *HookEmitter {
+	e.issues = sink
+	return e
+}
+
+// syncIssues runs before the webhook fan-out, which returns early when no
+// hook matches; a failure only logs.
+func (e *HookEmitter) syncIssues(ctx context.Context, ev IssueEvent) {
+	if e.issues == nil || !e.issues.Wants(ev.Event) {
+		return
+	}
+	if err := e.issues.Handle(ctx, ev); err != nil {
+		slog.Warn("recording issue links failed", "event", ev.Event, "project", ev.ProjectID, "error", err)
+	}
+}
+
 func (e *HookEmitter) EmitPush(ctx context.Context, event PushEvent) error {
+	e.syncIssues(ctx, IssueEvent{Event: domain.WebhookEventPush, ProjectID: event.ProjectID, Push: &event})
 	return e.emit(ctx, domain.WebhookEventPush, event.ProjectID, event.Actor, pushEventPaths(event), func(env webhook.Envelope) any {
 		return webhook.PushPayload{Envelope: env, Changes: []webhook.PushChange{newPushChange(event)}}
 	}, nil)
@@ -108,6 +132,7 @@ func (e *HookEmitter) EmitMergeRequestCheck(ctx context.Context, event string, p
 }
 
 func (e *HookEmitter) emitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID, check *domain.MergeRequestCheck) error {
+	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, MR: mr})
 	var notify func(context.Context, webhook.Envelope) error
 	if e.notifier != nil && e.notifier.Wants(event) {
 		notify = func(ctx context.Context, env webhook.Envelope) error {
@@ -127,6 +152,7 @@ func (e *HookEmitter) emitMergeRequest(ctx context.Context, event string, projec
 }
 
 func (e *HookEmitter) EmitBranch(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch, actor snow.ID) error {
+	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, Branch: branch})
 	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
 		return webhook.BranchPayload{Envelope: env, Branch: newBranchInfo(branch)}
 	}, nil)

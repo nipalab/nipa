@@ -36,6 +36,9 @@ read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/contains
 read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/diff
 read GET /api/v1/orgs/{org}/projects/{project}/emails/deliveries
 read GET /api/v1/orgs/{org}/projects/{project}/issue-tracker
+read GET /api/v1/orgs/{org}/projects/{project}/issues
+read GET /api/v1/orgs/{org}/projects/{project}/issues/search
+read GET /api/v1/orgs/{org}/projects/{project}/issues/{key}/links
 read GET /api/v1/orgs/{org}/projects/{project}/locks
 read GET /api/v1/orgs/{org}/projects/{project}/members
 read GET /api/v1/orgs/{org}/projects/{project}/merge-requests

@@ -160,6 +160,7 @@ export interface BranchResponse {
   required_checks?: string[]
   commit_id?: string
   updated_at: string
+  issue_keys?: IssueKeyRef[]
 }
 
 export interface TagResponse {
@@ -180,6 +181,7 @@ export interface CommitResponse {
   author_email?: string
   created_at: string
   origin?: string
+  issue_keys?: IssueKeyRef[]
 }
 
 export type DiffLineKind = 'context' | 'add' | 'remove'
@@ -243,6 +245,7 @@ export interface MergeRequestResponse {
   assignees?: ReviewActorResponse[]
   mergeability?: MergeabilityResponse
   review?: ReviewStateResponse
+  issue_keys?: IssueKeyRef[]
 }
 
 export interface MergeRequestListResponse {
@@ -780,4 +783,49 @@ export interface ProjectIssueTrackerInput {
   merged_status?: string
   opened_status?: string
   active?: boolean
+}
+
+export interface IssueKeyRef {
+  key: string
+  url: string
+}
+
+export type IssueState = 'ok' | 'not_found' | 'unavailable'
+
+export interface IssueResponse {
+  key: string
+  url: string
+  state: IssueState
+  title?: string
+  type?: string
+  status?: string
+  status_category?: 'todo' | 'in_progress' | 'done'
+  assignee?: string
+}
+
+export interface IssueListResponse {
+  issues: IssueResponse[]
+}
+
+export interface IssueSearchResponse {
+  issues: IssueResponse[]
+  supported: boolean
+  unavailable?: boolean
+}
+
+export interface IssueLinkResponse {
+  id: string
+  kind: 'commit' | 'merge_request' | 'branch'
+  relation: 'mentions' | 'closes'
+  created_at: string
+  commit?: { id: string; title: string; created_at: string }
+  merge_request?: { number: number; title: string; state: string }
+  branch?: { name: string }
+}
+
+export interface IssueLinksResponse {
+  key: string
+  url: string
+  links: IssueLinkResponse[]
+  next_cursor?: string
 }

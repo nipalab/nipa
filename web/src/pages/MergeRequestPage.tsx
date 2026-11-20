@@ -29,6 +29,7 @@ import { actorName, actorsFrom, type ActorLike } from '../components/ActorAvatar
 import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
 import { ChangesView } from '../components/repo/ChangesView'
+import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { MergeRequestCommits } from '../components/repo/MergeRequestCommits'
 import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -87,6 +88,7 @@ export default function MergeRequestPage() {
   const [draftAnchor, setDraftAnchor] = useState<DiffAnchor | null>(null)
   const [editOpen, setEditOpen] = useState(false)
 
+  const issues = useIssues(org, project, request ? collectIssueKeys([request]) : [])
   const tab = params.get('tab') ?? 'overview'
   const files = diff?.files ?? []
   const canComment = canWrite && request?.status === 'open'
@@ -243,6 +245,7 @@ export default function MergeRequestPage() {
             <Mono style={BRANCH_CHIP}>{request.target_branch}</Mono> from{' '}
             <Mono style={BRANCH_CHIP}>{request.source_branch}</Mono>
           </span>
+          <IssueChips refs={request.issue_keys} issues={issues} />
         </div>
       )}
       <ErrorBanner

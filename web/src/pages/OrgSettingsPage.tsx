@@ -17,6 +17,7 @@ import {
 import {
   ArrowLeftIcon,
   DatabaseIcon,
+  IssueOpenedIcon,
   KebabHorizontalIcon,
   PeopleIcon,
   PersonAddIcon,
@@ -42,6 +43,7 @@ import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
+import { OrgIssueTrackerSettings } from '../components/IssueTrackerSettings'
 import { OrgMaintenanceTab } from '../components/MaintenanceSettings'
 import { OrgNav } from '../components/OrgNav'
 import { PickedSubject } from '../components/PickedSubject'
@@ -54,10 +56,12 @@ import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../compone
 import { useAction, useAsync } from '../hooks'
 import { useOrgMembers, useOrgRole } from '../orgHooks'
 
-type OrgTab = 'members' | 'groups' | 'storage' | 'maintenance'
+type OrgTab = 'members' | 'groups' | 'storage' | 'issues' | 'maintenance'
 
 function isOrgTab(value: string | null): value is OrgTab {
-  return value === 'members' || value === 'groups' || value === 'storage' || value === 'maintenance'
+  return (
+    value === 'members' || value === 'groups' || value === 'storage' || value === 'issues' || value === 'maintenance'
+  )
 }
 
 export default function OrgSettingsPage() {
@@ -80,6 +84,7 @@ export default function OrgSettingsPage() {
     { key: 'members', label: 'Members', to: base, icon: PersonIcon },
     { key: 'groups', label: 'Groups', to: `${base}?tab=groups`, icon: PeopleIcon },
     { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: !hasStorage },
+    { key: 'issues', label: 'Issue tracker', to: `${base}?tab=issues`, icon: IssueOpenedIcon },
     { key: 'maintenance', label: 'Maintenance', to: `${base}?tab=maintenance`, icon: ToolsIcon, hidden: !canMaintain },
   ]
   const title = `${org} settings`
@@ -104,6 +109,7 @@ export default function OrgSettingsPage() {
             {storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
           </Stack>
         )}
+        {tab === 'issues' && <OrgIssueTrackerSettings org={org} />}
         {tab === 'maintenance' && <OrgMaintenanceTab org={org} />}
       </SettingsLayout>
     </Page>

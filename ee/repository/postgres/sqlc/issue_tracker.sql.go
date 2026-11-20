@@ -7,8 +7,234 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
+
+const issueLinkDeleteKeys = `-- name: IssueLinkDeleteKeys :execrows
+DELETE FROM issue_links
+WHERE project_id = $1 AND subject_kind = $2 AND subject_id = $3
+  AND issue_key = ANY($4::text[])
+`
+
+type IssueLinkDeleteKeysParams struct {
+	ProjectID   int64    `json:"project_id"`
+	SubjectKind string   `json:"subject_kind"`
+	SubjectID   int64    `json:"subject_id"`
+	IssueKeys   []string `json:"issue_keys"`
+}
+
+func (q *Queries) IssueLinkDeleteKeys(ctx context.Context, arg IssueLinkDeleteKeysParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueLinkDeleteKeys,
+		arg.ProjectID,
+		arg.SubjectKind,
+		arg.SubjectID,
+		pq.Array(arg.IssueKeys),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueLinkListBySubject = `-- name: IssueLinkListBySubject :many
+SELECT id, project_id, tracker_id, issue_key, subject_kind, subject_id, relation, created_at
+FROM issue_links
+WHERE project_id = $1 AND subject_kind = $2 AND subject_id = $3
+ORDER BY issue_key
+`
+
+type IssueLinkListBySubjectParams struct {
+	ProjectID   int64  `json:"project_id"`
+	SubjectKind string `json:"subject_kind"`
+	SubjectID   int64  `json:"subject_id"`
+}
+
+func (q *Queries) IssueLinkListBySubject(ctx context.Context, arg IssueLinkListBySubjectParams) ([]IssueLink, error) {
+	rows, err := q.db.QueryContext(ctx, issueLinkListBySubject, arg.ProjectID, arg.SubjectKind, arg.SubjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueLink
+	for rows.Next() {
+		var i IssueLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.TrackerID,
+			&i.IssueKey,
+			&i.SubjectKind,
+			&i.SubjectID,
+			&i.Relation,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueLinkListBySubjects = `-- name: IssueLinkListBySubjects :many
+SELECT id, project_id, tracker_id, issue_key, subject_kind, subject_id, relation, created_at
+FROM issue_links
+WHERE project_id = $1 AND subject_kind = $2 AND subject_id = ANY($3::bigint[])
+ORDER BY subject_id, issue_key
+`
+
+type IssueLinkListBySubjectsParams struct {
+	ProjectID   int64   `json:"project_id"`
+	SubjectKind string  `json:"subject_kind"`
+	SubjectIds  []int64 `json:"subject_ids"`
+}
+
+func (q *Queries) IssueLinkListBySubjects(ctx context.Context, arg IssueLinkListBySubjectsParams) ([]IssueLink, error) {
+	rows, err := q.db.QueryContext(ctx, issueLinkListBySubjects, arg.ProjectID, arg.SubjectKind, pq.Array(arg.SubjectIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueLink
+	for rows.Next() {
+		var i IssueLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.TrackerID,
+			&i.IssueKey,
+			&i.SubjectKind,
+			&i.SubjectID,
+			&i.Relation,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueLinkListSubjects = `-- name: IssueLinkListSubjects :many
+SELECT l.id, l.subject_kind, l.subject_id, l.relation, l.created_at,
+    c.message AS commit_message, c.created_at AS commit_created_at,
+    mr.number AS mr_number, mr.title AS mr_title, mr.status AS mr_status,
+    b.name AS branch_name
+FROM issue_links l
+LEFT JOIN commits c ON l.subject_kind = 'commit' AND c.id = l.subject_id AND c.project_id = l.project_id
+LEFT JOIN merge_requests mr ON l.subject_kind = 'merge_request' AND mr.id = l.subject_id AND mr.project_id = l.project_id
+LEFT JOIN branches b ON l.subject_kind = 'branch' AND b.id = l.subject_id AND b.project_id = l.project_id AND b.deleted = FALSE
+WHERE l.project_id = $1 AND l.issue_key = $2 AND l.id < $3
+ORDER BY l.id DESC
+LIMIT $4::bigint
+`
+
+type IssueLinkListSubjectsParams struct {
+	ProjectID int64  `json:"project_id"`
+	IssueKey  string `json:"issue_key"`
+	BeforeID  int64  `json:"before_id"`
+	RowLimit  int64  `json:"row_limit"`
+}
+
+type IssueLinkListSubjectsRow struct {
+	ID              int64          `json:"id"`
+	SubjectKind     string         `json:"subject_kind"`
+	SubjectID       int64          `json:"subject_id"`
+	Relation        string         `json:"relation"`
+	CreatedAt       time.Time      `json:"created_at"`
+	CommitMessage   sql.NullString `json:"commit_message"`
+	CommitCreatedAt sql.NullTime   `json:"commit_created_at"`
+	MrNumber        sql.NullInt64  `json:"mr_number"`
+	MrTitle         sql.NullString `json:"mr_title"`
+	MrStatus        sql.NullString `json:"mr_status"`
+	BranchName      sql.NullString `json:"branch_name"`
+}
+
+func (q *Queries) IssueLinkListSubjects(ctx context.Context, arg IssueLinkListSubjectsParams) ([]IssueLinkListSubjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, issueLinkListSubjects,
+		arg.ProjectID,
+		arg.IssueKey,
+		arg.BeforeID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueLinkListSubjectsRow
+	for rows.Next() {
+		var i IssueLinkListSubjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectKind,
+			&i.SubjectID,
+			&i.Relation,
+			&i.CreatedAt,
+			&i.CommitMessage,
+			&i.CommitCreatedAt,
+			&i.MrNumber,
+			&i.MrTitle,
+			&i.MrStatus,
+			&i.BranchName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueLinkUpsert = `-- name: IssueLinkUpsert :exec
+INSERT INTO issue_links (id, project_id, tracker_id, issue_key, subject_kind, subject_id, relation, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (project_id, issue_key, subject_kind, subject_id) DO UPDATE
+SET relation = excluded.relation, tracker_id = excluded.tracker_id
+`
+
+type IssueLinkUpsertParams struct {
+	ID          int64     `json:"id"`
+	ProjectID   int64     `json:"project_id"`
+	TrackerID   int64     `json:"tracker_id"`
+	IssueKey    string    `json:"issue_key"`
+	SubjectKind string    `json:"subject_kind"`
+	SubjectID   int64     `json:"subject_id"`
+	Relation    string    `json:"relation"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) IssueLinkUpsert(ctx context.Context, arg IssueLinkUpsertParams) error {
+	_, err := q.db.ExecContext(ctx, issueLinkUpsert,
+		arg.ID,
+		arg.ProjectID,
+		arg.TrackerID,
+		arg.IssueKey,
+		arg.SubjectKind,
+		arg.SubjectID,
+		arg.Relation,
+		arg.CreatedAt,
+	)
+	return err
+}
 
 const issueTrackerCountProjects = `-- name: IssueTrackerCountProjects :one
 SELECT COUNT(*)
@@ -90,6 +316,31 @@ func (q *Queries) IssueTrackerDelete(ctx context.Context, arg IssueTrackerDelete
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const issueTrackerGetByID = `-- name: IssueTrackerGetByID :one
+SELECT id, org_id, kind, name, base_url, auth_kind, account, secret_sealed, created_by, created_at, updated_at
+FROM issue_trackers
+WHERE id = $1
+`
+
+func (q *Queries) IssueTrackerGetByID(ctx context.Context, id int64) (IssueTracker, error) {
+	row := q.db.QueryRowContext(ctx, issueTrackerGetByID, id)
+	var i IssueTracker
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Kind,
+		&i.Name,
+		&i.BaseUrl,
+		&i.AuthKind,
+		&i.Account,
+		&i.SecretSealed,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const issueTrackerGetByOrg = `-- name: IssueTrackerGetByOrg :one

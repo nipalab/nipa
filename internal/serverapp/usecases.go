@@ -129,6 +129,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		WithAudit(auditUsecase).WithFactory(usecase.GuardedIssueTrackerFactory(issueTrackerAllowlist(cfg)))
 	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
+	if issueTrackerUsecase.Available() && repos.IssueTracker != nil {
+		hookEmitter = hookEmitter.WithIssueSync(usecase.NewIssueSync(repos.IssueTracker, transactor, node))
+	}
 	emailDeliveryUsecase := usecase.NewEmailDelivery(repos.Email, permissionUsecase)
 	if deps.EmailDispatcher != nil {
 		emailDeliveryUsecase = emailDeliveryUsecase.WithKicker(deps.EmailDispatcher)
@@ -215,7 +218,7 @@ func issueTrackerBox(cfg *config.Config) *sealbox.Box {
 		return nil
 	}
 	if key == nil {
-		slog.Info("issue tracker integration off: set INTEGRATIONS_ENCRYPTION_KEY (openssl rand -base64 32) to offer it")
+		slog.Warn("issue tracker integration off: set INTEGRATIONS_ENCRYPTION_KEY (openssl rand -base64 32) to offer it")
 		return nil
 	}
 	box, err := usecase.NewIssueTrackerBox(key)

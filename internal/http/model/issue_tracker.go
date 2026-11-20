@@ -75,3 +75,66 @@ type ProjectIssueTrackerResponse struct {
 	SetBy             string    `json:"set_by"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
+
+// IssueKeyResponse is an issue key linked to a commit, branch or merge
+// request, with its link on the tracker.
+type IssueKeyResponse struct {
+	Key string `json:"key"`
+	URL string `json:"url"`
+}
+
+// IssueResponse is a resolved issue; state is ok, not_found or unavailable
+// and the details are set only for ok.
+type IssueResponse struct {
+	Key            string `json:"key"`
+	URL            string `json:"url"`
+	State          string `json:"state"`
+	Title          string `json:"title,omitempty"`
+	Type           string `json:"type,omitempty"`
+	Status         string `json:"status,omitempty"`
+	StatusCategory string `json:"status_category,omitempty"`
+	Assignee       string `json:"assignee,omitempty"`
+}
+
+type IssueListResponse struct {
+	Issues []IssueResponse `json:"issues"`
+}
+
+type IssueSearchResponse struct {
+	Issues      []IssueResponse `json:"issues"`
+	Supported   bool            `json:"supported"`
+	Unavailable bool            `json:"unavailable,omitempty"`
+}
+
+type IssueLinkCommitResponse struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type IssueLinkMergeRequestResponse struct {
+	Number int64  `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
+}
+
+type IssueLinkBranchResponse struct {
+	Name string `json:"name"`
+}
+
+type IssueLinkResponse struct {
+	ID           string                         `json:"id"`
+	Kind         string                         `json:"kind"`
+	Relation     string                         `json:"relation"`
+	CreatedAt    time.Time                      `json:"created_at"`
+	Commit       *IssueLinkCommitResponse       `json:"commit,omitempty"`
+	MergeRequest *IssueLinkMergeRequestResponse `json:"merge_request,omitempty"`
+	Branch       *IssueLinkBranchResponse       `json:"branch,omitempty"`
+}
+
+type IssueLinksResponse struct {
+	Key        string              `json:"key"`
+	URL        string              `json:"url"`
+	Links      []IssueLinkResponse `json:"links"`
+	NextCursor string              `json:"next_cursor,omitempty"`
+}

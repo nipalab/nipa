@@ -139,7 +139,7 @@ func TestIssueTracker_Get(t *testing.T) {
 	f.owner(false)
 	f.orgs.EXPECT().IsOrgMember(gomock.Any(), f.orgID).Return(false, nil)
 	_, err = f.uc.Get(f.ctx, f.orgID)
-	requireDomainCode(t, err, 403)
+	requireDomainCode(t, err, 404)
 
 	f.owner(false)
 	f.orgs.EXPECT().IsOrgMember(gomock.Any(), f.orgID).Return(false, errors.New("db"))

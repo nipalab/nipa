@@ -28,6 +28,7 @@ type MergeRequestResponse struct {
 	Assignees         []ReviewActorResponse `json:"assignees,omitempty"`
 	Mergeability      *MergeabilityResponse `json:"mergeability,omitempty"`
 	Review            *ReviewStateResponse  `json:"review,omitempty"`
+	IssueKeys         []IssueKeyResponse    `json:"issue_keys,omitempty"`
 }
 
 type MergeRequestListResponse struct {

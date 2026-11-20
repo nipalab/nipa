@@ -67,6 +67,9 @@ import type {
   OrgMaintenanceResponse,
   ProjectMaintenanceResponse,
   SetMaintenanceInput,
+  IssueLinksResponse,
+  IssueListResponse,
+  IssueSearchResponse,
   IssueTrackerInput,
   IssueTrackerResponse,
   IssueTrackerTestResponse,
@@ -1211,4 +1214,21 @@ export function putProjectIssueTracker(
 
 export function deleteProjectIssueTracker(org: string, project: string): Promise<void> {
   return apiJson(`${projectBase(org, project)}/issue-tracker`, { method: 'DELETE' })
+}
+
+// resolveIssues looks up title and status of up to 50 issue keys; keys
+// outside the project's configured keys are left out.
+export function resolveIssues(org: string, project: string, keys: string[]): Promise<IssueListResponse> {
+  return apiJson(`${projectBase(org, project)}/issues?${new URLSearchParams({ keys: keys.join(',') })}`)
+}
+
+export function searchIssues(org: string, project: string, q: string, limit?: number): Promise<IssueSearchResponse> {
+  const params = new URLSearchParams({ q })
+  if (limit) params.set('limit', String(limit))
+  return apiJson(`${projectBase(org, project)}/issues/search?${params}`)
+}
+
+export function listIssueLinks(org: string, project: string, key: string, after?: string): Promise<IssueLinksResponse> {
+  const query = after ? `?${new URLSearchParams({ after })}` : ''
+  return apiJson(`${projectBase(org, project)}/issues/${encodeURIComponent(key)}/links${query}`)
 }

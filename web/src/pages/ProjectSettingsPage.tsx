@@ -17,6 +17,7 @@ import { FormDialog } from '../components/FormDialog'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { EmailSettings } from '../components/repo/EmailSettings'
+import { ProjectIssueTrackerSettings } from '../components/IssueTrackerSettings'
 import { ProjectMaintenanceTab } from '../components/MaintenanceSettings'
 import { BranchProtectionSettings, type ProtectionRule } from '../components/repo/BranchProtectionSettings'
 import { ProjectGeneralSettings } from '../components/repo/ProjectGeneralSettings'
@@ -40,6 +41,7 @@ const SETTINGS_TABS = [
   { key: 'webhooks', label: 'Webhooks' },
   { key: 'tokens', label: 'Service tokens' },
   { key: 'email', label: 'Email deliveries' },
+  { key: 'issues', label: 'Issue tracker' },
   { key: 'maintenance', label: 'Maintenance' },
 ] as const
 
@@ -222,6 +224,7 @@ export default function ProjectSettingsPage() {
           {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
           {tab === 'tokens' && <ServiceTokenSettings org={org} project={project} />}
           {tab === 'email' && <EmailSettings org={org} project={project} />}
+          {tab === 'issues' && <ProjectIssueTrackerSettings org={org} project={project} />}
           {tab === 'maintenance' && <ProjectMaintenanceTab org={org} project={project} />}
         </Stack>
       </SettingsLayout>

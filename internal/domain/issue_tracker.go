@@ -46,3 +46,34 @@ type ProjectIssueTracker struct {
 func IsValidLinkCommits(v string) bool {
 	return v == LinkCommitsOff || v == LinkCommitsDefaultBranch || v == LinkCommitsAll
 }
+
+const (
+	IssueSubjectCommit       = "commit"
+	IssueSubjectMergeRequest = "merge_request"
+	IssueSubjectBranch       = "branch"
+)
+
+// IssueLink ties a commit, merge request or branch to an issue key.
+type IssueLink struct {
+	ID          snow.ID
+	ProjectID   snow.ID
+	TrackerID   snow.ID
+	IssueKey    string
+	SubjectKind string
+	SubjectID   snow.ID
+	Relation    string
+	CreatedAt   time.Time
+}
+
+// IssueLinkSubject is a link with what is needed to render its subject;
+// Missing marks a subject that no longer exists (a deleted branch).
+type IssueLinkSubject struct {
+	IssueLink
+	CommitMessage   string
+	CommitCreatedAt time.Time
+	MRNumber        int64
+	MRTitle         string
+	MRStatus        string
+	BranchName      string
+	Missing         bool
+}

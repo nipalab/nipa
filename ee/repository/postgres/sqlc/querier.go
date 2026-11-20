@@ -132,9 +132,15 @@ type Querier interface {
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	InsertProjectStorage(ctx context.Context, arg InsertProjectStorageParams) error
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
+	IssueLinkDeleteKeys(ctx context.Context, arg IssueLinkDeleteKeysParams) (int64, error)
+	IssueLinkListBySubject(ctx context.Context, arg IssueLinkListBySubjectParams) ([]IssueLink, error)
+	IssueLinkListBySubjects(ctx context.Context, arg IssueLinkListBySubjectsParams) ([]IssueLink, error)
+	IssueLinkListSubjects(ctx context.Context, arg IssueLinkListSubjectsParams) ([]IssueLinkListSubjectsRow, error)
+	IssueLinkUpsert(ctx context.Context, arg IssueLinkUpsertParams) error
 	IssueTrackerCountProjects(ctx context.Context, trackerID int64) (int64, error)
 	IssueTrackerCreate(ctx context.Context, arg IssueTrackerCreateParams) (IssueTracker, error)
 	IssueTrackerDelete(ctx context.Context, arg IssueTrackerDeleteParams) (int64, error)
+	IssueTrackerGetByID(ctx context.Context, id int64) (IssueTracker, error)
 	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
 	IssueTrackerLockOrg(ctx context.Context, lockKey int64) error
 	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)

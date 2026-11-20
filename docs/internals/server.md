@@ -59,8 +59,8 @@ both editions): the pure
 client (`/rest/api/2`, Cloud Basic or Data Center Bearer) and its `jiratest`
 fake; outbound requests go through `internal/egress` (shared with webhooks).
 Storage (sqlite `000026`, postgres `000015`): `issue_trackers`,
-`project_issue_trackers` (`project_keys` comma-joined), and the not yet used
-`issue_links`/`issue_tracker_jobs`; soft/hard deletes of projects and orgs drop
+`project_issue_trackers` (`project_keys` comma-joined), `issue_links` and the not yet used
+`issue_tracker_jobs`; soft/hard deletes of projects and orgs drop
 their rows (sqlite triggers, postgres triggers + cascades).
 `usecase.IssueTracker` (`issue_tracker.go`, `Repositories.IssueTracker`,
 dbtx-aware repos) holds one connection per org, enforced under `LockOrg`
@@ -82,6 +82,32 @@ are built by `GuardedIssueTrackerFactory(ISSUE_TRACKER_EGRESS_ALLOWLIST)`
 /orgs/{org}/projects/{project}/issue-tracker`; audited as
 `issue_tracker.created|updated|deleted` and
 `project.issue_tracker.set|cleared` (never the token).
+Links (`issue_links`, written only for active settings and configured keys):
+`IssueSync` (`issue_sync.go`) is the `HookEmitter.WithIssueSync` sink (wired
+in `BuildUsecases` only when the key is set; `syncIssues` runs before the
+webhook fan-out, which returns early without matching hooks; failures only
+log). `push` links the one commit a push lands (`PushEvent.AfterID`/`Message`;
+`Imported` pushes from `Import.emit` are skipped) and the branch through
+`BranchKey`; `branch.created` links the branch; `mr.created`/`mr.updated`
+replace the request's link set (title + description + source branch, `closes`
+after a closing keyword) inside one transaction, so an edit that drops a key
+drops its link; `mr.merged|closed|reopened` change no links (hook point
+`mergeRequestState` for the PR 4 jobs). Rows are upserts on the unique key
+(relation updated). Reading (`issue_tracker_read.go`): `SubjectIssueKeys`
+adds `issue_keys: [{key, url}]` to commit lists (also MR commits), branch
+lists and merge request list/detail REST payloads (settings + connection +
+one batched `ListIssueLinksBySubjects`; URLs from the tracker's `IssueURL`,
+no Jira call; keys outside the configured keys hidden; silent nil when off).
+Clients are cached per connection and rebuilt when `updated_at` changes.
+`GET .../issues?keys=` (max 50, 400 above; unknown prefixes left out)
+resolves through `issueCache` (keyed by tracker id + `updated_at` + key, 60 s
+for found and not-found, 10 s for failures, singleflight per key, 5000
+entries, 5 s request budget, fan-out 8; states `ok|not_found|unavailable`),
+`GET .../issues/search?q=` (`supported: false` without `Searcher`,
+`unavailable: true` on failure) and `GET .../issues/{key}/links` (newest
+first, `after` cursor, max 100, missing subjects skipped; 400 for a key
+outside the project's keys) need project read and answer 404 without active
+settings.
 
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
 on the SPA home page and the `/onboarding` step): any authenticated user creates

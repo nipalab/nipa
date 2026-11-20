@@ -1205,3 +1205,36 @@
   font-size: 12px;
   color: var(--fgColor-muted);
 }
+
+.nipa-issue-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.nipa-issue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 999px;
+  color: var(--fgColor-muted);
+  font-size: 12px;
+  line-height: 20px;
+  text-decoration: none;
+  max-width: 100%;
+}
+
+.nipa-issue-chip:hover {
+  border-color: var(--borderColor-accent-emphasis);
+  color: var(--fgColor-accent);
+  text-decoration: none;
+}
+
+.nipa-issue-key {
+  font-family: var(--fontStack-monospace);
+  font-weight: 600;
+  color: var(--fgColor-default);
+}

@@ -148,3 +148,20 @@ func BranchKey(name string, keys []string) (string, bool) {
 	}
 	return strings.ToUpper(m[1]) + "-" + m[2], true
 }
+
+var issueNumberPattern = regexp.MustCompile(`^[1-9][0-9]{0,9}$`)
+
+// ParseKey normalizes an issue key (`game-12` becomes `GAME-12`) and reports
+// whether it is well formed and its project key is one of keys.
+func ParseKey(raw string, keys []string) (string, bool) {
+	key := strings.ToUpper(strings.TrimSpace(raw))
+	i := strings.LastIndexByte(key, '-')
+	if i <= 0 || !issueNumberPattern.MatchString(key[i+1:]) {
+		return "", false
+	}
+	project, err := NormalizeProjectKey(key[:i])
+	if err != nil || !slices.Contains(validKeys(keys), project) {
+		return "", false
+	}
+	return key, true
+}

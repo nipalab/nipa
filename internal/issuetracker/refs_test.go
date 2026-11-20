@@ -103,3 +103,34 @@ func TestPatternCacheBounded(t *testing.T) {
 	defer patternMu.Unlock()
 	assert.LessOrEqual(t, len(patternCache), maxCachedRegexp)
 }
+
+func TestParseKey(t *testing.T) {
+	keys := []string{"GAME", "art"}
+	for raw, want := range map[string]string{
+		"GAME-1":           "GAME-1",
+		" game-42 ":        "GAME-42",
+		"ART-7":            "ART-7",
+		"OTHER-1":          "",
+		"GAME-0":           "",
+		"GAME-":            "",
+		"-1":               "",
+		"GAME":             "",
+		"GAME-1a":          "",
+		"G-A-M-E-1":        "",
+		"GAME-12345678901": "",
+	} {
+		got, ok := ParseKey(raw, keys)
+		if want == "" {
+			if ok {
+				t.Errorf("ParseKey(%q) = %q, want rejected", raw, got)
+			}
+			continue
+		}
+		if !ok || got != want {
+			t.Errorf("ParseKey(%q) = %q, %v, want %q", raw, got, ok, want)
+		}
+	}
+	if _, ok := ParseKey("GAME-1", nil); ok {
+		t.Error("ParseKey without keys accepted a key")
+	}
+}
