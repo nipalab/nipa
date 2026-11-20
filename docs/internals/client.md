@@ -59,7 +59,20 @@ at every offset they occupy (open/close per write), a file is chmodded
 the working files are `replaceFile`d (bounded pool) only after the whole
 download and `materializeAll` succeeded; any failure removes the unreplaced
 temp files, removals still run last, and everything else (zstd text, pinned raw, unknown chunk sizes)
-goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Clone,
+goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Every
+server-supplied directory and file name is a single path segment
+(`domain.ValidateLocalPathSegment`: no empty/`.`/`..`, `/`, `\`, NUL, and no
+`.nipa` in any case, trailing-dot/space or `NIPA~1` spelling; on Windows also no
+`:`, trailing dot/space or device names like `CON`/`aux.c`, which stay valid on
+other OSes because real repos such as the Linux kernel track `aux.c`). The
+grpc manifest assembler and `GetMergeBase` reject a bad name, `syncWorkingCopy`
+re-checks the whole tree (`validateSyncTree`) before writing anything, and
+`materializeFile`/`createSizedTemp` refuse any unsafe path
+(`checkWorkingPath`), so merge/revert/shelve/restore writes are covered too;
+the root's own name is only a label. A repo that already tracks such a path
+fails to sync with a 400 "refusing to sync unsafe path" error. `isNipaPath`
+(stage/push/restore/shelve exclusion) uses the same case-insensitive
+`domain.IsMetadataSegment`. Clone,
 update and switch record the branch head commit id locally so `HEAD`/`@` (and
 branch creation via `nipa branch -c`, which forks from the pinned commit)
 resolve offline.

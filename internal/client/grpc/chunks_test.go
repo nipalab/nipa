@@ -67,6 +67,9 @@ type chunkTestServer struct {
 	hookBeforeGet    func()
 	downloadSizes    []int
 	downloadErrAfter int
+	// getLength, when set, is the Content-Length header a GET answers with
+	// ("actual" for the real body size); otherwise large bodies are chunked.
+	getLength string
 
 	putAttempts   map[string]int
 	failPuts      map[string]int
@@ -337,6 +340,16 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		if truncateNow {
 			w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 			_, _ = w.Write(data[:len(data)/2])
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler)
+		}
+		switch s.getLength {
+		case "":
+		case "actual":
+			w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		default:
+			w.Header().Set("Content-Length", s.getLength)
+			w.WriteHeader(http.StatusOK)
 			w.(http.Flusher).Flush()
 			panic(http.ErrAbortHandler)
 		}

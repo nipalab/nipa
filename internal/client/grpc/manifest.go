@@ -122,6 +122,11 @@ func (a *manifestAssembler) dir(d *pb.TreeManifestDir) error {
 	}
 	node := &pb.TreeManifest{TreeHash: hash, Path: d.GetName()}
 	depth := int(d.GetDepth())
+	if depth >= 1 && depth <= len(a.stack) {
+		if err := checkManifestName(a.stack[1:depth], d.GetName()); err != nil {
+			return err
+		}
+	}
 	switch {
 	case depth == 0 && a.root == nil:
 		a.root = node
@@ -141,6 +146,9 @@ func (a *manifestAssembler) file(f *pb.TreeManifestFile) error {
 	if len(a.stack) == 0 {
 		return fmt.Errorf("malformed tree manifest: file %q before any directory", f.GetName())
 	}
+	if err := checkManifestName(a.stack[1:], f.GetName()); err != nil {
+		return err
+	}
 	hashes, err := hexHashes(f.GetChunkHashes())
 	if err != nil {
 		return err
@@ -158,6 +166,55 @@ func (a *manifestAssembler) file(f *pb.TreeManifestFile) error {
 	dir.Files = append(dir.Files, node)
 	a.last = node
 	return nil
+}
+
+// checkManifestName rejects a directory or file name that is not a single safe
+// path segment for this machine, so a hostile manifest cannot place files
+// outside the working copy or inside its .nipa metadata. parents are the
+// enclosing directories below the root, whose name is only a label.
+func checkManifestName(parents []*pb.TreeManifest, name string) error {
+	if err := serverDomain.ValidateLocalPathSegment(name); err != nil {
+		path := name
+		for i := len(parents) - 1; i >= 0; i-- {
+			path = parents[i].GetPath() + "/" + path
+		}
+		return unsafeManifestName(path, err)
+	}
+	return nil
+}
+
+// validateManifestNames applies checkManifestName to a whole tree that did not
+// come through the streaming assembler.
+func validateManifestNames(root *pb.TreeManifest) error {
+	var walk func(node *pb.TreeManifest, parents []*pb.TreeManifest) error
+	walk = func(node *pb.TreeManifest, parents []*pb.TreeManifest) error {
+		for _, f := range node.GetFiles() {
+			if err := checkManifestName(parents, f.GetPath()); err != nil {
+				return err
+			}
+		}
+		for _, sub := range node.GetSubTrees() {
+			if err := checkManifestName(parents, sub.GetPath()); err != nil {
+				return err
+			}
+			if err := walk(sub, append(parents[:len(parents):len(parents)], sub)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if root == nil {
+		return nil
+	}
+	return walk(root, nil)
+}
+
+func unsafeManifestName(path string, err error) error {
+	return &domain.Error{
+		Code:    400,
+		Message: fmt.Sprintf("the server sent an unsafe path %q in the tree manifest: %s", path, err.Error()),
+		Hint:    "the path cannot be written safely inside the working copy; nothing was written",
+	}
 }
 
 func hexHashes(raw [][]byte) ([]string, error) {

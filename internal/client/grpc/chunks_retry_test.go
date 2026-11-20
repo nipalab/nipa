@@ -1,16 +1,22 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
@@ -315,4 +321,71 @@ func TestRetryableStatus(t *testing.T) {
 	} {
 		require.Equal(t, want, retryableStatus(status), "status %d", status)
 	}
+}
+
+func TestDownloadChunks_RejectsOversizedBodyWithoutRetry(t *testing.T) {
+	limit := chunker.MaxChunkSize()
+	for name, length := range map[string]string{
+		"content length":      "actual",
+		"no content length":   "",
+		"claimed length only": strconv.FormatInt(limit+1, 10),
+		"huge claimed length": strconv.FormatInt(1<<40, 10),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := testChunkHash(0x30)
+			srv := newChunkTestServer()
+			srv.put(h.String(), make([]byte, limit+1))
+			srv.getLength = length
+			c := newDownloadClient(t, srv, fastRetry(3))
+
+			got := newDeliveries()
+			err := c.DownloadChunks(context.Background(), downloadScope(), []serverDomain.Hash{h}, got.sink)
+			require.ErrorIs(t, err, errChunkTooLarge)
+			require.ErrorContains(t, err, h.String())
+			require.Equal(t, 1, srv.attemptsFor(h.String()), "an oversized chunk is not retried")
+			require.Zero(t, got.seen[h])
+		})
+	}
+}
+
+func TestDownloadChunks_AcceptsLargestChunk(t *testing.T) {
+	limit := chunker.MaxChunkSize()
+	for name, length := range map[string]string{"content length": "actual", "no content length": ""} {
+		t.Run(name, func(t *testing.T) {
+			h := testChunkHash(0x31)
+			body := make([]byte, limit)
+			body[len(body)-1] = 7
+			srv := newChunkTestServer()
+			srv.put(h.String(), body)
+			srv.getLength = length
+			c := newDownloadClient(t, srv, fastRetry(3))
+
+			got := newDeliveries()
+			require.NoError(t, c.DownloadChunks(context.Background(), downloadScope(), []serverDomain.Hash{h}, got.sink))
+			require.Equal(t, body, got.data[h])
+			require.Equal(t, 1, srv.attemptsFor(h.String()))
+		})
+	}
+}
+
+func TestReadChunkBody(t *testing.T) {
+	body := []byte("chunk payload")
+	data, err := readChunkBody(bytes.NewReader(body), int64(len(body)), 100)
+	require.NoError(t, err)
+	require.Equal(t, body, data)
+	require.Equal(t, len(body)+1, cap(data), "a known length is preallocated and never regrown")
+
+	big := bytes.Repeat([]byte{1}, 5000)
+	data, err = readChunkBody(bytes.NewReader(big), -1, 5000)
+	require.NoError(t, err)
+	require.Equal(t, big, data, "an unknown length grows to the limit")
+
+	_, err = readChunkBody(bytes.NewReader(big), -1, 4999)
+	require.ErrorIs(t, err, errChunkTooLarge)
+	_, err = readChunkBody(bytes.NewReader(big), 10, 4999)
+	require.ErrorIs(t, err, errChunkTooLarge, "a body longer than its declared length is still bounded")
+
+	readErr := errors.New("connection reset")
+	_, err = readChunkBody(io.MultiReader(bytes.NewReader(body), iotest.ErrReader(readErr)), -1, 100)
+	require.ErrorIs(t, err, readErr)
 }

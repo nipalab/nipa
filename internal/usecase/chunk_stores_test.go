@@ -1,11 +1,13 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -241,6 +243,29 @@ func TestBranch_StorageGateRefusesMerges(t *testing.T) {
 		_, err = uc.MergeForMergeRequest(ctx, snow.ID(1), "main", "feature", MergeCommitOptions{Strategy: strategy})
 		require.ErrorIs(t, err, gate.err, strategy)
 	}
+}
+
+func TestBranch_MergedContentDecodesChunkByChunk(t *testing.T) {
+	ctx := context.Background()
+	f := newTwoStoreFixture(t, ProjectStore{External: true})
+	uc, _, _ := newStrategyBranch(t)
+	uc.chunks = NewProjectChunkReader(f.uc.ChunkStores())
+
+	// Two compressed chunks whose combined plaintext is over the per-chunk
+	// decode cap: decoding the joined bytes in one call would be refused.
+	part := bytes.Repeat([]byte("a"), chunker.TextSingleBlobRawMax)
+	enc, err := zstd.NewWriter(nil)
+	require.NoError(t, err)
+	var hashes []domain.Hash
+	for range 2 {
+		data := enc.EncodeAll(part, nil)
+		h := chunker.Sum(data)
+		f.own.data[h] = data
+		hashes = append(hashes, h)
+	}
+	loaded, err := uc.loadMergedContent(ctx, testProject.ID, merge.File{Encoding: chunker.EncodingZstd, ChunkHashes: hashes})
+	require.NoError(t, err)
+	require.Len(t, loaded, 2*len(part))
 }
 
 func TestBranch_MergedContentUsesProjectStore(t *testing.T) {

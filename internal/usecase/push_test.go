@@ -105,6 +105,25 @@ func TestPush_InvalidPath(t *testing.T) {
 	require400(t, err, "invalid file path")
 }
 
+func TestPush_MetadataDirRejected(t *testing.T) {
+	for _, p := range []string{".nipa/config", ".NIPA/config", "assets/.Nipa/objects/x", "NIPA~1/config", ".nipa./config"} {
+		t.Run(p, func(t *testing.T) {
+			uc, perm, _, _, ctx := newPushFixture(t)
+			perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+			ch, fh := chunkAndFileHash(t, "x")
+			file := &domain.PushFile{Path: p, Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+			_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
+			require400(t, err, "reserved for clone metadata")
+		})
+	}
+}
+
+func TestValidateRemovedFiles_AllowsMetadataCleanup(t *testing.T) {
+	require.NoError(t, validateRemovedFiles([]string{".nipa/config", "a/.NIPA/x"}, nil))
+	require400(t, validateRemovedFiles([]string{"../x"}, nil), "invalid file path")
+}
+
 func TestPush_InvalidEncoding(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)

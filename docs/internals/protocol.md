@@ -167,7 +167,14 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `chunker.Encode`/`chunker.ConfigForFile`, passing the tracked encoding for
   stored files (`storedEncoding`), so file hashes stay consistent; decode at
   assembly points with `chunker.Decode` (client materialization,
-  `diff.LoadContent`, merge's `loadFileContent`). The signed routes live in a `/api/chunks` webService (go-restful
+  `diff.LoadContent`, merge's `loadFileContent`). Decoding is per chunk: the
+  shared zstd decoder caps one chunk's plaintext at
+  `chunker.MaxDecodedChunkSize` (8MB single-blob max + 1MB headroom), so a
+  decompression bomb fails with `zstd.ErrDecoderSizeExceeded` before its output
+  is allocated; `DecodeAppend` decodes into `dst`'s spare capacity because the
+  library counts `dst`'s length against the cap, and the server merge
+  (`loadMergedContent`) appends chunk by chunk instead of decoding the joined
+  file. The signed routes live in a `/api/chunks` webService (go-restful
   `os.Exit`s on duplicate root paths so it cannot share `/api/v1`) and are NOT
   behind the Bearer filter — the signature is the capability. HTTP PUT pins the
   exact size (Content-Length check + `MaxBytesReader` + BLAKE3 verify) and only
@@ -196,7 +203,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   jitter (uploads too: PUTs are content-addressed and idempotent); a 429 has its
   own budget (10 retries honouring `Retry-After`, capped at 30 s) and halves the
   transfer concurrency, and unary RPCs rejected by the server rate limiter are
-  repeated the same way (`internal/client/grpc/retry.go`); 4xx answers (expired or unknown URL) fail immediately, and a chunk
+  repeated the same way (`internal/client/grpc/retry.go`); 4xx answers (expired or unknown URL) fail immediately, a GET body (or
+  `Content-Length`) over `chunker.MaxChunkSize()` fails immediately without a
+  retry (`fetchChunk`/`readChunkBody` read at most that many bytes and
+  preallocate from a valid `Content-Length`), and a chunk
   reaches the callback only after a complete read, so a retry never delivers it
   twice. The server only
   returns relative paths: the client connects with the address from

@@ -661,7 +661,7 @@ func validateRemovedFiles(removed []string, files []*domain.PushFile) error {
 	}
 	seen := map[string]bool{}
 	for _, r := range removed {
-		if err := domain.ValidateRepoPath(r); err != nil {
+		if err := domain.ValidateRemovedRepoPath(r); err != nil {
 			return err
 		}
 		if _, ok := changed[r]; ok {

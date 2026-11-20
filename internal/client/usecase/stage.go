@@ -872,9 +872,11 @@ func normalizeTarget(t string) (string, error) {
 	return filepath.ToSlash(clean), nil
 }
 
+// isNipaPath reports whether any segment of p names the metadata directory,
+// including the case and Windows spellings that alias it on some filesystems.
 func isNipaPath(p string) bool {
 	for _, seg := range strings.Split(p, "/") {
-		if seg == nipaDir {
+		if serverDomain.IsMetadataSegment(seg) {
 			return true
 		}
 	}
