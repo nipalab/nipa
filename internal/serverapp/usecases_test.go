@@ -188,3 +188,13 @@ func TestBuildUsecases_WiresProjectStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []snow.ID{project.ID}, assigner.projects)
 }
+
+func TestIssueTrackerConfig(t *testing.T) {
+	require.Nil(t, issueTrackerBox(&config.Config{}))
+	require.Nil(t, issueTrackerBox(&config.Config{IntegrationsEncryptionKey: "!!"}))
+	key := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	require.NotNil(t, issueTrackerBox(&config.Config{IntegrationsEncryptionKey: key}))
+
+	require.Nil(t, issueTrackerAllowlist(&config.Config{IssueTrackerEgressAllowlist: "https://x"}))
+	require.Equal(t, []string{"10.0.0.0/8"}, issueTrackerAllowlist(&config.Config{IssueTrackerEgressAllowlist: "10.0.0.0/8"}))
+}

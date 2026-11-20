@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -165,6 +166,26 @@ func ParseAllowlist(entries []string) Policy {
 		policy.hosts = append(policy.hosts, normalizeHost(entry))
 	}
 	return policy
+}
+
+var hostnamePattern = regexp.MustCompile(`^(?i)[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)*\.?$`)
+
+// ValidateAllowlist rejects entries ParseAllowlist would read as a hostname
+// although they are not one (a URL, a port, a malformed range).
+func ValidateAllowlist(entries []string) error {
+	for _, raw := range entries {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(entry); err == nil || net.ParseIP(entry) != nil {
+			continue
+		}
+		if len(entry) > 253 || !hostnamePattern.MatchString(entry) {
+			return fmt.Errorf("invalid egress allowlist entry %q: use a hostname without port, an IP or a CIDR range", entry)
+		}
+	}
+	return nil
 }
 
 func singleIPNet(ip net.IP) *net.IPNet {

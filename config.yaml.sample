@@ -40,6 +40,15 @@ MFA_ENCRYPTION_KEY: ''
 # private or loopback addresses: tests and development only.
 # BYO_STORAGE_ENCRYPTION_KEY: ''
 # BYO_STORAGE_ALLOW_PRIVATE: false
+# Issue tracker integration (Jira): seals the stored tracker tokens (base64 of
+# at least 32 bytes: `openssl rand -base64 32`). Unset leaves the integration
+# unavailable (its routes answer 503); losing it makes the stored tokens
+# unreadable until each connection is saved again with its token.
+INTEGRATIONS_ENCRYPTION_KEY: ''
+# Comma-separated hostnames, IPs or CIDR ranges issue trackers may reach.
+# Empty allows public addresses only; a Data Center on a private network needs
+# an entry.
+ISSUE_TRACKER_EGRESS_ALLOWLIST: ''
 # Logging: level is debug|info|warn|error, format is console|json.
 LOG_LEVEL: debug
 LOG_FORMAT: console

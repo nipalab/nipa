@@ -68,6 +68,11 @@ Constants live in `internal/domain/audit_actions.go`.
 | `maintenance.scheduled` | `Maintenance.SetServer` / `SetOrg` / `SetProject` storing a new window | target = window; `scope` (`server`, `org`, `project`), `org_id`, `project_id`, `mode`, `starts_at`, `ends_at`, `notify`; `nipad maintenance` records actor `system` with `via: cli` |
 | `maintenance.updated` | the same calls on an existing window | same as `maintenance.scheduled` |
 | `maintenance.ended` | `Maintenance.EndServer` / `EndOrg` / `EndProject` | same, describing the removed window |
+| `issue_tracker.created` | `IssueTracker.Put` (`PUT /orgs/{org}/issue-tracker`) creating the org's connection, after the probe passed | target = issue tracker; `kind`, `name`, `base_url`, `auth_kind` (never the token) |
+| `issue_tracker.updated` | `IssueTracker.Put` replacing it | same, plus `changed` (field names; `token` when a new one was sent) |
+| `issue_tracker.deleted` | `IssueTracker.Delete` | same as `issue_tracker.created` |
+| `project.issue_tracker.set` | `IssueTracker.PutProject` (`PUT .../projects/{project}/issue-tracker`) | target = issue tracker; `tracker_id`, `keys`, `link_merge_requests`, `link_commits`, `comment_on_merge`, `merged_status`, `opened_status`, `active` |
+| `project.issue_tracker.cleared` | `IssueTracker.DeleteProject` | same, describing the removed settings |
 
 ## Billing (enterprise)
 

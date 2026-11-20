@@ -37,6 +37,7 @@ type usecaseContainer interface {
 	OrgInvitation() *usecase.OrgInvitation
 	Audit() *usecase.Audit
 	Maintenance() *usecase.Maintenance
+	IssueTracker() *usecase.IssueTracker
 }
 
 type API struct {
@@ -198,6 +199,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupEmailDeliveryRouter(apiWs, h)
 	setupAuditRouter(apiWs, h)
 	setupMaintenanceRouter(apiWs, h)
+	setupIssueTrackerRouter(apiWs, h)
 	for _, register := range a.routes {
 		register(apiWs)
 	}

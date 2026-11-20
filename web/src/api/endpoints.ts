@@ -67,6 +67,11 @@ import type {
   OrgMaintenanceResponse,
   ProjectMaintenanceResponse,
   SetMaintenanceInput,
+  IssueTrackerInput,
+  IssueTrackerResponse,
+  IssueTrackerTestResponse,
+  ProjectIssueTrackerInput,
+  ProjectIssueTrackerResponse,
 } from './models'
 
 function projectBase(org: string, project: string): string {
@@ -1168,4 +1173,42 @@ export function setProjectMaintenance(org: string, project: string, input: SetMa
 
 export function endProjectMaintenance(org: string, project: string): Promise<void> {
   return apiJson(`${projectBase(org, project)}/maintenance`, { method: 'DELETE' })
+}
+
+function issueTrackerPath(org: string): string {
+  return `/api/v1/orgs/${encodeURIComponent(org)}/issue-tracker`
+}
+
+export function getIssueTracker(org: string): Promise<IssueTrackerResponse> {
+  return apiJson(issueTrackerPath(org))
+}
+
+// putIssueTracker creates or replaces the org's connection; an omitted token
+// keeps the stored one. A failed probe is a 400 whose body names the check.
+export function putIssueTracker(org: string, input: IssueTrackerInput): Promise<IssueTrackerResponse> {
+  return apiJson(issueTrackerPath(org), { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function deleteIssueTracker(org: string): Promise<void> {
+  return apiJson(issueTrackerPath(org), { method: 'DELETE' })
+}
+
+export function testIssueTracker(org: string): Promise<IssueTrackerTestResponse> {
+  return apiJson(`${issueTrackerPath(org)}/test`, { method: 'POST', body: JSON.stringify({}) })
+}
+
+export function getProjectIssueTracker(org: string, project: string): Promise<ProjectIssueTrackerResponse> {
+  return apiJson(`${projectBase(org, project)}/issue-tracker`)
+}
+
+export function putProjectIssueTracker(
+  org: string,
+  project: string,
+  input: ProjectIssueTrackerInput,
+): Promise<ProjectIssueTrackerResponse> {
+  return apiJson(`${projectBase(org, project)}/issue-tracker`, { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function deleteProjectIssueTracker(org: string, project: string): Promise<void> {
+  return apiJson(`${projectBase(org, project)}/issue-tracker`, { method: 'DELETE' })
 }

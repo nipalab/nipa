@@ -58,6 +58,7 @@ type testRegistry struct {
 	emailDelivery *usecase.EmailDelivery
 	audit         *usecase.Audit
 	maintenance   *usecase.Maintenance
+	issueTracker  *usecase.IssueTracker
 }
 
 func (r *testRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceToken }
@@ -93,6 +94,7 @@ func (r *testRegistry) OrgInvitation() *usecase.OrgInvitation { return r.orgInvi
 func (r *testRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 func (r *testRegistry) Audit() *usecase.Audit                 { return r.audit }
 func (r *testRegistry) Maintenance() *usecase.Maintenance     { return r.maintenance }
+func (r *testRegistry) IssueTracker() *usecase.IssueTracker   { return r.issueTracker }
 
 type stubPasswordHasher struct{}
 
@@ -184,6 +186,7 @@ func TestAPIRoutes(t *testing.T) {
 	mfaUc := usecase.NewMFA(sqlite.NewMFARepository(dbConn), userRepo, stubPasswordHasher{}, nil, dbtx.NewTransactor(dbConn))
 	maintUc := usecase.NewMaintenance(sqlite.NewMaintenanceRepository(dbConn),
 		usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), orgUc, permissionUc, maintSvc, node).WithAudit(auditUc)
+	issueTrackerUc, fakeJira := newTestIssueTracker(t, dbConn, orgUc, permissionUc, node, auditUc)
 	reg := &testRegistry{
 		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)).WithAudit(auditUc).WithMFA(mfaUc),
 		mfa:           mfaUc,
@@ -208,6 +211,7 @@ func TestAPIRoutes(t *testing.T) {
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 		audit:         auditUc,
 		maintenance:   maintUc,
+		issueTracker:  issueTrackerUc,
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -2235,6 +2239,14 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, status(http.MethodDelete, base+"/service-tokens/"+created.ID, "", aliceLogin.AccessToken))
 		require.Equal(t, http.StatusBadRequest, status(http.MethodDelete, base+"/service-tokens/!!", "", aliceLogin.AccessToken))
 		require.Equal(t, http.StatusNotFound, status(http.MethodGet, server.URL+"/api/v1/orgs/default/projects/missing/service-tokens", "", aliceLogin.AccessToken))
+	})
+
+	t.Run("issue tracker", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+		testIssueTrackerRoutes(t, server.URL, superLogin.AccessToken, fakeJira, func(t *testing.T, email string) string {
+			tok, _ := loginAs(t, email)
+			return tok.AccessToken
+		})
 	})
 
 	t.Run("maintenance windows", func(t *testing.T) {

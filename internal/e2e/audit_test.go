@@ -150,6 +150,10 @@ func TestEndToEnd_AuditLog(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, denied.StatusCode)
 	_ = denied.Body.Close()
 
+	t.Run("issue tracker connection", func(t *testing.T) {
+		testIssueTrackerConnection(t, server.URL, superToken, dbConn)
+	})
+
 	t.Run("deactivated admin loses access", func(t *testing.T) {
 		testDeactivatedAdminLosesAccess(t, server.URL, host, superToken)
 	})

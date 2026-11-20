@@ -127,10 +127,12 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 	require.NoError(t, maintenancePoller.Poll(context.Background()))
 	deps := serverapp.UsecaseDeps{
 		Config: &config.Config{
-			JWTKey:                 e2eJWTSecret,
-			ChunkURLSigningKey:     "e2e-chunk-signing-key",
-			ChunkPresignTTLSeconds: 3600,
-			ChunkMaxPageSize:       1000,
+			JWTKey:                      e2eJWTSecret,
+			ChunkURLSigningKey:          "e2e-chunk-signing-key",
+			ChunkPresignTTLSeconds:      3600,
+			ChunkMaxPageSize:            1000,
+			IntegrationsEncryptionKey:   e2eIntegrationsKey,
+			IssueTrackerEgressAllowlist: "127.0.0.1",
 		},
 		DB:                dbConn,
 		Snow:              node,
@@ -164,6 +166,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepo,
+		IssueTracker:       sqlite.NewIssueTrackerRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk

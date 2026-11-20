@@ -52,6 +52,37 @@ base36 commit id or hash and walks the ref's parents (no id-order pruning,
 capped at 10000 commits, then 400) to answer `{contains}`; read permission
 required. Service tokens are REST only.
 
+Flow for the issue tracker integration (plan in `docs/plans/ISSUE_TRACKER.md`;
+both editions): the pure
+`internal/issuetracker` (`Tracker` + optional `Linker`/`Commenter`/
+`Transitioner`/`Searcher`, registry, `Extract`/`BranchKey`) with the `jira`
+client (`/rest/api/2`, Cloud Basic or Data Center Bearer) and its `jiratest`
+fake; outbound requests go through `internal/egress` (shared with webhooks).
+Storage (sqlite `000026`, postgres `000015`): `issue_trackers`,
+`project_issue_trackers` (`project_keys` comma-joined), and the not yet used
+`issue_links`/`issue_tracker_jobs`; soft/hard deletes of projects and orgs drop
+their rows (sqlite triggers, postgres triggers + cascades).
+`usecase.IssueTracker` (`issue_tracker.go`, `Repositories.IssueTracker`,
+dbtx-aware repos) holds one connection per org, enforced under `LockOrg`
+(postgres advisory xact lock, sqlite immediate tx) with a re-read inside the
+transaction (409 when it changed since the probe): `Get` (owners: all but the
+token; members: kind, name, base URL), `Put` (owner; normalizes the URL, an
+omitted token keeps the stored one unless the base URL changes, probes first:
+`*IssueTrackerProbeFailure{Check: auth|reach|tls}` = REST 400 `{error,
+check}`), `Delete` (409 while a project uses it), `Test` (`{ok, check, error,
+site}`), `GetProject`/`PutProject`/`DeleteProject` (project admin; keys via
+`issuetracker.NormalizeProjectKeys`, 1..20, `link_commits`
+`off|default_branch|all`). Tokens are sealed with `sealbox` (label `nipa
+issue tracker secret v1`, AAD `issue_tracker:<id>`) under
+`INTEGRATIONS_ENCRYPTION_KEY`; without it every route answers 503. Trackers
+are built by `GuardedIssueTrackerFactory(ISSUE_TRACKER_EGRESS_ALLOWLIST)`
+(`WithFactory` in tests); both config keys are validated at startup
+(`Config.ValidateIntegrations`). REST: `GET/PUT/DELETE /orgs/{org}/issue-tracker`,
+`POST .../issue-tracker/test`, `GET/PUT/DELETE
+/orgs/{org}/projects/{project}/issue-tracker`; audited as
+`issue_tracker.created|updated|deleted` and
+`project.issue_tracker.set|cleared` (never the token).
+
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
 on the SPA home page and the `/onboarding` step): any authenticated user creates
 an org; `usecase.Org.Create`

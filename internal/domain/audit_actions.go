@@ -81,6 +81,12 @@ const (
 	AuditOrgStorageDefaultSet     = "org.storage_default.set"
 	AuditOrgStorageDefaultCleared = "org.storage_default.cleared"
 	AuditProjectStorageServerSet  = "project.storage_server.set"
+
+	AuditIssueTrackerCreated        = "issue_tracker.created"
+	AuditIssueTrackerUpdated        = "issue_tracker.updated"
+	AuditIssueTrackerDeleted        = "issue_tracker.deleted"
+	AuditProjectIssueTrackerSet     = "project.issue_tracker.set"
+	AuditProjectIssueTrackerCleared = "project.issue_tracker.cleared"
 )
 
 // Audit target types.
@@ -100,4 +106,5 @@ const (
 	AuditTargetBillingEvent   = "billing_event"
 	AuditTargetMaintenance    = "maintenance_window"
 	AuditTargetStorageServer  = "storage_server"
+	AuditTargetIssueTracker   = "issue_tracker"
 )

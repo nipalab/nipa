@@ -25,6 +25,7 @@ read GET /api/v1/orgs
 read GET /api/v1/orgs/{org}/groups
 read GET /api/v1/orgs/{org}/groups/{group}
 read GET /api/v1/orgs/{org}/invitations
+read GET /api/v1/orgs/{org}/issue-tracker
 read GET /api/v1/orgs/{org}/members
 read GET /api/v1/orgs/{org}/projects
 read GET /api/v1/orgs/{org}/projects/{project}
@@ -34,6 +35,7 @@ read GET /api/v1/orgs/{org}/projects/{project}/commits
 read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/contains
 read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/diff
 read GET /api/v1/orgs/{org}/projects/{project}/emails/deliveries
+read GET /api/v1/orgs/{org}/projects/{project}/issue-tracker
 read GET /api/v1/orgs/{org}/projects/{project}/locks
 read GET /api/v1/orgs/{org}/projects/{project}/members
 read GET /api/v1/orgs/{org}/projects/{project}/merge-requests
@@ -63,9 +65,11 @@ write DELETE /api/v1/keys/{key}
 write DELETE /api/v1/me/mfa/totp
 write DELETE /api/v1/orgs/{org}/groups/{group}/members/{user}
 write DELETE /api/v1/orgs/{org}/invitations/{id}
+write DELETE /api/v1/orgs/{org}/issue-tracker
 write DELETE /api/v1/orgs/{org}/members/{user}
 write DELETE /api/v1/orgs/{org}/projects/{project}
 write DELETE /api/v1/orgs/{org}/projects/{project}/branches/{name}
+write DELETE /api/v1/orgs/{org}/projects/{project}/issue-tracker
 write DELETE /api/v1/orgs/{org}/projects/{project}/merge-requests/{id}/review-requests
 write DELETE /api/v1/orgs/{org}/projects/{project}/merge-requests/{id}/reviews/{reviewId}
 write DELETE /api/v1/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}
@@ -100,6 +104,7 @@ write POST /api/v1/orgs/{org}/groups
 write POST /api/v1/orgs/{org}/groups/{group}/members
 write POST /api/v1/orgs/{org}/invitations
 write POST /api/v1/orgs/{org}/invitations/{id}/resend
+write POST /api/v1/orgs/{org}/issue-tracker/test
 write POST /api/v1/orgs/{org}/members
 write POST /api/v1/orgs/{org}/projects
 write POST /api/v1/orgs/{org}/projects/{project}/branches
@@ -131,5 +136,7 @@ write POST /api/v1/users
 write POST /api/v1/users/{user}/password
 write POST /api/webhooks/test/
 write PUT /api/chunks/{org}/{project}/{hash}
+write PUT /api/v1/orgs/{org}/issue-tracker
 write PUT /api/v1/orgs/{org}/projects/{project}/branches/{name}/protection
+write PUT /api/v1/orgs/{org}/projects/{project}/issue-tracker
 write PUT /api/v1/orgs/{org}/projects/{project}/permissions/defaults

@@ -716,3 +716,68 @@ export interface SetMaintenanceInput {
   ends_at?: string
   notify: boolean
 }
+
+export interface IssueTrackerSite {
+  kind: string
+  title: string
+  version: string
+  deployment: string
+  account_id: string
+  account_name: string
+}
+
+export interface IssueTrackerResponse {
+  id?: string
+  kind: string
+  name: string
+  base_url: string
+  auth_kind?: 'basic' | 'bearer'
+  account?: string
+  created_by?: string
+  created_at?: string
+  updated_at?: string
+  can_manage: boolean
+  site?: IssueTrackerSite
+}
+
+export interface IssueTrackerInput {
+  kind?: string
+  name?: string
+  base_url: string
+  auth_kind?: 'basic' | 'bearer'
+  account?: string
+  token?: string
+}
+
+export interface IssueTrackerTestResponse {
+  ok: boolean
+  check?: 'auth' | 'reach' | 'tls'
+  error?: string
+  site?: IssueTrackerSite
+}
+
+export type LinkCommits = 'off' | 'default_branch' | 'all'
+
+export interface ProjectIssueTrackerResponse {
+  tracker_id: string
+  keys: string[]
+  link_merge_requests: boolean
+  link_commits: LinkCommits
+  comment_on_merge: boolean
+  merged_status: string
+  opened_status: string
+  active: boolean
+  set_by: string
+  updated_at: string
+}
+
+export interface ProjectIssueTrackerInput {
+  tracker_id?: string
+  keys: string[]
+  link_merge_requests?: boolean
+  link_commits?: LinkCommits
+  comment_on_merge?: boolean
+  merged_status?: string
+  opened_status?: string
+  active?: boolean
+}

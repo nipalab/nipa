@@ -147,6 +147,47 @@ type GroupMember struct {
 	UserID  int64 `json:"user_id"`
 }
 
+type IssueLink struct {
+	ID          int64     `json:"id"`
+	ProjectID   int64     `json:"project_id"`
+	TrackerID   int64     `json:"tracker_id"`
+	IssueKey    string    `json:"issue_key"`
+	SubjectKind string    `json:"subject_kind"`
+	SubjectID   int64     `json:"subject_id"`
+	Relation    string    `json:"relation"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type IssueTracker struct {
+	ID           int64     `json:"id"`
+	OrgID        int64     `json:"org_id"`
+	Kind         string    `json:"kind"`
+	Name         string    `json:"name"`
+	BaseUrl      string    `json:"base_url"`
+	AuthKind     string    `json:"auth_kind"`
+	Account      string    `json:"account"`
+	SecretSealed []byte    `json:"secret_sealed"`
+	CreatedBy    int64     `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type IssueTrackerJob struct {
+	ID          int64        `json:"id"`
+	TrackerID   int64        `json:"tracker_id"`
+	ProjectID   int64        `json:"project_id"`
+	IssueKey    string       `json:"issue_key"`
+	Action      string       `json:"action"`
+	Payload     string       `json:"payload"`
+	DedupeKey   string       `json:"dedupe_key"`
+	State       string       `json:"state"`
+	Attempt     int64        `json:"attempt"`
+	LastError   string       `json:"last_error"`
+	NextRetryAt sql.NullTime `json:"next_retry_at"`
+	DeliveredAt sql.NullTime `json:"delivered_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
 type MaintenanceWindow struct {
 	ID        int64         `json:"id"`
 	OrgID     sql.NullInt64 `json:"org_id"`
@@ -333,6 +374,20 @@ type ProjectChunkUpload struct {
 	ProjectID int64        `json:"project_id"`
 	Hash      []byte       `json:"hash"`
 	CreatedAt sql.NullTime `json:"created_at"`
+}
+
+type ProjectIssueTracker struct {
+	ProjectID         int64     `json:"project_id"`
+	TrackerID         int64     `json:"tracker_id"`
+	ProjectKeys       string    `json:"project_keys"`
+	LinkMergeRequests bool      `json:"link_merge_requests"`
+	LinkCommits       string    `json:"link_commits"`
+	CommentOnMerge    bool      `json:"comment_on_merge"`
+	MergedStatus      string    `json:"merged_status"`
+	OpenedStatus      string    `json:"opened_status"`
+	IsActive          bool      `json:"is_active"`
+	SetBy             int64     `json:"set_by"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type ProjectPathsPermission struct {
