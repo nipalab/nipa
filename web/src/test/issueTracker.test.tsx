@@ -1,3 +1,4 @@
+import { act, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import * as endpoints from '../api/endpoints'
@@ -55,6 +56,28 @@ function input(container: HTMLElement, placeholder: string): HTMLInputElement {
   const el = container.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)
   if (!el) throw new Error(`input ${placeholder} not found`)
   return el
+}
+
+// Switcher renders the first child until the "Switch" button is clicked, the
+// way a route param change re-renders the same settings component.
+function Switcher({ from, to }: { from: ReactNode; to: ReactNode }) {
+  const [switched, setSwitched] = useState(false)
+  return (
+    <>
+      <button onClick={() => setSwitched(true)}>Switch</button>
+      {switched ? to : from}
+    </>
+  )
+}
+
+function pending<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (err: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 describe('issue chips', () => {
@@ -211,6 +234,24 @@ describe('org issue tracker settings', () => {
     await waitFor(() => container.textContent?.includes('used by 1 project(s)') ?? false)
   })
 
+  it('never shows the previous org connection while another org loads', async () => {
+    const beta = pending<IssueTrackerResponse>()
+    api.getIssueTracker.mockImplementation((org: string) => (org === 'acme' ? Promise.resolve(TRACKER) : beta.promise))
+    const { container } = await render(
+      <Switcher from={<OrgIssueTrackerSettings org="acme" />} to={<OrgIssueTrackerSettings org="beta" />} />,
+    )
+    await waitFor(() => buttonByText(container, 'Save') !== null)
+    expect(input(container, 'https://studio.atlassian.net').value).toBe(TRACKER.base_url)
+    await click(buttonByText(container, 'Switch'))
+    expect(buttonByText(container, 'Save')).toBeNull()
+    expect(container.querySelector('input')).toBeNull()
+    await act(async () => beta.reject(new ApiError('no issue tracker connection', 404)))
+    await waitFor(() => buttonByText(container, 'Connect') !== null)
+    expect(input(container, 'https://studio.atlassian.net').value).toBe('')
+    await click(buttonByText(container, 'Connect'))
+    expect(api.putIssueTracker).not.toHaveBeenCalled()
+  })
+
   it('shows other load errors', async () => {
     api.getIssueTracker.mockRejectedValue(new ApiError('boom', 500))
     const { container } = await render(<OrgIssueTrackerSettings org="acme" />)
@@ -283,6 +324,28 @@ describe('project issue tracker settings', () => {
     await waitFor(() => buttonByText(container, 'Remove') === null)
     expect(input(container, 'GAME, ART').value).toBe('')
     expect(input(container, 'Done').value).toBe('')
+    expect(buttonByText(container, 'Save')?.disabled).toBe(true)
+  })
+
+  it('never shows the previous project settings while another project loads', async () => {
+    const tools = pending<ProjectIssueTrackerResponse>()
+    api.getIssueTracker.mockResolvedValue(TRACKER)
+    api.getProjectIssueTracker.mockImplementation((_org: string, project: string) =>
+      project === 'game' ? Promise.resolve(SETTINGS) : tools.promise,
+    )
+    const { container } = await render(
+      <Switcher
+        from={<ProjectIssueTrackerSettings org="acme" project="game" />}
+        to={<ProjectIssueTrackerSettings org="acme" project="tools" />}
+      />,
+    )
+    await waitFor(() => buttonByText(container, 'Remove') !== null)
+    await click(buttonByText(container, 'Switch'))
+    expect(buttonByText(container, 'Save')).toBeNull()
+    expect(buttonByText(container, 'Remove')).toBeNull()
+    await act(async () => tools.reject(new ApiError('not used', 404)))
+    await waitFor(() => buttonByText(container, 'Save') !== null)
+    expect(input(container, 'GAME, ART').value).toBe('')
     expect(buttonByText(container, 'Save')?.disabled).toBe(true)
   })
 })

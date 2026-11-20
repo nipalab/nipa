@@ -29,21 +29,35 @@ const CHECK_LABELS: Record<string, string> = {
 
 type Loaded<T> = { data: T | null; missing: boolean; unavailable: boolean; error: string | null; loading: boolean }
 
+const LOADING = { data: null, missing: false, unavailable: false, error: null, loading: true } as const
+
 // useOptional loads a resource whose 404 means "not set up yet" and whose
-// 503 means the integration is off on this server.
+// 503 means the integration is off on this server. A reload keeps the
+// current data on screen, but when the deps change (another org or project)
+// the previous resource is dropped at once: forms must never show, save or
+// delete one resource's values under another's route.
 function useOptional<T>(load: () => Promise<T>, deps: unknown[]): Loaded<T> & { reload: () => void } {
-  const [state, setState] = useState<Loaded<T>>({ data: null, missing: false, unavailable: false, error: null, loading: true })
+  const key = JSON.stringify(deps)
+  const [state, setState] = useState<Loaded<T> & { key: string }>({
+    key,
+    data: null,
+    missing: false,
+    unavailable: false,
+    error: null,
+    loading: true,
+  })
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
   useEffect(() => {
     let active = true
-    setState((prev) => ({ ...prev, loading: true }))
+    setState((prev) => (prev.key === key ? { ...prev, loading: true } : { ...LOADING, key }))
     load()
-      .then((data) => active && setState({ data, missing: false, unavailable: false, error: null, loading: false }))
+      .then((data) => active && setState({ key, data, missing: false, unavailable: false, error: null, loading: false }))
       .catch((err: unknown) => {
         if (!active) return
         const status = err instanceof ApiError ? err.status : 0
         setState({
+          key,
           data: null,
           missing: status === 404,
           unavailable: status === 503,
@@ -55,8 +69,9 @@ function useOptional<T>(load: () => Promise<T>, deps: unknown[]): Loaded<T> & { 
       active = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce])
-  return { ...state, reload }
+  }, [key, nonce])
+  const { key: loadedKey, ...loaded } = state
+  return { ...(loadedKey === key ? loaded : LOADING), reload }
 }
 
 export function IssueTrackerUnavailable() {
@@ -76,7 +91,7 @@ export function OrgIssueTrackerSettings({ org }: { org: string }) {
   return (
     <Stack direction="vertical" gap="normal">
       <ErrorBanner error={tracker.error} />
-      <IssueTrackerForm org={org} current={tracker.data} onChanged={tracker.reload} />
+      <IssueTrackerForm key={org} org={org} current={tracker.data} onChanged={tracker.reload} />
     </Stack>
   )
 }
