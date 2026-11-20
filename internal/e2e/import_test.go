@@ -16,6 +16,7 @@ import (
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 	serverusecase "github.com/nipalab/nipa/internal/usecase"
 )
@@ -162,4 +163,31 @@ func TestEndToEnd_GitImport(t *testing.T) {
 	require.Equal(t, "child", detail.Message)
 	require.Equal(t, imported[1].CommitHash.String(), detail.Hash)
 	require.True(t, authored.Add(time.Hour).Equal(detail.CreatedAt), "GetCommit reports the author date: %s", detail.CreatedAt)
+}
+
+func TestEndToEnd_GitImportPreflight(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+	adminClient, _ := newLoggedInClient(t, host)
+
+	checked, err := adminClient.ImportEstimate(ctx, e2eOrgSlug, e2eProjectSlug, 1<<40)
+	require.NoError(t, err)
+	require.False(t, checked, "the free server has no storage quota")
+	found, err := adminClient.ImportLookup(ctx, e2eOrgSlug, e2eProjectSlug, nil)
+	require.NoError(t, err)
+	require.Empty(t, found)
+
+	seedUserWithPassword(t, dbConn, 9200, "writer", "writer@example.com", "password123")
+	_, err = adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		snow.ID(9200).Base36(), "", "", uint64(serverDomain.PermissionRead|serverDomain.PermissionWrite))
+	require.NoError(t, err)
+	writer, _ := newClientWithPassword(t, host, "writer@example.com", "password123")
+
+	_, err = writer.ImportLookup(ctx, e2eOrgSlug, e2eProjectSlug, nil)
+	require.Equal(t, 403, clientErrorCode(t, err), "a project writer is refused before uploading anything")
+	_, err = writer.ImportLookup(ctx, e2eOrgSlug, e2eProjectSlug, []string{importGitOrigin(1)})
+	require.Equal(t, 403, clientErrorCode(t, err))
+	_, err = writer.ImportEstimate(ctx, e2eOrgSlug, e2eProjectSlug, 10)
+	require.Equal(t, 403, clientErrorCode(t, err))
 }

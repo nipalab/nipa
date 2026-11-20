@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
@@ -125,9 +126,39 @@ func TestClient_ImportLookup(t *testing.T) {
 	_, err = c.ImportLookup(context.Background(), "org", "proj", origins[:1])
 	require.ErrorContains(t, err, "invalid commit hash")
 
+	fs.lookupResp = func(*pb.ImportLookupRequest) *pb.ImportLookupResponse { return &pb.ImportLookupResponse{} }
+	fs.lookups = nil
+	found, err = c.ImportLookup(context.Background(), "org", "proj", nil)
+	require.NoError(t, err)
+	require.Empty(t, found)
+	require.Len(t, fs.lookups, 1, "an empty lookup still asks the server, which checks access")
+
 	fs.lookupErr = status.Error(codes.PermissionDenied, "no")
 	_, err = c.ImportLookup(context.Background(), "org", "proj", origins[:1])
 	require.ErrorContains(t, err, "no")
+}
+
+func TestClient_ImportEstimate(t *testing.T) {
+	fs := &importServer{lookupResp: func(req *pb.ImportLookupRequest) *pb.ImportLookupResponse {
+		return &pb.ImportLookupResponse{QuotaChecked: req.GetEstimatedUploadBytes() > 0}
+	}}
+	c := connectedClient(t, fs, &stubSession{accessToken: "tok"})
+	checked, err := c.ImportEstimate(context.Background(), "org", "proj", 2048)
+	require.NoError(t, err)
+	require.True(t, checked)
+	require.Len(t, fs.lookups, 1)
+	require.Equal(t, int64(2048), fs.lookups[0].GetEstimatedUploadBytes())
+	require.Empty(t, fs.lookups[0].GetOrigins())
+	require.Equal(t, "org", fs.lookups[0].GetContext().GetOrg())
+
+	fs.lookupErr = status.Error(codes.ResourceExhausted, "storage quota exceeded")
+	_, err = c.ImportEstimate(context.Background(), "org", "proj", 2048)
+	var de *domain.Error
+	require.ErrorAs(t, err, &de)
+	require.Equal(t, 402, de.Code)
+
+	_, err = NewClient(NewTransport(), &stubSession{}).ImportEstimate(context.Background(), "org", "proj", 1)
+	require.Error(t, err)
 }
 
 func TestClient_ImportOlderServer(t *testing.T) {

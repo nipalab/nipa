@@ -138,25 +138,30 @@ type fakeCommit struct {
 }
 
 type fakeServer struct {
-	mu         sync.Mutex
-	nextID     snow.ID
-	commits    map[string]*fakeCommit
-	order      []string
-	stored     map[serverDomain.Hash]bool
-	offered    map[serverDomain.Hash]int
-	branches   map[string]string
-	tags       map[string]string
-	protected  map[string]bool
-	defaultBr  string
-	lookups    [][]string
-	failAt     int
-	sent       int
-	streams    int
-	setRefs    []grpc.ImportRefs
-	lookupErr  error
-	setRefsErr error
-	openErr    error
-	uploadErr  error
+	mu          sync.Mutex
+	nextID      snow.ID
+	commits     map[string]*fakeCommit
+	order       []string
+	stored      map[serverDomain.Hash]bool
+	offered     map[serverDomain.Hash]int
+	branches    map[string]string
+	tags        map[string]string
+	protected   map[string]bool
+	defaultBr   string
+	lookups     [][]string
+	failAt      int
+	sent        int
+	streams     int
+	setRefs     []grpc.ImportRefs
+	lookupErr   error
+	setRefsErr  error
+	openErr     error
+	uploadErr   error
+	quota       int64
+	hasQuota    bool
+	estimates   []int64
+	estimateErr error
+	uploads     int
 }
 
 func newFakeServer() *fakeServer {
@@ -188,9 +193,29 @@ func (s *fakeServer) ImportLookup(_ context.Context, _, _ string, origins []stri
 	return out, nil
 }
 
+func (s *fakeServer) ImportEstimate(_ context.Context, _, _ string, bytes int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lookupErr != nil {
+		return false, s.lookupErr
+	}
+	s.estimates = append(s.estimates, bytes)
+	if s.estimateErr != nil {
+		return false, s.estimateErr
+	}
+	if !s.hasQuota {
+		return false, nil
+	}
+	if bytes > s.quota {
+		return true, &domain.Error{Code: 402, Message: "storage quota exceeded"}
+	}
+	return true, nil
+}
+
 func (s *fakeServer) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.uploads++
 	if s.uploadErr != nil {
 		return 0, 0, s.uploadErr
 	}

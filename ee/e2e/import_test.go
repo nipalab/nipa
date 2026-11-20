@@ -12,12 +12,14 @@ import (
 
 	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/repository/postgres"
+	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/chunker"
 	clientdomain "github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 	serverusecase "github.com/nipalab/nipa/internal/usecase"
 )
@@ -111,4 +113,40 @@ func TestEnterpriseGitImport(t *testing.T) {
 	require.Equal(t, "Ann", root.AuthorName)
 	require.Equal(t, origin(1), root.Origin)
 	require.True(t, authored.Equal(root.CreatedAt), root.CreatedAt.String())
+}
+
+func TestEnterpriseGitImportQuotaEstimate(t *testing.T) {
+	ctx := context.Background()
+	dbConn, err := eedb.Open(testPGDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbConn.Close() })
+	require.NoError(t, eedb.MigrateUp(dbConn))
+	ledger := storageusage.NewLedger(dbConn, storageusage.Config{})
+	usage, err := ledger.OrgStorage(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), usage.UsedBytes+4096))
+	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0), ledger)
+
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	grpcClient := clientgrpc.NewClient(transport, clientusecase.NewSession(store, transport, failPrompt{}))
+	require.NoError(t, grpcClient.Connect(ctx, host))
+	login, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdmin, e2eSuperPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(login))
+
+	checked, err := grpcClient.ImportEstimate(ctx, e2eOrgSlug, e2eProjectSlug, 1024)
+	require.NoError(t, err)
+	require.True(t, checked)
+
+	_, err = grpcClient.ImportEstimate(ctx, e2eOrgSlug, e2eProjectSlug, 1<<20)
+	var clientErr *clientdomain.Error
+	require.ErrorAs(t, err, &clientErr)
+	require.Equal(t, 402, clientErr.Code)
+	require.Contains(t, clientErr.Message, "storage quota exceeded")
+
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), 0))
+	checked, err = grpcClient.ImportEstimate(ctx, e2eOrgSlug, e2eProjectSlug, 1<<20)
+	require.NoError(t, err)
+	require.True(t, checked, "an unlimited quota still answers through the ledger")
 }

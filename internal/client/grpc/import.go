@@ -73,7 +73,7 @@ func (c *Client) ImportLookup(ctx context.Context, org, project string, origins 
 		return nil, err
 	}
 	found := make(map[string]ImportedCommit, len(origins))
-	for start := 0; start < len(origins); start += importLookupBatch {
+	for start := 0; start == 0 || start < len(origins); start += importLookupBatch {
 		end := min(start+importLookupBatch, len(origins))
 		res, err := client.ImportLookup(ctx, &pb.ImportLookupRequest{
 			Context: &pb.ProjectContext{Org: org, Project: project},
@@ -91,6 +91,24 @@ func (c *Client) ImportLookup(ctx context.Context, org, project string, origins 
 		}
 	}
 	return found, nil
+}
+
+// ImportEstimate asks the server whether the storage quota has room for an
+// import that uploads at most bytes new bytes. It reports whether a quota was
+// checked: servers without a quota, or older ones, answer false.
+func (c *Client) ImportEstimate(ctx context.Context, org, project string, bytes int64) (bool, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return false, err
+	}
+	res, err := client.ImportLookup(ctx, &pb.ImportLookupRequest{
+		Context:              &pb.ProjectContext{Org: org, Project: project},
+		EstimatedUploadBytes: bytes,
+	})
+	if err != nil {
+		return false, streamError(err, importFeature)
+	}
+	return res.GetQuotaChecked(), nil
 }
 
 // ImportSetRefs points branches and tags at imported commits.

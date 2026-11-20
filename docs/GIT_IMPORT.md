@@ -1,8 +1,11 @@
 # Git import (`nipa import git`)
 
 Design for moving a Git repository (history, branches, tags, LFS content)
-into a Nipa project. Status: **planned, not implemented**. The phased
-implementation plan is `docs/plans/GIT_IMPORT.md`.
+into a Nipa project. Status: **implemented** (PR 1–13 of
+`docs/plans/GIT_IMPORT.md`). Where the code differs from the design below,
+["As implemented"](#as-implemented) at the end of this document is
+authoritative. The user how-to is the "Migrating from Git" section of
+`docs/CLIENT_GUIDE.md`.
 
 This replaces the earlier shallow, push-based brief. That approach replayed
 Git commits as ordinary `PushStream` pushes. It breaks on the repositories
@@ -56,26 +59,32 @@ nipa import git <git-path-or-url> <nipa-url>
     [--author-map <file>]
     [--source-key <name>]         # origin source part; default "default"
     [--update]                    # incremental: fast-forward existing refs
-    [--dry-run] [--json] [--yes]
+    [--keep-cache=false]          # remove the mirror of a remote URL afterwards
+    [--reset-state]               # forget the local import state
+    [--dry-run] [--json] [--yes|-y]
 ```
 
 1. Create the project first (web UI or REST). Import needs **project admin**.
 2. `nipa import git ../game https://nipa.example.com/acme/game --dry-run`
-   prints a report and writes nothing:
+   prints a report and writes nothing (it still asks the server which commits
+   exist and checks the quota):
    - commits, refs, distinct blobs and total bytes;
    - LFS objects, and how many are missing locally;
    - paths Nipa rejects, symlinks, submodules, octopus merges;
    - estimated upload size against the remaining quota.
-3. Run it without `--dry-run` to import, with progress (commits/s, MiB/s,
-   ETA). Ctrl-C is safe: the next run resumes.
+3. Run it without `--dry-run` to import, with progress (commits done of the
+   total, bytes uploaded, percent). Ctrl-C is safe: the next run resumes.
 4. Later runs with `--update` import new Git commits and fast-forward the Nipa
    branches. A Nipa branch that moved on its own (someone pushed in Nipa) is
    reported as diverged and skipped. It is never overwritten.
 
-A remote URL (`https://…`, `git@…`) is fetched with go-git into a bare cache
-under the user cache dir (`<cache>/nipa/git-import/<hash>`) and reused by
-`--update`. Credentials come from the URL, `GIT_ASKPASS`/the credential
-helper (`git credential fill` when `git` exists), or an SSH agent.
+A remote URL (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the
+scp form `user@host:path`) is mirrored with go-git into a bare cache under the
+user cache dir (`<cache>/nipa/git-import/<sha256 of the redacted URL>`) and
+fetched again by later runs. HTTP credentials come from the URL, else from
+`git credential fill` (only when the server asks for them and `git` is
+installed); SSH uses the URL password, an SSH agent, or
+`~/.ssh/id_ed25519|id_ecdsa|id_rsa` without a passphrase.
 
 ## Architecture
 
@@ -376,3 +385,89 @@ re-chunking time.
 | author name/email/date | committer identity, GPG signatures, notes |
 | branches, tags (annotations), default branch | symlinks (opt-in as files), submodules |
 | | reflogs, stashes, hooks, remote refs not selected |
+
+## As implemented
+
+The implementation follows the design above with these differences.
+
+**Access and quota preflight.** There is no `Begin` call. Every import RPC
+runs `Import.CheckAccess` (project admin, i.e. `PermissionAll`, plus
+`Chunk.RequireWritable`): `ImportLookup`, the first `ImportStream` header and
+`ImportSetRefs`. The client always calls `ImportLookup` first, also in a dry
+run and when no commit is left to import, so a project writer who is not an
+admin is refused before any chunk upload. After the dry-run report the client
+sends `ImportLookup` again with `estimated_upload_bytes` = the report's
+`Bytes` (distinct blob bytes of the commits still to import, LFS objects
+counted at their real size when `--lfs` resolves them), leaving out blobs and
+LFS objects the import state of the same target marks uploaded, so a resumed
+run only counts what is left. It is an upper bound: it ignores dedup against
+content the server already holds. The server answers `quota_checked` and asks
+`Chunk.CheckUploadHeadroom`, which calls `StorageLedger.Headroom` for the
+project's billing owner; no ledger (the free `nipad`) or an own-storage project
+means no check. Over the quota the RPC fails with `ResourceExhausted` (402):
+a real run stops before the confirmation with `nothing was imported: storage
+quota exceeded: ...`, a dry run prints `quota: up to <size> to upload does
+not fit: ...`, fills `quota_exceeded` in `--json` and exits 1. There is no
+override flag. The authoritative check stays at presign/confirm. Older
+servers ignore the field (`quota_checked` false); older clients skip the
+estimate. The phase-2 refusal of projects that already hold native commits
+was not implemented: `--update` only controls whether existing branches are
+fast-forwarded.
+
+**Streaming.** `ImportCommitHeader` also carries `author_user_id` (field 8,
+base36), set from `--author-map`; the server accepts it only for a live member
+of the project's organization. The stream is opened only when commits are
+left, so a run where everything is already imported only sets refs.
+Maintenance classes: `ImportLookup` read, `ImportStream` and `ImportSetRefs`
+write.
+
+**Remote sources.**
+- `file://` URLs go through an in-process go-git server transport, installed
+  once per process (go-git's protocol registry is process-global).
+- The scp form needs `user@` (`git@host:org/repo.git`); `host:path` is read as
+  a local path.
+- The mirror lives in `<user cache>/nipa/git-import/<sha256(redacted url)>`
+  and the import state DB is inside it (`<mirror>/nipa-import/state.db`);
+  `--keep-cache=false` deletes the mirror after a successful run.
+- Clone and fetch print no progress.
+- The mirror's `HEAD` is set by the first clone and is not refreshed by later
+  fetches: if the Git default branch changes, pass `--default-branch`.
+
+**LFS.**
+- Missing objects stop the import before any write in `--lfs local` mode, and
+  in `auto` mode when no LFS endpoint was found; with an endpoint, `auto`
+  downloads them during the import.
+- The batch API is called with one object per request (download objects are
+  spooled to `<state dir>/tmp` and verified against the OID).
+- Converted LFS content is memoized under the key (`oid`, `lfs:` + the chunk
+  profile); Git blobs under (`git sha`, profile), where the profile is `text`
+  or the binary chunk sizes of the path's extension. The `lfs` table of the
+  state DB only records which OIDs were seen; it is never read back for
+  conversion.
+
+**Client state.** `blobs` is keyed by (`git_sha`, `profile`) and keeps
+`chunk_sizes` next to `chunks`; `meta` stores only the target (host, org,
+project, source key). A state DB written for another target is refused until
+`--reset-state`. A rerun after the server lost content the state recorded as
+uploaded fails with `missing chunk data` and the hint to use `--reset-state`.
+
+**CLI.** The flags are those of the "User-facing flow" block. Text output
+prints a preview (`commits`, `refs`, `content`, `changes`, `lfs`, `quota`
+lines) before the `Import? [y/N]` prompt (`--yes` skips it; a non-terminal
+without `--yes` is refused), then one line per ref status and `warning:`
+lines for `exists`, `diverged` and `protected` refs. An `invalid` ref exits 1.
+`--json` prints `target`, `source`, `mirror`, `cache_removed`, `dry_run`,
+`commits`, `known`, `imported`, `uploaded_bytes`, `blobs_read`, `blob_hits`,
+`lfs_mode`, `lfs_endpoint`, `lfs_read`, `lfs_hits`, `branches`, `tags`,
+`default_branch`, `refs[]` and `ref_warnings[]` (`kind`, `name`, `status`,
+`commit_id`, `message`), `warnings[]` (`kind`, `ref`, `commit`, `path`,
+`message`), `report` (`commits`, `branches`, `tags`, `blobs`, `bytes`,
+`files`, `removed`, `empty_commits`, `octopus`, `invalid_paths`, `symlinks`,
+`submodules`, `lfs_objects`, `lfs_bytes`, `lfs_missing`,
+`lfs_missing_count`), `upload_estimate_bytes`, `quota_checked` and
+`quota_exceeded`. A dry run exits 1 when paths are invalid, LFS objects are
+missing (as above) or the quota is exceeded.
+
+**Not implemented yet.** The `NIPA_BENCH_GIT_IMPORT` benchmark from
+"Performance targets" does not exist, so no import throughput is recorded in
+`docs/PERFORMANCE.md`. The server-side import job (phase 6) is not started.

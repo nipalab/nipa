@@ -106,6 +106,47 @@ func TestState_CheckTarget(t *testing.T) {
 	require.ErrorContains(t, s.CheckTarget(target), "read import state target")
 }
 
+func TestOpenResumeState(t *testing.T) {
+	target := StateTarget{Host: "h", Org: "o", Project: "p", SourceKey: "default"}
+	dir := t.TempDir()
+	s, err := OpenResumeState(dir, target)
+	require.NoError(t, err)
+	require.Nil(t, s)
+	_, err = os.Stat(filepath.Join(dir, StateFileName))
+	require.True(t, os.IsNotExist(err), "a missing state is not created")
+
+	s, err = OpenState(dir, false)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = OpenResumeState(dir, target)
+	require.NoError(t, err)
+	require.Nil(t, s, "a state without a target is not trusted")
+
+	s, err = OpenState(dir, false)
+	require.NoError(t, err)
+	require.NoError(t, s.CheckTarget(target))
+	require.NoError(t, s.Close())
+	other := target
+	other.Project = "q"
+	s, err = OpenResumeState(dir, other)
+	require.NoError(t, err)
+	require.Nil(t, s)
+	s, err = OpenResumeState(dir, target)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.NoError(t, s.Close())
+
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+	_, err = OpenResumeState(file, target)
+	require.Error(t, err)
+
+	bad := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(bad, StateFileName), []byte("not a database at all, just text that is long enough"), 0o600))
+	_, err = OpenResumeState(bad, target)
+	require.Error(t, err)
+}
+
 func TestOpenStateErrors(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))

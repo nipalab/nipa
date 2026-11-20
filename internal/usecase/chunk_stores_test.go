@@ -268,3 +268,37 @@ func TestBranch_MergedContentUsesProjectStore(t *testing.T) {
 		require.NotContains(t, f.nipa.data, hash)
 	}
 }
+
+func TestChunk_CheckUploadHeadroom(t *testing.T) {
+	ctx := context.Background()
+	nipaProject := &domain.Project{ID: snow.ID(2), OrgID: testOrg.ID}
+
+	f := newTwoStoreFixture(t, ProjectStore{External: true})
+	checked, err := f.uc.CheckUploadHeadroom(ctx, testOrg, testProject, 10)
+	require.NoError(t, err)
+	require.False(t, checked)
+
+	checked, err = f.uc.CheckUploadHeadroom(ctx, testOrg, nipaProject, 0)
+	require.NoError(t, err)
+	require.True(t, checked)
+
+	f.ledger.EXPECT().Headroom(gomock.Any(), testOrg, nipaProject, int64(10)).Return(nil)
+	checked, err = f.uc.CheckUploadHeadroom(ctx, testOrg, nipaProject, 10)
+	require.NoError(t, err)
+	require.True(t, checked)
+
+	quotaErr := domain.NewErrorQuotaExceeded("storage quota exceeded")
+	f.ledger.EXPECT().Headroom(gomock.Any(), testOrg, nipaProject, int64(20)).Return(quotaErr)
+	checked, err = f.uc.CheckUploadHeadroom(ctx, testOrg, nipaProject, 20)
+	require.True(t, checked)
+	require.ErrorIs(t, err, quotaErr)
+
+	readOnly := newTwoStoreFixture(t, ProjectStore{External: true, ReadOnly: true})
+	_, err = readOnly.uc.CheckUploadHeadroom(ctx, testOrg, testProject, 10)
+	require.ErrorContains(t, err, "Own storage add-on")
+
+	noLedger := NewChunk(NewMockchunkRepository(gomock.NewController(t)), newStubChunkStore(), ChunkTransferConfig{})
+	checked, err = noLedger.CheckUploadHeadroom(ctx, testOrg, testProject, 10)
+	require.NoError(t, err)
+	require.False(t, checked)
+}

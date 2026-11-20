@@ -80,12 +80,17 @@ func (c *Converter) DryRun(plan *Plan) (*Report, error) {
 			if err != nil {
 				return nil, fmt.Errorf("read blob %s: %w", sha, err)
 			}
-			if !isPointer {
-				r.Bytes += size
-				continue
+			if !isPointer || c.opts.LFS == nil {
+				_, done, err := c.cached(sha, "", f.path)
+				if err != nil {
+					return nil, err
+				}
+				if !done {
+					r.Bytes += size
+				}
 			}
-			if c.opts.LFS == nil {
-				r.Bytes += size
+			if !isPointer {
+				continue
 			}
 			if oids[ptr.OID] {
 				continue
@@ -94,6 +99,13 @@ func (c *Converter) DryRun(plan *Plan) (*Report, error) {
 			r.LFSObjects++
 			r.LFSBytes += ptr.Size
 			if c.opts.LFS == nil {
+				continue
+			}
+			_, done, err := c.cached(ptr.OID, lfsProfilePrefix, f.path)
+			if err != nil {
+				return nil, err
+			}
+			if done {
 				continue
 			}
 			r.Bytes += ptr.Size

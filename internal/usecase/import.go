@@ -70,6 +70,11 @@ type importStorageGate interface {
 	RequireWritable(ctx context.Context, projectID snow.ID) error
 }
 
+// importQuota checks an import's estimated upload against the storage quota.
+type importQuota interface {
+	CheckUploadHeadroom(ctx context.Context, org *domain.Organization, project *domain.Project, bytes int64) (bool, error)
+}
+
 // ImportCommit is one source commit to write. Parents are origins of commits
 // imported earlier; the files and removed paths are the delta against the
 // first parent's tree.
@@ -136,6 +141,7 @@ type Import struct {
 	hooks      importHooks
 	audit      AuditRecorder
 	storage    importStorageGate
+	quota      importQuota
 	maxFiles   int
 }
 
@@ -170,6 +176,12 @@ func (i *Import) WithStorageGate(gate importStorageGate) *Import {
 	return i
 }
 
+// WithQuota checks upload estimates against the storage quota.
+func (i *Import) WithQuota(quota importQuota) *Import {
+	i.quota = quota
+	return i
+}
+
 // WithMaxFiles overrides DefaultPushMaxFiles; zero or less keeps the default.
 func (i *Import) WithMaxFiles(n int) *Import {
 	i.maxFiles = n
@@ -201,10 +213,12 @@ func (i *Import) CheckAccess(ctx context.Context, projectID snow.ID) error {
 	return nil
 }
 
-// Lookup returns the commits already imported for the given origins.
+// Lookup returns the commits already imported for the given origins. It needs
+// the same access as every write of an import, so a client is refused before
+// it uploads anything.
 func (i *Import) Lookup(ctx context.Context, projectID snow.ID, origins []string) (map[string]ImportedCommit, error) {
-	if !i.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
-		return nil, domain.NewErrorNoPermission()
+	if err := i.CheckAccess(ctx, projectID); err != nil {
+		return nil, err
 	}
 	if len(origins) > MaxImportLookup {
 		return nil, domain.NewErrorUser(fmt.Sprintf("lookup asks for %d origins, more than the limit of %d", len(origins), MaxImportLookup))
@@ -223,6 +237,18 @@ func (i *Import) Lookup(ctx context.Context, projectID snow.ID, origins []string
 		}
 	}
 	return found, nil
+}
+
+// EstimateUpload checks that the storage quota has room for bytes new bytes.
+// It reports whether a quota was consulted.
+func (i *Import) EstimateUpload(ctx context.Context, org *domain.Organization, project *domain.Project, bytes int64) (bool, error) {
+	if err := i.CheckAccess(ctx, project.ID); err != nil {
+		return false, err
+	}
+	if i.quota == nil || bytes <= 0 {
+		return false, nil
+	}
+	return i.quota.CheckUploadHeadroom(ctx, org, project, bytes)
 }
 
 func importedCommit(c *domain.Commit) ImportedCommit {

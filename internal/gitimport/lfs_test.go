@@ -179,6 +179,31 @@ func TestDryRunCountsLFS(t *testing.T) {
 	assert.Greater(t, r.Bytes, int64(300))
 }
 
+func TestDryRunSkipsUploadedBlobs(t *testing.T) {
+	f := newFixture(t, false)
+	obj := "lfs object"
+	f.branch("main", f.commit(map[string]entry{"a.png": reg(pointerOf(obj).String()), "d.txt": reg("text\n")}, "root\n"))
+	p := plan(t, f, Options{})
+
+	cache := NewMemoryBlobCache()
+	_, err := converter(t, f, ConverterOptions{LFS: newMemLFS(obj), Cache: cache}).Convert(p.Commits[0])
+	require.NoError(t, err)
+	r, err := converter(t, f, ConverterOptions{LFS: newMemLFS(), Cache: cache}).DryRun(p)
+	require.NoError(t, err)
+	assert.Zero(t, r.Bytes)
+	assert.Empty(t, r.LFSMissing, "an uploaded object is not needed again")
+	assert.Equal(t, 1, r.LFSObjects)
+
+	boom := errors.New("cache down")
+	_, err = converter(t, f, ConverterOptions{Cache: failingCache{getErr: boom}}).DryRun(p)
+	assert.ErrorIs(t, err, boom)
+
+	g := newFixture(t, false)
+	g.branch("main", g.commit(map[string]entry{"a.png": reg(pointerOf(obj).String())}, "root\n"))
+	_, err = converter(t, g, ConverterOptions{LFS: newMemLFS(obj), Cache: failingCache{getErr: boom}}).DryRun(plan(t, g, Options{}))
+	assert.ErrorIs(t, err, boom)
+}
+
 func TestSourceClose(t *testing.T) {
 	f := newFixture(t, false)
 	require.NoError(t, f.source().Close())

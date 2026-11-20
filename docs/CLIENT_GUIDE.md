@@ -345,6 +345,103 @@ pinned head commit as the base so the server applies the delta to the full tree.
 `merge` and `revert` require a full checkout; run `nipa sparse-checkout disable`
 first.
 
+## Migrating from Git
+
+`nipa import git <git-path-or-url> <nipa-url>` copies the history, branches
+and tags of a Git repository into a Nipa project, keeping authors, dates and
+merges, and replacing Git LFS pointers with their content. It needs no `git`
+binary (except for credential helpers, below). The design and its limits are
+in [GIT_IMPORT.md](GIT_IMPORT.md).
+
+1. **Create the project** in the web UI (or over REST). You must be a
+   project admin (an org owner is one); writers are refused before anything
+   is uploaded.
+2. **Fetch every LFS object** in your Git clone, so the import does not
+   depend on the LFS server:
+
+   ```sh
+   cd ../game && git lfs fetch --all
+   ```
+
+   With the default `--lfs auto`, objects missing locally are downloaded from
+   the LFS endpoint (`lfs.url`, `.lfsconfig` or the remote URL). `--lfs local`
+   refuses missing objects, `--lfs off` imports the pointer files as they are.
+3. **Dry run.** It writes nothing, but it asks the server which commits are
+   already imported and whether the estimated upload fits the storage quota:
+
+   ```sh
+   nipa import git ../game https://nipa.example.com/acme/game --dry-run
+   ```
+
+   The report lists commits, refs, distinct blobs and bytes, LFS objects
+   (and how many are missing), paths Nipa cannot store, symlinks (skipped
+   unless `--symlinks file`), submodules (skipped), octopus merges (only two
+   parents are kept) and, on servers with a storage quota, whether the upload
+   fits. It exits 1 when the import would be refused: invalid paths (rename
+   them in Git, e.g. with `git filter-repo`), missing LFS objects, or a quota
+   that is too small (free storage, ask the billing owner for more, or import
+   less with `--since`, `--depth` or `--snapshot`). The estimate is an upper
+   bound: content the server already holds is not uploaded again. A rerun
+   after an interruption only counts what is left to upload.
+4. **Import.** The same command without `--dry-run` shows the preview and
+   asks `Import? [y/N]` (`--yes` in scripts; `--json` prints the summary as
+   JSON). Interrupting it is safe: run the same command again and it resumes
+   where it stopped.
+5. **Mirror until cutover.** While the team still pushes to Git, rerun with
+   `--update` to import the new Git commits and fast-forward the Nipa
+   branches:
+
+   ```sh
+   nipa import git https://git.example.com/acme/game.git https://nipa.example.com/acme/game --update --yes
+   ```
+
+   A branch that someone moved in Nipa is reported `diverged` and a protected
+   one `protected`; both are left alone. Tags never move once created.
+6. **Protect the branches** once Nipa is the source of truth: project
+   **Settings → Branches** in the web UI (or `PUT .../branches/{name}/protection`).
+   An import never moves a protected branch.
+
+Options worth knowing:
+
+| Option | Effect |
+| --- | --- |
+| `--refs refs/heads/*,refs/tags/v*` | Ref patterns to import (default `refs/heads/*,refs/tags/*`). |
+| `--default-branch <name>` | Default branch of the project (default: the Git `HEAD` branch). |
+| `--depth N` / `--since <date>` / `--snapshot` | Import only the last N commits per ref, commits since a date, or one commit per ref tip. |
+| `--author-map <file>` | Map Git authors to Nipa users, see below. |
+| `--source-key <name>` | Name of the source kept in every commit's origin (`git:<name>:<sha>`, default `default`). Use distinct keys when importing several Git repositories into one project. Keep the same key on every rerun, or the commits are imported again. |
+| `--keep-cache=false` | Delete the mirror of a remote URL after a successful run (kept by default for `--update`). |
+| `--reset-state` | Forget which content this machine already uploaded; needed when the state belongs to another target, or the server lost content it recorded. |
+
+**Author map.** Without a map, an author whose Git email equals the verified
+email of a member of the project's organization is attributed to that member;
+everyone else is attributed to you, with the Git name and email still shown.
+A map pins authors to users by id, one entry per line (`#` comments allowed;
+emails compare case-insensitively, `Name <email>` wins over `<email>`):
+
+```text
+Ann Author <ann@old-domain.example> = k3j2
+<build-bot@example.com> = k9x1
+```
+
+Mapped users must be members of the project's organization.
+
+**Remote URLs.** `https://`, `http://`, `ssh://`, `git://`, `file://` and
+`user@host:path` URLs are mirrored into the user cache folder
+(`~/.cache/nipa/git-import/` on Linux) and fetched again on later runs. For a
+private HTTPS remote, put the credentials in a Git credential helper, e.g.
+`git config --global credential.helper store` or your platform's manager:
+when the server asks for credentials, Nipa runs `git credential fill` (so
+`git` must be installed) and uses the same helper for the LFS server. SSH
+remotes use your SSH agent or an unencrypted `~/.ssh/id_ed25519`, `id_ecdsa`
+or `id_rsa`. When the Git default branch changes after the first mirror, pass
+`--default-branch`.
+
+**Resume and state.** The import state (which blobs were converted and
+uploaded) lives in `<git dir>/nipa-import/state.db`, or inside the mirror for
+a remote URL. Which commits exist is always asked from the server, so deleting
+the state, or `--reset-state`, only costs re-reading and re-chunking.
+
 ## Permissions and groups
 
 ### `nipa acl`
@@ -419,6 +516,8 @@ See [AI.md](AI.md).
 - `--dry-run [--json]` on `push`, `merge` and `revert` reports the plan without
   changing local state or contacting the server. `--json` on these commands is
   only valid together with `--dry-run`.
+- `nipa import git --json` prints the import summary (with `--dry-run`, the
+  report); unlike the dry runs above, an import dry run contacts the server.
 - Payloads go to stdout. Failures are one JSON envelope on stderr:
   `{"error":{"code","message","hint","action"}}`.
 - Exit codes are stable:

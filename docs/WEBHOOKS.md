@@ -57,6 +57,16 @@ Every payload starts with:
   "files": [{"path": "src/a.c", "op": "modified", "binary": false, "size_bytes": 120}]}]}
 ```
 
+A Git import (`nipa import git`, `docs/GIT_IMPORT.md`) sends one `push` per
+branch it creates or fast-forwards, after all refs are set; branches left
+unchanged, diverged or protected send nothing. The change has the usual shape
+but `files` is always `[]` (the import may cover thousands of commits, so no
+file list is built), `before` is the previous head (empty with `created: true`
+for a new branch), `after` the imported commit the branch now points at, and
+`message` that commit's Git message. With no paths to match, a webhook with a
+path filter still receives it. Each new tag sends one `tag.created`; the
+actor is the importer.
+
 `tag.created` / `tag.deleted`:
 
 ```json

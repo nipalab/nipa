@@ -332,3 +332,120 @@ func TestSummaryRefClassification(t *testing.T) {
 	require.Equal(t, "abc", short("abc"))
 	_ = plumbing.ZeroHash
 }
+
+func TestRun_LookupRefusalStopsBeforeUpload(t *testing.T) {
+	for _, dry := range []bool{false, true} {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.lookupErr = &domain.Error{Code: 403, Message: "permission denied"}
+		opts := baseOptions(repo.dir)
+		opts.DryRun = dry
+		opts.Confirm = func(*Summary) error { t.Fatal("refused before confirming"); return nil }
+		_, err := NewImporter(srv).Run(context.Background(), opts, nil)
+		require.ErrorContains(t, err, "permission denied")
+		require.Zero(t, srv.uploads)
+		require.Zero(t, srv.streams)
+		require.Empty(t, srv.setRefs)
+	}
+}
+
+func TestRun_QuotaEstimate(t *testing.T) {
+	t.Run("no quota", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		sum, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		require.False(t, sum.QuotaChecked)
+		require.Equal(t, []int64{sum.Report.Bytes}, srv.estimates)
+		require.Equal(t, sum.Report.Bytes, sum.UploadEstimate)
+		require.Positive(t, sum.Imported)
+	})
+	t.Run("fits", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.hasQuota, srv.quota = true, 1<<30
+		sum, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		require.True(t, sum.QuotaChecked)
+		require.False(t, sum.QuotaBlocked())
+		require.Positive(t, sum.Imported)
+	})
+	t.Run("exceeded stops before upload", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.hasQuota, srv.quota = true, 1
+		opts := baseOptions(repo.dir)
+		opts.Confirm = func(*Summary) error { t.Fatal("refused before confirming"); return nil }
+		sum, err := NewImporter(srv).Run(context.Background(), opts, nil)
+		var de *domain.Error
+		require.ErrorAs(t, err, &de)
+		require.Equal(t, 402, de.Code)
+		require.Equal(t, "nothing was imported: storage quota exceeded", de.Message)
+		require.Contains(t, de.Hint, "before deduplication")
+		require.Contains(t, de.Action, "--since")
+		require.True(t, sum.QuotaChecked)
+		require.Zero(t, srv.uploads)
+		require.Zero(t, srv.streams)
+		_, err = os.Stat(filepath.Join(repo.dir, ".git", StateDirName))
+		require.True(t, os.IsNotExist(err))
+	})
+	t.Run("exceeded in a dry run", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.hasQuota, srv.quota = true, 1
+		opts := baseOptions(repo.dir)
+		opts.DryRun = true
+		sum, err := NewImporter(srv).Run(context.Background(), opts, nil)
+		require.NoError(t, err)
+		require.True(t, sum.QuotaBlocked())
+		require.Equal(t, "storage quota exceeded", sum.QuotaExceeded)
+	})
+	t.Run("other errors pass through", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.estimateErr = errors.New("unavailable")
+		_, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.EqualError(t, err, "unavailable")
+		require.Zero(t, srv.uploads)
+	})
+	t.Run("resume counts only what is left", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		srv.failAt = 2
+		_, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.ErrorContains(t, err, "injected failure")
+		srv.failAt = -1
+
+		dry := baseOptions(repo.dir)
+		dry.DryRun = true
+		dry.ResetState = true
+		full, err := NewImporter(srv).Run(context.Background(), dry, nil)
+		require.NoError(t, err)
+		other := dry
+		other.ResetState = false
+		other.Project = "other"
+		unrelated, err := NewImporter(srv).Run(context.Background(), other, nil)
+		require.NoError(t, err)
+		require.Equal(t, full.UploadEstimate, unrelated.UploadEstimate, "another target's state is not trusted")
+		dry.ResetState = false
+		left, err := NewImporter(srv).Run(context.Background(), dry, nil)
+		require.NoError(t, err)
+		require.Less(t, left.UploadEstimate, full.UploadEstimate)
+
+		srv.hasQuota, srv.quota = true, left.UploadEstimate
+		sum, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		require.Equal(t, 2, sum.Imported)
+	})
+	t.Run("nothing to upload", func(t *testing.T) {
+		repo := newSampleRepo(t)
+		srv := newFakeServer()
+		_, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		srv.estimates = nil
+		sum, err := NewImporter(srv).Run(context.Background(), baseOptions(repo.dir), nil)
+		require.NoError(t, err)
+		require.Zero(t, sum.UploadEstimate)
+		require.Empty(t, srv.estimates)
+	})
+}

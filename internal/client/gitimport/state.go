@@ -101,9 +101,11 @@ func (s *State) Close() error {
 }
 
 func (s *State) CheckTarget(target StateTarget) error {
-	var raw string
-	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = ?`, metaTargetKey).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
+	stored, found, err := s.target()
+	if err != nil {
+		return err
+	}
+	if !found {
 		data, err := json.Marshal(target)
 		if err != nil {
 			return err
@@ -111,18 +113,46 @@ func (s *State) CheckTarget(target StateTarget) error {
 		_, err = s.db.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, metaTargetKey, string(data))
 		return err
 	}
-	if err != nil {
-		return err
-	}
-	var stored StateTarget
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return fmt.Errorf("read import state target: %w", err)
-	}
 	if stored != target {
 		return domain.NewUserError(fmt.Sprintf("the import state of this git repository belongs to %s, not %s; rerun with --reset-state to start over", stored, target)).
 			WithHint("the state remembers which content was uploaded to that project", "rerun with --reset-state to start over for the new target")
 	}
 	return nil
+}
+
+func (s *State) target() (StateTarget, bool, error) {
+	var raw string
+	var stored StateTarget
+	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = ?`, metaTargetKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return stored, false, nil
+	}
+	if err != nil {
+		return stored, false, err
+	}
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return stored, false, fmt.Errorf("read import state target: %w", err)
+	}
+	return stored, true, nil
+}
+
+func OpenResumeState(dir string, target StateTarget) (*State, error) {
+	if _, err := os.Stat(filepath.Join(dir, StateFileName)); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	state, err := OpenState(dir, false)
+	if err != nil {
+		return nil, err
+	}
+	stored, found, err := state.target()
+	if err != nil || !found || stored != target {
+		_ = state.Close()
+		return nil, err
+	}
+	return state, nil
 }
 
 func (s *State) Get(key gitimport.BlobKey) (*gitimport.Blob, bool, error) {
