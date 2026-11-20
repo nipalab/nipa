@@ -51,9 +51,12 @@ const noLLM = { endpoint: "", model: "", keySaved: false, configured: false };
 
 const render = () => renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
 
+const openTab = async (name: string) => userEvent.click(await screen.findByRole("tab", { name }));
+
 describe("SettingsDialog interface", () => {
   it("changes and resets the zoom", async () => {
     render();
+    await openTab("Appearance");
     const reset = await screen.findByRole("button", { name: "Reset" });
     expect(reset).toBeDisabled();
     await userEvent.selectOptions(screen.getByLabelText("Zoom"), "1.25");
@@ -66,12 +69,78 @@ describe("SettingsDialog interface", () => {
 
   it("replays the tour only when a project is open", async () => {
     const { unmount } = renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} canReplayTour={false} />);
-    expect(await screen.findByRole("button", { name: "Replay the quick tour" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Replay" })).toBeDisabled();
+    expect(screen.getByText("Open or clone a project first")).toBeInTheDocument();
     unmount();
     renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
-    await userEvent.click(await screen.findByRole("button", { name: "Replay the quick tour" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Replay" }));
     expect(readTour()).toBe(0);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("SettingsDialog sections", () => {
+  it("shows one section at a time and keeps edits across sections", async () => {
+    render();
+    const general = await screen.findByRole("tab", { name: "General" });
+    expect(general).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("General");
+    expect(screen.getByText("Language, mode and how Nipa starts.")).toBeVisible();
+    await userEvent.click(screen.getByLabelText("Start Nipa when I log in"));
+    await openTab("Updates");
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("Updates");
+    await openTab("General");
+    expect(screen.getByLabelText("Start Nipa when I log in")).toBeChecked();
+  });
+
+  it("moves between sections with the arrow keys", async () => {
+    render();
+    const general = await screen.findByRole("tab", { name: "General" });
+    general.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("tab", { name: "Appearance" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Appearance" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{ArrowUp}{ArrowUp}");
+    expect(screen.getByRole("tab", { name: "Advanced" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Home}");
+    expect(general).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Advanced" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}x");
+    expect(general).toHaveFocus();
+  });
+
+  it("marks a section with an invalid value", async () => {
+    render();
+    await openTab("Advanced");
+    const tab = screen.getByRole("tab", { name: "Advanced" });
+    expect(tab.querySelector(".bg-danger")).toBeNull();
+    await userEvent.type(screen.getByLabelText("Uploads at once"), "99");
+    expect(tab.querySelector(".bg-danger")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("picks the theme and toggles simple mode", async () => {
+    render();
+    await userEvent.click(await screen.findByRole("switch", { name: "Simple mode" }));
+    expect(screen.getByRole("switch", { name: "Simple mode" })).toBeChecked();
+    await openTab("Appearance");
+    await userEvent.click(screen.getByRole("radio", { name: "Light" }));
+    expect(screen.getByRole("radio", { name: "Light" })).toBeChecked();
+  });
+
+  it("lists no external tools until one is added", async () => {
+    render();
+    await openTab("External tools");
+    expect(screen.getByText("No programs yet. Files open with the system default.")).toBeInTheDocument();
+  });
+
+  it("restarts the background service on demand", async () => {
+    api.restartDaemon.mockResolvedValue({ version: "v1" });
+    render();
+    await openTab("Advanced");
+    await userEvent.click(screen.getByRole("button", { name: "Restart" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Background service restarted", "success"));
   });
 });
 
@@ -80,7 +149,10 @@ describe("SettingsDialog", () => {
     render();
     expect(screen.getByRole("status")).toHaveTextContent("Loading settings");
     await userEvent.click(await screen.findByLabelText("Start Nipa when I log in"));
-    await userEvent.click(screen.getByLabelText("Keep Nipa running in the tray when the window is closed"));
+    await userEvent.click(screen.getByLabelText("Keep running in the tray"));
+    expect(screen.getByLabelText("Start Nipa when I log in")).toBeChecked();
+    expect(screen.getByLabelText("Keep running in the tray")).not.toBeChecked();
+    await openTab("Notifications");
     await userEvent.click(screen.getByLabelText("Teammates push to my branch"));
     await userEvent.click(screen.getByLabelText("A lock is released"));
     await userEvent.click(screen.getByLabelText("Someone asks me to release a lock"));
@@ -99,6 +171,7 @@ describe("SettingsDialog", () => {
     api.settings.mockResolvedValue({ ...base, tools: [{ extension: ".psd", command: "krita" }] });
     api.chooseProgram.mockResolvedValueOnce("/usr/bin/blender").mockResolvedValueOnce("").mockRejectedValueOnce(new Error("no dialogs"));
     render();
+    await openTab("External tools");
     await userEvent.click(await screen.findByRole("button", { name: /Add a program/ }));
     await userEvent.type(screen.getByLabelText("Extension 2"), ".blend");
     await userEvent.click(screen.getByRole("button", { name: "Choose program 2" }));
@@ -126,6 +199,7 @@ describe("SettingsDialog", () => {
     api.uploadWorkers.mockResolvedValue(8);
     api.restartDaemon.mockRejectedValueOnce(new Error("busy")).mockResolvedValueOnce({ version: "v1" });
     render();
+    await openTab("Advanced");
     const input = await screen.findByLabelText("Uploads at once");
     expect(input).toHaveValue("8");
     await userEvent.clear(input);
@@ -136,7 +210,8 @@ describe("SettingsDialog", () => {
     await userEvent.type(input, "4");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.setUploadWorkers).toHaveBeenCalledWith(4));
-    expect(await screen.findByText(/Restart the background service/)).toBeInTheDocument();
+    expect(await screen.findByText("Restart the background service to use the new upload setting.")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Advanced" })).toHaveAttribute("aria-selected", "true");
     expect(onClose).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: /Restart/ }));
@@ -149,6 +224,7 @@ describe("SettingsDialog", () => {
   it("clears pinned workers and closes with Escape or Cancel", async () => {
     api.uploadWorkers.mockResolvedValue(8);
     render();
+    await openTab("Advanced");
     const input = await screen.findByLabelText("Uploads at once");
     await userEvent.clear(input);
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -163,6 +239,7 @@ describe("SettingsDialog", () => {
     api.setLLM.mockResolvedValue({ endpoint: "http://localhost:11434/v1", model: "qwen", keySaved: false, configured: true });
     api.setLLMKey.mockResolvedValue(undefined);
     render();
+    await openTab("AI assistance");
     expect(await screen.findByText("Set an endpoint and a model to show the Generate buttons.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Test" })).toBeDisabled();
     await userEvent.type(screen.getByLabelText("Endpoint"), "http://localhost:11434/v1");
@@ -183,6 +260,7 @@ describe("SettingsDialog", () => {
     api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "m", keySaved: true, configured: true });
     api.clearLLMKey.mockRejectedValueOnce(new Error("keychain locked")).mockResolvedValueOnce(undefined);
     render();
+    await openTab("AI assistance");
     const key = await screen.findByLabelText("API key");
     expect(key).toHaveValue("");
     expect(key).toHaveAttribute("placeholder", "Saved");
@@ -203,6 +281,7 @@ describe("SettingsDialog", () => {
     api.llmSettings.mockResolvedValue({ endpoint: "http://x/v1", model: "m", keySaved: false, configured: true });
     api.testLLM.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("LLM endpoint answered 401: bad key"));
     render();
+    await openTab("AI assistance");
     await userEvent.type(await screen.findByLabelText("API key"), "sk-typed");
     await userEvent.click(screen.getByRole("button", { name: "Test" }));
     expect(await screen.findByText("m answered")).toBeInTheDocument();
@@ -226,6 +305,7 @@ describe("SettingsDialog", () => {
   it("turns automatic updates off and checks for updates", async () => {
     api.checkForUpdate.mockResolvedValue({ ...idle, phase: "upToDate" });
     render();
+    await openTab("Updates");
     expect(await screen.findByText("Nipa 1.0.0")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Check now" }));
     expect(await screen.findByText("Nipa 1.0.0 is up to date.")).toBeInTheDocument();
@@ -245,6 +325,7 @@ describe("SettingsDialog", () => {
       return () => {};
     });
     render();
+    await openTab("Updates");
     expect(await screen.findByText("Nipa 1.1.0 is available.")).toBeInTheDocument();
     expect(screen.getByText("Faster clones")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Download" }));
@@ -262,6 +343,7 @@ describe("SettingsDialog", () => {
     api.updateStatus.mockResolvedValue({ ...idle, inPlace: false, phase: "available", release });
     api.openUpdatePage.mockRejectedValue(new Error("no browser"));
     render();
+    await openTab("Updates");
     expect(await screen.findByLabelText("Check for updates automatically")).toBeChecked();
     await userEvent.click(screen.getByRole("button", { name: "Get it from the website" }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("no browser"));

@@ -4,8 +4,7 @@
 control provider: status overlays in the Project window, a Pending Changes
 window and stage/restore/push/update from the editor. It talks to the local
 `nipa serve` daemon through its JSON/HTTP bridge (`docs/DAEMON.md`), never to
-the server or the CLI directly. Plan and later phases (branches, conflicts,
-setup checker): `docs/plans/UNITY_PLUGIN.md`.
+the server or the CLI directly.
 
 Requires Unity 2022.3 LTS or newer (also targeted at Unity 6), the `nipa` CLI
 (0.1+ with the JSON bridge) and a Unity project inside a Nipa clone. The

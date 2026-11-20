@@ -95,7 +95,7 @@ All three engines load assets from files on disk — the materialized working co
 
 Unity 2021.2+ has a managed VCS API: `UnityEditor.VersionControl.VersionControlObject` with `[VersionControl("Nipa")]` registers a provider in Project Settings › Editor › Version Control. Its extensions (`IIconOverlayExtension`, `IPopupMenuExtension`, `IInspectorWindowExtension`, `ISettingsInspectorExtension`) give overlay icons, context menus, an inspector bar and settings, and `AssetModificationProcessor` (`IsOpenForEdit`, `MakeEditable`, `OnWillSaveAssets`, ...) enforces the checkout model.
 
-- **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Plan: `docs/plans/UNITY_PLUGIN.md`; install, settings and architecture: `docs/UNITY_PLUGIN.md`.
+- **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Install, settings and architecture: `docs/UNITY_PLUGIN.md`.
 - **Transport:** the daemon's loopback **JSON/HTTP bridge** (`json_port` in `daemon.json`, `POST /v1/<Method>`, NDJSON for server streams; see `docs/DAEMON.md`). Unity's Mono `HttpClient` cannot speak gRPC over h2c, so the plugin never talks to gRPC; Godot and Unreal reuse the same bridge.
 - **Checkout = Nipa binary file lock** (Perforce-style): someone else's covering lock makes an asset read-only; `MakeEditable` locks the asset and its `.meta`.
 - **Meta hygiene:** the `MetaWarnings` RPC (`engine: "unity"`, `internal/unitymeta`) reports missing, orphaned, unstaged and GUID-changed `.meta` files.
@@ -111,7 +111,7 @@ Unreal has a real abstraction: `ISourceControlProvider` + `FSourceControlOperati
 
 ### Godot (first engine plugin)
 
-Design: `docs/GODOT_PLUGIN.md`; install and usage: [`docs/GODOT_PLUGIN.md`](GODOT_PLUGIN.md#install); phased plan: `docs/plans/GODOT_PLUGIN.md`.
+Design: `docs/GODOT_PLUGIN.md`; install and usage: [`docs/GODOT_PLUGIN.md`](GODOT_PLUGIN.md#install).
 
 - **Add-on:** `plugins/godot` (`addons/nipa`, Apache 2.0), Godot 4.4+.
 - **Native VCS class:** Godot only lists `EditorVCSInterface` subclasses registered in `ClassDB`, so `NipaVCSInterface` is a godot-cpp GDExtension. It sits on an engine-free C++ core that talks to the JSON bridge.

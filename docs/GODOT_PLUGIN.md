@@ -8,7 +8,7 @@ teammate activity — the way a Godot add-on does it: an `EditorPlugin`
 with docks, context menus, an inspector plugin and toasts. Like the Unity
 package (`docs/UNITY_PLUGIN.md`), it only talks to the local `nipa serve`
 daemon through the JSON/HTTP bridge (`docs/DAEMON.md`), never to the server or
-the CLI. Phased handoff: `docs/plans/GODOT_PLUGIN.md`.
+the CLI.
 
 Targets **Godot 4.4+** (`compatibility_minimum = "4.4"`, tested on 4.4 and the
 latest stable). 4.4 is the floor because it adds `EditorContextMenuPlugin` and

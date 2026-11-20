@@ -4,7 +4,8 @@ import { Loader2, PlugZap, X } from "lucide-react";
 import { desktop } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { llmSettingsKey } from "@/hooks/useGenerate";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
+import { fieldClass, Group, Row } from "@/components/settings/SettingsLayout";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
@@ -29,11 +30,16 @@ export function AISection({ value, onChange, keySaved, configured, notify }: AIS
   const [saved, setSaved] = useState(keySaved);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const filled = value.endpoint.trim() !== "" && value.model.trim() !== "";
+  const input = cn(fieldClass, "w-64 font-mono");
 
   const test = useMutation({
     mutationFn: () => desktop.testLLM(value.endpoint.trim(), value.model.trim(), value.key),
     onMutate: () => setResult(null),
-    onSuccess: () => setResult({ ok: true, text: translate("aISection.answered", { trim: value.model.trim() }) }),
+    onSuccess: () =>
+      setResult({
+        ok: true,
+        text: translate("aISection.answered", { trim: value.model.trim() }),
+      }),
     onError: (err) => setResult({ ok: false, text: errorMessage(err) }),
   });
 
@@ -44,59 +50,61 @@ export function AISection({ value, onChange, keySaved, configured, notify }: AIS
       void queryClient.invalidateQueries({ queryKey: llmSettingsKey });
       notify(translate("aISection.aPIKeyRemoved"), "success");
     },
-    onError: (err) => notify(translate("aISection.couldNotRemoveTheAPI", { value: errorMessage(err) })),
+    onError: (err) =>
+      notify(
+        translate("aISection.couldNotRemoveTheAPI", {
+          value: errorMessage(err),
+        }),
+      ),
   });
 
-  const input = "min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono outline-none focus:border-accent";
   return (
     <>
-      <p className="text-muted-foreground">{t("aISection.draftPushMessagesAndMerge")}</p>
-      {!configured && <p className="text-muted-foreground">{t("aISection.setAnEndpointAndA")}</p>}
-      <div className="flex items-center gap-3">
-        <label htmlFor={ids.endpoint} className="w-20 shrink-0">
-          {t("aISection.endpoint")}
-        </label>
-        <input id={ids.endpoint} value={value.endpoint} onChange={(e) => onChange({ endpoint: e.target.value })} placeholder={t("aISection.httpLocalhost11434V1")} className={input} />
-      </div>
-      <div className="flex items-center gap-3">
-        <label htmlFor={ids.model} className="w-20 shrink-0">
-          {t("aISection.model")}
-        </label>
-        <input id={ids.model} value={value.model} onChange={(e) => onChange({ model: e.target.value })} placeholder={t("aISection.qwen25Coder14b")} className={input} />
-      </div>
-      <div className="flex items-center gap-3">
-        <label htmlFor={ids.key} className="w-20 shrink-0">
-          {t("aISection.aPIKey")}
-        </label>
-        <input
-          id={ids.key}
-          type="password"
-          autoComplete="off"
-          value={value.key}
-          onChange={(e) => onChange({ key: e.target.value })}
-          placeholder={saved ? translate("aISection.saved") : translate("aISection.optional")}
-          className={input}
-        />
-        {saved && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => clear.mutate()} disabled={clear.isPending}>
-            <X />
-            {t("aISection.clear")}
+      {!configured && <p className="rounded-md bg-accent-soft px-3 py-2">{t("aISection.setAnEndpointAndA")}</p>}
+      <Group footer={!aiFormValid(value) ? <span className="text-danger">{t("aISection.setBothTheEndpointAnd")}</span> : undefined}>
+        <Row label={t("aISection.endpoint")} description={t("aISection.endpointHint")} htmlFor={ids.endpoint}>
+          <input id={ids.endpoint} value={value.endpoint} onChange={(e) => onChange({ endpoint: e.target.value })} placeholder={t("aISection.httpLocalhost11434V1")} className={input} />
+        </Row>
+        <Row label={t("aISection.model")} description={t("aISection.modelHint")} htmlFor={ids.model}>
+          <input id={ids.model} value={value.model} onChange={(e) => onChange({ model: e.target.value })} placeholder={t("aISection.qwen25Coder14b")} className={input} />
+        </Row>
+        <Row label={t("aISection.aPIKey")} description={saved ? t("aISection.aKeyIsSavedIn") : t("aISection.theKeyIsKeptIn")} htmlFor={ids.key}>
+          {saved && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => clear.mutate()} disabled={clear.isPending}>
+              <X />
+              {t("aISection.clear")}
+            </Button>
+          )}
+          <input
+            id={ids.key}
+            type="password"
+            autoComplete="off"
+            value={value.key}
+            onChange={(e) => onChange({ key: e.target.value })}
+            placeholder={saved ? translate("aISection.saved") : translate("aISection.optional")}
+            className={input}
+          />
+        </Row>
+      </Group>
+      <Group>
+        <Row
+          label={t("aISection.testConnection")}
+          description={
+            result ? (
+              <span role="status" className={result.ok ? "text-success" : "text-danger"}>
+                {result.text}
+              </span>
+            ) : (
+              t("aISection.testConnectionHint")
+            )
+          }
+        >
+          <Button type="button" size="sm" onClick={() => test.mutate()} disabled={!filled || test.isPending}>
+            {test.isPending ? <Loader2 className="animate-spin" /> : <PlugZap />}
+            {t("aiSection.test")}
           </Button>
-        )}
-      </div>
-      <p className="text-muted-foreground">{saved ? translate("aISection.aKeyIsSavedIn") : translate("aISection.theKeyIsKeptIn")}</p>
-      {!aiFormValid(value) && <p className="text-danger">{t("aISection.setBothTheEndpointAnd")}</p>}
-      <div className="flex items-center gap-2">
-        <Button type="button" size="sm" onClick={() => test.mutate()} disabled={!filled || test.isPending}>
-          {test.isPending ? <Loader2 className="animate-spin" /> : <PlugZap />}
-          {t("aiSection.test")}
-        </Button>
-        {result && (
-          <span role="status" className={result.ok ? "text-success" : "text-danger"}>
-            {result.text}
-          </span>
-        )}
-      </div>
+        </Row>
+      </Group>
     </>
   );
 }

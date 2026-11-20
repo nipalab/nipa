@@ -138,7 +138,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   composition and under modals; Space/arrows yield to focused controls),
   the `?` "Keyboard shortcuts" sheet, window zoom (`lib/zoom.ts`:
   Ctrl/Cmd `+`/`=`/`-`/`0`, also under modals via `inModals`, steps 50–200%,
-  `nipa.zoom` in the `ui` map, Settings > Interface select; `SetZoom` →
+  `nipa.zoom` in the `ui` map, Settings > Appearance select; `SetZoom` →
   `Service.ZoomFunc` → Wails `window.SetZoom`, `service.StoredZoom` sets the
   initial window option and `applyStoredZoom` re-applies it at boot since
   macOS ignores that option),
@@ -185,7 +185,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   kind filters and rows that open History, a merge request or Locks),
   localization (`frontend/src/i18n`: `i18next` flat catalogs `locales/{en,id,ja,zh-CN,ko}.json`,
   English is the source, `_one`/`_other` plurals, `nipa.language` in the `ui` map =
-  `system` or a code, Settings > Interface changes it and reloads; components use
+  `system` or a code, Settings > General changes it and reloads; components use
   `useTranslation`, everything else `translate`/`plural`/`locale()`; `main.tsx`
   loads `App` after the settings hydrate; `i18n/lint.test.ts` rejects hard-coded
   JSX text and unknown keys, `catalogs.test.ts` missing keys and changed
@@ -195,7 +195,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   in the `ui` map; `tour/ModePrompt.tsx` asks once, `visibleTabs(conflicts,
   simple)` keeps Files/Changes/History/Locks, `labels()` renames Update/Push to
   Get latest/Submit, `tour/Tour.tsx` coach marks start after the first clone and
-  replay from Settings > Interface),
+  replay from Settings > General),
   and the Settings "AI assistance" section (`LLMSettings`/`SetLLM` on the
   shared client config, write-only key via `SetLLMKey`/`ClearLLMKey` in the
   OS keyring through `Service.Keys`, `TestLLM` one-request check),
@@ -339,7 +339,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `Merge3(x,x,x)==x` and `Merge3(b,o,b)==o`. The daemon's
   `MergeGodotResource` exposes it.
 - **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
-  `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
+  `docs/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
   JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
   `ProjectPaths`, `NipaSession`, `LockPolicy` for covering-lock checks,
@@ -367,8 +367,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   glue (`[VersionControl("Nipa")]` provider with overlays/menus/settings,
   `NipaHost`, `NipaWindow`). Keep Core free of `UnityEngine`/`UnityEditor`
   and C# 9 compatible.
-- **Godot plugin** (`plugins/godot`, Apache 2.0, design in `docs/GODOT_PLUGIN.md`,
-  plan in `docs/plans/GODOT_PLUGIN.md`): Godot 4.4+ add-on `addons/nipa` over
+- **Godot plugin** (`plugins/godot`, Apache 2.0, design in `docs/GODOT_PLUGIN.md`):
+  Godot 4.4+ add-on `addons/nipa` over
   the daemon JSON bridge. `core/` is engine-free C++17 (`daemon` client,
   connector and messages, `paths` project/clone mapping and sidecars, `status`
   VCS mapping and cache, `diff` model and Myers, `locks` (`LockPolicy` port of
@@ -1408,8 +1408,7 @@ before closing handles.
 JSON bridge (design in `docs/DAEMON.md`): `Server` also binds a second loopback
 listener (`--json-port` / `NIPA_DAEMON_JSON_PORT`, published as `json_port` in
 `daemon.json`) served by `jsonbridge.go`, a reflection-driven HTTP/1.1 adapter
-for engine plugins that cannot speak gRPC (Unity first, plan in
-`docs/plans/UNITY_PLUGIN.md`): `POST /v1/<Method>` protojson-decodes the body
+for engine plugins that cannot speak gRPC (Unity first): `POST /v1/<Method>` protojson-decodes the body
 and invokes the daemon's own gRPC listener with the forwarded
 `x-nipa-daemon-token` (unary = JSON, server streams = NDJSON, errors mapped to
 HTTP statuses, non-loopback `Host`/`Origin` refused). `MetaWarnings`
@@ -1567,8 +1566,7 @@ server}`); capabilities carry `byo_storage: true`; SPA helpers in
 second minio bucket, `ee/e2e/byostorage_billing_test.go` gates it on the
 Own storage add-on.
 
-Flow for billing (design in `docs/BILLING.md`, plan in
-`docs/plans/BILLING.md`): the only free-side change is the nil-able `usecase.SeatGate` seam
+Flow for billing (design in `docs/BILLING.md`): the only free-side change is the nil-able `usecase.SeatGate` seam
 (`Admit(ctx, orgID, userID, insert)`), attached through
 `UsecaseDeps.SeatGate` to `Org.AddMember` (not role updates or org
 creation), `Group.AddMember` and user-subject `Permission.CreateRule` (group
@@ -1732,7 +1730,7 @@ for attempts that passed the throttle. `user.password.changed` is a regular
 `auditedWrite`. The JWT interceptors also attach `RequestMeta` for the public
 login RPCs.
 
-Flow for maintenance mode (plan in `docs/plans/MAINTENANCE_MODE.md`; operator
+Flow for maintenance mode (operator
 guide, database move runbooks and the hard-downtime Caddy page in
 `docs/MAINTENANCE.md`: `deploy/caddy/Caddyfile` `handle_errors 502 503 504`
 answers gRPC with the server `full` refusal, `/api`/`/auth` with its JSON and
