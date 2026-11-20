@@ -188,6 +188,15 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   20000 links, expanded by `json_each` on sqlite and `jsonb_array_elements` on
   postgres, with ids matched back by `(tree_id, name)`. A 10k-file push is a
   handful of statements instead of ~30k round trips.
+  `DownloadChunksStream` is `DownloadChunks` plus an optional
+  `domain.ChunkStream`: a chunk its `Wants` picks is not buffered, the
+  response body (capped at `chunker.MaxChunkSize()`) is handed to `Write`,
+  which verifies and places it and runs concurrently on the transfer workers.
+  An attempt whose body read failed is retried and calls `Write` again for the
+  same chunk; an error of `Write` itself is final. `treeManifest` (every
+  `Get*TreeManifest`) assembles the stream directly into the domain tree
+  (`treeAssembler`), with no protobuf/hex copy; `StreamTreeManifest` still
+  returns the protobuf tree for the daemon proxy and `GetCommit`.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are

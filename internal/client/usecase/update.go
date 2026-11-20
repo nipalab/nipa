@@ -79,6 +79,21 @@ type Update struct {
 	auth      *Auth
 	client    updateClient
 	localRepo updateLocalRepo
+	force     bool
+}
+
+// WithForce returns an Update whose syncs replace locally changed files
+// (force) or refuse to (the default): without it Run, Switch and SwitchTag
+// stop before writing anything when a file they would replace holds unpushed
+// edits, or an untracked file is in the way.
+func (u *Update) WithForce(force bool) *Update {
+	forced := *u
+	forced.force = force
+	return &forced
+}
+
+func (u *Update) sync(ctx context.Context, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
+	return syncWorkingCopyOpts(ctx, u.client, u.localRepo, root, tree, scope, syncOptions{keepLocalChanges: !u.force}, progress...)
 }
 
 func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Update {
@@ -125,15 +140,6 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		return u.runDetached(ctx, root, cfg, nu, progress...)
 	}
 
-	base, err := u.localRepo.Snapshot()
-	if err != nil {
-		return err
-	}
-	baseByPath := make(map[string]clientDomain.SnapshotFile, len(base.Files))
-	for _, f := range base.Files {
-		baseByPath[f.Path] = f
-	}
-
 	headCommitID, err := u.branchHead(ctx, nu, cfg.Branch)
 	if err != nil {
 		return err
@@ -148,7 +154,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		CommitIDs: commitIDs(headCommitID),
 		Paths:     cfg.Sparse,
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
@@ -178,7 +184,7 @@ func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain
 		CommitIDs: commitIDs(localCommit.CommitID),
 		Paths:     cfg.Sparse,
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
@@ -305,7 +311,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 		CommitIDs: commitIDs(headCommitID),
 		Paths:     cfg.Sparse,
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
@@ -374,7 +380,7 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 		CommitIDs: commitIDs(tag.CommitID),
 		Paths:     cfg.Sparse,
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
@@ -387,7 +393,19 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	return u.localRepo.SaveCommit(tag.CommitID, "")
 }
 
-func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) (err error) {
+type syncOptions struct {
+	// keepLocalChanges refuses the sync, before anything is written, when it
+	// would replace a locally changed or untracked working file.
+	keepLocalChanges bool
+}
+
+// syncWorkingCopy brings the working copy to tree, replacing whatever is in
+// the way.
+func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
+	return syncWorkingCopyOpts(ctx, client, lr, root, tree, scope, syncOptions{}, progress...)
+}
+
+func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, opts syncOptions, progress ...DownloadProgress) (err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.sync",
 		attribute.String(obs.AttrOrg, scope.Org),
 		attribute.String(obs.AttrProject, scope.Project))
@@ -416,15 +434,19 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	var jobs, directJobs []materializeJob
 	var jobFiles []materializedFile
 	var want []domain.Hash
+	var replaced []overwriteCandidate
 	cached := make(map[domain.Hash]struct{})
 	for _, f := range newFiles {
 		newByPath[f.Path] = f
-		base := baseByPath[f.Path]
+		base, tracked := baseByPath[f.Path]
 		if base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
 			// The file was not rewritten and its content was not verified, so
 			// leave any existing fingerprint untouched and let status hash-verify
 			// it once if it has none.
 			continue
+		}
+		if opts.keepLocalChanges {
+			replaced = append(replaced, overwriteCandidate{target: f, base: base, tracked: tracked})
 		}
 		job := materializeJob{file: f, prevMode: base.Mode}
 		if directEligible(f, pins) {
@@ -437,6 +459,14 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		}
 		jobFiles = append(jobFiles, f)
 		want = append(want, f.ChunkHashes...)
+	}
+
+	conflicts, err := localChangeConflicts(ctx, root, lr, replaced)
+	if err != nil {
+		return err
+	}
+	if len(conflicts) > 0 {
+		return localChangesError(conflicts)
 	}
 
 	missing, err := lr.MissingChunks(want)
@@ -474,7 +504,17 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		}
 		return nil
 	}
-	if err := downloadChunks(ctx, client, scope, missing, estimateBytesToDownload(jobFiles, missing), sink, progress...); err != nil {
+	// Raw chunks that only go into working files are streamed there; a chunk
+	// the object cache also keeps is buffered once and written to both.
+	stream := &chunkStreamTarget{
+		wants: func(h domain.Hash) bool {
+			_, keep := cached[h]
+			return !keep && direct.wants(h)
+		},
+		receive: direct.receive,
+		settle:  direct.settle,
+	}
+	if err := downloadChunksStream(ctx, client, scope, missing, estimateBytesToDownload(jobFiles, missing), sink, stream, progress...); err != nil {
 		return err
 	}
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
@@ -517,10 +557,30 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreL
 	return downloadChunks(ctx, client, scope, missing, estimatedBytes, store, progress...)
 }
 
+// chunkStreamTarget takes chunks as a stream instead of a buffered slice:
+// receive writes and verifies one chunk and may repeat, settle books it once.
+type chunkStreamTarget struct {
+	wants   func(domain.Hash) bool
+	receive func(domain.Hash, io.Reader) (int64, error)
+	settle  func(domain.Hash) error
+}
+
+type streamingDownloader interface {
+	DownloadChunksStream(ctx context.Context, scope clientDomain.ChunkScope, hashes []domain.Hash, stream *clientDomain.ChunkStream, onChunk func(h domain.Hash, data []byte) error) error
+}
+
 // downloadChunks fetches the missing chunks. The transport delivers chunks one
 // at a time, so delivery only books progress and hands each chunk to a worker
 // pool that verifies its hash and passes it to sink.
 func downloadChunks(ctx context.Context, client chunkDownloader, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, sink func(*domain.ChunkData) error, progress ...DownloadProgress) error {
+	return downloadChunksStream(ctx, client, scope, missing, estimatedBytes, sink, nil, progress...)
+}
+
+// downloadChunksStream is downloadChunks with an optional stream target: when
+// the client can stream, the chunks the target wants go from the response body
+// straight to it and are never held in memory; with a client that cannot,
+// every chunk reaches sink.
+func downloadChunksStream(ctx context.Context, client chunkDownloader, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, sink func(*domain.ChunkData) error, stream *chunkStreamTarget, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
 	}
@@ -559,24 +619,59 @@ func downloadChunks(ctx context.Context, client chunkDownloader, scope clientDom
 		}()
 	}
 
-	doneObjects, doneBytes := 0, int64(0)
+	// Streamed chunks are booked from the transfer workers, buffered ones from
+	// the transport's delivery callback, so the books need a lock.
+	var (
+		mu          sync.Mutex
+		doneObjects int
+		doneBytes   int64
+	)
 	seen := make(map[domain.Hash]bool, len(missing))
-	err := client.DownloadChunks(ctx, scope, missing, func(h domain.Hash, data []byte) error {
+	book := func(h domain.Hash, size int64) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if seen[h] {
+			return false
+		}
+		seen[h] = true
+		if prog != nil {
+			doneObjects++
+			doneBytes += size
+			prog.DownloadProgress(doneObjects, doneBytes)
+		}
+		return true
+	}
+	onChunk := func(h domain.Hash, data []byte) error {
 		if failed := storeErr.Load(); failed != nil {
 			return *failed
 		}
-		if seen[h] {
-			return nil
-		}
-		seen[h] = true
-		store <- &domain.ChunkData{Hash: h, Data: data}
-		if prog != nil {
-			doneObjects++
-			doneBytes += int64(len(data))
-			prog.DownloadProgress(doneObjects, doneBytes)
+		if book(h, int64(len(data))) {
+			store <- &domain.ChunkData{Hash: h, Data: data}
 		}
 		return nil
-	})
+	}
+
+	var err error
+	if streamer, ok := client.(streamingDownloader); ok && stream != nil {
+		err = streamer.DownloadChunksStream(ctx, scope, missing, &clientDomain.ChunkStream{
+			Wants: stream.wants,
+			Write: func(h domain.Hash, body io.Reader) error {
+				if failed := storeErr.Load(); failed != nil {
+					return *failed
+				}
+				n, err := stream.receive(h, body)
+				if err != nil {
+					return err
+				}
+				if !book(h, n) {
+					return nil
+				}
+				return stream.settle(h)
+			},
+		}, onChunk)
+	} else {
+		err = client.DownloadChunks(ctx, scope, missing, onChunk)
+	}
 	close(store)
 	wg.Wait()
 	if failed := storeErr.Load(); failed != nil {

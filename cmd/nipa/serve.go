@@ -63,7 +63,9 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, st
 func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps {
 	push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
 	return daemon.RepoOps{
-		Update:     usecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
+		// Daemon clients preview what a sync overwrites (SyncPlan) and
+		// confirm in their own UI, so the daemon's syncs do not refuse.
+		Update:     usecase.NewUpdate(auth, client, localrepo.NewLocalRepo()).WithForce(true),
 		Push:       push,
 		Merge:      usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
 		Revert:     usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
