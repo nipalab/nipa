@@ -42,7 +42,7 @@ enterprise).
   `docs/internals/web.md` and `docs/WEB_UI.md`.
 - **Client** (`internal/client/`): `cli` (cobra), `usecase`, `grpc`
   (transport), `localrepo` (`.nipa/` metadata + SQLite + object cache),
-  `daemon` (`nipa serve`), `mcp` (`nipa mcp`), `merge`, `ignore`, `config`,
+  `daemon` (`nipa serve`), `mcp` (`nipa mcp`), `ignore`, `config`,
   `securestorage`, `assetscan`, `aiprompt`/`aicontext`/`llm`/`generate`,
   `gitimport`.
 - **Pure shared packages** (no client imports, the server reuses them):

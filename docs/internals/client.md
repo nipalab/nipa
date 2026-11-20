@@ -18,8 +18,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
-  pb client for the daemon proxy), `merge` (three-way tree decisions + diff3
-  text merge), `securestorage` (keyring-backed token store), `config`
+  pb client for the daemon proxy), `securestorage` (keyring-backed token store), `config`
   (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`, `llm`), `difftool`
   (external diff runner), `ignore` (root `.nipaignore` + local `.nipa/ignore`
   pattern matcher for untracked working files), `domain` (client
@@ -37,8 +36,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`Entry`/`Change`/`Compare`/`FromTree`/`LoadContent`), rename detection
   (`DetectRenames`), content assembly (`AttachContents`), a server-facing
   tree-vs-tree entry point (`TreeDiff`) and unified/stat/name rendering.
-  `internal/client/merge` delegates its line diff to `diff.Lines`. Keep this
-  package free of client imports: the server merge-request diff reuses it.
+  `internal/merge` (three-way tree decisions + diff3 text merge, shared by the
+  client and the server merge strategies) delegates its line diff to
+  `diff.Lines`. Keep `internal/diff`
+  free of client imports: the server merge-request diff reuses it.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
