@@ -1,0 +1,294 @@
+# Server feature internals
+
+Agent-oriented implementation notes (moved from AGENTS.md). User-facing design docs live one level up in `docs/`.
+
+Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
+--commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag
+is an immutable project-scoped name pointing at one commit, with an optional
+annotation message (`tags` table, hard `UNIQUE(project_id, key)`; deleting frees
+the name). Server `usecase.Tag` resolves the target
+`commit_id > commit_hash > branch head > default branch head`, read-gates
+list/get, write-gates create/delete (409 on a live duplicate) and emits
+`tag.created` / `tag.deleted` webhooks. `nipa tag` lists (keyset cursor followed
+across pages); `-c` defaults to the locally pinned HEAD commit (offline-safe)
+and `--commit` accepts a base36 id or hex hash. `nipa switch --tag` is a
+Perforce-style detached checkout: resolve the tag, fetch the tagged commit's
+manifest with `GetCommitTreeManifest` (`GetTreeManifest` + `commit_id`, sparse
+and read-filtered, project-scoped), sync the working copy, pin the tag commit
+and record `{"head":{"kind":"tag","name":...}}` in `.nipa/config` — the branch
+identity stays configured. While detached, `nipa update` re-syncs the pinned
+commit (so sparse-checkout edits keep the checkout), `nipa status` prints
+`HEAD detached at tag "x"`, `nipa log` walks from the pinned commit, `nipa diff`
+accepts tag names as revisions, and push/merge/revert refuse with a
+`nipa switch <branch>` hint; switching to any branch clears the marker (and
+`branch -c` forks from the pinned commit and re-attaches). The `/tags` REST
+routes (`internal/http/api/tag.go`, handlers/DTOs in
+`internal/http/{handler,model}/tag.go`) mirror list/create/get/delete, and the
+web API client (`web/src/api/endpoints.ts`) already exposes
+`listTags`/`createTag`/`deleteTag`/`getTag`; the SPA Tags page is `/:org/:project/tags`.
+
+Flow for project service tokens and commit ancestry (payloads and scopes in
+`docs/WEBHOOKS.md`): `project_service_tokens` rows (name, SHA-256 `token_hash`,
+`hint`, comma-joined `scopes` `read`/`checks:write`/`webhooks:write`,
+`created_by`, optional `expires_at`, `last_used_at`, `revoked_at`) are managed
+by `usecase.ServiceToken` (project admin, audited as
+`service_token.created`/`revoked`) over `GET/POST
+/orgs/{org}/projects/{project}/service-tokens` and `DELETE .../{id}`; the
+plaintext `nipa_st_...` is returned once. The REST `AuthFilter` sends
+`Bearer nipa_st_...` to `ServiceToken.Authenticate` only for the
+`serviceTokenRoutes` allowlist (method + selected route path → scope; every
+other route is 403), which checks the token is active, the `{org}/{project}`
+path names its project and the scope matches, the creator is active, verified
+and still a project admin (else 403), touches `last_used_at` at most once a
+minute and returns the creator's claims tagged with `Claims.ServiceTokenID`, so
+the usual usecase permission checks still apply; the tag puts the token id in
+audit entries (`ActorLabel` `service_token:<id>`), gives the token its own
+`api_user` rate-limit bucket (`token:<id>`) and exempts it from the "author
+cannot report required checks" rule. Creation counts the 50 active tokens
+inside the insert transaction behind `LockProject` (postgres advisory lock,
+sqlite immediate tx). `GET .../commits/{commit}/contains?ref=`
+(`Branch.Contains`, `WithTags` for tag refs) resolves `ref` as tag, branch,
+base36 commit id or hash and walks the ref's parents (no id-order pruning,
+capped at 10000 commits, then 400) to answer `{contains}`; read permission
+required. Service tokens are REST only.
+
+Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
+on the SPA home page and the `/onboarding` step): any authenticated user creates
+an org; `usecase.Org.Create`
+trims the name, derives the slug from it when omitted, rejects invalid or
+duplicate slugs (409) and calls `OrgRepository.CreateWithOwner`, which in one
+transaction inserts the row with `created_by_user_id` and upserts the creator as
+an `owner` member — so project creation (`Project.Create` requires org owner)
+works immediately, and `usecase.Permission` grants org owners `PermissionAll`
+on every project in the org (`load` resolves the project's org through
+`pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`), so the creator can
+read/write/admin the project without seeding rules; plain org members still
+need PBAC rules. `Project.Create` takes an optional storage server id (REST
+`storage_server_id`) and runs the nil-able `ProjectStorageAssigner`
+(`UsecaseDeps.ProjectStorage`) inside its creation transaction; without one a
+requested id is 400 `storage servers are not available`. The free version tracks no storage usage; cloud builds attach
+quota to `created_by_user_id` through the `usecase.StorageLedger` seam. The SPA
+forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
+`web/src/slug.ts` for `slugify`/`SLUG_PATTERN`, require a valid non-empty slug,
+auto-derive it until the user edits it, and surface a taken slug (409,
+`ApiError.status`) at the slug field.
+
+Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
+`nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
+resolves the scope from the branch — the default branch is a project-global lock
+(`file_locks.branch_id NULL`), any other branch a lock of that branch — and
+rejects a path already covered (exact or directory prefix, `domain.PrefixCovers`)
+by another holder; the same holder is idempotent. `Push.Push` classifies the
+touched binaries against the head tree (`headBinaryPaths`): tracked binaries
+being modified or removed must be covered by the pusher's lock (409 `binary file
+%q requires a lock`), while new binary files only conflict with someone else's
+covering lock (409 `%q is locked by <holder>`) — adding a brand-new asset needs
+no lock unless a directory or pre-emptive lock guards it. Acquiring needs write on the path itself, and on `nipad-ee` grants run in a
+transaction holding a per-project advisory lock (`FileLock.WithSerializer`,
+covering both `Acquire` and the merge-request lock path; `dbtx.WithinTx` joins
+a caller's transaction) so overlapping server processes cannot grant
+overlapping locks. Binary
+classification is forced server-side for known asset extensions
+(`markLockableBinaries`, the client flag can only add). `EnsureLocks` enforces
+both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the
+pusher's own exact-path, non-request locks while directory locks span the
+editing pass and stay. Client side, a lock this client takes is also pinned
+locally (`usecase.LockPins`, used by `FileLock.Lock` and the daemon's
+`ProxyLockFile` through `RepoOps.Pins`, after the server granted the lock):
+the path goes into `pinned_paths` and the raw snapshot files it covers are
+captured with `ensureSnapshotContent`, so offline compare and restore keep the
+old version while the file is edited; a pin or capture failure is a
+`FileLock.Warning` (`nipa lock` prints `warning: ...`, the daemon fills
+`ProxyLockFileResponse.warning`) and never undoes the lock. Unlock unpins and
+prunes (a local unpin failure is only logged: the server lock is already
+gone); a successful push drops the exact-path pins among the pushed and
+removed paths (`landedPins`, no DB write without one; directory pins stay,
+like `ReleaseLanded`). Pins are a best-effort cache hint keyed by path only,
+not by lock scope: the same path locked on two branches (or held by a merge
+request) shares one pin, and a push on either branch drops it while the other
+lock is still held. Locks taken elsewhere are not pinned either; in both cases
+reads use the missing-content fallback (download when online). Merge requests acquire locks for their changed binary
+paths at creation (re-checked and topped up at merge — `branchMerger.
+BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
+accepting locks held by the request owner so an admin can merge on their
+behalf), release them on merge/close, and re-acquire on reopen. Creation writes
+the request row and its locks in one transaction through
+`dbtx.Transactor.WithinTx` (repositories built with `dbtx.New` resolve the
+transaction from the context), so a lock failure rolls the row back. Plain
+`FastForward` enforces/releases
+via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
+branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
+`LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
+acquire/release/list.
+Release requests (`file_lock_requests`: lock, requester, message, `created_at` = last
+time the holder was notified; sqlite `000023`, postgres `000008`, unique per
+(lock, requester); sqlite drops them through the `file_lock_requests_cleanup`
+trigger because the server connection runs without foreign keys, postgres
+through `ON DELETE CASCADE`): `FileLock.RequestRelease(projectID, lockID,
+message)` needs project read and read on the lock's path (otherwise 404),
+refuses the holder (400 `you hold this lock`) and messages over 500
+characters, creates the row or updates the message, and only emits when the
+row is new or the last notification is at least `LockRequestCooldown` (24 h)
+old. `HookEmitter.EmitLockReleaseRequested` queues the `lock.release_requested`
+webhook (`webhook.LockPayload`) and, through the optional
+`lockRequestNotifier` on the email notifier (`NotifyLockRequest`, honouring
+`notify_email`), emails the holder; failures only log. `FileLock.List` fills
+`Requests` for the visible locks, so every reader sees them. REST `POST
+.../locks/{id}/requests` (`api_user` rate limit like every route), gRPC
+`RequestFileLockRelease`, `FileLockDetail.requests`, `nipa lock request <path>
+[-m] [--branch]` (`FileLock.RequestRelease` picks the clone branch's lock over
+the global one, `lock list --json` carries `requests`), daemon
+`ProxyLockRequestRelease` and the `lock_requested` event (`WatchEvents` tracks
+`id@requested_at` of the caller's own locks), the desktop "Ask to release" and
+the SPA Locks page button.
+
+Locks may expire: `file_locks.expires_at` (NULL = permanent) is set from an
+optional TTL (`LockFileRequest.ttl_seconds`, REST `ttl_seconds`, `nipa lock
+--ttl 2h`, client `LockOptions{Branch, TTL}`, usecase `LockTTL`/
+`LockTTLSeconds`, 1m..7d else 400). `Get`/`ListProject` filter expired rows
+with a `now` passed from Go (`FileLock.WithClock` seam), and `Acquire` and
+`ensureMergeRequestLocks` purge them (`DeleteExpired`) inside the serialized
+section first, since expired rows still occupy the unique indexes. A re-lock
+with a TTL by the holder renews it (`SetExpiry`; permanent covering directory
+locks and MR locks are left alone), without a TTL the expiry is unchanged; MR
+locks never expire and conflict messages name the expiry. Purges are not
+audited, and `WatchEvents` reports an expired lock as `lock_released`.
+
+Flow for merge request reviews: a review is one decision per reviewer per source
+head round (`approved`/`changes_requested`/`commented`); a review for an older
+head is stale and stops counting, and the latest per reviewer+head wins.
+Submitting a review can carry inline comments that become anchored threads
+(`file_path` empty = top-level conversation; otherwise `old_line`/`new_line`
+must be a line the current diff shows). `POST .../reviews` on your own request
+is rejected; a project writer can `POST .../reviews/{id}/dismiss` (kept in
+history, `dismissed_reason=new_commits|manual`) while a reviewer can `DELETE`
+their own; dismissing leaves comment threads intact (`review_id` FK is
+`ON DELETE SET NULL`). A thread anchored to a line the new head no longer shows
+is outdated (top-level threads never are). Review requests are answered by that
+reviewer's next review and re-requesting keeps the original requester. Every
+push to the source branch dismisses decisions for the old head and appends a
+`pushed` timeline event: `Push` calls `usecase.Push.WithReviews`, which runs
+after the apply succeeded and only logs bookkeeping failures. The timeline
+events carry a `subject` actor (e.g. the requested reviewer). REST routes live
+in `internal/http/api/merge_request_review.go`, the matching RPCs in
+`internal/grpc/server/merge_request_review.go`; MR list/detail responses carry
+the live `review` summary and the SPA renders a tabbed MR page (Conversation /
+Commits / File changes, `?tab=`). The Commits tab is served by
+`MergeRequest.Commits`, a first-parent `CommitLogUntil` walk (stop = live merge
+base, authors joined) exposed at `GET .../merge-requests/{id}/commits`. The
+diff is side-by-side by default with a Unified/Split toggle and floating inline
+thread cards
+(`web/src/components/repo/DiffView.tsx` + `ThreadCard.tsx`, reused by the
+commit page).
+
+Merge is review-gated: `MergeRequest.WithReview` attaches the review usecase
+(the nil seam disables the gate, like file locks/hooks), and `check()` fills
+`Mergeability.BlockedBy` — live `changes_requested` always blocks, and a target
+branch's `required_approvals` (new `branches.required_approvals` column, set
+through `SetBranchProtection` / `PUT .../branches/{name}/protection` with an
+optional `required_approvals` that is kept when absent) must be met by live,
+non-stale approvals. `Merge` refuses blocked requests with a 409. The same
+review seam writes the lifecycle timeline events (`opened` inside the Create
+transaction; `merged` with the landed commit id+hash, `closed`, `reopened`
+log-only after the change landed), so the SPA's timeline renders them. The MR
+usecase's `AppendEvent` path requires the review repository to be
+transaction-aware (`dbtx.New`), which is why
+`NewMergeRequestReviewRepository` wraps its DB handle. gRPC carries the same
+surface: `GetMergeRequest` (detail + mergeability + live review summary),
+`ReopenMergeRequest`, `CheckMergeRequest`,
+`ListMergeRequestCommits` (reuses `CommitLogEntry`),
+`GetMergeRequestDiff` (new `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`
+messages mirroring the REST diff model; clients read it through the
+server-streaming `StreamMergeRequestDiff`, ~1 MiB `MergeRequestDiffPart`s,
+a file whose patch and hunks exceed one part is sent without them and
+`too_large`, shown as "diff too large to show" by `nipa mr diff`, MCP
+`truncated` and the AI prompt; an older server answers `Unimplemented` with an
+upgrade hint), `MergeabilityDetail.blocked_by`,
+`MergeRequestDetail.review`/`MergeRequestDetail.draft` (populated by
+`ListMergeRequests` via `AttachSummaries`), and
+`Branch.required_approvals`/`Branch.dismiss_stale_approvals`.
+
+Draft requests: `merge_requests.is_draft` blocks `Merge` through
+`check()`'s `blocked_by: "draft"`; `SetDraft` (author or project admin, open
+requests only) toggles it, marking ready emits the `ready_for_review` timeline
+event plus the `mr.ready_for_review` webhook, and the list takes a `draft`
+filter (the CLI's `--status draft` maps to open+draft). A WIP/Draft title
+prefix (`wip:`, `draft:`, `[wip]`, ...) auto-drafts on create and on rename,
+and removing the prefix from a title-drafted request marks it ready. The SPA
+marks drafts in the list, the page header, the edit dialog and the merge box;
+the CLI adds `mr create --draft [--reviewer <id>] [--assignee <id>]`, `mr update --draft=false` and
+`mr ready <number>`.
+`SetBranchProtection` carries `dismiss_stale_approvals` (default on; off
+carries live decisions onto the new head through `CarryOverReviews` instead of
+dismissing them), `require_status_checks` plus required check names, and named
+`required_reviewers` whose live approval the review gate demands
+(`blocked_by: "required_reviewers"`). `Branch.Delete` refuses protected
+branches (409) until they are unprotected.
+
+Status checks: `merge_request_checks` rows are keyed by (request, head commit,
+name) and written by `MergeRequestCheck.Report` (`POST .../checks`, gRPC
+`ReportMergeRequestCheck`, `nipa mr check [--commit <id>]`). A report must name
+the source head it was started for (`head_commit_id`; the CLI defaults to the
+commit the working copy is pinned to, never the server's current head); a moved head is a 409, and the request author cannot report
+when the target requires status checks; a target branch with
+`require_status_checks` blocks merging (`blocked_by: "status_checks"`) until
+every required name succeeded for the current source head — a push starts a
+clean slate. `List`/`nipa mr checks` return the head's checks; reporting emits
+`mr.check_reported`.
+
+Create takes `usecase.CreateMergeRequestInput`; optional `ReviewerIDs`/
+`AssigneeIDs` (REST `reviewer_ids`/`assignee_ids`, gRPC fields 7/8, SPA/desktop
+create forms, MCP `reviewers`/`assignees`) need project write, are deduped and
+validated like `SetAssignees` (self review rejected, nil review seam = 400) and
+are written in the create transaction after the `opened` event (review
+requests + `review_requested` events, no separate webhook), so only
+`mr.created` fires and they get the "opened" email.
+
+Assignees: `merge_request_assignees` (base-set through
+`SetAssignees` / `POST .../assignees` / gRPC `SetMergeRequestAssignees` /
+`nipa mr assign`, project-write gated, ids validated) attach to list and get
+payloads and drive the list's `assignee` filter; the SPA has a sidebar picker
+and a list filter. The list also takes a free-text `search` (title/description
+LIKE; CLI `--search`).
+
+Merge strategies: `Merge` takes a `strategy` (`ff` default, `merge`, `squash`,
+`rebase`) and `delete_source`. `Branch.MergeForMergeRequest`
+(`internal/usecase/merge_strategies.go`) reuses the hoisted `internal/merge`
+three-way engine (the former `internal/client/merge`): it loads the full
+unfiltered trees (`mergeTree`), materializes taken files and diff3 text merges
+(new content stored through the `Chunk` usecase via `WithChunkUploader`), and
+writes the resulting tree and commit through `PushRepository.ApplyPushAll` —
+one transaction for the whole rebase chain (`WithMergeCommitter`). Conflicts
+return a 409 naming the paths and nothing lands; `behind_target` only blocks
+`ff` and the review gate still applies to it (an objection or missing approval
+blocks a diverged source too), while an ancestor source is `up_to_date`; rebase
+walks the source first-parent history oldest-first, stopping at any commit the
+base already contains, so a source that merged the target does not replay the
+shared history (`rebaseCommitLimit`). Squash uses the request title and creator
+as author;
+rebase keeps each original commit's author and message. The target branch stays
+protection-aware (admin required) and merged-source deletion is best-effort
+(warn on failure). The SPA merge box picks the strategy plus a delete-source
+checkbox; the CLI adds `mr merge --strategy <ff|merge|squash|rebase>
+[--delete-source]`.
+
+MR lists paginate by number: `GET .../merge-requests` takes
+`status/author/source/target/draft/assignee/search/after/limit` and returns
+`{merge_requests, next_cursor}` (the cursor is the last number of a full page;
+gRPC uses `ListMergeRequestsRequest.after_number`/`ListMergeRequestsResponse.
+next_cursor`). The handlers over-fetch one row, so `next_cursor` only appears
+when a next page really exists; changing filters resets the cursor. Review
+activity is webhook-visible through the same MR-shaped payload as the lifecycle
+events: `mr.review_submitted`, `mr.review_dismissed`, `mr.review_requested`,
+`mr.review_request_removed`, `mr.comment_created` (new comments only) and
+`mr.check_reported`. The
+CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
+`ready`, `assign <n> <user-id>...`, `review --approve|--request-changes -m`,
+`comments`, `comment [-m]
+[--file --new-line/--old-line]`, `reply <number> <thread-id>`, `resolve
+<number> <thread-id> [--unresolve]`, `timeline`, `requests`,
+`request-review <number> <user-id>`, `unrequest-review`, `diff`, `checks <n>`,
+`check <n> --name --state [--url]`,
+`merge --strategy/--delete-source`, and `list
+--author/--source/--target/--assignee/--search/--after/--status draft`.
+
