@@ -140,6 +140,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 		ChunkStore:        chunkStore,
 		WebhookDispatcher: webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}),
 		Maintenance:       maintenanceSvc,
+		IssueDispatch:     serverusecase.IssueDispatchConfig{PollInterval: 50 * time.Millisecond, InitialBackoff: 50 * time.Millisecond, MinInterval: time.Millisecond},
 	}
 	for _, opt := range opts {
 		opt(&deps)
@@ -170,6 +171,14 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk
+	for _, d := range reg.Dispatchers() {
+		d.Start()
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = d.Stop(ctx)
+		})
+	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

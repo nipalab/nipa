@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/nipalab/nipa/internal/config"
@@ -48,6 +49,8 @@ type UsecaseDeps struct {
 	// MFAEnabledByDefault applies while MFA_ENABLED is unset: off for the free
 	// edition, on for the enterprise one.
 	MFAEnabledByDefault bool
+	// IssueDispatch tunes the issue tracker outbox; zero values are defaults.
+	IssueDispatch usecase.IssueDispatchConfig
 }
 
 // BuildUsecases wires the whole usecase graph once for every edition and for
@@ -129,8 +132,17 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		WithAudit(auditUsecase).WithFactory(usecase.GuardedIssueTrackerFactory(issueTrackerAllowlist(cfg)))
 	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
+	var issueDispatcher *usecase.IssueDispatcher
 	if issueTrackerUsecase.Available() && repos.IssueTracker != nil {
-		hookEmitter = hookEmitter.WithIssueSync(usecase.NewIssueSync(repos.IssueTracker, transactor, node))
+		issueDispatcher = usecase.NewIssueDispatcher(repos.IssueTracker, issueTrackerUsecase, deps.IssueDispatch).WithMetrics(deps.Metrics)
+		issueTrackerUsecase.WithKicker(issueDispatcher)
+		baseURL := issueLinkBaseURL(cfg)
+		if baseURL == "" {
+			slog.Warn("issue tracker remote links off: set PUBLIC_BASE_URL (or EMAIL_BASE_URL) so links can point at this server")
+		}
+		hookEmitter = hookEmitter.WithIssueSync(usecase.NewIssueSync(repos.IssueTracker, transactor, node).
+			WithJobs(repos.Project, repos.Org, repos.User, repos.Branch, baseURL).
+			WithKicker(issueDispatcher))
 	}
 	emailDeliveryUsecase := usecase.NewEmailDelivery(repos.Email, permissionUsecase)
 	if deps.EmailDispatcher != nil {
@@ -182,6 +194,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Audit:              auditUsecase,
 		Maintenance:        maintenanceUsecase,
 		IssueTracker:       issueTrackerUsecase,
+		IssueDispatcher:    issueDispatcher,
 	}
 }
 
@@ -227,6 +240,17 @@ func issueTrackerBox(cfg *config.Config) *sealbox.Box {
 		return nil
 	}
 	return box
+}
+
+// issueLinkBaseURL is the SPA address remote links point at, the same one
+// email deep links use.
+func issueLinkBaseURL(cfg *config.Config) string {
+	for _, raw := range []string{cfg.PublicBaseURL, cfg.EmailBaseURL} {
+		if base := strings.TrimRight(strings.TrimSpace(raw), "/"); base != "" {
+			return base
+		}
+	}
+	return ""
 }
 
 func issueTrackerAllowlist(cfg *config.Config) []string {

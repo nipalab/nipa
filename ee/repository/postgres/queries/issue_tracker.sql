@@ -95,3 +95,86 @@ LEFT JOIN branches b ON l.subject_kind = 'branch' AND b.id = l.subject_id AND b.
 WHERE l.project_id = sqlc.arg(project_id) AND l.issue_key = sqlc.arg(issue_key) AND l.id < sqlc.arg(before_id)
 ORDER BY l.id DESC
 LIMIT sqlc.arg(row_limit)::bigint;
+
+-- name: IssueJobInsert :execrows
+INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, payload, dedupe_key, state, attempt, next_retry_at, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(tracker_id), sqlc.arg(project_id), sqlc.arg(issue_key), sqlc.arg(action), sqlc.arg(payload), sqlc.arg(dedupe_key), 'pending', 0, sqlc.arg(next_retry_at), sqlc.arg(created_at))
+ON CONFLICT (dedupe_key) DO NOTHING;
+
+-- name: IssueJobUpsertLink :execrows
+INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, payload, dedupe_key, state, attempt, next_retry_at, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(tracker_id), sqlc.arg(project_id), sqlc.arg(issue_key), sqlc.arg(action), sqlc.arg(payload), sqlc.arg(dedupe_key), 'pending', 0, sqlc.arg(next_retry_at), sqlc.arg(created_at))
+ON CONFLICT (dedupe_key) DO UPDATE
+SET action = excluded.action, payload = excluded.payload, tracker_id = excluded.tracker_id, state = 'pending', attempt = 0, last_error = '',
+    delivered_at = NULL,
+    next_retry_at = CASE
+        WHEN issue_tracker_jobs.state = 'pending' AND issue_tracker_jobs.next_retry_at > excluded.next_retry_at THEN issue_tracker_jobs.next_retry_at
+        ELSE excluded.next_retry_at
+    END
+WHERE issue_tracker_jobs.action <> excluded.action OR issue_tracker_jobs.payload <> excluded.payload
+    OR issue_tracker_jobs.tracker_id <> excluded.tracker_id;
+
+-- name: IssueJobClaimDue :many
+WITH due AS (
+    SELECT j.id FROM issue_tracker_jobs j
+    WHERE j.state = 'pending' AND j.next_retry_at IS NOT NULL AND j.next_retry_at <= sqlc.arg(now)
+    ORDER BY j.next_retry_at, j.id
+    LIMIT sqlc.arg(row_limit)::bigint
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE issue_tracker_jobs
+SET attempt = issue_tracker_jobs.attempt + 1, next_retry_at = sqlc.arg(lease_until)
+FROM due
+WHERE issue_tracker_jobs.id = due.id
+  AND issue_tracker_jobs.state = 'pending' AND issue_tracker_jobs.next_retry_at <= sqlc.arg(now)
+RETURNING issue_tracker_jobs.*;
+
+-- name: IssueJobMarkDelivered :execrows
+UPDATE issue_tracker_jobs
+SET state = 'delivered', last_error = '', next_retry_at = NULL, delivered_at = sqlc.arg(delivered_at)
+WHERE id = sqlc.arg(id) AND state = 'pending' AND attempt = sqlc.arg(attempt);
+
+-- name: IssueJobScheduleRetry :execrows
+UPDATE issue_tracker_jobs
+SET last_error = sqlc.arg(last_error), next_retry_at = sqlc.arg(next_retry_at)
+WHERE id = sqlc.arg(id) AND state = 'pending' AND attempt = sqlc.arg(attempt);
+
+-- name: IssueJobMarkFailed :execrows
+UPDATE issue_tracker_jobs
+SET state = 'failed', last_error = sqlc.arg(last_error), next_retry_at = NULL, delivered_at = NULL
+WHERE id = sqlc.arg(id) AND state = 'pending' AND attempt = sqlc.arg(attempt);
+
+-- name: IssueJobRelease :exec
+UPDATE issue_tracker_jobs
+SET next_retry_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND state = 'pending' AND attempt = 0;
+
+-- name: IssueJobSweep :execrows
+DELETE FROM issue_tracker_jobs
+WHERE state IN ('delivered', 'failed') AND created_at < sqlc.arg(before);
+
+-- name: IssueJobCountByState :many
+SELECT state, COUNT(*)::bigint AS jobs
+FROM issue_tracker_jobs
+GROUP BY state;
+
+-- name: IssueJobList :many
+SELECT * FROM issue_tracker_jobs
+WHERE project_id = sqlc.arg(project_id)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND (sqlc.narg('after')::bigint IS NULL OR id < sqlc.narg('after')::bigint)
+ORDER BY id DESC
+LIMIT sqlc.arg(row_limit)::bigint;
+
+-- name: IssueJobGet :one
+SELECT * FROM issue_tracker_jobs WHERE id = sqlc.arg(id);
+
+-- name: IssueJobRetry :execrows
+UPDATE issue_tracker_jobs
+SET state = 'pending', attempt = 0, last_error = '', delivered_at = NULL, next_retry_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND project_id = sqlc.arg(project_id) AND state IN ('delivered', 'failed');
+
+-- name: IssueJobDefer :execrows
+UPDATE issue_tracker_jobs
+SET next_retry_at = sqlc.arg(next_retry_at), attempt = attempt - 1
+WHERE id = sqlc.arg(id) AND state = 'pending' AND attempt = sqlc.arg(attempt) AND attempt > 0;

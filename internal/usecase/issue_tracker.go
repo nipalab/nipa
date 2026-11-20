@@ -52,6 +52,9 @@ type issueTrackerRepository interface {
 	DeleteIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID, keys []string) (int64, error)
 	ListIssueLinksBySubjects(ctx context.Context, projectID snow.ID, kind string, subjectIDs []snow.ID) ([]domain.IssueLink, error)
 	ListIssueSubjects(ctx context.Context, projectID snow.ID, key string, before snow.ID, limit int) ([]domain.IssueLinkSubject, error)
+	ListIssueJobs(ctx context.Context, projectID snow.ID, state string, after *snow.ID, limit int64) ([]*domain.IssueTrackerJob, error)
+	GetIssueJob(ctx context.Context, id snow.ID) (*domain.IssueTrackerJob, error)
+	RetryIssueJob(ctx context.Context, projectID, id snow.ID, now time.Time) (bool, error)
 }
 
 type issueTrackerOrgs interface {
@@ -138,6 +141,7 @@ type IssueTracker struct {
 	now     func() time.Time
 	clients *issueClientCache
 	issues  *issueCache
+	kick    dispatcherKicker
 }
 
 // NewIssueTracker builds the usecase; a nil box makes every call answer 503.

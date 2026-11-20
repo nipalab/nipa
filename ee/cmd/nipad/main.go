@@ -251,7 +251,7 @@ func main() {
 	}
 	commonUsecase, orgUsecase, authUsecase := uc.Common, uc.Org, uc.Auth
 
-	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
+	dispatchers := append([]serverapp.Dispatcher{webhookDispatcher}, reg.Dispatchers()...)
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}

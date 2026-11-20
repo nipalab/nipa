@@ -71,6 +71,8 @@ import type {
   IssueListResponse,
   IssueSearchResponse,
   IssueTrackerInput,
+  IssueTrackerJobListResponse,
+  IssueTrackerJobResponse,
   IssueTrackerResponse,
   IssueTrackerTestResponse,
   ProjectIssueTrackerInput,
@@ -1214,6 +1216,27 @@ export function putProjectIssueTracker(
 
 export function deleteProjectIssueTracker(org: string, project: string): Promise<void> {
   return apiJson(`${projectBase(org, project)}/issue-tracker`, { method: 'DELETE' })
+}
+
+export function listIssueTrackerJobs(
+  org: string,
+  project: string,
+  state = '',
+  after = '',
+  limit = 50,
+): Promise<IssueTrackerJobListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (state) params.set('state', state)
+  if (after) params.set('after', after)
+  return apiJson(`${projectBase(org, project)}/issue-tracker/jobs?${params.toString()}`)
+}
+
+// retryIssueTrackerJob queues a delivered or failed job again.
+export function retryIssueTrackerJob(org: string, project: string, id: string): Promise<IssueTrackerJobResponse> {
+  return apiJson(`${projectBase(org, project)}/issue-tracker/jobs/${encodeURIComponent(id)}/retry`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
 }
 
 // resolveIssues looks up title and status of up to 50 issue keys; keys

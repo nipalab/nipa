@@ -12,6 +12,394 @@ import (
 	"time"
 )
 
+const issueJobClaimDue = `-- name: IssueJobClaimDue :many
+UPDATE issue_tracker_jobs
+SET attempt = attempt + 1, next_retry_at = ?1
+WHERE id IN (
+    SELECT j.id FROM issue_tracker_jobs j
+    WHERE j.state = 'pending' AND j.next_retry_at IS NOT NULL AND j.next_retry_at <= ?2
+    ORDER BY j.next_retry_at, j.id
+    LIMIT ?3
+)
+  AND state = 'pending' AND next_retry_at <= ?2
+RETURNING id, tracker_id, project_id, issue_key, "action", payload, dedupe_key, state, attempt, last_error, next_retry_at, delivered_at, created_at
+`
+
+type IssueJobClaimDueParams struct {
+	LeaseUntil sql.NullTime `json:"lease_until"`
+	Now        sql.NullTime `json:"now"`
+	RowLimit   int64        `json:"row_limit"`
+}
+
+func (q *Queries) IssueJobClaimDue(ctx context.Context, arg IssueJobClaimDueParams) ([]IssueTrackerJob, error) {
+	rows, err := q.db.QueryContext(ctx, issueJobClaimDue, arg.LeaseUntil, arg.Now, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueTrackerJob
+	for rows.Next() {
+		var i IssueTrackerJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.TrackerID,
+			&i.ProjectID,
+			&i.IssueKey,
+			&i.Action,
+			&i.Payload,
+			&i.DedupeKey,
+			&i.State,
+			&i.Attempt,
+			&i.LastError,
+			&i.NextRetryAt,
+			&i.DeliveredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueJobCountByState = `-- name: IssueJobCountByState :many
+SELECT state, COUNT(*) AS jobs
+FROM issue_tracker_jobs
+GROUP BY state
+`
+
+type IssueJobCountByStateRow struct {
+	State string `json:"state"`
+	Jobs  int64  `json:"jobs"`
+}
+
+func (q *Queries) IssueJobCountByState(ctx context.Context) ([]IssueJobCountByStateRow, error) {
+	rows, err := q.db.QueryContext(ctx, issueJobCountByState)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueJobCountByStateRow
+	for rows.Next() {
+		var i IssueJobCountByStateRow
+		if err := rows.Scan(&i.State, &i.Jobs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueJobDefer = `-- name: IssueJobDefer :execrows
+UPDATE issue_tracker_jobs
+SET next_retry_at = ?1, attempt = attempt - 1
+WHERE id = ?2 AND state = 'pending' AND attempt = ?3 AND attempt > 0
+`
+
+type IssueJobDeferParams struct {
+	NextRetryAt sql.NullTime `json:"next_retry_at"`
+	ID          int64        `json:"id"`
+	Attempt     int64        `json:"attempt"`
+}
+
+func (q *Queries) IssueJobDefer(ctx context.Context, arg IssueJobDeferParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobDefer, arg.NextRetryAt, arg.ID, arg.Attempt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobGet = `-- name: IssueJobGet :one
+SELECT id, tracker_id, project_id, issue_key, "action", payload, dedupe_key, state, attempt, last_error, next_retry_at, delivered_at, created_at FROM issue_tracker_jobs WHERE id = ?1
+`
+
+func (q *Queries) IssueJobGet(ctx context.Context, id int64) (IssueTrackerJob, error) {
+	row := q.db.QueryRowContext(ctx, issueJobGet, id)
+	var i IssueTrackerJob
+	err := row.Scan(
+		&i.ID,
+		&i.TrackerID,
+		&i.ProjectID,
+		&i.IssueKey,
+		&i.Action,
+		&i.Payload,
+		&i.DedupeKey,
+		&i.State,
+		&i.Attempt,
+		&i.LastError,
+		&i.NextRetryAt,
+		&i.DeliveredAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const issueJobInsert = `-- name: IssueJobInsert :execrows
+INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, payload, dedupe_key, state, attempt, next_retry_at, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0, ?8, ?9)
+ON CONFLICT (dedupe_key) DO NOTHING
+`
+
+type IssueJobInsertParams struct {
+	ID          int64        `json:"id"`
+	TrackerID   int64        `json:"tracker_id"`
+	ProjectID   int64        `json:"project_id"`
+	IssueKey    string       `json:"issue_key"`
+	Action      string       `json:"action"`
+	Payload     string       `json:"payload"`
+	DedupeKey   string       `json:"dedupe_key"`
+	NextRetryAt sql.NullTime `json:"next_retry_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
+func (q *Queries) IssueJobInsert(ctx context.Context, arg IssueJobInsertParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobInsert,
+		arg.ID,
+		arg.TrackerID,
+		arg.ProjectID,
+		arg.IssueKey,
+		arg.Action,
+		arg.Payload,
+		arg.DedupeKey,
+		arg.NextRetryAt,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobList = `-- name: IssueJobList :many
+SELECT id, tracker_id, project_id, issue_key, "action", payload, dedupe_key, state, attempt, last_error, next_retry_at, delivered_at, created_at FROM issue_tracker_jobs
+WHERE project_id = ?1
+  AND (?2 IS NULL OR state = ?2)
+  AND (?3 IS NULL OR id < ?3)
+ORDER BY id DESC
+LIMIT ?4
+`
+
+type IssueJobListParams struct {
+	ProjectID int64       `json:"project_id"`
+	State     interface{} `json:"state"`
+	After     interface{} `json:"after"`
+	RowLimit  int64       `json:"row_limit"`
+}
+
+func (q *Queries) IssueJobList(ctx context.Context, arg IssueJobListParams) ([]IssueTrackerJob, error) {
+	rows, err := q.db.QueryContext(ctx, issueJobList,
+		arg.ProjectID,
+		arg.State,
+		arg.After,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IssueTrackerJob
+	for rows.Next() {
+		var i IssueTrackerJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.TrackerID,
+			&i.ProjectID,
+			&i.IssueKey,
+			&i.Action,
+			&i.Payload,
+			&i.DedupeKey,
+			&i.State,
+			&i.Attempt,
+			&i.LastError,
+			&i.NextRetryAt,
+			&i.DeliveredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const issueJobMarkDelivered = `-- name: IssueJobMarkDelivered :execrows
+UPDATE issue_tracker_jobs
+SET state = 'delivered', last_error = '', next_retry_at = NULL, delivered_at = ?1
+WHERE id = ?2 AND state = 'pending' AND attempt = ?3
+`
+
+type IssueJobMarkDeliveredParams struct {
+	DeliveredAt sql.NullTime `json:"delivered_at"`
+	ID          int64        `json:"id"`
+	Attempt     int64        `json:"attempt"`
+}
+
+func (q *Queries) IssueJobMarkDelivered(ctx context.Context, arg IssueJobMarkDeliveredParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobMarkDelivered, arg.DeliveredAt, arg.ID, arg.Attempt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobMarkFailed = `-- name: IssueJobMarkFailed :execrows
+UPDATE issue_tracker_jobs
+SET state = 'failed', last_error = ?1, next_retry_at = NULL, delivered_at = NULL
+WHERE id = ?2 AND state = 'pending' AND attempt = ?3
+`
+
+type IssueJobMarkFailedParams struct {
+	LastError string `json:"last_error"`
+	ID        int64  `json:"id"`
+	Attempt   int64  `json:"attempt"`
+}
+
+func (q *Queries) IssueJobMarkFailed(ctx context.Context, arg IssueJobMarkFailedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobMarkFailed, arg.LastError, arg.ID, arg.Attempt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobRelease = `-- name: IssueJobRelease :exec
+UPDATE issue_tracker_jobs
+SET next_retry_at = ?1
+WHERE id = ?2 AND state = 'pending' AND attempt = 0
+`
+
+type IssueJobReleaseParams struct {
+	Now sql.NullTime `json:"now"`
+	ID  int64        `json:"id"`
+}
+
+func (q *Queries) IssueJobRelease(ctx context.Context, arg IssueJobReleaseParams) error {
+	_, err := q.db.ExecContext(ctx, issueJobRelease, arg.Now, arg.ID)
+	return err
+}
+
+const issueJobRetry = `-- name: IssueJobRetry :execrows
+UPDATE issue_tracker_jobs
+SET state = 'pending', attempt = 0, last_error = '', delivered_at = NULL, next_retry_at = ?1
+WHERE id = ?2 AND project_id = ?3 AND state IN ('delivered', 'failed')
+`
+
+type IssueJobRetryParams struct {
+	Now       sql.NullTime `json:"now"`
+	ID        int64        `json:"id"`
+	ProjectID int64        `json:"project_id"`
+}
+
+func (q *Queries) IssueJobRetry(ctx context.Context, arg IssueJobRetryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobRetry, arg.Now, arg.ID, arg.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobScheduleRetry = `-- name: IssueJobScheduleRetry :execrows
+UPDATE issue_tracker_jobs
+SET last_error = ?1, next_retry_at = ?2
+WHERE id = ?3 AND state = 'pending' AND attempt = ?4
+`
+
+type IssueJobScheduleRetryParams struct {
+	LastError   string       `json:"last_error"`
+	NextRetryAt sql.NullTime `json:"next_retry_at"`
+	ID          int64        `json:"id"`
+	Attempt     int64        `json:"attempt"`
+}
+
+func (q *Queries) IssueJobScheduleRetry(ctx context.Context, arg IssueJobScheduleRetryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobScheduleRetry,
+		arg.LastError,
+		arg.NextRetryAt,
+		arg.ID,
+		arg.Attempt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobSweep = `-- name: IssueJobSweep :execrows
+DELETE FROM issue_tracker_jobs
+WHERE state IN ('delivered', 'failed') AND created_at < ?1
+`
+
+func (q *Queries) IssueJobSweep(ctx context.Context, before time.Time) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobSweep, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const issueJobUpsertLink = `-- name: IssueJobUpsertLink :execrows
+INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, payload, dedupe_key, state, attempt, next_retry_at, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0, ?8, ?9)
+ON CONFLICT (dedupe_key) DO UPDATE
+SET action = excluded.action, payload = excluded.payload, tracker_id = excluded.tracker_id, state = 'pending', attempt = 0, last_error = '',
+    delivered_at = NULL,
+    next_retry_at = CASE
+        WHEN issue_tracker_jobs.state = 'pending' AND issue_tracker_jobs.next_retry_at > excluded.next_retry_at THEN issue_tracker_jobs.next_retry_at
+        ELSE excluded.next_retry_at
+    END
+WHERE issue_tracker_jobs.action <> excluded.action OR issue_tracker_jobs.payload <> excluded.payload
+    OR issue_tracker_jobs.tracker_id <> excluded.tracker_id
+`
+
+type IssueJobUpsertLinkParams struct {
+	ID          int64        `json:"id"`
+	TrackerID   int64        `json:"tracker_id"`
+	ProjectID   int64        `json:"project_id"`
+	IssueKey    string       `json:"issue_key"`
+	Action      string       `json:"action"`
+	Payload     string       `json:"payload"`
+	DedupeKey   string       `json:"dedupe_key"`
+	NextRetryAt sql.NullTime `json:"next_retry_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
+func (q *Queries) IssueJobUpsertLink(ctx context.Context, arg IssueJobUpsertLinkParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, issueJobUpsertLink,
+		arg.ID,
+		arg.TrackerID,
+		arg.ProjectID,
+		arg.IssueKey,
+		arg.Action,
+		arg.Payload,
+		arg.DedupeKey,
+		arg.NextRetryAt,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const issueLinkDeleteKeys = `-- name: IssueLinkDeleteKeys :execrows
 DELETE FROM issue_links
 WHERE project_id = ?1 AND subject_kind = ?2 AND subject_id = ?3

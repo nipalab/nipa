@@ -57,6 +57,20 @@ func setupIssueTrackerRouter(ws *restful.WebService, h *handler.Handler) {
 		To(Wrap(h.DeleteProjectIssueTracker)).
 		Doc("Stop using the issue tracker in this project (project admin)").
 		Operation("deleteProjectIssueTracker"))
+	ws.Route(project(ws.GET("/orgs/{org}/projects/{project}/issue-tracker/jobs")).
+		To(Wrap(h.ListIssueTrackerJobs)).
+		Param(ws.QueryParameter("state", "pending, delivered or failed")).
+		Param(ws.QueryParameter("after", "keyset cursor: the last id of the previous page")).
+		Param(ws.QueryParameter("limit", "page size (default 50, max 200)")).
+		Doc("List the issue tracker outbox jobs (remote links, merge comments, transitions), newest first (project admin)").
+		Returns(http.StatusOK, "jobs", model.IssueTrackerJobListResponse{}).
+		Operation("listIssueTrackerJobs"))
+	ws.Route(project(ws.POST("/orgs/{org}/projects/{project}/issue-tracker/jobs/{id}/retry")).
+		To(Wrap(h.RetryIssueTrackerJob)).
+		Param(ws.PathParameter("id", "job id (base36)")).
+		Doc("Queue a delivered or failed job again with a fresh attempt count (project admin)").
+		Returns(http.StatusOK, "queued job", model.IssueTrackerJobResponse{}).
+		Operation("retryIssueTrackerJob"))
 
 	ws.Route(project(ws.GET("/orgs/{org}/projects/{project}/issues")).
 		To(Wrap(h.ResolveIssues)).

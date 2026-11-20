@@ -18,6 +18,7 @@ import (
 type IssueEvent struct {
 	Event     string
 	ProjectID snow.ID
+	Actor     snow.ID
 	Push      *PushEvent
 	Branch    *domain.Branch
 	MR        *domain.MergeRequest
@@ -34,6 +35,7 @@ type issueLinkStore interface {
 	UpsertIssueLink(ctx context.Context, link domain.IssueLink) error
 	ListIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID) ([]domain.IssueLink, error)
 	DeleteIssueLinks(ctx context.Context, projectID snow.ID, kind string, subjectID snow.ID, keys []string) (int64, error)
+	EnqueueIssueJobs(ctx context.Context, jobs []domain.IssueTrackerJob) (int64, error)
 }
 
 var issueSyncEvents = map[string]bool{
@@ -44,16 +46,20 @@ var issueSyncEvents = map[string]bool{
 	domain.WebhookEventMRMerged:      true,
 	domain.WebhookEventMRClosed:      true,
 	domain.WebhookEventMRReopened:    true,
+	domain.WebhookEventMRReady:       true,
 }
 
 // IssueSync records which commits, branches and merge requests mention
-// which issues of a project's active issue tracker settings. It writes link
-// rows only; calls to the tracker happen elsewhere.
+// which issues of a project's active issue tracker settings, and queues the
+// tracker jobs those events call for in the same transaction. Calls to the
+// tracker happen in the IssueDispatcher.
 type IssueSync struct {
 	links issueLinkStore
 	tx    transactor
 	node  snow.Node
 	now   func() time.Time
+	jobs  *issueJobSources
+	kick  dispatcherKicker
 }
 
 func NewIssueSync(links issueLinkStore, tx transactor, node snow.Node) *IssueSync {
@@ -75,32 +81,51 @@ func (s *IssueSync) Handle(ctx context.Context, ev IssueEvent) error {
 	if !settings.IsActive || len(settings.Keys) == 0 {
 		return nil
 	}
+	var queued int64
 	switch ev.Event {
 	case domain.WebhookEventPush:
-		return s.push(ctx, settings, ev.Push)
+		queued, err = s.push(ctx, settings, ev.Push)
 	case domain.WebhookEventBranchCreated:
-		return s.branch(ctx, settings, ev.Branch)
+		err = s.branch(ctx, settings, ev.Branch)
 	case domain.WebhookEventMRCreated, domain.WebhookEventMRUpdated:
-		return s.mergeRequest(ctx, settings, ev.MR)
+		queued, err = s.mergeRequest(ctx, settings, ev)
 	case domain.WebhookEventMRMerged, domain.WebhookEventMRClosed, domain.WebhookEventMRReopened:
-		return s.mergeRequestState(ctx, settings, ev)
+		queued, err = s.mergeRequestState(ctx, settings, ev)
+	case domain.WebhookEventMRReady:
+		queued, err = s.mergeRequestReady(ctx, settings, ev.MR)
 	}
-	return nil
+	if err == nil && queued > 0 && s.kick != nil {
+		s.kick.Kick()
+	}
+	return err
 }
 
 // push links the pushed commit to the keys of its message and the branch to
-// its leading key. A push lands exactly one commit; imported commits are
-// never linked.
-func (s *IssueSync) push(ctx context.Context, settings *domain.ProjectIssueTracker, push *PushEvent) error {
+// its leading key, and queues the commit's remote links. A push lands exactly
+// one commit; imported commits are never linked.
+func (s *IssueSync) push(ctx context.Context, settings *domain.ProjectIssueTracker, push *PushEvent) (int64, error) {
 	if push == nil || push.Imported {
-		return nil
+		return 0, nil
 	}
-	for _, ref := range issuetracker.Extract(push.Message, settings.Keys) {
-		if err := s.upsert(ctx, settings, domain.IssueSubjectCommit, push.AfterID, ref); err != nil {
+	refs := issuetracker.Extract(push.Message, settings.Keys)
+	jobs, err := s.commitJobs(ctx, settings, push, refs)
+	if err != nil {
+		return 0, err
+	}
+	var queued int64
+	err = s.within(ctx, func(ctx context.Context) error {
+		for _, ref := range refs {
+			if err := s.upsert(ctx, settings, domain.IssueSubjectCommit, push.AfterID, ref); err != nil {
+				return err
+			}
+		}
+		if err := s.branch(ctx, settings, push.Branch); err != nil {
 			return err
 		}
-	}
-	return s.branch(ctx, settings, push.Branch)
+		queued, err = s.enqueue(ctx, jobs)
+		return err
+	})
+	return queued, err
 }
 
 func (s *IssueSync) branch(ctx context.Context, settings *domain.ProjectIssueTracker, branch *domain.Branch) error {
@@ -116,14 +141,21 @@ func (s *IssueSync) branch(ctx context.Context, settings *domain.ProjectIssueTra
 
 // mergeRequest replaces the request's links with the keys its title,
 // description and source branch name carry now, so an edit that drops a
-// key drops its link.
-func (s *IssueSync) mergeRequest(ctx context.Context, settings *domain.ProjectIssueTracker, mr *domain.MergeRequest) error {
+// key drops its link, and queues the request's remote links and the
+// opened-status transitions of the keys it gained.
+func (s *IssueSync) mergeRequest(ctx context.Context, settings *domain.ProjectIssueTracker, ev IssueEvent) (int64, error) {
+	mr := ev.MR
 	if mr == nil {
-		return nil
+		return 0, nil
 	}
 	want := mergeRequestRefs(mr, settings.Keys)
 	subject := snow.ID(mr.ID)
-	return s.within(ctx, func(ctx context.Context) error {
+	scope, err := s.jobScope(ctx, settings.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	var queued int64
+	err = s.within(ctx, func(ctx context.Context) error {
 		existing, err := s.links.ListIssueLinks(ctx, settings.ProjectID, domain.IssueSubjectMergeRequest, subject)
 		if err != nil {
 			return err
@@ -147,14 +179,16 @@ func (s *IssueSync) mergeRequest(ctx context.Context, settings *domain.ProjectIs
 				return err
 			}
 		}
-		return nil
+		added := map[string]issuetracker.Ref{}
+		for key, ref := range want {
+			if _, linked := have[key]; !linked {
+				added[key] = ref
+			}
+		}
+		queued, err = s.enqueue(ctx, s.mergeRequestJobs(settings, scope, mr, want, added, stale))
+		return err
 	})
-}
-
-// mergeRequestState is where merged, closed and reopened requests will
-// queue tracker jobs; they change no links.
-func (s *IssueSync) mergeRequestState(context.Context, *domain.ProjectIssueTracker, IssueEvent) error {
-	return nil
+	return queued, err
 }
 
 func mergeRequestRefs(mr *domain.MergeRequest, keys []string) map[string]issuetracker.Ref {

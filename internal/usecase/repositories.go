@@ -66,5 +66,5 @@ type Repositories struct {
 	Audit        auditRepository
 	ServiceToken serviceTokenRepository
 	Maintenance  maintenanceRepository
-	IssueTracker issueTrackerRepository
+	IssueTracker issueTrackerStore
 }

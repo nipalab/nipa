@@ -34,6 +34,9 @@ type Usecases struct {
 	Audit              *usecase.Audit
 	Maintenance        *usecase.Maintenance
 	IssueTracker       *usecase.IssueTracker
+	// IssueDispatcher sends the issue tracker outbox; nil while the
+	// integration is unavailable.
+	IssueDispatcher *usecase.IssueDispatcher
 }
 
 // Registry adapts the usecase set to the containers expected by the HTTP and
@@ -145,4 +148,13 @@ func (r *Registry) Maintenance() *usecase.Maintenance {
 
 func (r *Registry) IssueTracker() *usecase.IssueTracker {
 	return r.uc.IssueTracker
+}
+
+// Dispatchers lists the background workers the usecase graph built itself,
+// for the mains to start and drain next to their own.
+func (r *Registry) Dispatchers() []Dispatcher {
+	if r.uc.IssueDispatcher == nil {
+		return nil
+	}
+	return []Dispatcher{r.uc.IssueDispatcher}
 }

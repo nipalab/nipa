@@ -176,6 +176,24 @@ describe('issue tracker', () => {
   })
 })
 
+describe('issue tracker jobs', () => {
+  it('lists with filters and retries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const { listIssueTrackerJobs, retryIssueTrackerJob } = await import('./endpoints')
+
+    await listIssueTrackerJobs('acme', 'game')
+    await listIssueTrackerJobs('acme', 'game', 'failed', 'abc', 10)
+    await retryIssueTrackerJob('acme', 'game', 'j1')
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+      ['/api/v1/orgs/acme/projects/game/issue-tracker/jobs?limit=50', 'GET'],
+      ['/api/v1/orgs/acme/projects/game/issue-tracker/jobs?limit=10&state=failed&after=abc', 'GET'],
+      ['/api/v1/orgs/acme/projects/game/issue-tracker/jobs/j1/retry', 'POST'],
+    ])
+  })
+})
+
 describe('issues', () => {
   it('calls the resolve, search and links routes', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)

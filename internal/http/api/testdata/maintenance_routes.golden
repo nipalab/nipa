@@ -36,6 +36,7 @@ read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/contains
 read GET /api/v1/orgs/{org}/projects/{project}/commits/{commit}/diff
 read GET /api/v1/orgs/{org}/projects/{project}/emails/deliveries
 read GET /api/v1/orgs/{org}/projects/{project}/issue-tracker
+read GET /api/v1/orgs/{org}/projects/{project}/issue-tracker/jobs
 read GET /api/v1/orgs/{org}/projects/{project}/issues
 read GET /api/v1/orgs/{org}/projects/{project}/issues/search
 read GET /api/v1/orgs/{org}/projects/{project}/issues/{key}/links
@@ -113,6 +114,7 @@ write POST /api/v1/orgs/{org}/projects
 write POST /api/v1/orgs/{org}/projects/{project}/branches
 write POST /api/v1/orgs/{org}/projects/{project}/branches/{name}/default
 write POST /api/v1/orgs/{org}/projects/{project}/emails/deliveries/{id}/redeliver
+write POST /api/v1/orgs/{org}/projects/{project}/issue-tracker/jobs/{id}/retry
 write POST /api/v1/orgs/{org}/projects/{project}/locks
 write POST /api/v1/orgs/{org}/projects/{project}/locks/release
 write POST /api/v1/orgs/{org}/projects/{project}/locks/{id}/requests

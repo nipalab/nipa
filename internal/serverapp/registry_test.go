@@ -52,4 +52,8 @@ func TestRegistryExposesUsecases(t *testing.T) {
 	require.Same(t, uc.FileLock, reg.FileLock())
 	require.Same(t, uc.Webhook, reg.Webhook())
 	require.Same(t, uc.EmailDelivery, reg.EmailDelivery())
+	require.Empty(t, reg.Dispatchers())
+
+	uc.IssueDispatcher = usecase.NewIssueDispatcher(nil, nil, usecase.IssueDispatchConfig{})
+	require.Equal(t, []Dispatcher{uc.IssueDispatcher}, NewRegistry(uc).Dispatchers())
 }

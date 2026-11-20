@@ -109,6 +109,21 @@ func (mr *MockissueLinkStoreMockRecorder) DeleteIssueLinks(ctx, projectID, kind,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIssueLinks", reflect.TypeOf((*MockissueLinkStore)(nil).DeleteIssueLinks), ctx, projectID, kind, subjectID, keys)
 }
 
+// EnqueueIssueJobs mocks base method.
+func (m *MockissueLinkStore) EnqueueIssueJobs(ctx context.Context, jobs []domain.IssueTrackerJob) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnqueueIssueJobs", ctx, jobs)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EnqueueIssueJobs indicates an expected call of EnqueueIssueJobs.
+func (mr *MockissueLinkStoreMockRecorder) EnqueueIssueJobs(ctx, jobs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnqueueIssueJobs", reflect.TypeOf((*MockissueLinkStore)(nil).EnqueueIssueJobs), ctx, jobs)
+}
+
 // GetProject mocks base method.
 func (m *MockissueLinkStore) GetProject(ctx context.Context, projectID snow.ID) (*domain.ProjectIssueTracker, error) {
 	m.ctrl.T.Helper()

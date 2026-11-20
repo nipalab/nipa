@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -177,6 +178,9 @@ type serverOptions struct {
 	chunkStores    serverusecase.ChunkStores
 	projectStorage serverusecase.ProjectStorageAssigner
 	rest           func(reg *serverapp.Registry) http.Handler
+	// integrations turns the issue tracker integration on, with remote links
+	// pointing at https://nipa.example and trackers allowed on loopback.
+	integrations bool
 }
 
 func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
@@ -210,6 +214,12 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		deps.StorageLedger = ledger
 	}
 	deps.SeatGate = opts.seatGate
+	if opts.integrations {
+		deps.Config.IntegrationsEncryptionKey = base64.StdEncoding.EncodeToString([]byte(strings.Repeat("e", 32)))
+		deps.Config.IssueTrackerEgressAllowlist = "127.0.0.1"
+		deps.Config.PublicBaseURL = "https://nipa.example"
+		deps.IssueDispatch = serverusecase.IssueDispatchConfig{PollInterval: 50 * time.Millisecond, InitialBackoff: 50 * time.Millisecond, MinInterval: time.Millisecond}
+	}
 	deps.ChunkStores = opts.chunkStores
 	deps.ProjectStorage = opts.projectStorage
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
@@ -238,6 +248,14 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		IssueTracker:       postgres.NewIssueTrackerRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
+	for _, d := range reg.Dispatchers() {
+		d.Start()
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = d.Stop(ctx)
+		})
+	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

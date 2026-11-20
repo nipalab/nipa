@@ -150,6 +150,8 @@ with the standard Go/process/build-info collectors and:
 | `nipa_webhook_in_flight` | gauge (func) | — | reads the dispatcher in-flight set |
 | `nipa_mail_deliveries_total` | counter | `result=delivered\|retry\|failed` | `internal/mail/dispatcher.go` |
 | `nipa_mail_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |
+| `nipa_issue_tracker_requests_total` | counter | `kind=jira`, `op=link\|unlink\|comment\|transition`, `result=ok\|retry\|failed` | one per outbox job attempt in `usecase.IssueDispatcher` |
+| `nipa_issue_tracker_jobs` | gauge | `state=pending\|delivered\|failed` | `issue_tracker_jobs` rows by state, recounted every minute by the dispatcher |
 | `nipa_db_pool_open_connections` / `_idle` / `_in_use` | gauge | `db` | `Metrics.RegisterDB` (custom collector reading `sql.DBStats`) |
 | `nipa_db_pool_wait_count_total` / `_wait_seconds_total` | counter (func) | `db` | same |
 | `nipa_maintenance_server_mode` | gauge | `mode=off\|read_only\|full\|frozen` | 1 for the effective server maintenance mode, 0 for the others; set on every published snapshot (`serverapp.NewMaintenance`) |

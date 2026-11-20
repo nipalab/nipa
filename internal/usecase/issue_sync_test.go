@@ -48,7 +48,7 @@ func (m linkMatcher) String() string { return m.kind + ":" + m.key + ":" + m.rel
 
 func TestIssueSync_Wants(t *testing.T) {
 	sync, _, _ := newIssueSyncFixture(t)
-	for _, event := range []string{domain.WebhookEventPush, domain.WebhookEventBranchCreated, domain.WebhookEventMRCreated, domain.WebhookEventMRUpdated, domain.WebhookEventMRMerged, domain.WebhookEventMRClosed, domain.WebhookEventMRReopened} {
+	for _, event := range []string{domain.WebhookEventPush, domain.WebhookEventBranchCreated, domain.WebhookEventMRCreated, domain.WebhookEventMRUpdated, domain.WebhookEventMRMerged, domain.WebhookEventMRClosed, domain.WebhookEventMRReopened, domain.WebhookEventMRReady} {
 		require.True(t, sync.Wants(event), event)
 	}
 	require.False(t, sync.Wants(domain.WebhookEventTagCreated))
@@ -174,12 +174,12 @@ func TestHookEmitter_IssueSyncRunsWithoutHooks(t *testing.T) {
 
 	mr := &domain.MergeRequest{ID: 3, Title: "GAME-1"}
 	sink.EXPECT().Wants(domain.WebhookEventMRCreated).Return(true)
-	sink.EXPECT().Handle(ctx, IssueEvent{Event: domain.WebhookEventMRCreated, ProjectID: 1, MR: mr}).Return(nil)
+	sink.EXPECT().Handle(ctx, IssueEvent{Event: domain.WebhookEventMRCreated, ProjectID: 1, Actor: 7, MR: mr}).Return(nil)
 	require.NoError(t, deps.emitter.EmitMergeRequest(ctx, domain.WebhookEventMRCreated, 1, mr, 7))
 
 	branch := &domain.Branch{ID: 4, Name: "GAME-1"}
 	sink.EXPECT().Wants(domain.WebhookEventBranchCreated).Return(true)
-	sink.EXPECT().Handle(ctx, IssueEvent{Event: domain.WebhookEventBranchCreated, ProjectID: 1, Branch: branch}).Return(nil)
+	sink.EXPECT().Handle(ctx, IssueEvent{Event: domain.WebhookEventBranchCreated, ProjectID: 1, Actor: 7, Branch: branch}).Return(nil)
 	require.NoError(t, deps.emitter.EmitBranch(ctx, domain.WebhookEventBranchCreated, 1, branch, 7))
 
 	sink.EXPECT().Wants(domain.WebhookEventMRCommentCreated).Return(false)

@@ -785,6 +785,31 @@ export interface ProjectIssueTrackerInput {
   active?: boolean
 }
 
+export type IssueTrackerJobAction = 'link' | 'unlink' | 'comment' | 'transition'
+export type IssueTrackerJobState = 'pending' | 'delivered' | 'failed'
+
+// IssueTrackerJobResponse is one outbox job: a remote link (title, url), its
+// removal, a merge comment or a transition (status).
+export interface IssueTrackerJobResponse {
+  id: string
+  issue_key: string
+  action: IssueTrackerJobAction
+  state: IssueTrackerJobState
+  attempts: number
+  last_error?: string
+  title?: string
+  url?: string
+  status?: string
+  next_retry_at?: string
+  delivered_at?: string
+  created_at: string
+}
+
+export interface IssueTrackerJobListResponse {
+  jobs: IssueTrackerJobResponse[]
+  next_cursor?: string
+}
+
 export interface IssueKeyRef {
   key: string
   url: string

@@ -93,6 +93,19 @@ type Querier interface {
 	GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
+	IssueJobClaimDue(ctx context.Context, arg IssueJobClaimDueParams) ([]IssueTrackerJob, error)
+	IssueJobCountByState(ctx context.Context) ([]IssueJobCountByStateRow, error)
+	IssueJobDefer(ctx context.Context, arg IssueJobDeferParams) (int64, error)
+	IssueJobGet(ctx context.Context, id int64) (IssueTrackerJob, error)
+	IssueJobInsert(ctx context.Context, arg IssueJobInsertParams) (int64, error)
+	IssueJobList(ctx context.Context, arg IssueJobListParams) ([]IssueTrackerJob, error)
+	IssueJobMarkDelivered(ctx context.Context, arg IssueJobMarkDeliveredParams) (int64, error)
+	IssueJobMarkFailed(ctx context.Context, arg IssueJobMarkFailedParams) (int64, error)
+	IssueJobRelease(ctx context.Context, arg IssueJobReleaseParams) error
+	IssueJobRetry(ctx context.Context, arg IssueJobRetryParams) (int64, error)
+	IssueJobScheduleRetry(ctx context.Context, arg IssueJobScheduleRetryParams) (int64, error)
+	IssueJobSweep(ctx context.Context, before time.Time) (int64, error)
+	IssueJobUpsertLink(ctx context.Context, arg IssueJobUpsertLinkParams) (int64, error)
 	IssueLinkDeleteKeys(ctx context.Context, arg IssueLinkDeleteKeysParams) (int64, error)
 	IssueLinkListBySubject(ctx context.Context, arg IssueLinkListBySubjectParams) ([]IssueLink, error)
 	IssueLinkListBySubjects(ctx context.Context, arg IssueLinkListBySubjectsParams) ([]IssueLink, error)

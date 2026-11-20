@@ -33,6 +33,11 @@ type Linker interface {
 	Link(ctx context.Context, key string, link Link) error
 }
 
+type Unlinker interface {
+	// Unlink removes the link whose ID is linkID; a missing link is success.
+	Unlink(ctx context.Context, key, linkID string) error
+}
+
 type Commenter interface {
 	Comment(ctx context.Context, key, text string) error
 }

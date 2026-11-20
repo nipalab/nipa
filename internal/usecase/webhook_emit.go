@@ -115,7 +115,7 @@ func (e *HookEmitter) syncIssues(ctx context.Context, ev IssueEvent) {
 }
 
 func (e *HookEmitter) EmitPush(ctx context.Context, event PushEvent) error {
-	e.syncIssues(ctx, IssueEvent{Event: domain.WebhookEventPush, ProjectID: event.ProjectID, Push: &event})
+	e.syncIssues(ctx, IssueEvent{Event: domain.WebhookEventPush, ProjectID: event.ProjectID, Actor: event.Actor, Push: &event})
 	return e.emit(ctx, domain.WebhookEventPush, event.ProjectID, event.Actor, pushEventPaths(event), func(env webhook.Envelope) any {
 		return webhook.PushPayload{Envelope: env, Changes: []webhook.PushChange{newPushChange(event)}}
 	}, nil)
@@ -132,7 +132,7 @@ func (e *HookEmitter) EmitMergeRequestCheck(ctx context.Context, event string, p
 }
 
 func (e *HookEmitter) emitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID, check *domain.MergeRequestCheck) error {
-	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, MR: mr})
+	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, Actor: actor, MR: mr})
 	var notify func(context.Context, webhook.Envelope) error
 	if e.notifier != nil && e.notifier.Wants(event) {
 		notify = func(ctx context.Context, env webhook.Envelope) error {
@@ -152,7 +152,7 @@ func (e *HookEmitter) emitMergeRequest(ctx context.Context, event string, projec
 }
 
 func (e *HookEmitter) EmitBranch(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch, actor snow.ID) error {
-	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, Branch: branch})
+	e.syncIssues(ctx, IssueEvent{Event: event, ProjectID: projectID, Actor: actor, Branch: branch})
 	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
 		return webhook.BranchPayload{Envelope: env, Branch: newBranchInfo(branch)}
 	}, nil)

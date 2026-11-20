@@ -45,7 +45,7 @@ func auditLogin(t *testing.T, base, email, password string) string {
 func TestEndToEnd_AuditLog(t *testing.T) {
 	ctx := context.Background()
 	dbConn := openTestDB(t)
-	host, uc := startTestServerWithUsecases(t, dbConn)
+	host, uc := startTestServerWithUsecases(t, dbConn, func(d *serverapp.UsecaseDeps) { d.Config.PublicBaseURL = "https://nipa.example" })
 	server := httptest.NewServer(api.NewAPI(serverapp.NewRegistry(uc)).SetupRoute())
 	t.Cleanup(server.Close)
 
@@ -156,6 +156,10 @@ func TestEndToEnd_AuditLog(t *testing.T) {
 
 	t.Run("issue tracker links", func(t *testing.T) {
 		testIssueTrackerLinks(t, server.URL, host, superToken, dbConn)
+	})
+
+	t.Run("issue tracker jobs", func(t *testing.T) {
+		testIssueTrackerJobs(t, server.URL, host, superToken)
 	})
 
 	t.Run("deactivated admin loses access", func(t *testing.T) {

@@ -138,3 +138,27 @@ type IssueLinksResponse struct {
 	Links      []IssueLinkResponse `json:"links"`
 	NextCursor string              `json:"next_cursor,omitempty"`
 }
+
+// IssueTrackerJobResponse is one outbox job: a remote link (title, url), a
+// merge comment or a transition (status).
+type IssueTrackerJobResponse struct {
+	ID          string     `json:"id"`
+	IssueKey    string     `json:"issue_key"`
+	Action      string     `json:"action"`
+	State       string     `json:"state"`
+	Attempts    int64      `json:"attempts"`
+	LastError   string     `json:"last_error,omitempty"`
+	Title       string     `json:"title,omitempty"`
+	URL         string     `json:"url,omitempty"`
+	Status      string     `json:"status,omitempty"`
+	NextRetryAt *time.Time `json:"next_retry_at,omitempty"`
+	DeliveredAt *time.Time `json:"delivered_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// IssueTrackerJobListResponse is one page of jobs, newest first; pass
+// NextCursor as after to continue.
+type IssueTrackerJobListResponse struct {
+	Jobs       []IssueTrackerJobResponse `json:"jobs"`
+	NextCursor string                    `json:"next_cursor,omitempty"`
+}
