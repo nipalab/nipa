@@ -434,6 +434,26 @@ func (q *Queries) StagedFileList(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const statCacheGet = `-- name: StatCacheGet :one
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+WHERE path = ?1
+`
+
+func (q *Queries) StatCacheGet(ctx context.Context, path string) (StatCache, error) {
+	row := q.db.QueryRowContext(ctx, statCacheGet, path)
+	var i StatCache
+	err := row.Scan(
+		&i.Path,
+		&i.SizeBytes,
+		&i.MtimeNs,
+		&i.Mode,
+		&i.Hash,
+		&i.CachedAt,
+	)
+	return i, err
+}
+
 const statCacheList = `-- name: StatCacheList :many
 SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache

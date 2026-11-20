@@ -98,17 +98,24 @@ func localChangeLost(root string, c overwriteCandidate, statCache map[string]cli
 // hashWorkingPath hashes a working file the way a tracked file with the given
 // stored encoding is hashed.
 func hashWorkingPath(root, path, encoding string) (domain.Hash, error) {
+	hash, _, err := hashWorkingLayout(root, path, encoding)
+	return hash, err
+}
+
+// hashWorkingLayout is hashWorkingPath that also returns the file's chunks
+// (hash and stored size, in file order).
+func hashWorkingLayout(root, path, encoding string) (domain.Hash, []domain.Chunk, error) {
 	f, err := os.Open(filepath.Join(root, filepath.FromSlash(path)))
 	if err != nil {
-		return domain.Hash{}, err
+		return domain.Hash{}, nil, err
 	}
 	defer func() { _ = f.Close() }()
 	isBinary, err := chunker.ProbeBinary(f)
 	if err != nil {
-		return domain.Hash{}, err
+		return domain.Hash{}, nil, err
 	}
-	hash, _, _, err := chunkReader(f, path, isBinary, storedEncoding(encoding))
-	return hash, err
+	hash, chunks, _, err := chunkReader(f, path, isBinary, storedEncoding(encoding))
+	return hash, chunks, err
 }
 
 // localChangesError refuses a sync that would overwrite local changes.

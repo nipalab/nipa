@@ -41,6 +41,14 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   unpinned paths (the upload windows carry the bytes in memory). The DB holds metadata only; file→chunk hashes are stored as
   the `files.chunks` blob (no chunk catalog table), which is what lets `nipa diff`
   rebuild the old side offline.
+- `StoreChunkFrom(hash, reader)` stores an object from a stream without
+  holding it in memory: a `.tmp-*` file in the object's directory, hashed
+  while written, renamed only when the hash matches. `StatEntries(paths)`
+  reads single `stat_cache` rows (`StatCacheGet`) for callers that touch a few
+  files. `.nipa/writes/` holds the working-copy write markers
+  (`BeginWorkingWrite` / `MarkInterruptedWrite`, `writemark.go`): one locked
+  file per running write, so an unlocked one identifies a killed write.
+  Explicit `Chmod`s (objects, config) pass through `fsperm.Mask`.
 - Object GC: `PruneObjects(keep)` deletes every object not in `keep` plus
   `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps the
   chunks of the `Snapshot()` files `cachedInPristine` accepts (zstd text, or

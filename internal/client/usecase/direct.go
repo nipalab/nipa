@@ -13,6 +13,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/fsperm"
 	"github.com/nipalab/nipa/internal/domain"
 )
 
@@ -114,7 +115,7 @@ func createSizedTemp(root string, f materializedFile) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(dir, ".nipa-materialize-*")
+	tmp, err := os.CreateTemp(dir, materializeTempPrefix+"*")
 	if err != nil {
 		return "", err
 	}
@@ -138,13 +139,18 @@ func (p *directPlan) wants(h domain.Hash) bool {
 // write places one verified chunk at every offset it occupies. Targets of one
 // file are contiguous, so each file is opened once per chunk and closed again.
 func (p *directPlan) write(h domain.Hash, data []byte) error {
-	err := eachTargetFile(p.targets[h], func(df *directFile, targets []directTarget) error {
-		return writeTargets(df, targets, data)
-	})
-	if err != nil {
+	if err := p.place(h, data); err != nil {
 		return err
 	}
 	return p.settle(h)
+}
+
+// place writes a verified chunk at its offsets without booking it, so it can
+// be repeated; settle books it.
+func (p *directPlan) place(h domain.Hash, data []byte) error {
+	return eachTargetFile(p.targets[h], func(df *directFile, targets []directTarget) error {
+		return writeTargets(df, targets, data)
+	})
 }
 
 // eachTargetFile calls fn once per file with the run of targets it owns.
@@ -285,7 +291,7 @@ func (p *directPlan) complete(df *directFile) error {
 	if df.job.prevMode != 1 && isReadOnlyFile(filepath.Join(p.root, filepath.FromSlash(f.Path))) {
 		mode &^= 0o222
 	}
-	if err := os.Chmod(df.tmp, mode); err != nil {
+	if err := os.Chmod(df.tmp, fsperm.Mask(mode)); err != nil {
 		return &materializeError{path: f.Path, err: err}
 	}
 	df.done.Store(true)

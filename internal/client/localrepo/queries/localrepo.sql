@@ -77,6 +77,11 @@ SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache
 ORDER BY path;
 
+-- name: StatCacheGet :one
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+WHERE path = :path;
+
 -- name: StatCacheUpsert :exec
 INSERT INTO stat_cache (path, size_bytes, mtime_ns, mode, hash, cached_at)
 VALUES (:path, :size_bytes, :mtime_ns, :mode, :hash, :cached_at)

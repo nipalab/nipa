@@ -3,6 +3,8 @@ package localrepo
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/nipalab/nipa/internal/client/fsperm"
 )
 
 func atomicWrite(path string, data []byte, perm os.FileMode) error {
@@ -17,7 +19,7 @@ func atomicWrite(path string, data []byte, perm os.FileMode) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(perm); err != nil {
+	if err := tmp.Chmod(fsperm.Mask(perm)); err != nil {
 		_ = tmp.Close()
 		return err
 	}

@@ -414,6 +414,7 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	if err := validateSyncTree(tree); err != nil {
 		return err
 	}
+	defer beginWorkingWrite(lr, root)()
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err
@@ -423,28 +424,29 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		baseByPath[f.Path] = f
 	}
 
-	newFiles := flattenTree(tree, "")
-	newByPath := make(map[string]materializedFile, len(newFiles))
-
 	pins, err := loadPins(lr)
 	if err != nil {
 		return err
 	}
 
+	// Only the files this sync rewrites get their chunk lists copied out of
+	// the tree; an unchanged file costs one hash over its chunk hashes.
 	var jobs, directJobs []materializeJob
 	var jobFiles []materializedFile
 	var want []domain.Hash
 	var replaced []overwriteCandidate
 	cached := make(map[domain.Hash]struct{})
-	for _, f := range newFiles {
-		newByPath[f.Path] = f
-		base, tracked := baseByPath[f.Path]
-		if base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
+	present := make(map[string]struct{}, len(baseByPath))
+	walkTreeFiles(tree, "", func(path string, file *domain.File) {
+		present[path] = struct{}{}
+		base, tracked := baseByPath[path]
+		if base.Hash == treeFileHash(file) && base.Mode == file.Mode && fileExists(root, path) {
 			// The file was not rewritten and its content was not verified, so
 			// leave any existing fingerprint untouched and let status hash-verify
 			// it once if it has none.
-			continue
+			return
 		}
+		f := materializedFromTree(path, file)
 		if opts.keepLocalChanges {
 			replaced = append(replaced, overwriteCandidate{target: f, base: base, tracked: tracked})
 		}
@@ -459,7 +461,7 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 		jobFiles = append(jobFiles, f)
 		want = append(want, f.ChunkHashes...)
-	}
+	})
 
 	conflicts, err := localChangeConflicts(ctx, root, lr, replaced)
 	if err != nil {
@@ -473,6 +475,7 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	if err != nil {
 		return err
 	}
+	want = nil
 
 	direct, err := newDirectPlan(root, directJobs)
 	if err != nil {
@@ -492,6 +495,8 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	if err := direct.copyLocal(ctx, local, lr.LoadChunk); err != nil {
 		return err
 	}
+	// The estimate consumes the set, which nothing needs after this point.
+	estimated := estimateMissingBytes(jobFiles, missingSet)
 
 	sink := func(c *domain.ChunkData) error {
 		if _, ok := cached[c.Hash]; ok {
@@ -504,17 +509,7 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 		return nil
 	}
-	// Raw chunks that only go into working files are streamed there; a chunk
-	// the object cache also keeps is buffered once and written to both.
-	stream := &chunkStreamTarget{
-		wants: func(h domain.Hash) bool {
-			_, keep := cached[h]
-			return !keep && direct.wants(h)
-		},
-		receive: direct.receive,
-		settle:  direct.settle,
-	}
-	if err := downloadChunksStream(ctx, client, scope, missing, estimateBytesToDownload(jobFiles, missing), sink, stream, progress...); err != nil {
+	if err := downloadChunksStream(ctx, client, scope, missing, estimated, sink, syncStreamTarget(lr, direct, cached), progress...); err != nil {
 		return err
 	}
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
@@ -528,13 +523,14 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		statEntries[path] = entry
 	}
 
+	var removals []clientDomain.SnapshotFile
 	for path, base := range baseByPath {
-		if _, present := newByPath[path]; present {
-			continue
+		if _, kept := present[path]; !kept {
+			removals = append(removals, base)
 		}
-		if _, err := guardedRemove(root, base); err != nil {
-			return fmt.Errorf("remove %s: %w", path, err)
-		}
+	}
+	if err := removeLeftFiles(ctx, root, lr, removals); err != nil {
+		return err
 	}
 
 	if len(statEntries) > 0 {
@@ -543,6 +539,88 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 	}
 	return nil
+}
+
+type chunkStreamStore interface {
+	StoreChunkFrom(hash domain.Hash, r io.Reader) (int64, error)
+}
+
+// syncStreamTarget decides where a sync's downloaded chunks are streamed, so
+// none of them is buffered whole: a chunk that only goes into working files
+// straight to its offsets there, a chunk the object cache keeps (text, pinned
+// content) into the cache, and a chunk needed by both into the cache first
+// and from there into the working files. A repository that cannot store from
+// a stream keeps its cached chunks on the buffered path.
+func syncStreamTarget(lr any, direct *directPlan, cached map[domain.Hash]struct{}) *chunkStreamTarget {
+	store, canStore := lr.(chunkStreamStore)
+	loader, canLoad := lr.(interface {
+		LoadChunk(hash domain.Hash) ([]byte, error)
+	})
+	canStore = canStore && canLoad
+	return &chunkStreamTarget{
+		wants: func(h domain.Hash) bool {
+			if _, keep := cached[h]; keep {
+				return canStore
+			}
+			return direct.wants(h)
+		},
+		receive: func(h domain.Hash, body io.Reader) (int64, error) {
+			if _, keep := cached[h]; !keep {
+				return direct.receive(h, body)
+			}
+			n, err := store.StoreChunkFrom(h, body)
+			if err != nil || !direct.wants(h) {
+				return n, err
+			}
+			data, err := loader.LoadChunk(h)
+			if err != nil {
+				return n, err
+			}
+			return n, direct.place(h, data)
+		},
+		settle: func(h domain.Hash) error {
+			if direct.wants(h) {
+				return direct.settle(h)
+			}
+			return nil
+		},
+	}
+}
+
+// removeLeftFiles deletes the working files of paths that left the tree,
+// keeping any that hold local changes. A fresh stat fingerprint decides
+// without reading the file; the rest are hashed on a worker pool.
+func removeLeftFiles(ctx context.Context, root string, lr any, removals []clientDomain.SnapshotFile) error {
+	if len(removals) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(removals))
+	for _, f := range removals {
+		paths = append(paths, f.Path)
+	}
+	statCache, err := statEntriesFor(lr, paths)
+	if err != nil {
+		return err
+	}
+	return runPool(ctx, removals, func(base clientDomain.SnapshotFile) error {
+		if _, err := guardedRemoveCached(root, base, statCache); err != nil {
+			return fmt.Errorf("remove %s: %w", base.Path, err)
+		}
+		return nil
+	})
+}
+
+// statEntriesFor loads the fingerprints of paths: single rows for a few
+// paths when the repository can, the whole cache otherwise, none when the
+// repository keeps no cache.
+func statEntriesFor(lr any, paths []string) (map[string]clientDomain.StatEntry, error) {
+	if getter, ok := lr.(statEntryGetter); ok && len(paths) <= maxSingleRowStatReads {
+		return getter.StatEntries(paths)
+	}
+	if loader, ok := lr.(statCacheLoader); ok {
+		return loader.LoadStatCache()
+	}
+	return nil, nil
 }
 
 const maxChunkStoreWorkers = 8
@@ -554,7 +632,15 @@ type chunkStoreLocalRepo interface {
 // downloadMissing fetches the missing chunks into the local object store.
 func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
 	store := func(c *domain.ChunkData) error { return lr.StoreChunks([]*domain.ChunkData{c}) }
-	return downloadChunks(ctx, client, scope, missing, estimatedBytes, store, progress...)
+	var stream *chunkStreamTarget
+	if streamStore, ok := lr.(chunkStreamStore); ok {
+		stream = &chunkStreamTarget{
+			wants:   func(domain.Hash) bool { return true },
+			receive: streamStore.StoreChunkFrom,
+			settle:  func(domain.Hash) error { return nil },
+		}
+	}
+	return downloadChunksStream(ctx, client, scope, missing, estimatedBytes, store, stream, progress...)
 }
 
 // chunkStreamTarget takes chunks as a stream instead of a buffered slice:
@@ -701,32 +787,52 @@ type materializedFile struct {
 	ChunkSizes  []int64
 }
 
-func flattenTree(node *domain.TreeNode, prefix string) []materializedFile {
+// walkTreeFiles calls fn for every file of the tree with its repository path.
+func walkTreeFiles(node *domain.TreeNode, prefix string, fn func(path string, file *domain.File)) {
 	if node == nil {
-		return nil
+		return
 	}
-	var files []materializedFile
 	for _, f := range node.FileChildren {
-		hashes := make([]domain.Hash, 0, len(f.Chunks))
-		sizes := make([]int64, 0, len(f.Chunks))
-		for _, c := range f.Chunks {
-			hashes = append(hashes, c.Hash)
-			sizes = append(sizes, c.SizeBytes)
-		}
-		path := strings.TrimPrefix(prefix+"/"+f.Name, "/")
-		files = append(files, materializedFile{
-			Path:        path,
-			Mode:        f.Mode,
-			SizeBytes:   f.SizeBytes,
-			Encoding:    f.Encoding,
-			FileHash:    chunker.FileHash(hashes),
-			ChunkHashes: hashes,
-			ChunkSizes:  sizes,
-		})
+		fn(strings.TrimPrefix(prefix+"/"+f.Name, "/"), f)
 	}
 	for _, child := range node.TreeChildren {
-		files = append(files, flattenTree(child, prefix+"/"+child.Name)...)
+		walkTreeFiles(child, prefix+"/"+child.Name, fn)
 	}
+}
+
+// treeFileHash is the file hash of a tree file, computed from its chunk
+// hashes without copying them.
+func treeFileHash(f *domain.File) domain.Hash {
+	hasher := chunker.NewHasher()
+	for i := range f.Chunks {
+		_, _ = hasher.Write(f.Chunks[i].Hash[:])
+	}
+	return hasher.Sum()
+}
+
+func materializedFromTree(path string, f *domain.File) materializedFile {
+	hashes := make([]domain.Hash, 0, len(f.Chunks))
+	sizes := make([]int64, 0, len(f.Chunks))
+	for _, c := range f.Chunks {
+		hashes = append(hashes, c.Hash)
+		sizes = append(sizes, c.SizeBytes)
+	}
+	return materializedFile{
+		Path:        path,
+		Mode:        f.Mode,
+		SizeBytes:   f.SizeBytes,
+		Encoding:    f.Encoding,
+		FileHash:    chunker.FileHash(hashes),
+		ChunkHashes: hashes,
+		ChunkSizes:  sizes,
+	}
+}
+
+func flattenTree(node *domain.TreeNode, prefix string) []materializedFile {
+	var files []materializedFile
+	walkTreeFiles(node, prefix, func(path string, f *domain.File) {
+		files = append(files, materializedFromTree(path, f))
+	})
 	return files
 }
 
@@ -735,6 +841,12 @@ func estimateBytesToDownload(files []materializedFile, missing []domain.Hash) in
 	for _, h := range missing {
 		missingSet[h] = struct{}{}
 	}
+	return estimateMissingBytes(files, missingSet)
+}
+
+// estimateMissingBytes is estimateBytesToDownload over a set it may consume:
+// each chunk is counted once and removed.
+func estimateMissingBytes(files []materializedFile, missingSet map[domain.Hash]struct{}) int64 {
 	var total int64
 	for _, f := range files {
 		matched, known := 0, int64(0)
@@ -788,7 +900,25 @@ func materializedMode(mode int) os.FileMode {
 }
 
 func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
+	return guardedRemoveCached(root, base, nil)
+}
+
+// guardedRemoveCached is guardedRemove that trusts a fresh stat fingerprint
+// instead of reading the file.
+func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache map[string]clientDomain.StatEntry) (bool, error) {
 	fp := filepath.Join(root, filepath.FromSlash(base.Path))
+	if entry, ok := statCache[base.Path]; ok {
+		if info, err := os.Lstat(fp); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
+			if entry.Hash != base.Hash {
+				return false, nil
+			}
+			err := os.Remove(fp)
+			if os.IsNotExist(err) {
+				err = nil
+			}
+			return true, err
+		}
+	}
 	f, err := os.Open(fp)
 	if os.IsNotExist(err) {
 		return true, nil

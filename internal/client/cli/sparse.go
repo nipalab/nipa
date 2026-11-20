@@ -16,10 +16,13 @@ func (c *Cli) setupSparseCheckoutCmd() *cobra.Command {
 		Long: "Limit the working copy to a subset of the repository. Files outside the " +
 			"selected directory prefixes are removed from disk but stay on the server; " +
 			"re-adding a path only downloads what is missing. Push and update work with " +
-			"the sparse set; merge and revert still require a full checkout.",
+			"the sparse set; merge and revert still require a full checkout. Changing the " +
+			"set refuses to sync over local changes to files it would replace; the new " +
+			"set is saved first, so --force (or nipa update --force) completes it.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	cmd.PersistentFlags().Bool("force", false, "Overwrite locally changed files the sync replaces instead of refusing")
 	cmd.AddCommand(c.setupSparseListCmd())
 	cmd.AddCommand(c.setupSparseSetCmd())
 	cmd.AddCommand(c.setupSparseAddCmd())
@@ -64,7 +67,7 @@ func (c *Cli) setupSparseSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.applySparse(root, args); err != nil {
+			if err := c.applySparse(cmd, root, args); err != nil {
 				return err
 			}
 			cmd.Printf("Sparse checkout set to %d path(s)\n", len(args))
@@ -86,7 +89,7 @@ func (c *Cli) setupSparseAddCmd() *cobra.Command {
 				return err
 			}
 			paths := append(append([]string{}, cfg.Sparse...), args...)
-			if err := c.applySparse(root, paths); err != nil {
+			if err := c.applySparse(cmd, root, paths); err != nil {
 				return err
 			}
 			cmd.Printf("Added %d path(s)\n", len(args))
@@ -118,7 +121,7 @@ func (c *Cli) setupSparseRemoveCmd() *cobra.Command {
 				}
 				paths = append(paths, path)
 			}
-			if err := c.applySparse(root, paths); err != nil {
+			if err := c.applySparse(cmd, root, paths); err != nil {
 				return err
 			}
 			cmd.Printf("Removed %d path(s)\n", len(args))
@@ -139,7 +142,7 @@ func (c *Cli) setupSparseDisableCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.applySparse(root, nil); err != nil {
+			if err := c.applySparse(cmd, root, nil); err != nil {
 				return err
 			}
 			cmd.Println("Sparse checkout disabled")
@@ -161,8 +164,9 @@ func (c *Cli) sparseRootConfig() (string, *domain.Config, error) {
 	return root, cfg, nil
 }
 
-func (c *Cli) applySparse(root string, paths []string) error {
-	update := c.useCase.Update()
+func (c *Cli) applySparse(cmd *cobra.Command, root string, paths []string) error {
+	force, _ := cmd.Flags().GetBool("force")
+	update := c.useCase.Update().WithForce(force)
 	if err := update.SetSparse(root, paths); err != nil {
 		return err
 	}

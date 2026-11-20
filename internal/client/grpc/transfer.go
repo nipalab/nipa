@@ -23,6 +23,15 @@ const (
 	tuneErrorDiv       = 2
 )
 
+const (
+	// defaultStallTimeout is how long a chunk download may receive nothing
+	// before it is cancelled and retried.
+	defaultStallTimeout = 60 * time.Second
+	// responseHeaderTimeout bounds the wait for a storage endpoint to answer
+	// once a request, upload body included, was sent.
+	responseHeaderTimeout = 2 * time.Minute
+)
+
 func clampUploadWorkers(n int) int {
 	if n < 1 {
 		return defaultUploadWorkers
@@ -186,7 +195,8 @@ func defaultHTTPClient() *http.Client {
 		MaxConnsPerHost:       maxUploadWorkers,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: responseHeaderTimeout,
 		ExpectContinueTimeout: time.Second,
 	}
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport, CheckRedirect: checkTransferRedirect}
 }

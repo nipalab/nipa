@@ -2,6 +2,7 @@ package localrepo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -20,6 +21,35 @@ func (l *LocalRepo) LoadStatCache() (map[string]domain.StatEntry, error) {
 	}
 	entries := make(map[string]domain.StatEntry, len(rows))
 	for _, r := range rows {
+		entries[r.Path] = domain.StatEntry{
+			SizeBytes: r.SizeBytes,
+			MtimeNS:   r.MtimeNs,
+			Mode:      int(r.Mode),
+			Hash:      hashFromBytes(r.Hash),
+			CachedAt:  r.CachedAt,
+		}
+	}
+	return entries, nil
+}
+
+// StatEntries returns the fingerprints of the given working-copy relative
+// paths, one indexed read each, for callers that touch a few files of a large
+// clone. Paths without a fingerprint are absent from the result.
+func (l *LocalRepo) StatEntries(paths []string) (map[string]domain.StatEntry, error) {
+	if l.db == nil {
+		return nil, errors.New("local repo not initialized")
+	}
+	ctx := context.Background()
+	q := sqlcLocalrepo.New(l.db)
+	entries := make(map[string]domain.StatEntry, len(paths))
+	for _, p := range paths {
+		r, err := q.StatCacheGet(ctx, p)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
 		entries[r.Path] = domain.StatEntry{
 			SizeBytes: r.SizeBytes,
 			MtimeNS:   r.MtimeNs,

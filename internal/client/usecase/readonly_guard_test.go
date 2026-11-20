@@ -107,7 +107,8 @@ func TestWorkingCopy_Restore_SkipsGuardedUnchangedFile(t *testing.T) {
 
 	paths := []string{"a.png"}
 	tracked := map[string]domain.SnapshotFile{"a.png": snapshot.Files[0]}
-	require.Empty(t, wc.changedFromSnapshot(paths, tracked, nil))
+	changed, _ := wc.changedFromSnapshot(paths, tracked, nil)
+	require.Empty(t, changed)
 }
 
 func TestDiff_IgnoresReadOnlyGuard(t *testing.T) {
