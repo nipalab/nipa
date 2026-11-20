@@ -287,6 +287,7 @@ export function ProjectIssueTrackerSettings({ org, project }: { org: string; pro
     <Stack direction="vertical" gap="normal">
       <ErrorBanner error={settings.error ?? connection.error} />
       <ProjectIssueTrackerForm
+        key={`${org}/${project}`}
         org={org}
         project={project}
         connection={connection.data}
@@ -321,6 +322,18 @@ function ProjectIssueTrackerForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  // Re-seed the fields whenever the stored settings change (reload after a
+  // save or remove), so a removed configuration is not shown and re-saved.
+  useEffect(() => {
+    setKeys((current?.keys ?? []).join(', '))
+    setLinkMRs(current?.link_merge_requests ?? true)
+    setLinkCommits(current?.link_commits ?? 'off')
+    setComment(current?.comment_on_merge ?? true)
+    setMerged(current?.merged_status ?? '')
+    setOpened(current?.opened_status ?? '')
+    setActive(current?.active ?? true)
+  }, [current])
 
   const parsedKeys = keys
     .split(/[\s,]+/)

@@ -273,9 +273,16 @@ describe('project issue tracker settings', () => {
     expect(input(container, 'GAME, ART').value).toBe('ART, GAME')
     await click(buttonByText(container, 'Save'))
     await waitFor(() => container.textContent?.includes('invalid project key') ?? false)
+    api.getProjectIssueTracker.mockRejectedValue(new ApiError('not used', 404))
     await click(buttonByText(container, 'Remove'))
     await confirmDialog('Remove')
     await waitFor(() => container.textContent?.includes('no longer uses the issue tracker') ?? false)
     expect(api.deleteProjectIssueTracker).toHaveBeenCalledWith('acme', 'game')
+    // The reload resolves to "not set up": the removed keys must not stay in
+    // the form where Save would silently recreate them.
+    await waitFor(() => buttonByText(container, 'Remove') === null)
+    expect(input(container, 'GAME, ART').value).toBe('')
+    expect(input(container, 'Done').value).toBe('')
+    expect(buttonByText(container, 'Save')?.disabled).toBe(true)
   })
 })
