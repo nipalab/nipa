@@ -1089,6 +1089,21 @@ func TestClient_GetMergeBase_Success(t *testing.T) {
 	require.Equal(t, "README.md", got.MergeBaseTree.FileChildren[0].Name)
 }
 
+func TestClient_GetMergeBase_RejectsUnsafeTree(t *testing.T) {
+	fs := &fakeServer{mergeBaseResp: &pb.GetMergeBaseResponse{
+		TargetBranch:      "main",
+		SourceBranch:      "feature",
+		MergeBaseCommitId: snow.ID(3).Base36(),
+		MergeBaseTree:     &pb.TreeManifest{Path: "root", SubTrees: []*pb.TreeManifest{{Path: ".nipa", Files: []*pb.FileNode{{Path: "config"}}}}},
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
+	require.ErrorContains(t, err, `unsafe path ".nipa"`)
+}
+
 func TestClient_GetMergeBase_StreamsOmittedTree(t *testing.T) {
 	base := snow.ID(3).Base36()
 	fs := &fakeServer{

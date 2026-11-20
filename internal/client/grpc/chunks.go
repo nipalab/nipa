@@ -3,6 +3,7 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -429,12 +431,56 @@ func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte
 	if res.StatusCode != http.StatusOK {
 		return nil, httpRetryHint(res), chunkHTTPError(res)
 	}
-	data, err = io.ReadAll(res.Body)
+	limit := chunker.MaxChunkSize()
+	if res.ContentLength > limit {
+		return nil, retryHint{}, oversizedChunkError(job.hash, limit)
+	}
+	data, err = readChunkBody(res.Body, res.ContentLength, limit)
+	if errors.Is(err, errChunkTooLarge) {
+		return nil, retryHint{}, oversizedChunkError(job.hash, limit)
+	}
 	if err != nil {
 		return nil, retryHint{retryable: ctx.Err() == nil}, err
 	}
 	span.SetAttributes(attribute.Int(obs.AttrChunkSize, len(data)))
 	return data, retryHint{}, nil
+}
+
+var errChunkTooLarge = errors.New("chunk body exceeds the maximum chunk size")
+
+// oversizedChunkError is final: no chunk any profile produces is that large,
+// so a retry would only download the same oversized body again.
+func oversizedChunkError(hash serverDomain.Hash, limit int64) error {
+	return fmt.Errorf("download chunk %s: %w of %d bytes", hash, errChunkTooLarge, limit)
+}
+
+// readChunkBody reads at most limit bytes of a chunk body. A known length
+// (already checked against limit) sizes the buffer up front, with one spare
+// byte so the read that reports EOF does not grow it; a body past limit fails
+// with errChunkTooLarge after reading only limit+1 bytes.
+func readChunkBody(body io.Reader, contentLength, limit int64) ([]byte, error) {
+	size := int64(512)
+	if contentLength >= 0 {
+		size = contentLength + 1
+	}
+	buf := make([]byte, 0, size)
+	r := io.LimitReader(body, limit+1)
+	for {
+		if len(buf) == cap(buf) {
+			buf = append(buf, 0)[:len(buf)]
+		}
+		n, err := r.Read(buf[len(buf):cap(buf)])
+		buf = buf[:len(buf)+n]
+		if int64(len(buf)) > limit {
+			return nil, errChunkTooLarge
+		}
+		if errors.Is(err, io.EOF) {
+			return buf, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }
 
 // injectTraceContext propagates the current span to the receiving HTTP

@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -286,15 +285,19 @@ func (b *Branch) materialize(ctx context.Context, projectID snow.ID, result *mer
 }
 
 func (b *Branch) loadMergedContent(ctx context.Context, projectID snow.ID, file merge.File) ([]byte, error) {
-	parts := make([][]byte, 0, len(file.ChunkHashes))
+	var out []byte
 	for _, hash := range file.ChunkHashes {
 		data, err := b.chunks.Get(ctx, projectID, hash)
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, data)
+		// Decode chunk by chunk: the decoder caps one chunk's output, and a
+		// whole compressed file can legitimately be larger than that.
+		if out, err = chunker.DecodeAppend(out, file.Encoding, data); err != nil {
+			return nil, err
+		}
 	}
-	return chunker.Decode(file.Encoding, bytes.Join(parts, nil))
+	return out, nil
 }
 
 func (b *Branch) storeMergedContent(ctx context.Context, projectID snow.ID, path string, mode int, content []byte) (merge.File, []LedgerChunk, error) {

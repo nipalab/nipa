@@ -393,6 +393,9 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		attribute.String(obs.AttrProject, scope.Project))
 	defer func() { obs.FinishSpan(span, err) }()
 
+	if err := validateSyncTree(tree); err != nil {
+		return err
+	}
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err

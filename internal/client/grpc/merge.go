@@ -44,6 +44,9 @@ func (c *Client) GetMergeBase(ctx context.Context, org, project string, target, 
 	}
 	switch {
 	case res.MergeBaseTree != nil:
+		if err := validateManifestNames(res.GetMergeBaseTree()); err != nil {
+			return nil, err
+		}
 		info.MergeBaseTree = toServerTreeNode(res.GetMergeBaseTree())
 	case info.MergeBaseCommitID != "":
 		base := info.MergeBaseCommitID

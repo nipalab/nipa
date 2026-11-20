@@ -267,3 +267,63 @@ func TestClient_StreamTreeManifest_ServerWithoutStreaming(t *testing.T) {
 		require.Contains(t, domErr.Hint, "upgrade the nipa server", name)
 	}
 }
+
+func TestManifestAssembler_RejectsUnsafeNames(t *testing.T) {
+	cases := map[string]struct {
+		entries []*pb.TreeManifestEntry
+		path    string
+	}{
+		"parent file":         {[]*pb.TreeManifestEntry{dirEntry(0, "root"), fileEntry("../escaped.bin")}, `"../escaped.bin"`},
+		"dot dot file":        {[]*pb.TreeManifestEntry{dirEntry(0, "root"), dirEntry(1, "a"), fileEntry("..")}, `"a/.."`},
+		"dot dot dir":         {[]*pb.TreeManifestEntry{dirEntry(0, "root"), dirEntry(1, "a"), dirEntry(2, "..")}, `"a/.."`},
+		"slash in name":       {[]*pb.TreeManifestEntry{dirEntry(0, "root"), fileEntry("a/b")}, `"a/b"`},
+		"backslash in name":   {[]*pb.TreeManifestEntry{dirEntry(0, "root"), fileEntry(`..\x`)}, `"..\\x"`},
+		"empty file name":     {[]*pb.TreeManifestEntry{dirEntry(0, "root"), fileEntry("")}, `""`},
+		"metadata dir":        {[]*pb.TreeManifestEntry{dirEntry(0, "root"), dirEntry(1, ".nipa"), fileEntry("config")}, `".nipa"`},
+		"metadata upper case": {[]*pb.TreeManifestEntry{dirEntry(0, "root"), dirEntry(1, "sub"), dirEntry(2, ".NIPA")}, `"sub/.NIPA"`},
+		"nul byte":            {[]*pb.TreeManifestEntry{dirEntry(0, "root"), dirEntry(1, "d"), dirEntry(2, "e"), fileEntry("a\x00")}, `"d/e/a\x00"`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var a manifestAssembler
+			var err error
+			for _, e := range tc.entries {
+				if err = a.add(e); err != nil {
+					break
+				}
+			}
+			var domErr *domain.Error
+			require.ErrorAs(t, err, &domErr)
+			require.Equal(t, 400, domErr.Code)
+			require.Contains(t, domErr.Message, "unsafe path "+tc.path)
+		})
+	}
+}
+
+func TestManifestAssembler_RootNameIsALabel(t *testing.T) {
+	for _, root := range []string{"", ".", "..", ".nipa", "a/b"} {
+		var a manifestAssembler
+		require.NoError(t, a.add(dirEntry(0, root)), root)
+		require.NoError(t, a.add(fileEntry("ok.txt")), root)
+	}
+}
+
+func TestClient_StreamTreeManifest_RejectsUnsafeNames(t *testing.T) {
+	fs := &fakeServer{treeManifest: &pb.TreeManifest{Path: "root", Files: []*pb.FileNode{{Path: "../escaped.bin"}}}}
+	c := connectedClient(t, fs, &stubSession{accessToken: "tok"})
+	_, err := c.GetTreeNodeManifest(context.Background(), "org", "project", "main", nil)
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Contains(t, domErr.Message, `unsafe path "../escaped.bin"`)
+}
+
+func TestValidateManifestNames(t *testing.T) {
+	require.NoError(t, validateManifestNames(nil))
+	ok := &pb.TreeManifest{Path: "..", Files: []*pb.FileNode{{Path: "a"}}, SubTrees: []*pb.TreeManifest{{Path: "d", Files: []*pb.FileNode{{Path: "b"}}}}}
+	require.NoError(t, validateManifestNames(ok))
+
+	badFile := &pb.TreeManifest{Path: "root", SubTrees: []*pb.TreeManifest{{Path: "d", SubTrees: []*pb.TreeManifest{{Path: "e", Files: []*pb.FileNode{{Path: ".."}}}}}}}
+	require.ErrorContains(t, validateManifestNames(badFile), `unsafe path "d/e/.."`)
+	badDir := &pb.TreeManifest{Path: "root", SubTrees: []*pb.TreeManifest{{Path: ".Nipa"}}}
+	require.ErrorContains(t, validateManifestNames(badDir), `unsafe path ".Nipa"`)
+}

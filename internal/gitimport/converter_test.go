@@ -181,6 +181,17 @@ func TestConvertInvalidPaths(t *testing.T) {
 	assert.Contains(t, err.Error(), `bad\name.txt`)
 }
 
+func TestConvertMetadataDirIsInvalid(t *testing.T) {
+	f := newFixture(t, false)
+	a := f.commit(map[string]entry{".nipa/config": reg("x"), "sub/.NIPA/objects": reg("z"), "ok.txt": reg("y")}, "a")
+	f.branch("main", a)
+
+	_, err := converter(t, f, ConverterOptions{}).Convert(plan(t, f, Options{}).Commits[0])
+	var invalid *InvalidPathsError
+	require.True(t, errors.As(err, &invalid))
+	assert.Equal(t, []string{".nipa/config", "sub/.NIPA/objects"}, invalid.Paths)
+}
+
 func TestConvertSnapshotAndMerge(t *testing.T) {
 	f := newFixture(t, false)
 	a := f.commit(map[string]entry{"a": reg("a"), "b": reg("b")}, "a")

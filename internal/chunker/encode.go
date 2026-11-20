@@ -16,6 +16,14 @@ const (
 
 	TextSingleBlobRawMax = 8 << 20
 	TextSingleBlobMax    = 4 << 20
+
+	// MaxDecodedChunkSize caps the plaintext one stored zstd chunk may decode
+	// to. encodeText emits at most TextSingleBlobRawMax bytes of plaintext in a
+	// single blob and TextLargeConfig.Max (1 MiB) per chunk otherwise, so no
+	// legitimately encoded chunk exceeds TextSingleBlobRawMax; the extra 1 MiB
+	// is headroom, not a format allowance. Anything larger is a decompression
+	// bomb and fails before its output is allocated.
+	MaxDecodedChunkSize = TextSingleBlobRawMax + 1<<20
 )
 
 // TextLargeConfig chunks text that is too large for a single compressed blob.
@@ -45,7 +53,7 @@ func mustZstdEncoder() *zstd.Encoder {
 }
 
 func mustZstdDecoder() *zstd.Decoder {
-	decoder, err := zstd.NewReader(nil)
+	decoder, err := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(MaxDecodedChunkSize))
 	if err != nil {
 		panic(err)
 	}
@@ -92,7 +100,9 @@ func NormalizeEncoding(encoding string) (string, bool) {
 	}
 }
 
-// Decode returns the plaintext bytes of a stored chunk.
+// Decode returns the plaintext bytes of one stored chunk. A zstd chunk that
+// decodes to more than MaxDecodedChunkSize is rejected, so callers decode
+// chunk by chunk rather than a whole file at once.
 func Decode(encoding string, data []byte) ([]byte, error) {
 	if encoding != EncodingZstd {
 		return data, nil
@@ -100,16 +110,29 @@ func Decode(encoding string, data []byte) ([]byte, error) {
 	return DecodeAppend(nil, encoding, data)
 }
 
-// DecodeAppend appends the plaintext bytes of a stored chunk to dst.
+// DecodeAppend appends the plaintext bytes of one stored chunk to dst. The
+// MaxDecodedChunkSize cap applies to the bytes this call appends, not to dst.
 func DecodeAppend(dst []byte, encoding string, data []byte) ([]byte, error) {
 	if encoding != EncodingZstd {
 		return append(dst, data...), nil
 	}
-	decoded, err := zstdDecoder.DecodeAll(data, dst)
+	// Decode into the spare capacity after dst: the decoder counts dst's
+	// length against MaxDecodedChunkSize, so it must start from an empty slice.
+	tail := dst[len(dst):]
+	decoded, err := zstdDecoder.DecodeAll(data, tail)
 	if err != nil {
 		return nil, fmt.Errorf("decode zstd chunk: %w", err)
 	}
-	return decoded, nil
+	if len(dst) == 0 {
+		return decoded, nil
+	}
+	if len(decoded) == 0 {
+		return dst, nil
+	}
+	if cap(tail) > 0 && &tail[:1][0] == &decoded[0] {
+		return dst[:len(dst)+len(decoded)], nil
+	}
+	return append(dst, decoded...), nil
 }
 
 func defaultEncoding(isBinary bool) string {

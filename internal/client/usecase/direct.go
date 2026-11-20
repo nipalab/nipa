@@ -104,6 +104,9 @@ func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
 }
 
 func createSizedTemp(root string, f materializedFile) (string, error) {
+	if err := checkWorkingPath(f.Path); err != nil {
+		return "", err
+	}
 	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(f.Path)))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err

@@ -2,6 +2,16 @@
 
 Agent-oriented implementation notes (moved from AGENTS.md). User-facing design docs live one level up in `docs/`.
 
+Push path validation (`checkPushContent`, shared by push and git import):
+`domain.ValidateRepoPath` rejects empty/`.`/`..` segments, `\`, NUL and any
+segment that resolves to the client metadata directory (`.nipa` in any case,
+with trailing dots/spaces or HFS-ignorable code points, or `NIPA~1`;
+`domain.IsMetadataSegment`), so a pushed `.nipa/config` cannot overwrite a
+clone's metadata. Removed paths use `ValidateRemovedRepoPath`, which still
+allows such a segment so a push can delete one stored before the check;
+`gitimport` reports metadata paths as `InvalidPathsError` like other invalid
+paths.
+
 Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
 --commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag
 is an immutable project-scoped name pointing at one commit, with an optional
