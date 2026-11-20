@@ -93,6 +93,11 @@ type Querier interface {
 	GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
+	IssueTrackerCountProjects(ctx context.Context, trackerID int64) (int64, error)
+	IssueTrackerCreate(ctx context.Context, arg IssueTrackerCreateParams) (IssueTracker, error)
+	IssueTrackerDelete(ctx context.Context, arg IssueTrackerDeleteParams) (int64, error)
+	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
+	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
@@ -194,6 +199,9 @@ type Querier interface {
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
 	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
 	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
+	ProjectIssueTrackerGet(ctx context.Context, projectID int64) (ProjectIssueTracker, error)
+	ProjectIssueTrackerUpsert(ctx context.Context, arg ProjectIssueTrackerUpsertParams) (ProjectIssueTracker, error)
 	ProjectMemberCandidates(ctx context.Context, arg ProjectMemberCandidatesParams) ([]ProjectMemberCandidatesRow, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)

@@ -140,3 +140,38 @@ describe('storage servers', () => {
     expect(JSON.parse(fetchMock.mock.calls[7][1].body)).toEqual({ storage_server_id: 's1' })
   })
 })
+
+describe('issue tracker', () => {
+  it('calls the org and project routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const {
+      deleteIssueTracker,
+      deleteProjectIssueTracker,
+      getIssueTracker,
+      getProjectIssueTracker,
+      putIssueTracker,
+      putProjectIssueTracker,
+      testIssueTracker,
+    } = await import('./endpoints')
+
+    await getIssueTracker('acme')
+    await putIssueTracker('acme', { base_url: 'https://acme.atlassian.net', account: 'bot@acme.com', token: 't' })
+    await testIssueTracker('acme')
+    await deleteIssueTracker('acme')
+    await getProjectIssueTracker('acme', 'game')
+    await putProjectIssueTracker('acme', 'game', { keys: ['GAME'], link_commits: 'all' })
+    await deleteProjectIssueTracker('acme', 'game')
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+      ['/api/v1/orgs/acme/issue-tracker', 'GET'],
+      ['/api/v1/orgs/acme/issue-tracker', 'PUT'],
+      ['/api/v1/orgs/acme/issue-tracker/test', 'POST'],
+      ['/api/v1/orgs/acme/issue-tracker', 'DELETE'],
+      ['/api/v1/orgs/acme/projects/game/issue-tracker', 'GET'],
+      ['/api/v1/orgs/acme/projects/game/issue-tracker', 'PUT'],
+      ['/api/v1/orgs/acme/projects/game/issue-tracker', 'DELETE'],
+    ])
+    expect(JSON.parse(fetchMock.mock.calls[5][1].body)).toEqual({ keys: ['GAME'], link_commits: 'all' })
+  })
+})

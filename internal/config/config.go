@@ -24,6 +24,8 @@ type Config struct {
 	MFAEnabled                      bool    `mapstructure:"MFA_ENABLED"`
 	BYOStorageEncryptionKey         string  `mapstructure:"BYO_STORAGE_ENCRYPTION_KEY"`
 	BYOStorageAllowPrivate          bool    `mapstructure:"BYO_STORAGE_ALLOW_PRIVATE"`
+	IntegrationsEncryptionKey       string  `mapstructure:"INTEGRATIONS_ENCRYPTION_KEY"`
+	IssueTrackerEgressAllowlist     string  `mapstructure:"ISSUE_TRACKER_EGRESS_ALLOWLIST"`
 	MFAEnabledSet                   bool    `mapstructure:"-"`
 	LogLevel                        string  `mapstructure:"LOG_LEVEL"`
 	LogFormat                       string  `mapstructure:"LOG_FORMAT"`

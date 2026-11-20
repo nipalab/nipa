@@ -239,6 +239,19 @@ servers; otherwise the empty choice is "Nipa storage" or "Organization default
 (name)", since omitting `storage_server_id` falls back to the org default.
 `ProjectStorageCard` shows `/projects/{p}/storage` in project settings.
 
+## Issue tracker API
+
+`endpoints.ts` wraps the routes (pages come with the settings tabs):
+`getIssueTracker`/`putIssueTracker`/`deleteIssueTracker`/`testIssueTracker`
+on `/orgs/{org}/issue-tracker` (GET for org members returns kind, name and
+base URL only; `can_manage` marks the owner view; the token is write-only and
+an omitted one keeps the stored token unless the base URL changes; a failed
+probe is a 400 `{error, check}` with `check` = `auth`, `reach` or `tls`;
+DELETE is a 409 while a project uses the connection) and
+`getProjectIssueTracker`/`putProjectIssueTracker`/`deleteProjectIssueTracker`
+on `/orgs/{org}/projects/{project}/issue-tracker` (project admin). Every route
+answers 503 when the server has no `INTEGRATIONS_ENCRYPTION_KEY`.
+
 ## Billing API
 
 With `BILLING_PROVIDER=paddle` (`docs/BILLING.md`), `GET /auth/capabilities`

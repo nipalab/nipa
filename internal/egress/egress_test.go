@@ -220,3 +220,11 @@ func TestPolicyAllowsDial(t *testing.T) {
 	require.False(t, listed.AllowsDial("jenkins.internal", net.ParseIP("192.168.1.6")))
 	require.True(t, listed.AllowsDial("dc.internal", net.ParseIP("fd00::1")))
 }
+
+func TestValidateAllowlist(t *testing.T) {
+	require.NoError(t, ValidateAllowlist(nil))
+	require.NoError(t, ValidateAllowlist([]string{"", " jira.internal ", "10.0.0.0/8", "127.0.0.1", "::1", "Jira.Example.com.", "host_1"}))
+	for _, bad := range []string{"https://jira.example.com", "jira:8080", "10.0.0.0/33", "a b", "-bad.example", "bad..example"} {
+		require.Error(t, ValidateAllowlist([]string{bad}), bad)
+	}
+}

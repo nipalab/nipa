@@ -13,6 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
+	"github.com/nipalab/nipa/internal/sealbox"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/totp"
@@ -124,6 +125,8 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	if deps.Maintenance != nil {
 		serviceTokenUsecase.WithPause(deps.Maintenance.Frozen)
 	}
+	issueTrackerUsecase := usecase.NewIssueTracker(repos.IssueTracker, orgUsecase, permissionUsecase, issueTrackerBox(cfg), node).
+		WithAudit(auditUsecase).WithFactory(usecase.GuardedIssueTrackerFactory(issueTrackerAllowlist(cfg)))
 	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
 	emailDeliveryUsecase := usecase.NewEmailDelivery(repos.Email, permissionUsecase)
@@ -175,6 +178,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		EmailDelivery:      emailDeliveryUsecase,
 		Audit:              auditUsecase,
 		Maintenance:        maintenanceUsecase,
+		IssueTracker:       issueTrackerUsecase,
 	}
 }
 
@@ -200,6 +204,35 @@ func mfaCipher(cfg *config.Config, enabled bool) *totp.Cipher {
 		return nil
 	}
 	return cipher
+}
+
+// issueTrackerBox seals issue tracker tokens with INTEGRATIONS_ENCRYPTION_KEY;
+// without a usable key the integration stays unavailable.
+func issueTrackerBox(cfg *config.Config) *sealbox.Box {
+	key, err := cfg.IntegrationsKey()
+	if err != nil {
+		slog.Error("issue tracker integration disabled", "error", err)
+		return nil
+	}
+	if key == nil {
+		slog.Info("issue tracker integration off: set INTEGRATIONS_ENCRYPTION_KEY (openssl rand -base64 32) to offer it")
+		return nil
+	}
+	box, err := usecase.NewIssueTrackerBox(key)
+	if err != nil {
+		slog.Error("issue tracker integration disabled", "error", err)
+		return nil
+	}
+	return box
+}
+
+func issueTrackerAllowlist(cfg *config.Config) []string {
+	entries, err := cfg.IssueTrackerAllowlist()
+	if err != nil {
+		slog.Error("issue tracker egress allowlist ignored", "error", err)
+		return nil
+	}
+	return entries
 }
 
 func sshAudience(cfg *config.Config) string {

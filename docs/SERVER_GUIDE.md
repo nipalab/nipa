@@ -124,6 +124,7 @@ Generate secrets, for example, with `openssl rand -base64 48`.
 | --- | --- | --- |
 | Email notifications | `EMAIL_SENDER` (`off` by default), `EMAIL_FROM`, `EMAIL_BASE_URL`, ... | [EMAIL.md](EMAIL.md) |
 | Webhooks | `WEBHOOK_EGRESS_ALLOWLIST`, `WEBHOOK_TIMEOUT_SECONDS`; endpoints are configured per project in the UI | Restrict egress to private/loopback receivers with the allowlist. |
+| Issue tracker (Jira) | `INTEGRATIONS_ENCRYPTION_KEY` (`openssl rand -base64 32`; seals the stored tracker tokens, a startup error when not base64 of at least 32 bytes; unset = the `/issue-tracker` routes answer 503), `ISSUE_TRACKER_EGRESS_ALLOWLIST` (hostnames, IPs or CIDR ranges; empty allows public addresses only, an invalid entry is a startup error) | One connection per organization, enabled per project. Losing the key makes the stored tokens unreadable until each connection is saved again with its token. |
 | Tracing | `TRACING_ENABLED`, `TRACING_OTLP_*` | [TRACING.md](TRACING.md) |
 | Logs/metrics export over OTLP | `LOGS_OTLP_ENABLED`, `METRICS_OTLP_ENABLED`, ... | [OBSERVABILITY.md](OBSERVABILITY.md) |
 | SSH key login | No server setting; manage keys from the profile page | [SSH.md](SSH.md) |

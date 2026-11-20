@@ -26,6 +26,7 @@ type usecaseContainer interface {
 	EmailDelivery() *usecase.EmailDelivery
 	Audit() *usecase.Audit
 	Maintenance() *usecase.Maintenance
+	IssueTracker() *usecase.IssueTracker
 }
 
 type Handler struct {

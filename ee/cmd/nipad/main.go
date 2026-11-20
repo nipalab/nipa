@@ -60,6 +60,9 @@ func main() {
 	if err := cfg.ValidateMFAKey(mfaEnabledByDefault); err != nil {
 		panic(err)
 	}
+	if err := cfg.ValidateIntegrations(); err != nil {
+		panic(err)
+	}
 
 	serviceName := cfg.TracingServiceName
 	if serviceName == "" {
@@ -237,6 +240,7 @@ func main() {
 		Audit:              postgres.NewAuditRepository(dbConn),
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepository,
+		IssueTracker:       postgres.NewIssueTrackerRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	if storageLedger != nil {

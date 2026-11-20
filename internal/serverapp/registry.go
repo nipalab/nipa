@@ -33,6 +33,7 @@ type Usecases struct {
 	EmailDelivery      *usecase.EmailDelivery
 	Audit              *usecase.Audit
 	Maintenance        *usecase.Maintenance
+	IssueTracker       *usecase.IssueTracker
 }
 
 // Registry adapts the usecase set to the containers expected by the HTTP and
@@ -140,4 +141,8 @@ func (r *Registry) Audit() *usecase.Audit {
 
 func (r *Registry) Maintenance() *usecase.Maintenance {
 	return r.uc.Maintenance
+}
+
+func (r *Registry) IssueTracker() *usecase.IssueTracker {
+	return r.uc.IssueTracker
 }

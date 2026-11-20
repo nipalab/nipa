@@ -54,6 +54,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
 		os.Exit(1)
 	}
+	if err := cfg.ValidateIntegrations(); err != nil {
+		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
+		os.Exit(1)
+	}
 
 	serviceName := cfg.TracingServiceName
 	if serviceName == "" {
@@ -192,6 +196,7 @@ func main() {
 		Audit:              sqlite.NewAuditRepository(dbConn),
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepository,
+		IssueTracker:       sqlite.NewIssueTrackerRepository(dbConn),
 	}, serverapp.UsecaseDeps{
 		Config:              cfg,
 		DB:                  dbConn,

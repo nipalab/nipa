@@ -132,6 +132,12 @@ type Querier interface {
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	InsertProjectStorage(ctx context.Context, arg InsertProjectStorageParams) error
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
+	IssueTrackerCountProjects(ctx context.Context, trackerID int64) (int64, error)
+	IssueTrackerCreate(ctx context.Context, arg IssueTrackerCreateParams) (IssueTracker, error)
+	IssueTrackerDelete(ctx context.Context, arg IssueTrackerDeleteParams) (int64, error)
+	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
+	IssueTrackerLockOrg(ctx context.Context, lockKey int64) error
+	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
 	ListExternalProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
@@ -247,6 +253,9 @@ type Querier interface {
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
 	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
 	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
+	ProjectIssueTrackerGet(ctx context.Context, projectID int64) (ProjectIssueTracker, error)
+	ProjectIssueTrackerUpsert(ctx context.Context, arg ProjectIssueTrackerUpsertParams) (ProjectIssueTracker, error)
 	ProjectMemberCandidates(ctx context.Context, arg ProjectMemberCandidatesParams) ([]ProjectMemberCandidatesRow, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
