@@ -234,7 +234,7 @@ func TestDecodeAcceptsLargeChunkedText(t *testing.T) {
 	require.Greater(t, len(chunks), 1)
 	var out []byte
 	for _, c := range chunks {
-		require.LessOrEqual(t, c.RawSize, int64(TextLargeConfig.Max))
+		require.LessOrEqual(t, c.RawSize, TextLargeConfig.Max)
 		out, err = DecodeAppend(out, encoding, c.Data)
 		require.NoError(t, err)
 	}
