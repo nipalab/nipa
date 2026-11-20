@@ -96,24 +96,27 @@ func (g *Guard) DialContext(ctx context.Context, network, addr string) (net.Conn
 	if err != nil {
 		return nil, err
 	}
-	var lastErr error
+	var blockedErr, dialErr error
 	for _, resolved := range addrs {
 		if !g.policy.AllowsDial(host, resolved.IP) {
-			lastErr = fmt.Errorf("%w: %s host %q resolves to %s, which is not allowed",
+			blockedErr = fmt.Errorf("%w: %s host %q resolves to %s, which is not allowed",
 				ErrBlocked, g.label, host, resolved.IP)
 			continue
 		}
 		conn, err := g.dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
 		if err != nil {
-			lastErr = err
+			dialErr = err
 			continue
 		}
 		return conn, nil
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("%w: %s host %q has no addresses", ErrBlocked, g.label, host)
+	switch {
+	case dialErr != nil:
+		return nil, dialErr
+	case blockedErr != nil:
+		return nil, blockedErr
 	}
-	return nil, lastErr
+	return nil, fmt.Errorf("%w: %s host %q has no addresses", ErrBlocked, g.label, host)
 }
 
 // CheckURL refuses early a URL whose host can never pass the allowlist. It

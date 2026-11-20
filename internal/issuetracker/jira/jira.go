@@ -409,11 +409,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return c.fail(issuetracker.ErrUnavailable, method, path, err)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return c.statusError(resp, method, path, data[:min(len(data), MaxResponse)])
+	}
 	if len(data) > MaxResponse {
 		return c.fail(nil, method, path, errors.New("response over 1 MiB"))
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return c.statusError(resp, method, path, data)
 	}
 	if out == nil || len(bytes.TrimSpace(data)) == 0 {
 		return nil

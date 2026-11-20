@@ -311,6 +311,16 @@ func TestStatusMapping(t *testing.T) {
 	fake.Fail(jiratest.Failure{Status: http.StatusOK, Body: strings.Repeat(" ", MaxResponse+1)})
 	_, err = client.Issue(ctx, "GAME-1")
 	require.ErrorContains(t, err, "over 1 MiB")
+
+	fake.Fail(jiratest.Failure{Status: http.StatusBadGateway, Body: strings.Repeat("x", MaxResponse+1)})
+	_, err = client.Issue(ctx, "GAME-1")
+	require.ErrorIs(t, err, issuetracker.ErrUnavailable)
+	assert.True(t, issuetracker.Retryable(err))
+
+	fake.Fail(jiratest.Failure{Status: http.StatusTooManyRequests, RetryAfter: "3", Body: strings.Repeat("x", MaxResponse+1)})
+	_, err = client.Issue(ctx, "GAME-1")
+	require.ErrorAs(t, err, &limited)
+	assert.Equal(t, 3*time.Second, limited.RetryAfter)
 }
 
 func TestParseRetryAfter(t *testing.T) {

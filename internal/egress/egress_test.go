@@ -123,6 +123,25 @@ func TestGuard_DialEdges(t *testing.T) {
 		require.Error(t, err)
 		require.False(t, IsBlocked(err))
 	})
+
+	t.Run("dial failure wins over a later blocked address", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		require.NoError(t, listener.Close())
+
+		guard := New(Config{DialTimeout: time.Second, Allowlist: []string{"127.0.0.0/8"}, Resolver: staticResolver("127.0.0.1", "10.0.0.1")})
+		_, err = guard.DialContext(ctx, "tcp", "refused.example:"+strconv.Itoa(port))
+		require.Error(t, err)
+		require.False(t, IsBlocked(err))
+	})
+
+	t.Run("only blocked addresses is blocked", func(t *testing.T) {
+		guard := New(Config{Resolver: staticResolver("10.0.0.1")})
+		_, err := guard.DialContext(ctx, "tcp", "internal.example:80")
+		require.True(t, IsBlocked(err))
+		require.ErrorContains(t, err, "resolves to 10.0.0.1")
+	})
 }
 
 func TestGuard_NoRedirects(t *testing.T) {
