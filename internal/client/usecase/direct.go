@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -226,13 +227,25 @@ func receiveTarget(t directTarget, h domain.Hash, body io.Reader) (int64, error)
 	buf := streamBufferPool.Get().(*[]byte)
 	defer streamBufferPool.Put(buf)
 	hasher := chunker.NewHasher()
-	// One byte past the chunk size is enough to report a mismatch.
-	n, err := io.CopyBuffer(io.MultiWriter(io.NewOffsetWriter(out, t.offset), hasher), io.LimitReader(body, t.size+1), *buf)
+	// Only the chunk's own bytes reach the file: anything past t.size would
+	// land in the next chunk's range (or past the end of the file), and a
+	// retry that rewrites just t.size bytes would never repair it.
+	n, err := io.CopyBuffer(io.MultiWriter(io.NewOffsetWriter(out, t.offset), hasher), io.LimitReader(body, t.size), *buf)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		return n, err
+	}
+	if n == t.size {
+		// One byte past the chunk size is enough to report a mismatch; it
+		// is read, never written.
+		var probe [1]byte
+		extra, probeErr := io.ReadFull(body, probe[:])
+		n += int64(extra)
+		if probeErr != nil && !errors.Is(probeErr, io.EOF) {
+			return n, probeErr
+		}
 	}
 	if n != t.size {
 		return n, fmt.Errorf("content length mismatch for %s: chunk %s does not have %d bytes", t.file.job.file.Path, h, t.size)

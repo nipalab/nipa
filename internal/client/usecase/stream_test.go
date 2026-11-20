@@ -245,6 +245,55 @@ func TestDirectPlan_StreamFailsOnUnwritableTemp(t *testing.T) {
 	require.Error(t, copyTarget(plan.targets[h][0], plan.targets[h][1]))
 }
 
+// TestDirectPlan_RetryAfterOversizedBrokenBody covers a retried chunk whose
+// failed attempt delivered one byte past its size: that byte must never reach
+// the neighbouring chunk already in place, or the good retry would leave it
+// corrupt.
+func TestDirectPlan_RetryAfterOversizedBrokenBody(t *testing.T) {
+	root := t.TempDir()
+	data := map[serverDomain.Hash][]byte{}
+	files := flattenTree(&serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
+		rawManifestFile("a.bin", data, "AAAA", "TAIL"),
+	}}, "")
+	plan, err := newDirectPlan(root, []materializeJob{{file: files[0]}})
+	require.NoError(t, err)
+	defer plan.cleanup()
+	head, tail := chunker.Sum([]byte("AAAA")), chunker.Sum([]byte("TAIL"))
+
+	require.NoError(t, plan.write(tail, []byte("TAIL")), "the tail comes from the local cache first")
+
+	broken := io.MultiReader(bytes.NewReader([]byte("AAAAX")), &failingReader{err: errors.New("connection reset")})
+	n, err := plan.receive(head, broken)
+	require.Error(t, err)
+	require.Equal(t, int64(5), n, "the excess byte is still counted")
+
+	n, err = plan.receive(head, bytes.NewReader([]byte("AAAA")))
+	require.NoError(t, err)
+	require.Equal(t, int64(4), n)
+	require.NoError(t, plan.settle(head))
+	require.True(t, plan.files[0].done.Load())
+
+	got, err := os.ReadFile(plan.files[0].tmp)
+	require.NoError(t, err)
+	require.Equal(t, "AAAATAIL", string(got))
+}
+
+func TestDirectPlan_ReceiveReportsBreakAfterFullChunk(t *testing.T) {
+	root := t.TempDir()
+	data := map[serverDomain.Hash][]byte{}
+	files := flattenTree(&serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
+		rawManifestFile("a.bin", data, "AAAA"),
+	}}, "")
+	plan, err := newDirectPlan(root, []materializeJob{{file: files[0]}})
+	require.NoError(t, err)
+	defer plan.cleanup()
+
+	reset := errors.New("connection reset")
+	body := io.MultiReader(bytes.NewReader([]byte("AAAA")), &failingReader{err: reset})
+	_, err = plan.receive(chunker.Sum([]byte("AAAA")), body)
+	require.ErrorIs(t, err, reset, "a transfer that breaks right after the chunk is not taken as complete")
+}
+
 func TestDownloadChunksStream_StopsAfterStoreFailure(t *testing.T) {
 	data := map[serverDomain.Hash][]byte{}
 	bad := chunker.Sum([]byte("expected"))
