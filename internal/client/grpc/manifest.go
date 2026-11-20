@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
@@ -38,12 +39,26 @@ func (c *Client) StreamTreeManifest(ctx context.Context, req *pb.GetTreeManifest
 	return res, commit, nil
 }
 
+// treeManifest reads a manifest straight into the domain tree. A large
+// manifest is mostly chunk hashes, so it is not assembled as protobuf with
+// hex strings first: the tree is the only copy held.
 func (c *Client) treeManifest(ctx context.Context, req *pb.GetTreeManifestRequest) (*serverDomain.TreeNode, error) {
-	res, _, err := c.StreamTreeManifest(ctx, req)
+	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, streamError(err, "streamed tree manifests")
 	}
-	return toServerTreeNode(res.GetRootTree()), nil
+	var a treeAssembler
+	err = c.invokeWithThrottleRetry(ctx, func() error {
+		return c.callAuthed(ctx, func(authCtx context.Context) error {
+			a = treeAssembler{}
+			_, err := recvManifest(authCtx, client, req, a.add)
+			return err
+		})
+	})
+	if err != nil {
+		return nil, streamError(err, "streamed tree manifests")
+	}
+	return a.finish(), nil
 }
 
 // streamError maps a streaming call's error to a domain error; a server that
@@ -56,35 +71,170 @@ func streamError(err error, feature string) error {
 }
 
 func readManifest(ctx context.Context, client pb.NipaServiceClient, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, *pb.CommitDetail, error) {
+	var a manifestAssembler
+	head, err := recvManifest(ctx, client, req, a.add)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &pb.GetTreeManifestResponse{Branch: head.GetBranch(), RootTree: a.root}, head.GetCommit(), nil
+}
+
+// recvManifest feeds every entry of a streamed manifest to add and returns
+// the first part, which carries the branch and commit.
+func recvManifest(ctx context.Context, client pb.NipaServiceClient, req *pb.GetTreeManifestRequest, add func(*pb.TreeManifestEntry) error) (*pb.TreeManifestPart, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.StreamTreeManifest(ctx, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	res := &pb.GetTreeManifestResponse{}
-	var commit *pb.CommitDetail
-	var a manifestAssembler
-	for first := true; ; first = false {
+	var head *pb.TreeManifestPart
+	for {
 		part, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			break
+			return head, nil
 		}
 		if err != nil {
-			return nil, nil, err
-		}
-		if first {
-			res.Branch = part.GetBranch()
-			commit = part.GetCommit()
+			return nil, err
 		}
 		for _, entry := range part.GetEntries() {
-			if err := a.add(entry); err != nil {
-				return nil, nil, err
+			if err := add(entry); err != nil {
+				return nil, err
 			}
 		}
+		if head == nil {
+			head = &pb.TreeManifestPart{Branch: part.GetBranch(), Commit: part.GetCommit()}
+		}
 	}
-	res.RootTree = a.root
-	return res, commit, nil
+}
+
+// treeAssembler builds the domain tree from manifest entries with the same
+// rules as manifestAssembler: names are checked, hashes must be whole.
+type treeAssembler struct {
+	root  *serverDomain.TreeNode
+	stack []*serverDomain.TreeNode
+	last  *serverDomain.File
+	// sized is false once a part of the current file came without one size
+	// per hash; the file then carries no chunk sizes, like an older server's.
+	sized bool
+}
+
+func (a *treeAssembler) add(entry *pb.TreeManifestEntry) error {
+	switch e := entry.GetEntry().(type) {
+	case *pb.TreeManifestEntry_Dir:
+		return a.dir(e.Dir)
+	case *pb.TreeManifestEntry_File:
+		return a.file(e.File)
+	case *pb.TreeManifestEntry_Chunks:
+		if a.last == nil {
+			return errors.New("malformed tree manifest: chunks before any file")
+		}
+		return a.chunks(e.Chunks.GetChunkHashes(), e.Chunks.GetChunkSizes())
+	default:
+		return errors.New("malformed tree manifest: empty entry")
+	}
+}
+
+func (a *treeAssembler) dir(d *pb.TreeManifestDir) error {
+	a.seal()
+	var hash serverDomain.Hash
+	if len(d.GetTreeHash()) != len(hash) {
+		return fmt.Errorf("malformed tree manifest: hash has %d bytes", len(d.GetTreeHash()))
+	}
+	copy(hash[:], d.GetTreeHash())
+	node := &serverDomain.TreeNode{Name: d.GetName(), Hash: hash, TreeChildren: []*serverDomain.TreeNode{}, FileChildren: []*serverDomain.File{}}
+	depth := int(d.GetDepth())
+	switch {
+	case depth == 0 && a.root == nil:
+		a.root = node
+	case depth >= 1 && depth <= len(a.stack):
+		if err := a.checkName(a.stack[1:depth], d.GetName()); err != nil {
+			return err
+		}
+		a.stack = a.stack[:depth]
+		parent := a.stack[depth-1]
+		parent.TreeChildren = append(parent.TreeChildren, node)
+	default:
+		return fmt.Errorf("malformed tree manifest: directory %q at depth %d", d.GetName(), depth)
+	}
+	a.stack = append(a.stack, node)
+	return nil
+}
+
+func (a *treeAssembler) file(f *pb.TreeManifestFile) error {
+	a.seal()
+	if len(a.stack) == 0 {
+		return fmt.Errorf("malformed tree manifest: file %q before any directory", f.GetName())
+	}
+	if err := a.checkName(a.stack[1:], f.GetName()); err != nil {
+		return err
+	}
+	node := &serverDomain.File{
+		Name:      f.GetName(),
+		Mode:      int(f.GetMode()),
+		SizeBytes: f.GetSizeBytes(),
+		IsBinary:  f.GetIsBinary(),
+		Encoding:  f.GetEncoding(),
+	}
+	dir := a.stack[len(a.stack)-1]
+	dir.FileChildren = append(dir.FileChildren, node)
+	a.last, a.sized = node, true
+	return a.chunks(f.GetChunkHashes(), f.GetChunkSizes())
+}
+
+func (a *treeAssembler) chunks(hashes [][]byte, sizes []int64) error {
+	if len(sizes) != len(hashes) {
+		a.sized = false
+	}
+	if a.last.Chunks == nil && len(hashes) > 0 {
+		a.last.Chunks = make([]serverDomain.Chunk, 0, len(hashes))
+	}
+	for i, raw := range hashes {
+		chunk := serverDomain.Chunk{}
+		if len(raw) != len(chunk.Hash) {
+			return fmt.Errorf("malformed tree manifest: hash has %d bytes", len(raw))
+		}
+		copy(chunk.Hash[:], raw)
+		if a.sized {
+			chunk.SizeBytes = sizes[i]
+		}
+		a.last.Chunks = append(a.last.Chunks, chunk)
+	}
+	return nil
+}
+
+// seal finishes the file being read: its hash covers all its chunks, and its
+// chunk sizes are dropped unless every part supplied them.
+func (a *treeAssembler) seal() {
+	f := a.last
+	if f == nil {
+		return
+	}
+	a.last = nil
+	hasher := chunker.NewHasher()
+	for i := range f.Chunks {
+		_, _ = hasher.Write(f.Chunks[i].Hash[:])
+		if !a.sized {
+			f.Chunks[i].SizeBytes = 0
+		}
+	}
+	f.Hash = hasher.Sum()
+}
+
+func (a *treeAssembler) finish() *serverDomain.TreeNode {
+	a.seal()
+	return a.root
+}
+
+func (a *treeAssembler) checkName(parents []*serverDomain.TreeNode, name string) error {
+	if err := serverDomain.ValidateLocalPathSegment(name); err != nil {
+		path := name
+		for i := len(parents) - 1; i >= 0; i-- {
+			path = parents[i].Name + "/" + path
+		}
+		return unsafeManifestName(path, err)
+	}
+	return nil
 }
 
 type manifestAssembler struct {

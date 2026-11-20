@@ -250,3 +250,15 @@ func (r *tinyReader) Read(p []byte) (int, error) {
 	r.pos += n
 	return n, nil
 }
+
+func TestHasher_MatchesSum(t *testing.T) {
+	data := bytes.Repeat([]byte("streamed chunk content "), 5000)
+	h := NewHasher()
+	for start := 0; start < len(data); start += 777 {
+		n, err := h.Write(data[start:min(start+777, len(data))])
+		require.NoError(t, err)
+		require.Positive(t, n)
+	}
+	require.Equal(t, Sum(data), h.Sum(), "hashing in pieces equals hashing the whole chunk")
+	require.Equal(t, Sum(nil), NewHasher().Sum())
+}

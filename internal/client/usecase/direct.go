@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/domain"
 )
@@ -135,14 +137,24 @@ func (p *directPlan) wants(h domain.Hash) bool {
 // write places one verified chunk at every offset it occupies. Targets of one
 // file are contiguous, so each file is opened once per chunk and closed again.
 func (p *directPlan) write(h domain.Hash, data []byte) error {
-	targets := p.targets[h]
+	err := eachTargetFile(p.targets[h], func(df *directFile, targets []directTarget) error {
+		return writeTargets(df, targets, data)
+	})
+	if err != nil {
+		return err
+	}
+	return p.settle(h)
+}
+
+// eachTargetFile calls fn once per file with the run of targets it owns.
+func eachTargetFile(targets []directTarget, fn func(df *directFile, targets []directTarget) error) error {
 	for start := 0; start < len(targets); {
 		df := targets[start].file
 		end := start + 1
 		for end < len(targets) && targets[end].file == df {
 			end++
 		}
-		if err := p.writeFile(df, targets[start:end], data); err != nil {
+		if err := fn(df, targets[start:end]); err != nil {
 			return &materializeError{path: df.job.file.Path, err: err}
 		}
 		start = end
@@ -150,7 +162,7 @@ func (p *directPlan) write(h domain.Hash, data []byte) error {
 	return nil
 }
 
-func (p *directPlan) writeFile(df *directFile, targets []directTarget, data []byte) error {
+func writeTargets(df *directFile, targets []directTarget, data []byte) error {
 	out, err := os.OpenFile(df.tmp, os.O_WRONLY, 0)
 	if err != nil {
 		return err
@@ -165,13 +177,93 @@ func (p *directPlan) writeFile(df *directFile, targets []directTarget, data []by
 			return err
 		}
 	}
-	if err := out.Close(); err != nil {
+	return out.Close()
+}
+
+// settle books a chunk that is in place at all its offsets, exactly once per
+// chunk, and completes the files it was the last missing piece of.
+func (p *directPlan) settle(h domain.Hash) error {
+	return eachTargetFile(p.targets[h], func(df *directFile, targets []directTarget) error {
+		if df.remaining.Add(-int64(len(targets))) == 0 {
+			return p.complete(df)
+		}
+		return nil
+	})
+}
+
+const streamBufferSize = 256 << 10
+
+var streamBufferPool = sync.Pool{New: func() any {
+	buf := make([]byte, streamBufferSize)
+	return &buf
+}}
+
+// receive copies one chunk from body to the first offset it occupies while
+// hashing it, so the content is verified without ever being held in memory,
+// then copies it file to file to its other offsets. It books nothing: a
+// repeated call after a broken transfer rewrites the same bytes, and nothing
+// it wrote is used unless settle follows.
+func (p *directPlan) receive(h domain.Hash, body io.Reader) (int64, error) {
+	targets := p.targets[h]
+	first := targets[0]
+	n, err := receiveTarget(first, h, body)
+	if err != nil {
+		return n, &materializeError{path: first.file.job.file.Path, err: err}
+	}
+	for _, t := range targets[1:] {
+		if err := copyTarget(first, t); err != nil {
+			return n, &materializeError{path: t.file.job.file.Path, err: err}
+		}
+	}
+	return n, nil
+}
+
+func receiveTarget(t directTarget, h domain.Hash, body io.Reader) (int64, error) {
+	out, err := os.OpenFile(t.file.tmp, os.O_WRONLY, 0)
+	if err != nil {
+		return 0, err
+	}
+	buf := streamBufferPool.Get().(*[]byte)
+	defer streamBufferPool.Put(buf)
+	hasher := chunker.NewHasher()
+	// One byte past the chunk size is enough to report a mismatch.
+	n, err := io.CopyBuffer(io.MultiWriter(io.NewOffsetWriter(out, t.offset), hasher), io.LimitReader(body, t.size+1), *buf)
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return n, err
+	}
+	if n != t.size {
+		return n, fmt.Errorf("content length mismatch for %s: chunk %s does not have %d bytes", t.file.job.file.Path, h, t.size)
+	}
+	if hasher.Sum() != h {
+		return n, fmt.Errorf("chunk hash mismatch for %s", h)
+	}
+	return n, nil
+}
+
+// copyTarget repeats a chunk that is already in place at src at dst.
+func copyTarget(src, dst directTarget) error {
+	if dst.size != src.size {
+		return fmt.Errorf("content length mismatch for %s: chunk is %d bytes, want %d", dst.file.job.file.Path, src.size, dst.size)
+	}
+	in, err := os.Open(src.file.tmp)
+	if err != nil {
 		return err
 	}
-	if df.remaining.Add(-int64(len(targets))) == 0 {
-		return p.complete(df)
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst.file.tmp, os.O_WRONLY, 0)
+	if err != nil {
+		return err
 	}
-	return nil
+	buf := streamBufferPool.Get().(*[]byte)
+	defer streamBufferPool.Put(buf)
+	_, err = io.CopyBuffer(io.NewOffsetWriter(out, dst.offset), io.NewSectionReader(in, src.offset, src.size), *buf)
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func (p *directPlan) complete(df *directFile) error {

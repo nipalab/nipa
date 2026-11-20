@@ -203,3 +203,63 @@ func testUpdateCachePolicy(t *testing.T, pinned bool) {
 	require.NoError(t, err)
 	require.Equal(t, content, string(data))
 }
+
+// editedRepo is a clone that tracks a.txt, has a local edit to it, and whose
+// server now has other content for it.
+func editedRepo(t *testing.T) (string, *fakeUpdateClient) {
+	t.Helper()
+	tracked := func(content string) *serverDomain.TreeNode {
+		chunks := chunksOf(t, content)
+		return &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{{
+			Name:      "a.txt",
+			Mode:      2,
+			SizeBytes: int64(len(content)),
+			Hash:      chunker.FileHash([]serverDomain.Hash{chunks[0].Hash}),
+			Chunks:    chunks,
+		}}}
+	}
+	root := setupRepoWithTree(t, "main", tracked("synced content"))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("my local edit"), 0o644))
+	tree := tracked("content from the server")
+	return root, &fakeUpdateClient{chunkData: chunkDataMap(t, "content from the server"), manifest: tree, commitTree: tree, tagInfo: &domain.Tag{Name: "v1", CommitID: "6y1"}}
+}
+
+func requireFileContent(t *testing.T, root, name, want string) {
+	t.Helper()
+	got, err := os.ReadFile(filepath.Join(root, name))
+	require.NoError(t, err)
+	require.Equal(t, want, string(got))
+}
+
+func TestSetupUpdateCmd_RefusesToOverwriteLocalEditsWithoutForce(t *testing.T) {
+	root, client := editedRepo(t)
+	cli := newUpdateCli(t, client)
+
+	_, err := runCmdInDir(t, root, cli.setupUpdateCmd())
+	require.ErrorContains(t, err, "local changes to 1 file(s) would be overwritten")
+	require.ErrorContains(t, err, "a.txt")
+	requireFileContent(t, root, "a.txt", "my local edit")
+	require.Empty(t, client.downloaded, "a refused update downloads nothing")
+
+	_, err = runCmdInDir(t, root, cli.setupUpdateCmd(), "--force")
+	require.NoError(t, err)
+	requireFileContent(t, root, "a.txt", "content from the server")
+}
+
+func TestSetupSwitchCmd_RefusesToOverwriteLocalEditsWithoutForce(t *testing.T) {
+	for name, args := range map[string][]string{"branch": {"dev"}, "tag": {"--tag", "v1"}} {
+		t.Run(name, func(t *testing.T) {
+			root, client := editedRepo(t)
+			cli := newUpdateCli(t, client)
+
+			_, err := runCmdInDir(t, root, cli.setupSwitchCmd(), args...)
+			require.ErrorContains(t, err, "local changes to 1 file(s) would be overwritten")
+			requireFileContent(t, root, "a.txt", "my local edit")
+			require.Equal(t, "main", loadRepoConfig(t, root).Branch, "a refused switch stays on its branch")
+
+			_, err = runCmdInDir(t, root, cli.setupSwitchCmd(), append(args, "--force")...)
+			require.NoError(t, err)
+			requireFileContent(t, root, "a.txt", "content from the server")
+		})
+	}
+}

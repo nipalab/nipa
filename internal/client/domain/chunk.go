@@ -1,6 +1,11 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"io"
+
+	serverDomain "github.com/nipalab/nipa/internal/domain"
+)
 
 // ChunkScope scopes chunk transfer authorization: the project, plus for
 // downloads the commits and path prefixes whose visible chunks may be
@@ -10,6 +15,17 @@ type ChunkScope struct {
 	Project   string
 	CommitIDs []string
 	Paths     []string
+}
+
+// ChunkStream lets a download hand selected chunks to the caller as a stream
+// instead of a buffered byte slice, so large raw chunks never sit in memory.
+// Wants picks the chunks to stream. Write must consume body, verify what it
+// read and place it; it runs concurrently for different chunks and is called
+// again for the same chunk when the transfer failed part way, so it must be
+// safe to repeat.
+type ChunkStream struct {
+	Wants func(h serverDomain.Hash) bool
+	Write func(h serverDomain.Hash, body io.Reader) error
 }
 
 type verifyObserverKey struct{}

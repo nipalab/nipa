@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
@@ -526,6 +527,9 @@ type fakeSyncClient struct {
 	tags      []*domain.Tag
 	err       error
 	mergeBase *domain.MergeBaseInfo
+	// tree and chunks, when set, are what every manifest and download answers.
+	tree   *serverDomain.TreeNode
+	chunks map[serverDomain.Hash][]byte
 }
 
 func (fakeSyncClient) Connect(context.Context, string) error { return nil }
@@ -538,11 +542,17 @@ func (f fakeSyncClient) GetBranchByName(_ context.Context, _, _, name string) (*
 	return &serverDomain.Branch{Name: name, CommitID: &id}, nil
 }
 
-func (fakeSyncClient) GetTreeNodeManifest(context.Context, string, string, string, []string) (*serverDomain.TreeNode, error) {
+func (f fakeSyncClient) GetTreeNodeManifest(context.Context, string, string, string, []string) (*serverDomain.TreeNode, error) {
+	if f.tree != nil {
+		return f.tree, nil
+	}
 	return &serverDomain.TreeNode{}, nil
 }
 
-func (fakeSyncClient) GetCommitTreeManifest(context.Context, string, string, string, []string) (*serverDomain.TreeNode, error) {
+func (f fakeSyncClient) GetCommitTreeManifest(context.Context, string, string, string, []string) (*serverDomain.TreeNode, error) {
+	if f.tree != nil {
+		return f.tree, nil
+	}
 	return &serverDomain.TreeNode{}, nil
 }
 
@@ -553,7 +563,14 @@ func (f fakeSyncClient) GetTagByName(_ context.Context, _, _, name string) (*dom
 	return &domain.Tag{Name: name, CommitID: "6y1"}, nil
 }
 
-func (fakeSyncClient) DownloadChunks(context.Context, domain.ChunkScope, []serverDomain.Hash, func(serverDomain.Hash, []byte) error) error {
+func (f fakeSyncClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
+	for _, h := range hashes {
+		if data, ok := f.chunks[h]; ok {
+			if err := onChunk(h, data); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -604,6 +621,46 @@ func TestTagTools(t *testing.T) {
 	res = call(t, failing, "nipa_tag_list", map[string]any{"repo": root})
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "server exploded")
+}
+
+func TestSyncTools_RefuseToOverwriteLocalEditsUnlessForced(t *testing.T) {
+	const incoming = "content from the server"
+	chunks, err := chunker.ChunkAll([]byte(incoming))
+	require.NoError(t, err)
+	client := fakeSyncClient{
+		chunks: map[serverDomain.Hash][]byte{chunks[0].Hash: chunks[0].Data},
+		tree: &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{{
+			Name:      "a.txt",
+			Mode:      2,
+			SizeBytes: int64(len(incoming)),
+			Hash:      chunker.FileHash([]serverDomain.Hash{chunks[0].Hash}),
+			Chunks:    []serverDomain.Chunk{{Hash: chunks[0].Hash, SizeBytes: int64(len(chunks[0].Data))}},
+		}}},
+	}
+	for tool, args := range map[string]map[string]any{
+		"nipa_update": {},
+		"nipa_switch": {"branch": "dev"},
+	} {
+		t.Run(tool, func(t *testing.T) {
+			root := setupRepo(t, map[string]string{"a.txt": "synced content"})
+			writeFile(t, root, "a.txt", "my local edit")
+			session := connect(t, Options{Allow: map[string]bool{CapSync: true}, NewUseCases: syncUseCases(client)})
+			args["repo"] = root
+
+			res := call(t, session, tool, args)
+			require.True(t, res.IsError)
+			require.Contains(t, toolText(t, res), "local changes to 1 file(s) would be overwritten")
+			got, err := os.ReadFile(filepath.Join(root, "a.txt"))
+			require.NoError(t, err)
+			require.Equal(t, "my local edit", string(got))
+
+			args["force"] = true
+			require.False(t, call(t, session, tool, args).IsError)
+			got, err = os.ReadFile(filepath.Join(root, "a.txt"))
+			require.NoError(t, err)
+			require.Equal(t, incoming, string(got))
+		})
+	}
 }
 
 func TestSyncTools(t *testing.T) {

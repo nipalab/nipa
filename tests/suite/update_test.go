@@ -86,20 +86,28 @@ var _ = Describe("nipa update", func() {
 		Expect(readText(dir, "local-notes.txt")).To(Equal("do not lose me\n"))
 	})
 
-	It("overwrites locally modified tracked files", func() {
+	It("refuses to overwrite locally modified tracked files unless forced", func() {
 		project := newProject("update-overwrite")
-		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v1\n")}, "seed")
+		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v1\n"), "other.txt": []byte("o1\n")}, "seed")
 		url := repoURLFor(orgSlug, project)
 
 		parent := workspace()
 		dir := cloneRepo(parent, url, "work")
 		writeText(dir, "file.txt", "local edit\n")
 
-		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v2\n")}, "remote update")
+		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v2\n"), "other.txt": []byte("o2\n")}, "remote update")
 
 		res := runNipa(dir, "update")
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Output()).To(ContainSubstring("would be overwritten"))
+		Expect(res.Output()).To(ContainSubstring("file.txt"))
+		Expect(readText(dir, "file.txt")).To(Equal("local edit\n"))
+		Expect(readText(dir, "other.txt")).To(Equal("o1\n"), "a refused update changes nothing")
+
+		res = runNipa(dir, "update", "--force")
 		Expect(res.ExitCode).To(Equal(0), res.Stderr)
 		Expect(readText(dir, "file.txt")).To(Equal("v2\n"))
+		Expect(readText(dir, "other.txt")).To(Equal("o2\n"))
 	})
 
 	It("works from a subdirectory", func() {

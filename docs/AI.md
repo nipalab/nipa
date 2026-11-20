@@ -221,8 +221,8 @@ names the referrers.
 | `nipa_add` | `stage` | `paths` | returns the status |
 | `nipa_restore` | `stage` | `paths` | discard working changes of tracked paths |
 | `nipa_push` | `push` | `message` | returns `branch`/`tag`/`commit_id` |
-| `nipa_update` | `sync` | | |
-| `nipa_switch` | `sync` | `branch` or `tag` | a tag detaches |
+| `nipa_update` | `sync` | `force` | refuses when it would overwrite local changes unless `force` |
+| `nipa_switch` | `sync` | `branch` or `tag`, `force` | a tag detaches; refuses like `nipa_update` unless `force` |
 | `nipa_branch_create` | `branch` | `name` | forks from the pinned commit and switches |
 | `nipa_tag_create` | `branch` | `name`, `message`, `branch` or `commit` | |
 | `nipa_lock` / `nipa_unlock` | `lock` | `path`, `branch`, `ttl` (lock only, default `10m`) | the default branch locks project-wide; lock output carries `expires_at` |

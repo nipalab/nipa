@@ -776,19 +776,6 @@ func TestUpdate_Run_Error_SnapshotFails(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestUpdate_Run_Error_SyncSnapshotFails(t *testing.T) {
-	wantErr := errors.New("snapshot failed")
-	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshotErr:   wantErr,
-		snapshotErrOn: 2,
-	}
-	updater := newTestUpdate(t, local, &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}})
-
-	err := updater.Run(context.Background(), t.TempDir())
-	require.ErrorIs(t, err, wantErr, "a snapshot failure while materializing must abort the update")
-}
-
 func TestUpdate_Run_Error_MissingChunksFails(t *testing.T) {
 	wantErr := errors.New("missing chunks failed")
 	local := &stubLocalRepo{

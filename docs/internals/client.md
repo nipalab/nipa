@@ -58,7 +58,16 @@ at every offset they occupy (open/close per write), a file is chmodded
 (same read-only rule as `materializeFile`) when its last chunk landed, and
 the working files are `replaceFile`d (bounded pool) only after the whole
 download and `materializeAll` succeeded; any failure removes the unreplaced
-temp files, removals still run last, and everything else (zstd text, pinned raw, unknown chunk sizes)
+temp files, removals still run last; with a client that implements
+`DownloadChunksStream` (the gRPC client) a raw chunk no cached file shares is
+never buffered: `directPlan.receive` copies the response body into the first
+temp-file offset it occupies through a BLAKE3 `chunker.Hasher` and a pooled
+256 KiB buffer, checks size and hash, copies it file to file to its other
+offsets, and `settle` books it once (`downloadChunksStream` dedups under a
+lock, since streamed chunks are booked from the transfer workers), so memory
+no longer grows with chunk size or transfer concurrency; nothing a failed or
+repeated `receive` wrote is used, because files are swapped in only after
+every chunk settled, and everything else (zstd text, pinned raw, unknown chunk sizes)
 goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Every
 server-supplied directory and file name is a single path segment
 (`domain.ValidateLocalPathSegment`: no empty/`.`/`..`, `/`, `\`, NUL, and no
@@ -76,6 +85,19 @@ fails to sync with a 400 "refusing to sync unsafe path" error. `isNipaPath`
 update and switch record the branch head commit id locally so `HEAD`/`@` (and
 branch creation via `nipa branch -c`, which forks from the pinned commit)
 resolve offline.
+
+Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
+`syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`
+(`nipa update --force`, `nipa switch --force`, the MCP tools' `force`).
+`localChangeConflicts` (`usecase/sync_guard.go`) looks only at the files the
+sync is about to replace: a tracked file whose content is neither the synced
+nor the incoming version (a fresh `stat_cache` fingerprint answers without
+reading, otherwise the file is hashed on the `runPool`), or an untracked file
+that differs from the incoming one. Any hit fails the sync with a user error
+listing up to 20 paths before anything is downloaded or written. Clone and the
+merge/revert paths call `syncWorkingCopy` unguarded; the daemon's
+`Update` is built `WithForce(true)` (`cmd/nipa/serve.go`) because its clients
+preview with `SyncPlan` and confirm in their own UI.
 
 Flow for `nipa sparse-checkout <list|set|add|remove|disable>` (and `nipa clone
 --sparse a,b`): `Update.SetSparse` normalizes the prefixes

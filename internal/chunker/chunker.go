@@ -62,6 +62,26 @@ func Sum(data []byte) domain.Hash {
 	return out
 }
 
+// Hasher computes a chunk hash incrementally, for content that is streamed
+// instead of held in memory. The result equals Sum of the written bytes.
+type Hasher struct {
+	h *blake3.Hasher
+}
+
+func NewHasher() *Hasher {
+	return &Hasher{h: blake3.New()}
+}
+
+func (h *Hasher) Write(p []byte) (int, error) {
+	return h.h.Write(p)
+}
+
+func (h *Hasher) Sum() domain.Hash {
+	var out domain.Hash
+	_, _ = h.h.Digest().Read(out[:])
+	return out
+}
+
 func FileHash(chunks []domain.Hash) domain.Hash {
 	h := blake3.New()
 	for _, c := range chunks {

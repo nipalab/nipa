@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
@@ -212,6 +213,14 @@ const downloadWindow = 1000
 // DownloadChunks fetches chunk content through signed download URLs. Callers
 // receive each chunk through onChunk and are responsible for hash verification.
 func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+	return c.DownloadChunksStream(ctx, scope, hashes, nil, onChunk)
+}
+
+// DownloadChunksStream is DownloadChunks with an optional stream: chunks the
+// stream wants are copied from the response body straight into stream.Write
+// and never buffered, the rest reach onChunk as before. Write verifies the
+// content itself and may run concurrently for different chunks.
+func (c *Client) DownloadChunksStream(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, stream *domain.ChunkStream, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -256,6 +265,9 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 		}
 		return nil
 	}, func(ctx context.Context, job chunkTransfer) (int64, error) {
+		if stream != nil && stream.Wants(job.hash) {
+			return c.streamChunk(ctx, stream, job)
+		}
 		return c.downloadChunk(ctx, sink, job)
 	})
 }
@@ -407,13 +419,72 @@ func (c *Client) downloadChunk(ctx context.Context, sink *chunkSink, job chunkTr
 	return int64(len(data)), sink.deliver(job.hash, data)
 }
 
-// fetchChunk downloads one chunk once; the hint says whether trying again
-// could succeed. A cancelled context never is.
-func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte, hint retryHint, err error) {
+// streamChunk fetches one chunk and copies its body into the stream. An
+// attempt whose body could not be read to the end is retried like a buffered
+// download; a failure of the stream itself (wrong content, a disk error) is
+// final.
+func (c *Client) streamChunk(ctx context.Context, stream *domain.ChunkStream, job chunkTransfer) (int64, error) {
+	var n int64
+	err := c.retryTransfer(ctx, func() (retryHint, error) {
+		var (
+			hint retryHint
+			err  error
+		)
+		n, hint, err = c.streamChunkOnce(ctx, stream, job)
+		return hint, err
+	})
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (c *Client) streamChunkOnce(ctx context.Context, stream *domain.ChunkStream, job chunkTransfer) (n int64, hint retryHint, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.download.get",
 		attribute.String(obs.AttrChunkHash, job.hash.String()))
 	defer func() { obs.FinishSpan(span, err) }()
 
+	res, hint, err := c.openChunk(ctx, span, job)
+	if err != nil {
+		return 0, hint, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	limit := chunker.MaxChunkSize()
+	body := &countingReader{r: io.LimitReader(res.Body, limit+1)}
+	writeErr := stream.Write(job.hash, body)
+	span.SetAttributes(attribute.Int64(obs.AttrChunkSize, body.n))
+	switch {
+	case body.n > limit:
+		return 0, retryHint{}, oversizedChunkError(job.hash, limit)
+	case body.err != nil:
+		// The transfer broke, whatever the stream made of the partial body.
+		return 0, retryHint{retryable: ctx.Err() == nil}, body.err
+	case writeErr != nil:
+		return 0, retryHint{}, writeErr
+	}
+	return body.n, retryHint{}, nil
+}
+
+// countingReader counts the bytes read and keeps the first read error other
+// than EOF, which tells a broken transfer from a failure of the consumer.
+type countingReader struct {
+	r   io.Reader
+	n   int64
+	err error
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	r.n += int64(n)
+	if err != nil && !errors.Is(err, io.EOF) && r.err == nil {
+		r.err = err
+	}
+	return n, err
+}
+
+// openChunk sends the GET for one chunk and returns the response once it is a
+// 200 whose declared length fits a chunk. The caller closes the body.
+func (c *Client) openChunk(ctx context.Context, span trace.Span, job chunkTransfer) (*http.Response, retryHint, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
 	if err != nil {
 		return nil, retryHint{}, err
@@ -423,18 +494,36 @@ func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte
 	if err != nil {
 		return nil, retryHint{retryable: ctx.Err() == nil}, err
 	}
-	defer func() { _ = res.Body.Close() }()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
+	fail := func(hint retryHint, err error) (*http.Response, retryHint, error) {
+		_ = res.Body.Close()
+		return nil, hint, err
+	}
 	if refused, ok := httpMaintenanceError(res); ok {
-		return nil, retryHint{}, refused
+		return fail(retryHint{}, refused)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, httpRetryHint(res), chunkHTTPError(res)
+		return fail(httpRetryHint(res), chunkHTTPError(res))
 	}
+	if res.ContentLength > chunker.MaxChunkSize() {
+		return fail(retryHint{}, oversizedChunkError(job.hash, chunker.MaxChunkSize()))
+	}
+	return res, retryHint{}, nil
+}
+
+// fetchChunk downloads one chunk once; the hint says whether trying again
+// could succeed. A cancelled context never is.
+func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte, hint retryHint, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.download.get",
+		attribute.String(obs.AttrChunkHash, job.hash.String()))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	res, hint, err := c.openChunk(ctx, span, job)
+	if err != nil {
+		return nil, hint, err
+	}
+	defer func() { _ = res.Body.Close() }()
 	limit := chunker.MaxChunkSize()
-	if res.ContentLength > limit {
-		return nil, retryHint{}, oversizedChunkError(job.hash, limit)
-	}
 	data, err = readChunkBody(res.Body, res.ContentLength, limit)
 	if errors.Is(err, errChunkTooLarge) {
 		return nil, retryHint{}, oversizedChunkError(job.hash, limit)

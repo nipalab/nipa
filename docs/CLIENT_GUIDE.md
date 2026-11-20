@@ -81,7 +81,11 @@ branch, and records the new head locally. `-m` is required. `--dry-run`
 reports the file changes and upload estimate without contacting the server.
 
 `nipa update` fetches and applies the current branch (or, while detached at a
-tag, re-syncs that tag), materializing only changed files.
+tag, re-syncs that tag), materializing only changed files. It refuses to run,
+before changing anything, when a file it would replace has local changes (an
+edited tracked file, or an untracked file where a new one arrives) and lists
+them; push, shelve or `nipa restore` them first, or pass `--force` to
+overwrite them. Local edits to files the update does not touch never block it.
 
 ## Working-copy commands
 
@@ -135,8 +139,9 @@ server.
 ### `nipa switch <branch>` / `nipa switch --tag <name>`
 
 Materializes another branch (or release tag) in the working copy and updates the
-local configuration. Switching is refused while changes are staged. Switching to
-a branch clears any detached-tag marker.
+local configuration. Switching is refused while changes are staged, and, like
+`nipa update`, when a file it would replace has local changes (`--force`
+overwrites those). Switching to a branch clears any detached-tag marker.
 
 `nipa switch --tag v1.0.0` checks out the tagged commit in a **detached** state:
 the configured branch stays, `nipa update` re-syncs the tag, `nipa log`,
@@ -572,6 +577,7 @@ subdirectory.
 | --- | --- |
 | `not a nipa repository (or any of the parent directories)` | Run the command inside a clone. |
 | A command unexpectedly prompts for credentials | No stored session for that host. Log in once with `nipa login --host <url>`, or set `NIPA_TOKEN_FILE` in headless environments. |
+| `local changes to N file(s) would be overwritten` on update or switch | The listed files have unpushed edits (or are untracked files in the way). Push or `nipa shelve` them, `nipa restore` them, or repeat with `--force` to discard them. |
 | `changes are staged` when switching | Push the staged changes or unstage them (`nipa remove -a`) before `nipa switch`. |
 | `binary file ... requires a lock` | `nipa lock <path>` (or cover it with a directory lock) before pushing. |
 | `... is locked by <holder>` | Someone else's lock covers the path; ask them to unlock or use another path. |

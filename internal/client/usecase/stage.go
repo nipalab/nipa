@@ -753,17 +753,7 @@ func stageTrackedTarget(snapshot *domain.Snapshot, target string, add func(strin
 }
 
 func (w *WorkingCopy) workingFileHash(path, encoding string) (serverDomain.Hash, error) {
-	f, err := os.Open(filepath.Join(w.root, filepath.FromSlash(path)))
-	if err != nil {
-		return serverDomain.Hash{}, err
-	}
-	defer func() { _ = f.Close() }()
-	isBinary, err := chunker.ProbeBinary(f)
-	if err != nil {
-		return serverDomain.Hash{}, err
-	}
-	hash, _, _, err := chunkReader(f, path, isBinary, storedEncoding(encoding))
-	return hash, err
+	return hashWorkingPath(w.root, path, encoding)
 }
 
 // storedEncoding maps a missing stored encoding to raw so files tracked before

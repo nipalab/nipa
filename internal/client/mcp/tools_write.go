@@ -41,12 +41,12 @@ func addWriteTools(srv *mcp.Server, s *server) {
 	if s.allowed(CapSync) {
 		mcp.AddTool(srv, &mcp.Tool{
 			Name:        "nipa_update",
-			Description: "Bring the working copy up to date with the server head of its branch (or re-sync the pinned tag while detached).",
+			Description: "Bring the working copy up to date with the server head of its branch (or re-sync the pinned tag while detached). Refuses, before changing anything, when a file it would replace has local changes; pass force to discard them.",
 			Annotations: destructive(),
 		}, s.update)
 		mcp.AddTool(srv, &mcp.Tool{
 			Name:        "nipa_switch",
-			Description: "Switch the working copy to another branch, or detach it at a release tag.",
+			Description: "Switch the working copy to another branch, or detach it at a release tag. Refuses, before changing anything, when a file it would replace has local changes; pass force to discard them.",
 			Annotations: destructive(),
 		}, s.switchTo)
 	}
@@ -194,7 +194,8 @@ func (s *server) push(ctx context.Context, req *mcp.CallToolRequest, in pushInpu
 }
 
 type updateInput struct {
-	Repo string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Repo  string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Force bool   `json:"force,omitempty" jsonschema:"Overwrite locally changed files the update replaces instead of refusing; their local changes are lost"`
 }
 
 func (s *server) update(ctx context.Context, _ *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, headOutput, error) {
@@ -209,7 +210,7 @@ func (s *server) update(ctx context.Context, _ *mcp.CallToolRequest, in updateIn
 	if uc.Update == nil {
 		return nil, zero, notConfigured("update is")
 	}
-	if err := uc.Update.Run(ctx, root); err != nil {
+	if err := uc.Update.WithForce(in.Force).Run(ctx, root); err != nil {
 		return nil, zero, toolError(err)
 	}
 	return nil, currentHead(root), nil
@@ -219,6 +220,7 @@ type switchInput struct {
 	Repo   string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
 	Branch string `json:"branch,omitempty" jsonschema:"Branch to switch to"`
 	Tag    string `json:"tag,omitempty" jsonschema:"Release tag to detach at (instead of a branch)"`
+	Force  bool   `json:"force,omitempty" jsonschema:"Overwrite locally changed files the switch replaces instead of refusing; their local changes are lost"`
 }
 
 func (s *server) switchTo(ctx context.Context, _ *mcp.CallToolRequest, in switchInput) (*mcp.CallToolResult, headOutput, error) {
@@ -238,9 +240,9 @@ func (s *server) switchTo(ctx context.Context, _ *mcp.CallToolRequest, in switch
 		return nil, zero, notConfigured("switch is")
 	}
 	if tag != "" {
-		err = uc.Update.SwitchTag(ctx, root, tag)
+		err = uc.Update.WithForce(in.Force).SwitchTag(ctx, root, tag)
 	} else {
-		err = uc.Update.Switch(ctx, root, branch)
+		err = uc.Update.WithForce(in.Force).Switch(ctx, root, branch)
 	}
 	if err != nil {
 		return nil, zero, toolError(err)
