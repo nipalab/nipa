@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
@@ -20,11 +19,7 @@ import (
 
 func newAuditTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	require.NoError(t, database.MigrateUp(db, "sqlite3"))
-	return db
+	return dbtest.SQLite(t)
 }
 
 func auditEntry(id int64, action string, at time.Time) domain.AuditEntry {

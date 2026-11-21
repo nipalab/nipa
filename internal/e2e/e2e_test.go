@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 	_ "modernc.org/sqlite"
 
-	"github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
@@ -216,11 +216,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = database.Close() })
-	require.NoError(t, db.MigrateUp(database, "sqlite3"))
-	return database
+	return dbtest.SQLite(t)
 }
 
 func snapshotOf(t *testing.T, target string) *domain.Snapshot {

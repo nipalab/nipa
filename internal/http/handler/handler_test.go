@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
@@ -202,11 +202,8 @@ type handlerTestEnv struct {
 func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	t.Helper()
 
-	dbConn, err := database.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, dbConn.Close()) })
+	dbConn := dbtest.SQLite(t)
 	dbConn.SetMaxOpenConns(1)
-	require.NoError(t, database.MigrateUp(dbConn, "sqlite3"))
 
 	q := sqlcSqlite.New(dbConn)
 	userID, err := q.UserCreate(context.Background(), sqlcSqlite.UserCreateParams{
