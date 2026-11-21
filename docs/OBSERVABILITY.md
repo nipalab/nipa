@@ -144,6 +144,8 @@ with the standard Go/process/build-info collectors and:
 | `nipa_chunk_ops_total` | counter | `op=put\|upload\|get\|confirm\|presign_upload\|presign_download`, `result` | `usecase.Chunk` (single source for REST and gRPC) |
 | `nipa_chunk_bytes_total` | counter | `op=put\|upload\|get\|confirm` | same |
 | `nipa_chunk_verify_failures_total` | counter | `stage=store\|confirm\|download` | `usecase.Chunk` verification paths |
+| `nipa_chunk_gc_chunks_total` | counter | `phase=marked\|adopted\|deleted\|dry_run` | `ee/chunkgc.Collector` (`nipad-ee`; dry_run = would delete) |
+| `nipa_chunk_gc_bytes_total` | counter | `phase=marked\|adopted\|deleted\|dry_run` | stored bytes of the same chunks |
 | `nipa_push_total` | counter | `result=ok\|error` | `usecase.Push.Push` |
 | `nipa_webhook_deliveries_total` | counter | `result=delivered\|retry\|failed` | `internal/webhook/dispatcher.go` |
 | `nipa_webhook_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |

@@ -30,7 +30,7 @@ func (q *Queries) BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommit
 }
 
 const chunkGetByHash = `-- name: ChunkGetByHash :one
-SELECT id, hash, size_bytes, created_at
+SELECT id, hash, size_bytes, created_at, gc_marked_at
 FROM chunks
 WHERE hash = $1
 LIMIT 1
@@ -44,6 +44,7 @@ func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error
 		&i.Hash,
 		&i.SizeBytes,
 		&i.CreatedAt,
+		&i.GcMarkedAt,
 	)
 	return i, err
 }

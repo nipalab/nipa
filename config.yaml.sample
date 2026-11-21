@@ -143,6 +143,18 @@ STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 16106127360
 STORAGE_PURGE_RETENTION_DAYS: 30
 # Commits removed per purge transaction (default 100).
 STORAGE_PURGE_BATCH_SIZE: 100
+# Chunk garbage collector (`nipad-ee` only): deletes chunk content no commit,
+# upload or ledger link references (purged projects, quota-rejected and
+# abandoned uploads). `off`, `dry-run` (default: marks and reports what it
+# would delete, deletes nothing) or `on`. Own-storage buckets are never
+# touched. Watch nipa_chunk_gc_*{phase="dry_run"} before switching to `on`.
+CHUNK_GC_MODE: dry-run
+# Hours a chunk stays marked as garbage before it is deleted (default 24;
+# must be at least twice CHUNK_PRESIGN_TTL_SECONDS).
+CHUNK_GC_GRACE_HOURS: 24
+# List the bucket for objects without a chunks row (uploads never confirmed)
+# and collect them too (default true).
+CHUNK_GC_ORPHAN_SCAN: true
 # Comma-separated hostnames, IPs or CIDR ranges webhooks may reach in addition
 # to public addresses (always allowed); loopback/private targets need an entry.
 WEBHOOK_EGRESS_ALLOWLIST: ''

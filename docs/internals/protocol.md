@@ -290,6 +290,26 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `TestIntegration_S3CreateOnlyUploads` verifies it against a real backend when
   the `NIPA_S3_TEST_*` variables are set (R2: endpoint
   `https://<account>.r2.cloudflarestorage.com`, region `auto`).
+- **Chunk GC seam (`usecase.ChunkGCGuard`).** `Chunk.WithGCGuard` (nil in the
+  free server; `UsecaseDeps.ChunkGCGuard`, set by `nipad-ee` unless
+  `CHUNK_GC_MODE=off`) runs `Protect(hashes)` at the start of
+  `ConfirmChunkUploads` (the whole batch) and in the server-side `upload`
+  (merge output) before `Exists`. The ee guard (`ee/chunkgc.Guard`) clears
+  `chunks.gc_marked_at`; that update waits for a sweep holding the row, so
+  content a sweep removed reads as missing and the client re-uploads it (the
+  three-attempt retry above) instead of a row and link being recorded for gone
+  content. Every link write (`LinkProjectChunk(s)`) happens after one of those
+  two calls. The collector itself (`ee/chunkgc.Collector`, every 6 h, one
+  instance via `pg_try_advisory_lock`): mark unreferenced chunks (no
+  `file_chunks`, `project_chunk_uploads` or `project_chunks` row) in id ranges;
+  adopt bucket objects older than the grace that have no `chunks` row
+  (`s3.Store.ListChunks`, `CHUNK_GC_ORPHAN_SCAN`) as marked rows; sweep rows
+  marked longer than `CHUNK_GC_GRACE_HOURS` (`FOR UPDATE SKIP LOCKED`, 100 per
+  transaction: delete the objects, then the rows; a failed object delete rolls
+  the batch back). `CHUNK_GC_MODE=dry-run` (default) marks and reports
+  (`nipa_chunk_gc_*{phase="dry_run"}`) but deletes and adopts nothing.
+  Own-storage (BYO) buckets are never touched. Plan and race analysis:
+  `docs/plans/STORAGE_RECLAIM.md`.
 - **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):

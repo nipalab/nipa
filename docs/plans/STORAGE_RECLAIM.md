@@ -1,7 +1,7 @@
 # Storage reclaim plan (enterprise)
 
 Plan for letting a billing owner get storage back. Written 2026-11-21.
-Phases 1 and 2 are implemented; phase 3 is not started.
+All three phases are implemented.
 
 ## Today
 
@@ -106,35 +106,54 @@ Findings that shaped it:
 Not done: org delete (no org delete exists yet; when added, it should
 soft-delete and let this purge remove the projects).
 
-## Phase 3: chunk GC (physical reclaim)
+## Phase 3: chunk GC (physical reclaim) (implemented)
 
 Goal: S3 objects nobody references are deleted.
 
-- A chunk is garbage when no `file_chunks` row and no `project_chunk_uploads`
-  row references it (and no `project_chunks` link, which follows from the
-  first two after phases 1 and 2).
-- The race: between presign and confirm, a client is told a chunk is
-  "already stored" (`AlreadyStored`) and skips the upload; if the GC deletes
-  it in that window, the confirm records a chunk with no content. Plan:
-  - Add `chunks.gc_marked_at TIMESTAMPTZ NULL`.
-  - Mark pass: set `gc_marked_at = now()` on unreferenced chunks.
-  - Presign and confirm clear `gc_marked_at` for every hash they hand out or
-    record (one batched update), so a chunk in use is un-marked.
-  - Sweep pass: delete rows still marked after a grace period longer than the
-    presign TTL plus the confirm window (e.g. 24h), then the S3 object.
-    Delete the row first; an orphaned object without a row is harmless and
-    the next run's S3 listing pass removes it.
-- Orphan objects: an optional listing pass over the bucket deletes objects
-  without a `chunks` row that are older than the grace period (covers rejected
-  uploads and crashes between row and object delete).
-- BYO storage (`project_storage`): those objects live in the customer's
-  bucket. The GC only deletes there with the server's stored credentials and
-  only objects that the project's own references no longer need; first
-  version skips BYO buckets and documents it.
-- Runs as the same leader-elected ee worker as the purge, batched, with
-  metrics (`nipa_gc_chunks_deleted_total`, bytes) and a dry-run mode.
-- The free server: local chunk store GC can reuse the same mark/sweep
-  queries on sqlite later; not in scope.
+What was built (`ee/chunkgc`, seam `usecase.ChunkGCGuard`; details in
+`docs/internals/protocol.md`):
+
+- Migration `000018_chunk_gc` (postgres): `chunks.gc_marked_at` plus indexes on
+  `project_chunk_uploads(hash)` and `project_chunks(chunk_id)` so the
+  "is anything referencing this chunk" checks are index lookups.
+- A chunk is garbage when no `file_chunks`, `project_chunk_uploads` or
+  `project_chunks` (ledger) row references it.
+- Collector, every 6 hours, one instance at a time (advisory lock):
+  mark (id ranges), adopt orphan objects older than the grace as marked rows
+  (bucket listing, `CHUNK_GC_ORPHAN_SCAN`), sweep rows marked longer than
+  `CHUNK_GC_GRACE_HOURS` (objects first, then rows, under `FOR UPDATE SKIP
+  LOCKED`).
+- `CHUNK_GC_MODE`: `off`, `dry-run` (default: marks and reports, deletes and
+  adopts nothing) or `on`. Metrics `nipa_chunk_gc_chunks_total` /
+  `nipa_chunk_gc_bytes_total` by phase.
+- BYO buckets are never touched.
+
+The race and how it is closed:
+
+- "Already stored" (no upload) is only answered for chunks the project is
+  linked to, and a linked chunk is never garbage. Otherwise the client proves
+  possession and confirm reads the object back. The danger is confirm reading
+  an object, a sweep deleting it, and confirm recording a row and link for
+  gone content.
+- Confirm (whole batch) and the server's own uploads call `Protect` first,
+  which clears the mark with an `UPDATE` that waits for a sweep holding the
+  row. After a sweep commits the row is gone, the object read fails, the chunk
+  is reported missing, and the client presigns and uploads it again (it
+  already retries three times). After `Protect` commits, the sweep no longer
+  selects the row. Every link write happens after one of those calls.
+- Objects without a row (never-confirmed uploads) cannot be row-locked; the
+  grace covers them: only objects older than the grace are adopted, and an
+  adopted row is only swept once its mark is older than the grace, which
+  startup checks is at least twice the presign TTL.
+- Covered by `TestGuardWaitsForAnInFlightSweep` and the e2e
+  `TestEnterpriseChunkGCReclaimsPurgedContent`.
+
+Known limits:
+
+- A chunk referenced only by an own-storage project keeps its object in the
+  Nipa bucket if one exists there (rare: the same content stored by a Nipa
+  project that was later purged). Leaks storage, never loses data.
+- The free server's local chunk store has no collector.
 
 ## Later, maybe
 

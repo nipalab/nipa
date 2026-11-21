@@ -177,6 +177,7 @@ type serverOptions struct {
 	seatGate       serverusecase.SeatGate
 	chunkStores    serverusecase.ChunkStores
 	projectStorage serverusecase.ProjectStorageAssigner
+	gcGuard        serverusecase.ChunkGCGuard
 	rest           func(reg *serverapp.Registry) http.Handler
 	// integrations turns the issue tracker integration on, with remote links
 	// pointing at https://nipa.example and trackers allowed on loopback.
@@ -222,6 +223,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	}
 	deps.ChunkStores = opts.chunkStores
 	deps.ProjectStorage = opts.projectStorage
+	deps.ChunkGCGuard = opts.gcGuard
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),

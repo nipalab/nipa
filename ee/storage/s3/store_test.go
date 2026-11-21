@@ -3,12 +3,14 @@ package s3
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,11 +40,13 @@ type fakeS3 struct {
 	wantLength        atomic.Int64
 	failDelete        atomic.Bool
 	corruptGet        atomic.Bool
+	failList          atomic.Bool
+	listTime          time.Time
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *httptest.Server) {
 	t.Helper()
-	fake := &fakeS3{buckets: map[string]map[string][]byte{"test-bucket": {}}}
+	fake := &fakeS3{buckets: map[string]map[string][]byte{"test-bucket": {}}, listTime: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)}
 	server := httptest.NewServer(http.HandlerFunc(fake.serveHTTP))
 	t.Cleanup(server.Close)
 	return fake, server
@@ -158,6 +162,10 @@ func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bo
 		_, _ = io.WriteString(w, `<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">us-east-1</LocationConstraint>`)
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2" {
+		f.serveList(w, r, bucketOK)
+		return
+	}
 	if r.Method != http.MethodHead {
 		writeS3Error(w, http.StatusMethodNotAllowed, "MethodNotAllowed")
 		return
@@ -167,6 +175,40 @@ func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bo
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// serveList answers ListObjectsV2 in one page, keys sorted.
+func (f *fakeS3) serveList(w http.ResponseWriter, r *http.Request, bucketOK bool) {
+	if !bucketOK {
+		writeS3Error(w, http.StatusNotFound, "NoSuchBucket")
+		return
+	}
+	if f.failList.Load() {
+		writeS3Error(w, http.StatusForbidden, "AccessDenied")
+		return
+	}
+	prefix := r.URL.Query().Get("prefix")
+	f.mu.Lock()
+	var keys []string
+	sizes := map[string]int{}
+	for key, data := range f.buckets["test-bucket"] {
+		if strings.HasPrefix(key, prefix) {
+			keys = append(keys, key)
+			sizes[key] = len(data)
+		}
+	}
+	f.mu.Unlock()
+	sort.Strings(keys)
+	var body strings.Builder
+	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>test-bucket</Name>`)
+	fmt.Fprintf(&body, "<Prefix>%s</Prefix><KeyCount>%d</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>", prefix, len(keys))
+	for _, key := range keys {
+		fmt.Fprintf(&body, "<Contents><Key>%s</Key><LastModified>%s</LastModified><ETag>&quot;e&quot;</ETag><Size>%d</Size><StorageClass>STANDARD</StorageClass></Contents>",
+			key, f.listTime.UTC().Format("2006-01-02T15:04:05.000Z"), sizes[key])
+	}
+	body.WriteString("</ListBucketResult>")
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = io.WriteString(w, body.String())
 }
 
 func writeS3Error(w http.ResponseWriter, status int, code string) {
@@ -705,4 +747,51 @@ func newIntegrationStore(t *testing.T) *Store {
 func TestIntegration_S3Probe(t *testing.T) {
 	store := newIntegrationStore(t)
 	require.NoError(t, store.Probe(context.Background()))
+}
+
+func TestStore_ListChunks(t *testing.T) {
+	fake, server := newFakeS3(t)
+	cfg := testConfig(server)
+	cfg.Prefix = "tenant"
+	store, err := New(context.Background(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+
+	a, b := []byte("first chunk"), []byte("second chunk, longer")
+	require.NoError(t, store.Put(ctx, chunker.Sum(a), a))
+	require.NoError(t, store.Put(ctx, chunker.Sum(b), b))
+	fake.mu.Lock()
+	fake.buckets["test-bucket"]["tenant/probe.txt"] = []byte("not a chunk")
+	fake.buckets["test-bucket"]["tenant/zz/not-hex"] = []byte("x")
+	fake.buckets["test-bucket"]["other/ab/cd"] = []byte("outside the prefix")
+	fake.mu.Unlock()
+
+	found := map[domain.Hash]StoredChunk{}
+	require.NoError(t, store.ListChunks(ctx, func(chunk StoredChunk) error {
+		found[chunk.Hash] = chunk
+		return nil
+	}))
+	require.Len(t, found, 2)
+	require.Equal(t, int64(len(a)), found[chunker.Sum(a)].SizeBytes)
+	require.Equal(t, int64(len(b)), found[chunker.Sum(b)].SizeBytes)
+	require.Equal(t, fake.listTime, found[chunker.Sum(a)].LastModified.UTC())
+
+	stop := errors.New("stop")
+	require.ErrorIs(t, store.ListChunks(ctx, func(StoredChunk) error { return stop }), stop)
+
+	fake.failList.Store(true)
+	require.Error(t, store.ListChunks(ctx, func(StoredChunk) error { return nil }))
+}
+
+func TestParseChunkKey(t *testing.T) {
+	hash := chunker.Sum([]byte("k"))
+	hex := hash.String()
+	got, ok := parseChunkKey(hex[:2] + "/" + hex[2:])
+	require.True(t, ok)
+	require.Equal(t, hash, got)
+	for _, key := range []string{"", "ab", "abc/" + hex[2:], hex[:2] + "/x/" + hex[2:], hex[:2] + "/zz"} {
+		_, ok := parseChunkKey(key)
+		require.False(t, ok, key)
+	}
 }

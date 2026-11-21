@@ -64,6 +64,11 @@ func TestMetrics_ObserveChunkPushMail(t *testing.T) {
 	require.Equal(t, 1.0, testutil.ToFloat64(m.chunkOps.WithLabelValues("get", "error")))
 	require.Equal(t, 4096.0, testutil.ToFloat64(m.chunkBytes.WithLabelValues("put")))
 	require.Equal(t, 1.0, testutil.ToFloat64(m.chunkVerifyFailures.WithLabelValues("store")))
+	m.ObserveChunkGC("deleted", 3, 300)
+	require.Equal(t, 3.0, testutil.ToFloat64(m.chunkGCChunks.WithLabelValues("deleted")))
+	require.Equal(t, 300.0, testutil.ToFloat64(m.chunkGCBytes.WithLabelValues("deleted")))
+	var nilMetrics *Metrics
+	nilMetrics.ObserveChunkGC("deleted", 1, 1)
 	require.Equal(t, 1.0, testutil.ToFloat64(m.push.WithLabelValues("ok")))
 	require.Equal(t, 1.0, testutil.ToFloat64(m.webhookDeliveries.WithLabelValues("retry")))
 	require.Equal(t, 1.0, testutil.ToFloat64(m.mailDeliveries.WithLabelValues("delivered")))

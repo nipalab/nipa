@@ -218,6 +218,13 @@ func main() {
 	byoSetup.entitle(billingSetup)
 	byoSetup.wire(&deps)
 	deps.ProjectRestoreWindow = purgeRetention(cfg)
+	gcMode, gcGrace, err := chunkGCSetup(cfg)
+	if err != nil {
+		panic(fmt.Errorf("chunk gc: %w", err))
+	}
+	if guard := newChunkGCGuard(gcMode, dbConn); guard != nil {
+		deps.ChunkGCGuard = guard
+	}
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),
@@ -265,6 +272,13 @@ func main() {
 	}
 	if purgeJob != nil {
 		dispatchers = append(dispatchers, purgeJob)
+	}
+	gcJob, err := newChunkGCJob(cfg, gcMode, gcGrace, dbConn, chunkStore, metrics)
+	if err != nil {
+		panic(fmt.Errorf("chunk gc: %w", err))
+	}
+	if gcJob != nil {
+		dispatchers = append(dispatchers, gcJob)
 	}
 	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies), serverapp.WithMaintenance(maintenanceService, maintenancePoller)}
 	if storageLedger != nil {
