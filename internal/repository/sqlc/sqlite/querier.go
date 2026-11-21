@@ -79,6 +79,7 @@ type Querier interface {
 	FileLockRequestUpdate(ctx context.Context, arg FileLockRequestUpdateParams) (int64, error)
 	FileLockSetExpiry(ctx context.Context, arg FileLockSetExpiryParams) (int64, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
+	GetDeletedProjectByOrgIDAndID(ctx context.Context, arg GetDeletedProjectByOrgIDAndIDParams) (Project, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
@@ -117,6 +118,7 @@ type Querier interface {
 	IssueTrackerGetByID(ctx context.Context, id int64) (IssueTracker, error)
 	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
 	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
+	ListDeletedProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
@@ -231,6 +233,7 @@ type Querier interface {
 	RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
+	RestoreProject(ctx context.Context, arg RestoreProjectParams) (int64, error)
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

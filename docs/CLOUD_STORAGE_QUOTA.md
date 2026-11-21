@@ -185,8 +185,13 @@ project_usage := 0; org_usage -= used
   `SetOrgUsageFromProjects` filter `deleted = false`, and
   `ListUnbilledProjectIDsByOrg` (deleted or BYO) drops links and zeroes usage.
   `OrgStorage` lists a deleted project with `deleted: true` and 0 bytes.
-- There is no project restore and no org delete yet; both are part of phase 2
-  of `docs/plans/STORAGE_RECLAIM.md`.
+- Restore (`Project.Restore`) calls `RestoreProject` in the same transaction:
+  under the owner lock it rebuilds the project's links from its history
+  (`RebuildProjectChunks`), adds the difference to the counters and fails
+  with 402, changing nothing, when the bytes no longer fit. Own-storage
+  projects are never charged. After the retention
+  (`STORAGE_PURGE_RETENTION_DAYS`) `nipad-ee` purges the project for good; see
+  `docs/plans/STORAGE_RECLAIM.md`. There is no org delete yet.
 
 ## Buying additional storage
 

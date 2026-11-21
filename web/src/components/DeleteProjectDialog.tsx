@@ -35,8 +35,9 @@ function Body({
       }}
     >
       <Text as="p">
-        This deletes the repository <strong>{project.name}</strong> and makes it inaccessible. The slug{' '}
-        <Mono>{project.slug}</Mono> cannot be reused after deletion.
+        This deletes the repository <strong>{project.name}</strong> and makes it inaccessible. An organization owner
+        can restore it from the organization settings until it is purged; until then the slug{' '}
+        <Mono>{project.slug}</Mono> stays reserved.
       </Text>
       <FormControl required>
         <FormControl.Label>

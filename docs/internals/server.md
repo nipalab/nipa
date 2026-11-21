@@ -214,6 +214,40 @@ forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
 auto-derive it until the user edits it, and surface a taken slug (409,
 `ApiError.status`) at the slug field.
 
+Flow for project deletion, restore and purge (plan and findings in
+`docs/plans/STORAGE_RECLAIM.md`): `Project.Delete` soft-deletes
+(`projects.deleted`/`deleted_at`) and, with a storage ledger, calls
+`ReleaseProject` in the same audited write. `UNIQUE(org_id, slug)` has no
+`deleted` filter, so a deleted project keeps its slug until it is purged and a
+restore never clashes. `GET /api/v1/orgs/{org}/deleted-projects` and `POST
+/api/v1/orgs/{org}/deleted-projects/{id}/restore` (org owner or global admin;
+by id because the slug is not resolvable while deleted) go through
+`Project.ListDeleted`/`Project.Restore`. Both honour `WithRestoreWindow`
+(`UsecaseDeps.ProjectRestoreWindow`, set by `nipad-ee` to
+`STORAGE_PURGE_RETENTION_DAYS`; zero in the free `nipad`, which never purges):
+`ProjectRepository.Restore(id, deletedSince)` is one `UPDATE ... WHERE deleted
+AND deleted_at >= deletedSince`, so a restore and the purge agree on the same
+cutoff. Restore then calls `StorageLedger.RestoreProject` (402 when the
+history no longer fits) and audits `project.restored`. `ee/projectpurge`
+(`Job`, hourly, first run a minute after start, paused while frozen) purges up
+to 50 projects per run deleted before `now - retention`, each step in its own
+transaction that re-locks the project row (`LockPurgeableProject ... FOR
+UPDATE`, still deleted and past the cutoff) so a restore wins cleanly and two
+instances serialize: file locks, merge requests (cascading checks, reviews,
+threads, events), tags and branches; detach commit parents in batches; delete
+commits in batches of `STORAGE_PURGE_BATCH_SIZE` with their root trees (each
+commit owns its root, whose delete cascades to subtrees, files and
+`file_chunks`); `project_chunk_uploads` and `project_chunks` in batches;
+`ReleaseProject` (for projects deleted before deletes released); finally the
+project row (cascading the rest) with the `project.purged` audit entry. Tree
+reads resolve a bare (kept) directory node to the oldest content node with the
+same hash in any project, but every project also wrote its own content node
+for every hash it keeps, so purging one project only moves the lookup to the
+next copy (`TestPurgeExpired_RemovesTheProjectForGood`). Chunk rows and S3
+objects stay for the chunk GC (phase 3). Postgres `000017_project_purge` adds
+the indexes the commit deletes need (every foreign key into `commits(id)`,
+`commits(project_id)`).
+
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 `nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
 resolves the scope from the branch — the default branch is a project-global lock

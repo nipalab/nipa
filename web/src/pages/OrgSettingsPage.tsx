@@ -25,6 +25,7 @@ import {
   SearchIcon,
   ShieldIcon,
   ToolsIcon,
+  TrashIcon,
 } from '@primer/octicons-react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
@@ -49,6 +50,7 @@ import { OrgNav } from '../components/OrgNav'
 import { PickedSubject } from '../components/PickedSubject'
 import { SettingsLayout, type SettingsNavItem } from '../components/SettingsLayout'
 import StorageCard from '../components/StorageCard'
+import { DeletedProjectsCard } from '../components/DeletedProjectsCard'
 import { OrgDefaultStorageCard } from '../components/storage/OrgDefaultStorageCard'
 import { useByoStorage } from '../components/storage/storage'
 import { UserGroupPicker, type PickerEntry } from '../components/UserGroupPicker'
@@ -56,11 +58,16 @@ import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../compone
 import { useAction, useAsync } from '../hooks'
 import { useOrgMembers, useOrgRole } from '../orgHooks'
 
-type OrgTab = 'members' | 'groups' | 'storage' | 'issues' | 'maintenance'
+type OrgTab = 'members' | 'groups' | 'storage' | 'deleted' | 'issues' | 'maintenance'
 
 function isOrgTab(value: string | null): value is OrgTab {
   return (
-    value === 'members' || value === 'groups' || value === 'storage' || value === 'issues' || value === 'maintenance'
+    value === 'members' ||
+    value === 'groups' ||
+    value === 'storage' ||
+    value === 'deleted' ||
+    value === 'issues' ||
+    value === 'maintenance'
   )
 }
 
@@ -84,6 +91,7 @@ export default function OrgSettingsPage() {
     { key: 'members', label: 'Members', to: base, icon: PersonIcon },
     { key: 'groups', label: 'Groups', to: `${base}?tab=groups`, icon: PeopleIcon },
     { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: !hasStorage },
+    { key: 'deleted', label: 'Deleted projects', to: `${base}?tab=deleted`, icon: TrashIcon },
     { key: 'issues', label: 'Issue tracker', to: `${base}?tab=issues`, icon: IssueOpenedIcon },
     { key: 'maintenance', label: 'Maintenance', to: `${base}?tab=maintenance`, icon: ToolsIcon, hidden: !canMaintain },
   ]
@@ -109,6 +117,7 @@ export default function OrgSettingsPage() {
             {storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
           </Stack>
         )}
+        {tab === 'deleted' && <DeletedProjectsCard org={org} onRestored={reloadStorage} />}
         {tab === 'issues' && <OrgIssueTrackerSettings org={org} />}
         {tab === 'maintenance' && <OrgMaintenanceTab org={org} />}
       </SettingsLayout>

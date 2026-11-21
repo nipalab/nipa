@@ -113,3 +113,18 @@ func (mr *MockStorageLedgerMockRecorder) ReleaseProject(ctx, projectID any) *gom
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseProject", reflect.TypeOf((*MockStorageLedger)(nil).ReleaseProject), ctx, projectID)
 }
+
+// RestoreProject mocks base method.
+func (m *MockStorageLedger) RestoreProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreProject", ctx, projectID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RestoreProject indicates an expected call of RestoreProject.
+func (mr *MockStorageLedgerMockRecorder) RestoreProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreProject", reflect.TypeOf((*MockStorageLedger)(nil).RestoreProject), ctx, projectID)
+}

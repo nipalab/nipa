@@ -298,6 +298,17 @@ func (q *Queries) InsertProjectChunks(ctx context.Context, arg InsertProjectChun
 	return items, nil
 }
 
+const isProjectExternal = `-- name: IsProjectExternal :one
+SELECT EXISTS (SELECT 1 FROM project_storage WHERE project_id = $1)::BOOLEAN AS external
+`
+
+func (q *Queries) IsProjectExternal(ctx context.Context, projectID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isProjectExternal, projectID)
+	var external bool
+	err := row.Scan(&external)
+	return external, err
+}
+
 const listOwnerOrgUsage = `-- name: ListOwnerOrgUsage :many
 SELECT o.id AS org_id, o.slug, o.name,
        COALESCE(u.used_bytes, 0)::BIGINT AS used_bytes

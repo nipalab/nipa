@@ -291,6 +291,81 @@ func (l *Ledger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, 
 	return released, nil
 }
 
+// RestoreProject charges a restored project's history back to the owner's
+// quota: under the owner lock it rebuilds the project's links from its commit
+// trees and adds the difference to the counters. When the bytes do not fit
+// the quota it returns the quota error and, rolled back with the caller's
+// transaction, records nothing. A project on its own storage server is never
+// charged. It returns the project's charged bytes.
+func (l *Ledger) RestoreProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	var charged int64
+	err := l.transactor.WithinTx(ctx, func(ctx context.Context) error {
+		orgID, err := l.queries.GetProjectOrgID(ctx, projectID.Int64())
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.NewErrorNotFound(fmt.Sprintf("project %s not found", projectID.Base36()))
+		}
+		if err != nil {
+			return dbError(err)
+		}
+		external, err := l.queries.IsProjectExternal(ctx, projectID.Int64())
+		if err != nil {
+			return dbError(err)
+		}
+		if external {
+			return nil
+		}
+		owner, quota, err := l.ownerQuota(ctx, snow.ID(orgID))
+		if err != nil {
+			return err
+		}
+		if err := l.queries.LockBillingOwner(ctx, owner.Int64()); err != nil {
+			return dbError(err)
+		}
+		if err := l.ensureLiveProject(ctx, projectID); err != nil {
+			return err
+		}
+		previous, err := l.queries.GetProjectUsageBytes(ctx, projectID.Int64())
+		if err != nil {
+			return dbError(err)
+		}
+		used, err := l.queries.GetOwnerUsage(ctx, owner.Int64())
+		if err != nil {
+			return dbError(err)
+		}
+		if err := l.queries.DeleteProjectChunks(ctx, projectID.Int64()); err != nil {
+			return dbError(err)
+		}
+		if err := l.queries.RebuildProjectChunks(ctx, projectID.Int64()); err != nil {
+			return dbError(err)
+		}
+		if err := l.queries.SetProjectUsage(ctx, projectID.Int64()); err != nil {
+			return dbError(err)
+		}
+		total, err := l.queries.GetProjectUsageBytes(ctx, projectID.Int64())
+		if err != nil {
+			return dbError(err)
+		}
+		delta := total - previous
+		if delta > 0 && quota > 0 && used+delta > quota {
+			return quotaExceeded(used, quota, delta, l.billingURL)
+		}
+		if delta != 0 {
+			if err := l.queries.AddOrgUsage(ctx, sqlcPostgres.AddOrgUsageParams{
+				OrgID: orgID,
+				Delta: delta,
+			}); err != nil {
+				return dbError(err)
+			}
+		}
+		charged = total
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return charged, nil
+}
+
 // ensureLiveProject rejects attribution to a deleted or unknown project.
 func (l *Ledger) ensureLiveProject(ctx context.Context, projectID snow.ID) error {
 	deleted, err := l.queries.GetProjectDeleted(ctx, projectID.Int64())

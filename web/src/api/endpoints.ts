@@ -46,6 +46,7 @@ import type {
   ProjectMemberResponse,
   ProjectPermissionResponse,
   ProjectResponse,
+  DeletedProjectResponse,
   RegisterResponse,
   SubmitReviewRequest,
   TagResponse,
@@ -240,6 +241,16 @@ export function updateProject(org: string, project: string, name: string, descri
 
 export function deleteProject(org: string, project: string): Promise<MessageResponse> {
   return apiJson(projectBase(org, project), { method: 'DELETE' })
+}
+
+export function listDeletedProjects(org: string): Promise<DeletedProjectResponse[]> {
+  return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/deleted-projects`)
+}
+
+export function restoreProject(org: string, id: string): Promise<ProjectResponse> {
+  return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/deleted-projects/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+  })
 }
 
 export function getTree(

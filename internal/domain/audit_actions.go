@@ -50,6 +50,8 @@ const (
 	AuditProjectCreated     = "project.created"
 	AuditProjectUpdated     = "project.updated"
 	AuditProjectDeleted     = "project.deleted"
+	AuditProjectRestored    = "project.restored"
+	AuditProjectPurged      = "project.purged"
 	AuditProjectGitImported = "project.git_imported"
 
 	AuditWebhookCreated       = "webhook.created"

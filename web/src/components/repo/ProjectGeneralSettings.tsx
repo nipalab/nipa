@@ -88,7 +88,7 @@ export function ProjectGeneralSettings({ org, project }: { org: string; project:
         <SettingsCard title="Danger zone">
           <SettingsRow
             label="Delete this repository"
-            subtext="The repository becomes inaccessible and its slug cannot be reused."
+            subtext="The repository becomes inaccessible. It can be restored from the organization settings until it is purged."
           >
             <Button variant="danger" onClick={() => setDeleting(current)}>
               Delete repository

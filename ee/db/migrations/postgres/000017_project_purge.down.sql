@@ -1,0 +1,15 @@
+DROP INDEX IF EXISTS idx_projects_deleted_at;
+DROP INDEX IF EXISTS idx_file_locks_merge_request;
+DROP INDEX IF EXISTS idx_merge_request_events_commit;
+DROP INDEX IF EXISTS idx_merge_request_threads_head_commit;
+DROP INDEX IF EXISTS idx_merge_request_threads_base_commit;
+DROP INDEX IF EXISTS idx_merge_request_reviews_head_commit;
+DROP INDEX IF EXISTS idx_merge_request_checks_head_commit;
+DROP INDEX IF EXISTS idx_merge_requests_merged_source_commit;
+DROP INDEX IF EXISTS idx_merge_requests_merge_base_commit;
+DROP INDEX IF EXISTS idx_merge_requests_merge_commit;
+DROP INDEX IF EXISTS idx_tags_commit_id;
+DROP INDEX IF EXISTS idx_branches_commit_id;
+DROP INDEX IF EXISTS idx_commits_parent_2;
+DROP INDEX IF EXISTS idx_commits_parent_1;
+DROP INDEX IF EXISTS idx_commits_project_id;

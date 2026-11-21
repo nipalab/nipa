@@ -182,3 +182,132 @@ func TestLedger_ReleaseProject_ErrorPaths(t *testing.T) {
 	_, err = ledger.ReleaseProject(ctx, snow.ID(1))
 	require.Equal(t, 500, errorCode(err), "org counter error")
 }
+
+func (s *ledgerSuite) restoreProjectRow(projectID snow.ID) {
+	s.T().Helper()
+	_, err := s.db.ExecContext(context.Background(),
+		`UPDATE projects SET deleted = false, deleted_at = NULL WHERE id = $1`, projectID.Int64())
+	s.Require().NoError(err)
+}
+
+// seedHistory gives the project one commit whose tree holds one file per
+// chunk, so RebuildProjectChunks finds them.
+func (s *ledgerSuite) seedHistory(projectID snow.ID, chunkIDs ...int64) {
+	s.T().Helper()
+	root := s.seedTreeNode(nil)
+	for _, id := range chunkIDs {
+		s.seedFile(root, id)
+	}
+	s.seedCommit(projectID, root)
+}
+
+func (s *ledgerSuite) TestRestoreProject_ChargesHistoryBack() {
+	ctx := context.Background()
+	ledger := NewLedger(s.db, Config{DefaultQuotaBytes: 1000})
+	org := &domain.Organization{ID: 1}
+	project := &domain.Project{ID: s.seedProject(org.ID)}
+	hashA, idA := s.seedChunk(100)
+	hashB, idB := s.seedChunk(50)
+	s.seedHistory(project.ID, idA, idB)
+	s.Require().NoError(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{
+		{Hash: hashA, SizeBytes: 100}, {Hash: hashB, SizeBytes: 50},
+	}))
+
+	s.softDeleteProject(project.ID)
+	_, err := ledger.ReleaseProject(ctx, project.ID)
+	s.Require().NoError(err)
+	s.Zero(s.orgUsed(org.ID))
+
+	s.restoreProjectRow(project.ID)
+	charged, err := ledger.RestoreProject(ctx, project.ID)
+	s.Require().NoError(err)
+	s.Equal(int64(150), charged)
+	s.Equal(int64(150), s.orgUsed(org.ID))
+	s.Equal(int64(150), s.projectUsed(project.ID))
+	s.Equal(2, s.linkCount(project.ID))
+
+	again, err := ledger.RestoreProject(ctx, project.ID)
+	s.Require().NoError(err)
+	s.Equal(int64(150), again, "a repeated charge reports the same bytes")
+	s.Equal(int64(150), s.orgUsed(org.ID), "and adds nothing")
+}
+
+func (s *ledgerSuite) TestRestoreProject_NeverReleasedIsNotDoubleCounted() {
+	ctx := context.Background()
+	org := &domain.Organization{ID: 1}
+	project := &domain.Project{ID: s.seedProject(org.ID)}
+	hash, id := s.seedChunk(70)
+	s.seedHistory(project.ID, id)
+	s.Require().NoError(s.ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 70}}))
+
+	charged, err := s.ledger.RestoreProject(ctx, project.ID)
+	s.Require().NoError(err)
+	s.Equal(int64(70), charged)
+	s.Equal(int64(70), s.orgUsed(org.ID))
+}
+
+func (s *ledgerSuite) TestRestoreProject_QuotaRejects() {
+	ctx := context.Background()
+	ledger := NewLedger(s.db, Config{DefaultQuotaBytes: 100})
+	org := &domain.Organization{ID: 1}
+	project := &domain.Project{ID: s.seedProject(org.ID)}
+	_, id := s.seedChunk(80)
+	s.seedHistory(project.ID, id)
+	fill, _ := s.seedChunk(60)
+	s.Require().NoError(ledger.Attribute(ctx, org, &domain.Project{ID: 1}, []usecase.LedgerChunk{{Hash: fill, SizeBytes: 60}}))
+
+	err := ledger.transactor.WithinTx(ctx, func(ctx context.Context) error {
+		_, err := ledger.RestoreProject(ctx, project.ID)
+		return err
+	})
+	s.True(isQuotaExceeded(err), "got %v", err)
+	s.Equal(int64(60), s.orgUsed(org.ID))
+	s.Equal(0, s.linkCount(project.ID), "nothing is linked")
+}
+
+func (s *ledgerSuite) TestRestoreProject_ExternalAndDeletedAndUnknown() {
+	ctx := context.Background()
+	org := snow.ID(1)
+	external := s.seedProject(org)
+	_, id := s.seedChunk(40)
+	s.seedHistory(external, id)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO storage_servers (id, owner_user_id, name, endpoint, bucket, access_key_id, secret_sealed)
+		VALUES (78, 1, 'byo', 'https://s3.example.com', 'b', 'a', '\x00')`)
+	s.Require().NoError(err)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO project_storage (project_id, storage_server_id) VALUES ($1, 78)`, external.Int64())
+	s.Require().NoError(err)
+
+	charged, err := s.ledger.RestoreProject(ctx, external)
+	s.Require().NoError(err)
+	s.Zero(charged, "own-storage projects are never charged")
+	s.Zero(s.orgUsed(org))
+
+	deleted := s.seedProject(org)
+	s.softDeleteProject(deleted)
+	_, err = s.ledger.RestoreProject(ctx, deleted)
+	s.True(domain.IsErrorNotFound(err), "the project row must be restored first, got %v", err)
+
+	_, err = s.ledger.RestoreProject(ctx, snow.ID(987654))
+	s.True(domain.IsErrorNotFound(err), "got %v", err)
+}
+
+func TestLedger_RestoreProject_ErrorPaths(t *testing.T) {
+	ctx := context.Background()
+	for _, table := range []string{"project_storage", "org_billing_owner", "project_usage", "org_usage"} {
+		db, ledger := newErrorLedger(t, table)
+		if table == "org_usage" {
+			_, err := db.ExecContext(ctx, `INSERT INTO chunks (hash, size_bytes) VALUES ('\x01', 5)`)
+			require.NoError(t, err)
+			_, err = db.ExecContext(ctx, `INSERT INTO tree_nodes (id, hash, name) VALUES (500, '\x02', 'root')`)
+			require.NoError(t, err)
+			_, err = db.ExecContext(ctx, `INSERT INTO files (id, name, tree_id, hash, size_bytes) VALUES (500, 'f', 500, '\x03', 5)`)
+			require.NoError(t, err)
+			_, err = db.ExecContext(ctx, `INSERT INTO file_chunks (file_id, chunk_id, chunk_index) SELECT 500, id, 0 FROM chunks`)
+			require.NoError(t, err)
+			_, err = db.ExecContext(ctx, `INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (500, '\x04', 1, 500, 1, 'c')`)
+			require.NoError(t, err)
+		}
+		_, err := ledger.RestoreProject(ctx, snow.ID(1))
+		require.Equal(t, 500, errorCode(err), "%s missing", table)
+	}
+}

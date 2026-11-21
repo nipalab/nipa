@@ -67,6 +67,8 @@ type Config struct {
 	ChunkVisibilityCacheHashes      int     `mapstructure:"CHUNK_VISIBILITY_CACHE_HASHES"`
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
 	StorageLedgerDefaultQuotaBytes  int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
+	StoragePurgeRetentionDays       int     `mapstructure:"STORAGE_PURGE_RETENTION_DAYS"`
+	StoragePurgeBatchSize           int     `mapstructure:"STORAGE_PURGE_BATCH_SIZE"`
 	SaaSMode                        bool    `mapstructure:"SAAS_MODE"`
 	RegistrationEnabled             bool    `mapstructure:"REGISTRATION_ENABLED"`
 	SaasFreeQuotaBytes              int64   `mapstructure:"SAAS_FREE_QUOTA_BYTES"`
@@ -167,6 +169,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("MAINTENANCE_FILE", "")
 	v.SetDefault("MAINTENANCE_POLL_SECONDS", DefaultMaintenancePollSeconds)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
+	v.SetDefault("STORAGE_PURGE_RETENTION_DAYS", 30)
+	v.SetDefault("STORAGE_PURGE_BATCH_SIZE", 100)
 	v.SetDefault("SAAS_MODE", false)
 	v.SetDefault("REGISTRATION_ENABLED", true)
 	v.SetDefault("ALLOW_INSECURE_DEV_SECRETS", false)

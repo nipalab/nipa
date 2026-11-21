@@ -51,6 +51,9 @@ type UsecaseDeps struct {
 	MFAEnabledByDefault bool
 	// IssueDispatch tunes the issue tracker outbox; zero values are defaults.
 	IssueDispatch usecase.IssueDispatchConfig
+	// ProjectRestoreWindow is how long a deleted project stays restorable
+	// (the purge retention); zero keeps deleted projects restorable.
+	ProjectRestoreWindow time.Duration
 }
 
 // BuildUsecases wires the whole usecase graph once for every edition and for
@@ -85,7 +88,8 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		permissionUsecase.WithSeatGate(deps.SeatGate)
 	}
 	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
-	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
+	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase).
+		WithRestoreWindow(deps.ProjectRestoreWindow)
 	if deps.ProjectStorage != nil {
 		projectUsecase.WithStorageAssigner(deps.ProjectStorage)
 	}
