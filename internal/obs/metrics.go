@@ -28,6 +28,8 @@ type Metrics struct {
 	push                *prometheus.CounterVec
 	webhookDeliveries   *prometheus.CounterVec
 	mailDeliveries      *prometheus.CounterVec
+	issueRequests       *prometheus.CounterVec
+	issueJobs           *prometheus.GaugeVec
 	rateLimit           *prometheus.CounterVec
 	maintenanceMode     *prometheus.GaugeVec
 	maintenanceWindows  *prometheus.GaugeVec
@@ -102,6 +104,18 @@ func NewMetrics() *Metrics {
 			Name:      "deliveries_total",
 			Help:      "Email deliveries by result.",
 		}, []string{"result"}),
+		issueRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "issue_tracker",
+			Name:      "requests_total",
+			Help:      "Issue tracker calls made by the outbox dispatcher by tracker kind, operation and result.",
+		}, []string{"kind", "op", "result"}),
+		issueJobs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "issue_tracker",
+			Name:      "jobs",
+			Help:      "Issue tracker outbox jobs by state.",
+		}, []string{"state"}),
 		rateLimit: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "ratelimit",
@@ -146,6 +160,8 @@ func NewMetrics() *Metrics {
 		m.push,
 		m.webhookDeliveries,
 		m.mailDeliveries,
+		m.issueRequests,
+		m.issueJobs,
 		m.rateLimit,
 		m.maintenanceMode,
 		m.maintenanceWindows,
@@ -227,6 +243,22 @@ func (m *Metrics) ObserveMailDelivery(result string) {
 		return
 	}
 	m.mailDeliveries.WithLabelValues(result).Inc()
+}
+
+// ObserveIssueTrackerRequest records one issue tracker call result.
+func (m *Metrics) ObserveIssueTrackerRequest(kind, op, result string) {
+	if m == nil {
+		return
+	}
+	m.issueRequests.WithLabelValues(kind, op, result).Inc()
+}
+
+// SetIssueTrackerJobs sets the number of outbox jobs in a state.
+func (m *Metrics) SetIssueTrackerJobs(state string, n int64) {
+	if m == nil {
+		return
+	}
+	m.issueJobs.WithLabelValues(state).Set(float64(n))
 }
 
 // ObserveRateLimit records one rate limit decision.

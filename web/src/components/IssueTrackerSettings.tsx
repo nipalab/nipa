@@ -18,6 +18,7 @@ import type {
 } from '../api/models'
 import { errorMessage } from '../hooks'
 import { useConfirmAction } from './confirm'
+import { IssueTrackerJobs } from './IssueTrackerJobs'
 import { SettingsCard, SettingsRow } from './SettingsCard'
 import { ErrorBanner, Loading } from './ui'
 
@@ -309,6 +310,7 @@ export function ProjectIssueTrackerSettings({ org, project }: { org: string; pro
         current={settings.data}
         onChanged={settings.reload}
       />
+      {settings.data && <IssueTrackerJobs org={org} project={project} />}
     </Stack>
   )
 }
@@ -455,7 +457,10 @@ function ProjectIssueTrackerForm({
           <FormControl>
             <FormControl.Label>Status when a merge request opens</FormControl.Label>
             <TextInput block value={opened} placeholder="In Review" onChange={(event) => setOpened(event.target.value)} />
-            <FormControl.Caption>Leave empty to keep the issue where it is.</FormControl.Caption>
+            <FormControl.Caption>
+              Moves the issues the request closes or its branch is named after, unless they are already done. Leave
+              empty to keep the issue where it is.
+            </FormControl.Caption>
           </FormControl>
           <FormControl>
             <FormControl.Label>Status when a merge request merges</FormControl.Label>

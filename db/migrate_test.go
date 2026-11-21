@@ -208,3 +208,38 @@ func TestMigrateCommitOrigin(t *testing.T) {
 
 	require.NoError(t, MigrateUp(conn, "sqlite3"))
 }
+
+func TestMigrateIssueTrackerUnlink(t *testing.T) {
+	const version = 27
+	conn := openMigrateTestDB(t)
+	m, err := newMigrator(conn, "sqlite3")
+	require.NoError(t, err)
+	require.NoError(t, m.Migrate(version-1))
+	exec := func(q string, args ...any) error {
+		_, err := conn.Exec(q, args...)
+		return err
+	}
+	insertJob := func(id int, action string) error {
+		return exec(`INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, dedupe_key, created_at)
+			VALUES (?, 1, 1, 'GAME-1', ?, ?, CURRENT_TIMESTAMP)`, id, action, "k"+action)
+	}
+	require.NoError(t, exec(`INSERT INTO issue_trackers (id, org_id, kind, name, base_url, auth_kind, account, secret_sealed, created_by, created_at, updated_at)
+		VALUES (1, 1, 'jira', 'Jira', 'https://x', 'bearer', '', x'01', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`))
+	require.NoError(t, insertJob(1, "link"))
+	require.Error(t, insertJob(2, "unlink"))
+
+	require.NoError(t, m.Migrate(version))
+	require.NoError(t, insertJob(2, "unlink"))
+	require.Contains(t, sqliteIndexes(t, conn), "idx_issue_tracker_jobs_retry")
+	require.Contains(t, sqliteIndexes(t, conn), "idx_issue_tracker_jobs_project")
+
+	require.NoError(t, m.Migrate(version-1))
+	var n int
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM issue_tracker_jobs`).Scan(&n))
+	require.Equal(t, 1, n, "down drops the unlink jobs")
+
+	require.NoError(t, MigrateUp(conn, "sqlite3"))
+	require.NoError(t, exec(`DELETE FROM issue_trackers WHERE id = 1`))
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM issue_tracker_jobs`).Scan(&n))
+	require.Zero(t, n, "the rebuilt table keeps its cleanup triggers")
+}

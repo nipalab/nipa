@@ -110,6 +110,7 @@ func New(opts Options) *Server {
 	mux.HandleFunc("GET /rest/api/2/issue/picker", s.picker)
 	mux.HandleFunc("GET /rest/api/2/issue/{key}", s.issue)
 	mux.HandleFunc("POST /rest/api/2/issue/{key}/remotelink", s.remoteLink)
+	mux.HandleFunc("DELETE /rest/api/2/issue/{key}/remotelink", s.deleteRemoteLink)
 	mux.HandleFunc("POST /rest/api/2/issue/{key}/comment", s.comment)
 	mux.HandleFunc("GET /rest/api/2/issue/{key}/transitions", s.transitions)
 	mux.HandleFunc("POST /rest/api/2/issue/{key}/transitions", s.transition)
@@ -309,6 +310,29 @@ func (s *Server) remoteLink(w http.ResponseWriter, r *http.Request) {
 	}
 	s.links[issue.Key] = links
 	writeJSON(w, status, map[string]any{"id": len(links), "self": s.URL + r.URL.Path})
+}
+
+// deleteRemoteLink removes the link of ?globalId=, 404 when there is none.
+func (s *Server) deleteRemoteLink(w http.ResponseWriter, r *http.Request) {
+	globalID := r.URL.Query().Get("globalId")
+	if globalID == "" {
+		writeError(w, http.StatusBadRequest, "globalId is required")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	issue, ok := s.lookup(w, r)
+	if !ok {
+		return
+	}
+	links := s.links[issue.Key]
+	i := slices.IndexFunc(links, func(l RemoteLink) bool { return l.GlobalID == globalID })
+	if i < 0 {
+		writeError(w, http.StatusNotFound, "No remote link with that global id.")
+		return
+	}
+	s.links[issue.Key] = slices.Delete(links, i, i+1)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) comment(w http.ResponseWriter, r *http.Request) {

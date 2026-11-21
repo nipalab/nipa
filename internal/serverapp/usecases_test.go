@@ -195,6 +195,30 @@ func TestIssueTrackerConfig(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	require.NotNil(t, issueTrackerBox(&config.Config{IntegrationsEncryptionKey: key}))
 
+	require.Empty(t, issueLinkBaseURL(&config.Config{}))
+	require.Equal(t, "https://mail.example", issueLinkBaseURL(&config.Config{EmailBaseURL: " https://mail.example/ "}))
+	require.Equal(t, "https://nipa.example", issueLinkBaseURL(&config.Config{PublicBaseURL: "https://nipa.example/", EmailBaseURL: "https://mail.example"}))
+
+	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+	require.NoError(t, db.MigrateUp(database, "sqlite3"))
+	node, err := snow.NewNode(0)
+	require.NoError(t, err)
+	repos := usecase.Repositories{
+		Org:          sqlite.NewOrgRepository(database),
+		Project:      sqlite.NewProjectRepository(database),
+		User:         sqlite.NewUserRepository(database),
+		PBAC:         sqlite.NewPBACRepository(database),
+		Group:        sqlite.NewGroupRepository(database),
+		Audit:        sqlite.NewAuditRepository(database),
+		IssueTracker: sqlite.NewIssueTrackerRepository(database),
+	}
+	off := BuildUsecases(repos, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node})
+	require.Nil(t, off.IssueDispatcher)
+	on := BuildUsecases(repos, UsecaseDeps{Config: &config.Config{IntegrationsEncryptionKey: key}, DB: database, Snow: node})
+	require.NotNil(t, on.IssueDispatcher)
+
 	require.Nil(t, issueTrackerAllowlist(&config.Config{IssueTrackerEgressAllowlist: "https://x"}))
 	require.Equal(t, []string{"10.0.0.0/8"}, issueTrackerAllowlist(&config.Config{IssueTrackerEgressAllowlist: "10.0.0.0/8"}))
 }

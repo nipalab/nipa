@@ -1,8 +1,8 @@
 import { act, useState, type ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import * as endpoints from '../api/endpoints'
-import type { IssueTrackerResponse, ProjectIssueTrackerResponse } from '../api/models'
+import type { IssueTrackerJobResponse, IssueTrackerResponse, ProjectIssueTrackerResponse } from '../api/models'
 import { OrgIssueTrackerSettings, ProjectIssueTrackerSettings } from '../components/IssueTrackerSettings'
 import { IssueChip, IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { buttonByText, choose, click, confirmDialog, flush, render, renderHook, type, waitFor } from './render'
@@ -19,6 +19,8 @@ vi.mock('../api/endpoints', async (importOriginal) => {
     getProjectIssueTracker: vi.fn(),
     putProjectIssueTracker: vi.fn(),
     deleteProjectIssueTracker: vi.fn(),
+    listIssueTrackerJobs: vi.fn(),
+    retryIssueTrackerJob: vi.fn(),
   }
 })
 
@@ -46,6 +48,10 @@ const SETTINGS: ProjectIssueTrackerResponse = {
   set_by: 'u1',
   updated_at: '2026-11-20T00:00:00Z',
 }
+
+beforeEach(() => {
+  api.listIssueTrackerJobs.mockResolvedValue({ jobs: [] })
+})
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -347,5 +353,89 @@ describe('project issue tracker settings', () => {
     await waitFor(() => buttonByText(container, 'Save') !== null)
     expect(input(container, 'GAME, ART').value).toBe('')
     expect(buttonByText(container, 'Save')?.disabled).toBe(true)
+  })
+})
+
+const JOBS: IssueTrackerJobResponse[] = [
+  { id: 'j3', issue_key: 'GAME-3', action: 'comment', state: 'pending', attempts: 0, created_at: '2026-11-20T00:00:00Z' },
+  {
+    id: 'j2',
+    issue_key: 'GAME-2',
+    action: 'transition',
+    state: 'failed',
+    attempts: 1,
+    status: 'Done',
+    last_error: 'no matching transition',
+    created_at: '2026-11-20T00:00:00Z',
+  },
+  {
+    id: 'j1',
+    issue_key: 'GAME-1',
+    action: 'link',
+    state: 'delivered',
+    attempts: 2,
+    title: '#4 Rig',
+    url: 'https://nipa.example/acme/game/merges/4',
+    created_at: '2026-11-20T00:00:00Z',
+  },
+  { id: 'j0', issue_key: 'GAME-1', action: 'link', state: 'delivered', attempts: 1, created_at: '2026-11-20T00:00:00Z' },
+  { id: 'j9', issue_key: 'GAME-4', action: 'unlink', state: 'pending', attempts: 0, created_at: '2026-11-20T00:00:00Z' },
+]
+
+describe('issue tracker jobs', () => {
+  async function renderJobs() {
+    api.getProjectIssueTracker.mockResolvedValue(SETTINGS)
+    api.getIssueTracker.mockResolvedValue(TRACKER)
+    api.listIssueTrackerJobs.mockResolvedValue({ jobs: JOBS })
+    const view = await render(<ProjectIssueTrackerSettings org="acme" project="game" />)
+    await waitFor(() => view.container.textContent?.includes('no matching transition') ?? false)
+    return view
+  }
+
+  it('lists jobs with their detail and retries a failed one', async () => {
+    const { container } = await renderJobs()
+    expect(api.listIssueTrackerJobs).toHaveBeenLastCalledWith('acme', 'game', '')
+    const text = container.textContent ?? ''
+    expect(text).toContain('Transition')
+    expect(text).toContain('To Done')
+    expect(text).toContain('Comment')
+    expect(text).toContain('Unlink')
+    expect(text).toContain('Remove the merge request link')
+    const link = container.querySelector<HTMLAnchorElement>('a[href="https://nipa.example/acme/game/merges/4"]')
+    expect(link?.textContent).toBe('#4 Rig')
+    expect(Array.from(container.querySelectorAll('button')).filter((b) => b.textContent === 'Retry')).toHaveLength(3)
+
+    api.retryIssueTrackerJob.mockResolvedValue({ ...JOBS[1], state: 'pending', attempts: 0 })
+    const retry = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.textContent === 'Retry')[0]
+    await click(retry)
+    await flush()
+    expect(api.retryIssueTrackerJob).toHaveBeenCalledWith('acme', 'game', 'j2')
+    expect(api.listIssueTrackerJobs).toHaveBeenCalledTimes(2)
+  })
+
+  it('filters by state and shows retry errors', async () => {
+    const { container } = await renderJobs()
+    const menuButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Filter by job state"]')
+    await click(menuButton())
+    await waitFor(() => document.querySelector('[role="menuitemradio"]') !== null)
+    const options = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')]
+    expect(options.map((option) => option.textContent)).toEqual(['All states', 'Failed', 'Pending', 'Delivered'])
+    await click(options[1])
+    await flush()
+    expect(api.listIssueTrackerJobs).toHaveBeenLastCalledWith('acme', 'game', 'failed')
+    expect(menuButton()?.textContent).toContain('State: Failed')
+
+    api.retryIssueTrackerJob.mockRejectedValue(new ApiError('the job can no longer be retried', 409))
+    const retry = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Retry')
+    await click(retry)
+    await waitFor(() => container.textContent?.includes('can no longer be retried') ?? false)
+  })
+
+  it('stays hidden until the project uses the tracker', async () => {
+    api.getProjectIssueTracker.mockRejectedValue(new ApiError('not used', 404))
+    api.getIssueTracker.mockResolvedValue(TRACKER)
+    const { container } = await render(<ProjectIssueTrackerSettings org="acme" project="game" />)
+    await waitFor(() => buttonByText(container, 'Save') !== null)
+    expect(api.listIssueTrackerJobs).not.toHaveBeenCalled()
   })
 })

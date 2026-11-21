@@ -64,13 +64,14 @@ required. Service tokens are REST only.
 
 Flow for the issue tracker integration (plan in `docs/plans/ISSUE_TRACKER.md`;
 both editions): the pure
-`internal/issuetracker` (`Tracker` + optional `Linker`/`Commenter`/
+`internal/issuetracker` (`Tracker` + optional `Linker`/`Unlinker`
+(`DELETE .../remotelink?globalId=`, a missing link is success)/`Commenter`/
 `Transitioner`/`Searcher`, registry, `Extract`/`BranchKey`) with the `jira`
 client (`/rest/api/2`, Cloud Basic or Data Center Bearer) and its `jiratest`
 fake; outbound requests go through `internal/egress` (shared with webhooks).
 Storage (sqlite `000026`, postgres `000015`): `issue_trackers`,
-`project_issue_trackers` (`project_keys` comma-joined), `issue_links` and the not yet used
-`issue_tracker_jobs`; soft/hard deletes of projects and orgs drop
+`project_issue_trackers` (`project_keys` comma-joined), `issue_links` and the
+`issue_tracker_jobs` outbox; soft/hard deletes of projects and orgs drop
 their rows (sqlite triggers, postgres triggers + cascades).
 `usecase.IssueTracker` (`issue_tracker.go`, `Repositories.IssueTracker`,
 dbtx-aware repos) holds one connection per org, enforced under `LockOrg`
@@ -101,8 +102,7 @@ log). `push` links the one commit a push lands (`PushEvent.AfterID`/`Message`;
 `BranchKey`; `branch.created` links the branch; `mr.created`/`mr.updated`
 replace the request's link set (title + description + source branch, `closes`
 after a closing keyword) inside one transaction, so an edit that drops a key
-drops its link; `mr.merged|closed|reopened` change no links (hook point
-`mergeRequestState` for the PR 4 jobs). Rows are upserts on the unique key
+drops its link; `mr.merged|closed|reopened` change no links. Rows are upserts on the unique key
 (relation updated). Reading (`issue_tracker_read.go`): `SubjectIssueKeys`
 adds `issue_keys: [{key, url}]` to commit lists (also MR commits), branch
 lists and merge request list/detail REST payloads (settings + connection +
@@ -118,6 +118,65 @@ entries, 5 s request budget, fan-out 8; states `ok|not_found|unavailable`),
 first, `after` cursor, max 100, missing subjects skipped; 400 for a key
 outside the project's keys) need project read and answer 404 without active
 settings.
+Jobs (`issue_jobs.go`, `IssueSync.WithJobs(projects, orgs, users, commits,
+baseURL)`; Jira is only called by the dispatcher): the sink queues
+`issue_tracker_jobs` rows in the transaction that writes the links. Link ids
+are `nipa:<org>/<project>:mr:<number>` and `...:commit:<base36>`, URLs the SPA
+pages under `PUBLIC_BASE_URL` (else `EMAIL_BASE_URL`; without either no link
+job is queued and startup warns), titles `#N <title>` / the first message
+line, never file names or diffs. `push` queues a `link` per key of the commit
+when `link_commits` is `all`, or `default_branch` and the branch is the
+default one (imported pushes never); `mr.created`/`mr.updated` queue the
+request's `link` per key when `link_merge_requests` (off only stops the Jira
+links, the rows are still written) plus an `unlink` for each key an edit
+dropped, and, with `opened_status` on an open request that is not a draft, a
+`transition` (`skip_done`: an issue already in a done category is left alone)
+for the keys the event added that are closing refs or the source branch key,
+never plain mentions; `mr.ready_for_review` queues the same transition for
+every eligible key of the request (a draft moves no issue until it is marked
+ready); `mr.merged` queues the resolved `link`, a
+`comment` (`comment_on_merge`: "<merger> merged merge request #N "title" in
+org/project." + URL) for the linked keys plus the closing keys, and a
+`transition` to `merged_status` only for closing refs of the title,
+description and the request's commits (`CommitLogUntil` merged source head to
+merge base, imported commits skipped); `mr.closed|reopened` re-send the links
+(`resolved` = merged or closed). `dedupe_key` is `link:<key>:<link id>` (shared by `link` and `unlink`),
+`comment:<key>:<link id>:merged` and
+`transition:<key>:<link id>:<opened|merged>:<status>`; comments and
+transitions are insert-ignore. A remote link has one row whose action is
+`link` or `unlink` (sqlite `000027` / postgres `000016` widen the `action`
+CHECK; sqlite rebuilds the table with its indexes and the three cleanup
+triggers, no `sqlite_sequence` row since the id is not AUTOINCREMENT): an
+enqueue with another action or payload re-arms it (attempt 0, pending,
+keeping an in-flight lease), so a pending link of a removed key becomes the
+unlink and is never sent, an in-flight link settles as stale and the unlink
+runs after it, and adding the key back re-arms the link; edits and retries
+never duplicate links or comments.
+`usecase.IssueDispatcher` (`issue_dispatch.go`, built by `BuildUsecases` only
+when the integration is available, exposed through `Registry.Dispatchers()`,
+started by both mains and both e2e harnesses, `Pausable`) claims due rows
+under a lease (`IssueJobClaimDue` bumps `attempt` and moves `next_retry_at`
+to now + 10 min; postgres `FOR UPDATE SKIP LOCKED` in a CTE, sqlite immediate
+transactions), only once the in-memory batch (10) is drained, so two server
+colours never send the same job, and settles with `attempt` as the claim
+token (`MarkIssueJobDelivered|Failed`, `ScheduleIssueJobRetry`; a job re-armed
+in flight is released instead). Clients come from `IssueTracker.JobClient`
+(the read path's client cache, rebuilt on `updated_at`; settings removed,
+inactive or pointing at another connection, or an unopenable token fail the
+job). Calls to one connection are spaced 200 ms apart (a wait over 2 s
+postpones the job through `DeferIssueJob` without spending an attempt) and a
+`*RateLimited` holds the connection for `Retry-After`. Rate limits,
+`ErrUnavailable` and timeouts retry with 30 s x 3^(n-1) backoff (max 6 h, at
+least Retry-After) up to 8 attempts; not found, refused credentials, no
+transition, blocked egress, bad payloads and missing capabilities (a tracker
+without `Unlinker` fails its unlink jobs) fail at once. The sink and job retries kick the dispatcher; frozen maintenance holds
+claims, sweeps and calls; delivered and failed rows older than 30 days are
+swept hourly. Metrics: `nipa_issue_tracker_requests_total{kind,op=link|unlink|comment|transition,result=ok|retry|failed}`
+and the `nipa_issue_tracker_jobs{state}` gauge (recounted every minute).
+REST (project admin): `GET .../issue-tracker/jobs` (`state`/`after`/`limit`
+keyset, `next_cursor`; `title`/`url`/`status` from the payload, never comment
+texts) and `POST .../issue-tracker/jobs/{id}/retry` (delivered or failed
+only, resets attempt and error, kicks).
 
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
 on the SPA home page and the `/onboarding` step): any authenticated user creates

@@ -43,7 +43,9 @@ MFA_ENCRYPTION_KEY: ''
 # Issue tracker integration (Jira): seals the stored tracker tokens (base64 of
 # at least 32 bytes: `openssl rand -base64 32`). Unset leaves the integration
 # unavailable (its routes answer 503); losing it makes the stored tokens
-# unreadable until each connection is saved again with its token.
+# unreadable until each connection is saved again with its token. The remote
+# links Nipa adds to issues point at PUBLIC_BASE_URL (else EMAIL_BASE_URL);
+# with neither set only comments and transitions are sent.
 INTEGRATIONS_ENCRYPTION_KEY: ''
 # Comma-separated hostnames, IPs or CIDR ranges issue trackers may reach.
 # Empty allows public addresses only; a Data Center on a private network needs

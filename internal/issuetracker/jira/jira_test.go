@@ -201,6 +201,29 @@ func TestLink(t *testing.T) {
 	require.ErrorIs(t, client.Link(ctx, "GAME-2", link), issuetracker.ErrNotFound)
 }
 
+func TestUnlink(t *testing.T) {
+	fake, client := newFake(t, jiratest.Options{})
+	fake.AddIssue(jiratest.Issue{Key: "GAME-1"})
+	ctx := context.Background()
+	id := "nipa:acme/game:mr:7"
+	require.NoError(t, client.Link(ctx, "GAME-1", issuetracker.Link{ID: id, URL: "https://nipa.example/m/7"}))
+	require.NoError(t, client.Link(ctx, "GAME-1", issuetracker.Link{ID: "nipa:acme/game:mr:8", URL: "https://nipa.example/m/8"}))
+
+	require.NoError(t, client.Unlink(ctx, "GAME-1", id))
+	links := fake.RemoteLinks("GAME-1")
+	require.Len(t, links, 1)
+	assert.Equal(t, "nipa:acme/game:mr:8", links[0].GlobalID)
+	requests := fake.Requests()
+	assert.Equal(t, "DELETE /rest/api/2/issue/GAME-1/remotelink", requests[len(requests)-1])
+
+	require.NoError(t, client.Unlink(ctx, "GAME-1", id), "a missing link is already removed")
+	require.NoError(t, client.Unlink(ctx, "GAME-2", id), "so is a missing issue")
+	require.Error(t, client.Unlink(ctx, "GAME-1", ""))
+	require.Error(t, client.Unlink(ctx, "", id))
+	fake.Fail(jiratest.Failure{Status: http.StatusServiceUnavailable})
+	require.ErrorIs(t, client.Unlink(ctx, "GAME-1", id), issuetracker.ErrUnavailable)
+}
+
 func TestComment(t *testing.T) {
 	fake, client := newFake(t, jiratest.Options{})
 	fake.AddIssue(jiratest.Issue{Key: "GAME-1"})

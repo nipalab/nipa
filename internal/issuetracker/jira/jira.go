@@ -51,6 +51,7 @@ type Client struct {
 
 var (
 	_ issuetracker.Linker       = (*Client)(nil)
+	_ issuetracker.Unlinker     = (*Client)(nil)
 	_ issuetracker.Commenter    = (*Client)(nil)
 	_ issuetracker.Transitioner = (*Client)(nil)
 	_ issuetracker.Searcher     = (*Client)(nil)
@@ -273,6 +274,23 @@ func (c *Client) Link(ctx context.Context, key string, link issuetracker.Link) e
 		},
 	}
 	return c.do(ctx, http.MethodPost, path, nil, body, nil)
+}
+
+// Unlink deletes the remote link whose globalId is linkID; an issue or link
+// that no longer exists counts as removed.
+func (c *Client) Unlink(ctx context.Context, key, linkID string) error {
+	if linkID == "" {
+		return errors.New("jira: a link id is required")
+	}
+	path, err := issuePath(key, "/remotelink")
+	if err != nil {
+		return err
+	}
+	err = c.do(ctx, http.MethodDelete, path, url.Values{"globalId": {linkID}}, nil, nil)
+	if errors.Is(err, issuetracker.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) Comment(ctx context.Context, key, text string) error {

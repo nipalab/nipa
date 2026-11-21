@@ -182,8 +182,8 @@ control GET/HEAD open and refuses writes, sign-in, refresh, logout and the
 maintenance PUT/DELETE routes (end it with `nipad maintenance end`), and the
 server writes nothing: `serverapp.run` calls `PauseWhileFrozen(svc,
 dispatchers...)`, which hands `svc.Frozen` to every `serverapp.Pausable`
-(`SetPause`) dispatcher (the poller is not one); the webhook and mail
-dispatchers skip their sweeps/claims/retention trims and workers hold a
+(`SetPause`) dispatcher (the poller is not one); the webhook, mail and issue
+tracker dispatchers skip their sweeps/claims/retention trims and workers hold a
 claimed job in `dispatch.Pause.Wait` (`PauseCheckInterval`) until resume, the
 ee `quotaReconcileJob` waits before its run and `TermsRefreshJob` skips
 ticks; `ServiceToken.WithPause` skips the `last_used_at` touch;

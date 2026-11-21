@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -194,4 +195,188 @@ func testIssueTrackerLinks(t *testing.T, base, host, superToken string, dbConn *
 	issueTrackerREST(t, http.MethodGet, projectBase+"/commits?branch=main", "", superToken, http.StatusOK, &commits)
 	require.Empty(t, commits[0].IssueKeys)
 	issueTrackerREST(t, http.MethodDelete, v1+"/issue-tracker", "", superToken, http.StatusNoContent, nil)
+}
+
+func issueJobsPage(t *testing.T, url, token string) []model.IssueTrackerJobResponse {
+	t.Helper()
+	var page model.IssueTrackerJobListResponse
+	issueTrackerREST(t, http.MethodGet, url, "", token, http.StatusOK, &page)
+	return page.Jobs
+}
+
+func remoteLink(fake *jiratest.Server, key, globalID string) (jiratest.RemoteLink, bool) {
+	for _, link := range fake.RemoteLinks(key) {
+		if link.GlobalID == globalID {
+			return link, true
+		}
+	}
+	return jiratest.RemoteLink{}, false
+}
+
+func testIssueTrackerJobs(t *testing.T, base, host, superToken string) {
+	ctx := context.Background()
+	fake := jiratest.New(jiratest.Options{})
+	t.Cleanup(fake.Close)
+	for _, key := range []string{"GAME-1", "GAME-2"} {
+		fake.AddIssue(jiratest.Issue{Key: key, Summary: key, Status: "To Do"})
+	}
+	v1 := base + "/api/v1/orgs/" + e2eOrgSlug
+	projectBase := v1 + "/projects/" + e2eProjectSlug
+	jobsURL := projectBase + "/issue-tracker/jobs"
+	linkPrefix := "nipa:" + e2eOrgSlug + "/" + e2eProjectSlug
+	issueTrackerREST(t, http.MethodPut, v1+"/issue-tracker",
+		`{"base_url":"`+fake.URL+`","account":"bot@example.com","token":"jira-test-token"}`, superToken, http.StatusCreated, nil)
+	issueTrackerREST(t, http.MethodPut, projectBase+"/issue-tracker",
+		`{"keys":["GAME"],"link_commits":"all","merged_status":"Done"}`, superToken, http.StatusOK, nil)
+	issueTrackerREST(t, http.MethodPut, projectBase+"/branches/main/protection", `{"protected":false,"required_approvals":0}`, superToken, http.StatusOK, nil)
+
+	grpcClient, auth, _ := newBenchClient(t, host)
+	push := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+	main := cloneWorktree(t, grpcClient, auth, host, "main")
+	writeFile(t, main, "jobs.txt", "v1\n")
+	stagePath(t, main, "jobs.txt")
+	require.NoError(t, push.Run(ctx, main, "Fixes GAME-1 straight on main"))
+	var commits []model.CommitResponse
+	issueTrackerREST(t, http.MethodGet, projectBase+"/commits?branch=main", "", superToken, http.StatusOK, &commits)
+	commitLink := linkPrefix + ":commit:" + commits[0].ID
+	require.Eventually(t, func() bool {
+		_, ok := remoteLink(fake, "GAME-1", commitLink)
+		return ok
+	}, 10*time.Second, 20*time.Millisecond, "the pushed commit is linked on GAME-1")
+	link, _ := remoteLink(fake, "GAME-1", commitLink)
+	require.Equal(t, "https://nipa.example/"+e2eOrgSlug+"/"+e2eProjectSlug+"/commits/"+commits[0].ID, link.URL)
+	require.Equal(t, "Fixes GAME-1 straight on main", link.Title)
+	issue, _ := fake.Issue("GAME-1")
+	require.Equal(t, "To Do", issue.Status, "a direct push never transitions")
+
+	_, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "jobs-feature", "main", "", "")
+	require.NoError(t, err)
+	feature := cloneWorktree(t, grpcClient, auth, host, "jobs-feature")
+	writeFile(t, feature, "jobs.txt", "v2\n")
+	stagePath(t, feature, "jobs.txt")
+	require.NoError(t, push.Run(ctx, feature, "Fixes GAME-1 for real"))
+	require.Eventually(t, func() bool {
+		return len(fake.RemoteLinks("GAME-1")) == 2
+	}, 10*time.Second, 20*time.Millisecond)
+
+	fake.Fail(jiratest.Failure{Status: http.StatusTooManyRequests})
+	var mr model.MergeRequestResponse
+	issueTrackerREST(t, http.MethodPost, projectBase+"/merge-requests",
+		`{"title":"Rig work","description":"See GAME-2","source_branch":"jobs-feature","target_branch":"main"}`, superToken, http.StatusOK, &mr)
+	mrLink := linkPrefix + ":mr:" + strconv.FormatInt(mr.Number, 10)
+	require.Eventually(t, func() bool {
+		_, ok := remoteLink(fake, "GAME-2", mrLink)
+		return ok
+	}, 10*time.Second, 20*time.Millisecond, "the rate-limited link is retried")
+	var retried bool
+	for _, job := range issueJobsPage(t, jobsURL+"?state=delivered", superToken) {
+		if job.IssueKey == "GAME-2" && job.Action == "link" {
+			retried = job.Attempts == 2
+		}
+	}
+	require.True(t, retried, "the 429 cost one attempt")
+
+	issueTrackerREST(t, http.MethodPost, projectBase+"/merge-requests/"+strconv.FormatInt(mr.Number, 10)+"/merge", `{"strategy":"ff"}`, superToken, http.StatusOK, nil)
+	require.Eventually(t, func() bool {
+		issue, _ := fake.Issue("GAME-1")
+		return issue.Status == "Done" && len(fake.Comments("GAME-1")) == 1 && len(fake.Comments("GAME-2")) == 1
+	}, 10*time.Second, 20*time.Millisecond, "the merge moves GAME-1 and comments on both issues")
+	require.Contains(t, fake.Comments("GAME-1")[0], "merged merge request #"+strconv.FormatInt(mr.Number, 10)+` "Rig work"`)
+	require.Contains(t, fake.Comments("GAME-2")[0], "https://nipa.example/"+e2eOrgSlug+"/"+e2eProjectSlug+"/merges/")
+	require.Eventually(t, func() bool {
+		one, ok1 := remoteLink(fake, "GAME-1", mrLink)
+		two, ok2 := remoteLink(fake, "GAME-2", mrLink)
+		return ok1 && ok2 && one.Resolved && two.Resolved
+	}, 10*time.Second, 20*time.Millisecond, "merged links are resolved")
+	mention, _ := fake.Issue("GAME-2")
+	require.Equal(t, "To Do", mention.Status, "a mention-only key is not transitioned")
+
+	merged := cloneWorktree(t, grpcClient, auth, host, "main")
+	writeFile(t, merged, "jobs.txt", "v3\n")
+	stagePath(t, merged, "jobs.txt")
+	require.NoError(t, push.Run(ctx, merged, "Refs GAME-404"))
+	var failed []model.IssueTrackerJobResponse
+	require.Eventually(t, func() bool {
+		failed = issueJobsPage(t, jobsURL+"?state=failed", superToken)
+		return len(failed) == 1
+	}, 10*time.Second, 20*time.Millisecond, "an unknown issue fails at once")
+	require.Equal(t, "GAME-404", failed[0].IssueKey)
+	require.Equal(t, int64(1), failed[0].Attempts)
+	require.Contains(t, failed[0].LastError, "404")
+
+	fake.AddIssue(jiratest.Issue{Key: "GAME-404", Summary: "late"})
+	var again model.IssueTrackerJobResponse
+	issueTrackerREST(t, http.MethodPost, jobsURL+"/"+failed[0].ID+"/retry", `{}`, superToken, http.StatusOK, &again)
+	require.Equal(t, "pending", again.State)
+	require.Eventually(t, func() bool {
+		return len(fake.RemoteLinks("GAME-404")) == 1
+	}, 10*time.Second, 20*time.Millisecond, "the retried job is delivered")
+	require.Empty(t, issueJobsPage(t, jobsURL+"?state=failed", superToken))
+
+	testIssueTrackerDraftAndUnlink(t, fake, grpcClient, auth, host, projectBase, superToken)
+
+	issueTrackerREST(t, http.MethodDelete, projectBase+"/issue-tracker", "", superToken, http.StatusNoContent, nil)
+	issueTrackerREST(t, http.MethodDelete, v1+"/issue-tracker", "", superToken, http.StatusNoContent, nil)
+}
+
+func testIssueTrackerDraftAndUnlink(t *testing.T, fake *jiratest.Server, grpcClient *clientgrpc.Client, auth *clientusecase.Auth, host, projectBase, superToken string) {
+	ctx := context.Background()
+	for _, key := range []string{"GAME-20", "GAME-21"} {
+		fake.AddIssue(jiratest.Issue{Key: key, Summary: key, Status: "To Do"})
+	}
+	issueTrackerREST(t, http.MethodPut, projectBase+"/issue-tracker",
+		`{"keys":["GAME"],"link_commits":"all","merged_status":"Done","opened_status":"In Progress"}`, superToken, http.StatusOK, nil)
+	_, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "jobs-draft", "main", "", "")
+	require.NoError(t, err)
+	draft := cloneWorktree(t, grpcClient, auth, host, "jobs-draft")
+	writeFile(t, draft, "draft.txt", "draft\n")
+	stagePath(t, draft, "draft.txt")
+	require.NoError(t, clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo()).Run(ctx, draft, "Draft work"))
+
+	var mr model.MergeRequestResponse
+	issueTrackerREST(t, http.MethodPost, projectBase+"/merge-requests",
+		`{"title":"Draft rig","description":"Fixes GAME-20, see GAME-21","source_branch":"jobs-draft","target_branch":"main","draft":true}`, superToken, http.StatusOK, &mr)
+	require.True(t, mr.Draft)
+	mrURL := projectBase + "/merge-requests/" + strconv.FormatInt(mr.Number, 10)
+	mrLink := "nipa:" + e2eOrgSlug + "/" + e2eProjectSlug + ":mr:" + strconv.FormatInt(mr.Number, 10)
+	require.Eventually(t, func() bool {
+		_, ok20 := remoteLink(fake, "GAME-20", mrLink)
+		_, ok21 := remoteLink(fake, "GAME-21", mrLink)
+		return ok20 && ok21
+	}, 10*time.Second, 20*time.Millisecond, "a draft still links its issues")
+	issue, _ := fake.Issue("GAME-20")
+	require.Equal(t, "To Do", issue.Status, "a draft moves no issue")
+
+	issueTrackerREST(t, http.MethodPatch, mrURL, `{"description":"Fixes GAME-20"}`, superToken, http.StatusOK, nil)
+	require.Eventually(t, func() bool {
+		_, ok := remoteLink(fake, "GAME-21", mrLink)
+		return !ok
+	}, 10*time.Second, 20*time.Millisecond, "dropping a key removes its remote link")
+	_, kept := remoteLink(fake, "GAME-20", mrLink)
+	require.True(t, kept)
+	issue, _ = fake.Issue("GAME-20")
+	require.Equal(t, "To Do", issue.Status)
+
+	issueTrackerREST(t, http.MethodPatch, mrURL, `{"draft":false}`, superToken, http.StatusOK, nil)
+	require.Eventually(t, func() bool {
+		issue, _ := fake.Issue("GAME-20")
+		return issue.Status == "In Progress"
+	}, 10*time.Second, 20*time.Millisecond, "marking the draft ready moves the issue it closes")
+	mention, _ := fake.Issue("GAME-21")
+	require.Equal(t, "To Do", mention.Status)
+
+	issueTrackerREST(t, http.MethodPatch, mrURL, `{"description":"Fixes GAME-20, see GAME-21"}`, superToken, http.StatusOK, nil)
+	require.Eventually(t, func() bool {
+		_, ok := remoteLink(fake, "GAME-21", mrLink)
+		return ok
+	}, 10*time.Second, 20*time.Millisecond, "adding the key back links it again")
+
+	transitions := 0
+	for _, job := range issueJobsPage(t, projectBase+"/issue-tracker/jobs?limit=200", superToken) {
+		if job.IssueKey == "GAME-20" && job.Action == "transition" {
+			transitions++
+		}
+	}
+	require.Equal(t, 1, transitions, "the opened transition fires once")
+	issueTrackerREST(t, http.MethodPost, mrURL+"/close", `{}`, superToken, http.StatusOK, nil)
 }

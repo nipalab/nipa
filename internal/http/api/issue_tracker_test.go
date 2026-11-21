@@ -147,6 +147,46 @@ func testIssueTrackerRoutes(t *testing.T, db *sql.DB, base, superTok string, fak
 	status(http.MethodGet, issuesURL+"/OTHER-1/links", "", padminTok, http.StatusBadRequest)
 	status(http.MethodGet, issuesURL+"/GAME-1/links?after=!!", "", padminTok, http.StatusBadRequest)
 
+	jobsURL := projectURL + "/jobs"
+	trackerID := mustParseID(t, created.ID).Int64()
+	for i, row := range []struct{ state, action, payload string }{
+		{"failed", "link", `{"link_id":"nipa:it-co/game:mr:1","url":"https://nipa.example/it-co/game/merges/1","title":"#1 Rig"}`},
+		{"delivered", "transition", `{"status":"Done"}`},
+		{"pending", "comment", `{"text":"merged"}`},
+	} {
+		_, err = db.Exec(`INSERT INTO issue_tracker_jobs (id, tracker_id, project_id, issue_key, action, payload, dedupe_key, state, attempt, last_error, next_retry_at, created_at)
+			SELECT ?, ?, id, 'GAME-1', ?, ?, ?, ?, 8, 'boom', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM projects WHERE slug = 'game' AND org_id = (SELECT org_id FROM issue_trackers WHERE id = ?)`,
+			100+i, trackerID, row.action, row.payload, "k"+strconv.Itoa(i), row.state, trackerID)
+		require.NoError(t, err)
+	}
+	status(http.MethodGet, jobsURL, "", memberTok, http.StatusForbidden)
+	status(http.MethodGet, jobsURL+"?state=bogus", "", padminTok, http.StatusBadRequest)
+	status(http.MethodGet, jobsURL+"?after=!!", "", padminTok, http.StatusBadRequest)
+	status(http.MethodGet, jobsURL+"?limit=x", "", padminTok, http.StatusBadRequest)
+	page := decodeBody[model.IssueTrackerJobListResponse](t, expect(http.MethodGet, jobsURL+"?limit=2", "", padminTok, http.StatusOK))
+	require.Len(t, page.Jobs, 2)
+	require.NotEmpty(t, page.NextCursor)
+	require.Equal(t, "comment", page.Jobs[0].Action)
+	require.NotNil(t, page.Jobs[0].NextRetryAt)
+	require.Equal(t, "Done", page.Jobs[1].Status)
+	page = decodeBody[model.IssueTrackerJobListResponse](t, expect(http.MethodGet, jobsURL+"?after="+page.NextCursor, "", padminTok, http.StatusOK))
+	require.Len(t, page.Jobs, 1)
+	require.Equal(t, "#1 Rig", page.Jobs[0].Title)
+	require.Equal(t, "https://nipa.example/it-co/game/merges/1", page.Jobs[0].URL)
+	failedJobs := decodeBody[model.IssueTrackerJobListResponse](t, expect(http.MethodGet, jobsURL+"?state=failed", "", padminTok, http.StatusOK))
+	require.Len(t, failedJobs.Jobs, 1)
+	require.Equal(t, "boom", failedJobs.Jobs[0].LastError)
+	retried := decodeBody[model.IssueTrackerJobResponse](t, expect(http.MethodPost, jobsURL+"/"+failedJobs.Jobs[0].ID+"/retry", "{}", padminTok, http.StatusOK))
+	require.Equal(t, "pending", retried.State)
+	require.Zero(t, retried.Attempts)
+	require.Empty(t, retried.LastError)
+	status(http.MethodPost, jobsURL+"/"+failedJobs.Jobs[0].ID+"/retry", "{}", padminTok, http.StatusConflict)
+	status(http.MethodPost, jobsURL+"/"+failedJobs.Jobs[0].ID+"/retry", "{}", memberTok, http.StatusForbidden)
+	status(http.MethodPost, jobsURL+"/zzzz/retry", "{}", padminTok, http.StatusNotFound)
+	status(http.MethodPost, jobsURL+"/!!/retry", "{}", padminTok, http.StatusBadRequest)
+	status(http.MethodGet, v1+"/orgs/it-co/projects/missing/issue-tracker/jobs", "", padminTok, http.StatusNotFound)
+	status(http.MethodPost, v1+"/orgs/it-co/projects/missing/issue-tracker/jobs/1/retry", "{}", padminTok, http.StatusNotFound)
+
 	status(http.MethodDelete, trackerURL, "", ownerTok, http.StatusConflict)
 	status(http.MethodDelete, projectURL, "", memberTok, http.StatusForbidden)
 	status(http.MethodDelete, projectURL, "", padminTok, http.StatusNoContent)

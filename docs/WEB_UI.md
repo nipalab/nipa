@@ -65,7 +65,7 @@ edition.
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
-| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Issue tracker (`?tab=issues`: Jira project keys, link/comment toggles, opened/merged statuses, active, with the visibility notes; 503 shows an "integration is off" banner), Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Issue tracker (`?tab=issues`: Jira project keys, link/comment toggles, opened/merged statuses, active, with the visibility notes, and once the project uses the tracker a Jobs table of the outbox with a state filter and Retry; 503 shows an "integration is off" banner), Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
 | `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (Default storage card when own storage is enabled; usage, quota, per-project breakdown with own-storage projects marked "External storage"; the tab is hidden when the server has neither), Issue tracker (`?tab=issues`: the Jira connection form with a write-only token, Test, Delete) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), reset two-factor (confirmed, `DELETE /users/{id}/mfa`; offered for users the admin can manage), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
@@ -250,8 +250,15 @@ an omitted one keeps the stored token unless the base URL changes; a failed
 probe is a 400 `{error, check}` with `check` = `auth`, `reach` or `tls`;
 DELETE is a 409 while a project uses the connection) and
 `getProjectIssueTracker`/`putProjectIssueTracker`/`deleteProjectIssueTracker`
-on `/orgs/{org}/projects/{project}/issue-tracker` (project admin). Every route
-answers 503 when the server has no `INTEGRATIONS_ENCRYPTION_KEY`.
+on `/orgs/{org}/projects/{project}/issue-tracker` (project admin).
+`listIssueTrackerJobs` (`GET .../issue-tracker/jobs?state=&after=&limit=`,
+`{jobs, next_cursor}`, newest first) and `retryIssueTrackerJob` (`POST
+.../issue-tracker/jobs/{id}/retry`, delivered or failed jobs only, 409
+otherwise) back `components/IssueTrackerJobs.tsx`, the Jobs section under the
+project form (issue, action (Link, Unlink, Comment, Transition), link title or
+target status, state, attempts,
+last error, Retry), mirroring the Email deliveries tab. Every route answers 503
+when the server has no `INTEGRATIONS_ENCRYPTION_KEY`.
 
 Commit, branch and merge request payloads carry `issue_keys: [{key, url}]`
 when the project has active settings. `components/repo/IssueChips.tsx`

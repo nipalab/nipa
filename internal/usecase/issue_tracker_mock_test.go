@@ -12,6 +12,7 @@ package usecase
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
@@ -147,6 +148,21 @@ func (mr *MockissueTrackerRepositoryMockRecorder) GetByOrg(ctx, orgID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByOrg", reflect.TypeOf((*MockissueTrackerRepository)(nil).GetByOrg), ctx, orgID)
 }
 
+// GetIssueJob mocks base method.
+func (m *MockissueTrackerRepository) GetIssueJob(ctx context.Context, id snow.ID) (*domain.IssueTrackerJob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIssueJob", ctx, id)
+	ret0, _ := ret[0].(*domain.IssueTrackerJob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIssueJob indicates an expected call of GetIssueJob.
+func (mr *MockissueTrackerRepositoryMockRecorder) GetIssueJob(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIssueJob", reflect.TypeOf((*MockissueTrackerRepository)(nil).GetIssueJob), ctx, id)
+}
+
 // GetProject mocks base method.
 func (m *MockissueTrackerRepository) GetProject(ctx context.Context, projectID snow.ID) (*domain.ProjectIssueTracker, error) {
 	m.ctrl.T.Helper()
@@ -160,6 +176,21 @@ func (m *MockissueTrackerRepository) GetProject(ctx context.Context, projectID s
 func (mr *MockissueTrackerRepositoryMockRecorder) GetProject(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProject", reflect.TypeOf((*MockissueTrackerRepository)(nil).GetProject), ctx, projectID)
+}
+
+// ListIssueJobs mocks base method.
+func (m *MockissueTrackerRepository) ListIssueJobs(ctx context.Context, projectID snow.ID, state string, after *snow.ID, limit int64) ([]*domain.IssueTrackerJob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIssueJobs", ctx, projectID, state, after, limit)
+	ret0, _ := ret[0].([]*domain.IssueTrackerJob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIssueJobs indicates an expected call of ListIssueJobs.
+func (mr *MockissueTrackerRepositoryMockRecorder) ListIssueJobs(ctx, projectID, state, after, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIssueJobs", reflect.TypeOf((*MockissueTrackerRepository)(nil).ListIssueJobs), ctx, projectID, state, after, limit)
 }
 
 // ListIssueLinks mocks base method.
@@ -219,6 +250,21 @@ func (m *MockissueTrackerRepository) LockOrg(ctx context.Context, orgID snow.ID)
 func (mr *MockissueTrackerRepositoryMockRecorder) LockOrg(ctx, orgID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockOrg", reflect.TypeOf((*MockissueTrackerRepository)(nil).LockOrg), ctx, orgID)
+}
+
+// RetryIssueJob mocks base method.
+func (m *MockissueTrackerRepository) RetryIssueJob(ctx context.Context, projectID, id snow.ID, now time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RetryIssueJob", ctx, projectID, id, now)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RetryIssueJob indicates an expected call of RetryIssueJob.
+func (mr *MockissueTrackerRepositoryMockRecorder) RetryIssueJob(ctx, projectID, id, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetryIssueJob", reflect.TypeOf((*MockissueTrackerRepository)(nil).RetryIssueJob), ctx, projectID, id, now)
 }
 
 // Update mocks base method.

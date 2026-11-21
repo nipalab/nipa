@@ -77,3 +77,36 @@ type IssueLinkSubject struct {
 	BranchName      string
 	Missing         bool
 }
+
+const (
+	IssueJobLink       = "link"
+	IssueJobComment    = "comment"
+	IssueJobTransition = "transition"
+	IssueJobUnlink     = "unlink"
+
+	IssueJobPending   = "pending"
+	IssueJobDelivered = "delivered"
+	IssueJobFailed    = "failed"
+)
+
+// IssueTrackerJob is one outbound tracker call waiting in the outbox. A
+// pending job is due at NextRetryAt; a claimed one carries its lease there.
+type IssueTrackerJob struct {
+	ID          snow.ID
+	TrackerID   snow.ID
+	ProjectID   snow.ID
+	IssueKey    string
+	Action      string
+	Payload     string
+	DedupeKey   string
+	State       string
+	Attempt     int64
+	LastError   string
+	NextRetryAt *time.Time
+	DeliveredAt *time.Time
+	CreatedAt   time.Time
+}
+
+func IsValidIssueJobState(state string) bool {
+	return state == IssueJobPending || state == IssueJobDelivered || state == IssueJobFailed
+}
