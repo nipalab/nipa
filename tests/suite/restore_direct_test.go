@@ -43,7 +43,7 @@ func absentChunkFanouts(dir, path string, content []byte) []string {
 	Expect(err).NotTo(HaveOccurred())
 	// The binary profile caps a chunk at Max bytes, so the sizes the specs use
 	// guarantee several chunks whatever the content-defined cut points are.
-	limit := int64(chunker.ConfigForFile(path, true).Max)
+	limit := chunker.ConfigForFile(path, true).Max
 	minChunks := (int64(len(content)) + limit - 1) / limit
 	Expect(minChunks).To(BeNumerically(">=", 2), "%s must be larger than one chunk can be", path)
 	Expect(int64(len(chunks))).To(BeNumerically(">=", minChunks))
