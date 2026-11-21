@@ -407,7 +407,7 @@ var _ = Describe("two-factor authentication", func() {
 	It("is unavailable on a server with MFA_ENABLED=false", func() {
 		host := os.Getenv("NIPA_TEST_MFAOFF_HOST")
 		if host == "" {
-			Skip("needs the MFA_ENABLED=false server from tests/run.sh free")
+			Skip("needs the MFA_ENABLED=false server from tests/run.sh free|ee")
 		}
 		baseURL := "http://" + host + "/api/v1"
 		admin := newAPIClient(baseURL, cli.user, cli.password)
