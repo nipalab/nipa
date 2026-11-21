@@ -68,28 +68,38 @@ namespace Nipa.Editor
             Task.Run(async () =>
             {
                 List<string> overwritten = null;
+                Exception failure = null;
                 try
                 {
                     overwritten = await session.SyncPlanAsync(branch, tag).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
-                    UnityEngine.Debug.LogWarning("[Nipa] Could not check local changes before " + operation + ": " + e.Message);
+                    failure = e;
                 }
                 MainThread.Post(() =>
                 {
                     Busy = null;
                     Changed?.Invoke();
-                    if (overwritten == null || overwritten.Count == 0)
+                    switch (SyncGuard.Decide(overwritten, failure, ReferenceEquals(session, Session)))
                     {
-                        Run(title, op, refreshAssets: true, onSuccess: onSuccess);
-                        return;
+                        case SyncGuardStep.Stop:
+                            return;
+                        case SyncGuardStep.Run:
+                            Run(title, op, refreshAssets: true, onSuccess: onSuccess);
+                            return;
+                        case SyncGuardStep.ConfirmUnchecked:
+                            UnityEngine.Debug.LogWarning("[Nipa] Could not check local changes before " + operation + ": " + failure?.Message);
+                            var answer = EditorUtility.DisplayDialogComplex("Nipa: " + title,
+                                SyncGuard.UncheckedText(operation, failure), "Check again", "Cancel", "Continue anyway");
+                            if (answer == 0)
+                                Sync(title, operation, branch, tag, op, onSuccess);
+                            else if (answer == 2)
+                                Run(title, op, refreshAssets: true, onSuccess: onSuccess);
+                            return;
                     }
-                    var list = string.Join("\n", overwritten.Take(10).Select(p => "• " + p)) + (overwritten.Count > 10 ? "\n…" : string.Empty);
                     var choice = EditorUtility.DisplayDialogComplex("Nipa: " + title,
-                        title + " would replace your local changes to " + overwritten.Count + " file(s):\n" + list
-                        + "\n\nShelve them first? Apply the shelf afterwards from the Shelves tab.",
-                        "Shelve and continue", "Cancel", "Overwrite them");
+                        SyncGuard.OverwriteText(title, overwritten), "Shelve and continue", "Cancel", "Overwrite them");
                     if (choice == 1)
                         return;
                     if (choice == 2)

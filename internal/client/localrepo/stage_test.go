@@ -2,6 +2,8 @@ package localrepo
 
 import (
 	"encoding/binary"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -216,6 +218,68 @@ func TestMissingChunks_ManyHashes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, n-len(cached), "hash lookups must span multiple batches")
 	require.NotContains(t, got, cached[0])
+}
+
+func manyHashes(n int, lead byte) []serverDomain.Hash {
+	hashes := make([]serverDomain.Hash, 0, n)
+	for i := range n {
+		h := serverDomain.Hash{lead}
+		binary.BigEndian.PutUint32(h[1:5], uint32(i))
+		hashes = append(hashes, h)
+	}
+	return hashes
+}
+
+func TestMissingChunks_EmptyStoreProbesNothing(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	hashes := append(manyHashes(40, 0x11), manyHashes(40, 0x22)...)
+
+	present, listed := lr.objectFanout(len(hashes))
+	require.True(t, listed)
+	require.Equal(t, [256]bool{}, present, "a fresh clone has no fan-out directory to probe")
+	got, err := lr.MissingChunks(hashes)
+	require.NoError(t, err)
+	require.Equal(t, hashes, got)
+
+	require.NoError(t, os.RemoveAll(filepath.Join(lr.target, ConfigDir, ObjectsDir)))
+	_, listed = lr.objectFanout(len(hashes))
+	require.True(t, listed, "a store that does not exist is an empty one")
+	got, err = lr.MissingChunks(hashes)
+	require.NoError(t, err)
+	require.Equal(t, hashes, got)
+}
+
+func TestMissingChunks_FanoutKeepsCachedChunks(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	stored := manyHashes(40, 0x11)
+	hashes := append(append([]serverDomain.Hash{}, stored...), manyHashes(40, 0x22)...)
+	require.NoError(t, lr.StoreChunk(stored[3], []byte("a")))
+	require.NoError(t, lr.StoreChunk(stored[7], []byte("b")))
+	require.NoError(t, os.WriteFile(filepath.Join(lr.target, ConfigDir, ObjectsDir, "not-a-fanout"), nil, 0o644))
+
+	present, listed := lr.objectFanout(len(hashes))
+	require.True(t, listed)
+	require.True(t, present[0x11])
+	require.False(t, present[0x22])
+
+	got, err := lr.MissingChunks(hashes)
+	require.NoError(t, err)
+	require.Len(t, got, len(hashes)-2)
+	require.NotContains(t, got, stored[3])
+	require.NotContains(t, got, stored[7])
+	require.Contains(t, got, stored[4], "a hash in a listed directory is still probed")
+}
+
+func TestMissingChunks_UnlistableStoreProbesEveryHash(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	objects := filepath.Join(lr.target, ConfigDir, ObjectsDir)
+	require.NoError(t, os.RemoveAll(objects))
+	require.NoError(t, os.WriteFile(objects, []byte("not a directory"), 0o644))
+
+	_, listed := lr.objectFanout(64)
+	require.False(t, listed)
+	_, listed = lr.objectFanout(minFanoutProbe - 1)
+	require.False(t, listed, "a few hashes are cheaper to probe than to list")
 }
 
 func TestMissingChunks_Empty(t *testing.T) {

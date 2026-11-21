@@ -46,6 +46,7 @@ beforeEach(async () => {
   daemon.on("WatchChanges", () => ({ lines: [], hold: true }));
   daemon.on("LockStatus", () => ({ json: { files: [{ path: "art/hero.png", state: "theirs", held_by: "u2", held_by_name: "Ana" }] } }));
   daemon.on("PushPlan", () => ({ json: { up_to_date: false, asset_violations: [], asset_impact: null, warnings: [] } }));
+  daemon.on("SyncPlan", () => ({ json: { overwritten: [] } }));
   daemon.on("ReadBlob", (body) => ({
     lines: [{ info: { path: body.blob.path, is_binary: body.blob.path.endsWith(".png") } }, { data: Buffer.from(`old ${body.blob.path}`).toString("base64") }],
   }));

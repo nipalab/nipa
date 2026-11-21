@@ -196,3 +196,104 @@ func TestDefaultHTTPClient_BoundsRedirectsAndHeaderWait(t *testing.T) {
 	require.ErrorContains(t, err, "redirects")
 	require.LessOrEqual(t, hops.Load(), int32(maxTransferRedirects+1))
 }
+
+// stalledUploadServer stops reading the request body of its first stallFor
+// PUTs after a few bytes and hangs; later requests are read to the end.
+func stalledUploadServer(t *testing.T, stallFor int32) (*httptest.Server, *atomic.Int32, *atomic.Int64) {
+	t.Helper()
+	var requests atomic.Int32
+	var received atomic.Int64
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) > stallFor {
+			n, _ := io.Copy(io.Discard, r.Body)
+			received.Store(n)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		_, _ = io.ReadFull(r.Body, make([]byte, 1024))
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+	return srv, &requests, &received
+}
+
+// stallUploadSize is far more than the loopback socket buffers hold, so a
+// server that stops reading leaves the client's write blocked mid body.
+const stallUploadSize = 48 << 20
+
+func TestPutChunk_RetriesAStalledUpload(t *testing.T) {
+	srv, requests, received := stalledUploadServer(t, 1)
+	c := stallClient(150*time.Millisecond, 3)
+	data := make([]byte, stallUploadSize)
+
+	n, err := c.putChunk(context.Background(), chunkTransfer{hash: testChunkHash(0x70), url: srv.URL, data: data})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(data)), n)
+	require.Equal(t, int32(2), requests.Load(), "the stalled attempt is cancelled and repeated")
+	require.Equal(t, int64(len(data)), received.Load(), "the repeated attempt sends the whole body")
+}
+
+func TestPutChunk_StallErrorAfterAttempts(t *testing.T) {
+	srv, requests, _ := stalledUploadServer(t, 100)
+	c := stallClient(100*time.Millisecond, 2)
+
+	_, err := c.putChunk(context.Background(), chunkTransfer{hash: testChunkHash(0x71), url: srv.URL, data: make([]byte, stallUploadSize)})
+	require.ErrorIs(t, err, errTransferStalled)
+	require.Equal(t, int32(2), requests.Load())
+}
+
+func TestPutChunk_SlowAnswerAfterTheBodyIsNotAStall(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = io.Copy(io.Discard, r.Body)
+		time.Sleep(250 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	c := stallClient(50*time.Millisecond, 1)
+
+	for _, data := range [][]byte{[]byte("a small chunk"), nil} {
+		_, err := c.putChunk(context.Background(), chunkTransfer{hash: testChunkHash(0x72), url: srv.URL, data: data})
+		require.NoError(t, err, "once the body is sent only the response-header timeout applies")
+	}
+	require.Equal(t, int32(2), requests.Load())
+}
+
+func TestPutChunk_GuardedBodyIsReplayedOnRedirect(t *testing.T) {
+	var got atomic.Value
+	var lengths atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		lengths.Add(r.ContentLength)
+		if r.URL.Path != "/final" {
+			http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+			return
+		}
+		got.Store(string(body))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	c := stallClient(time.Second, 1)
+
+	_, err := c.putChunk(context.Background(), chunkTransfer{hash: testChunkHash(0x73), url: srv.URL, data: []byte("replayed body")})
+	require.NoError(t, err)
+	require.Equal(t, "replayed body", got.Load())
+	require.Equal(t, int64(2*len("replayed body")), lengths.Load(), "both sends declare the content length")
+}
+
+func TestStallGuard_UploadDisabledWithoutTimeout(t *testing.T) {
+	g := newStallGuard(0, func() {})
+	request, err := http.NewRequestWithContext(g.traceUpload(context.Background()), http.MethodPut, "http://example.invalid", nil)
+	require.NoError(t, err)
+	g.wrapUpload(request, []byte("x"))
+	require.Nil(t, request.Body, "no guard, no wrapping")
+	g.stop()
+}

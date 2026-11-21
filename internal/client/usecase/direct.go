@@ -51,6 +51,7 @@ func directEligible(f materializedFile, pins []string) bool {
 type directFile struct {
 	job       materializeJob
 	tmp       string
+	handles   *tempHandles
 	remaining atomic.Int64
 	done      atomic.Bool
 	replaced  atomic.Bool
@@ -69,6 +70,7 @@ type directPlan struct {
 	root    string
 	files   []*directFile
 	targets map[domain.Hash][]directTarget
+	handles *tempHandles
 
 	mu      sync.Mutex
 	entries map[string]clientDomain.StatEntry
@@ -78,6 +80,7 @@ func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
 	p := &directPlan{
 		root:    root,
 		targets: make(map[domain.Hash][]directTarget),
+		handles: newTempHandles(),
 		entries: make(map[string]clientDomain.StatEntry, len(jobs)),
 	}
 	for _, job := range jobs {
@@ -86,7 +89,7 @@ func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
 			p.cleanup()
 			return nil, &materializeError{path: job.file.Path, err: err}
 		}
-		df := &directFile{job: job, tmp: tmp}
+		df := &directFile{job: job, tmp: tmp, handles: p.handles}
 		df.remaining.Store(int64(len(job.file.ChunkHashes)))
 		p.files = append(p.files, df)
 		var offset int64
@@ -136,8 +139,8 @@ func (p *directPlan) wants(h domain.Hash) bool {
 	return ok
 }
 
-// write places one verified chunk at every offset it occupies. Targets of one
-// file are contiguous, so each file is opened once per chunk and closed again.
+// write places one verified chunk at every offset it occupies, through the
+// plan's shared temp-file handles.
 func (p *directPlan) write(h domain.Hash, data []byte) error {
 	if err := p.place(h, data); err != nil {
 		return err
@@ -170,21 +173,20 @@ func eachTargetFile(targets []directTarget, fn func(df *directFile, targets []di
 }
 
 func writeTargets(df *directFile, targets []directTarget, data []byte) error {
-	out, err := os.OpenFile(df.tmp, os.O_WRONLY, 0)
+	out, err := df.handles.acquire(df)
 	if err != nil {
 		return err
 	}
+	defer df.handles.release(df)
 	for _, t := range targets {
 		if int64(len(data)) != t.size {
-			_ = out.Close()
 			return fmt.Errorf("content length mismatch for %s: chunk is %d bytes, want %d", df.job.file.Path, len(data), t.size)
 		}
 		if _, err := out.WriteAt(data, t.offset); err != nil {
-			_ = out.Close()
 			return err
 		}
 	}
-	return out.Close()
+	return nil
 }
 
 // settle books a chunk that is in place at all its offsets, exactly once per
@@ -226,10 +228,11 @@ func (p *directPlan) receive(h domain.Hash, body io.Reader) (int64, error) {
 }
 
 func receiveTarget(t directTarget, h domain.Hash, body io.Reader) (int64, error) {
-	out, err := os.OpenFile(t.file.tmp, os.O_WRONLY, 0)
+	out, err := t.file.handles.acquire(t.file)
 	if err != nil {
 		return 0, err
 	}
+	defer t.file.handles.release(t.file)
 	buf := streamBufferPool.Get().(*[]byte)
 	defer streamBufferPool.Put(buf)
 	hasher := chunker.NewHasher()
@@ -237,9 +240,6 @@ func receiveTarget(t directTarget, h domain.Hash, body io.Reader) (int64, error)
 	// land in the next chunk's range (or past the end of the file), and a
 	// retry that rewrites just t.size bytes would never repair it.
 	n, err := io.CopyBuffer(io.MultiWriter(io.NewOffsetWriter(out, t.offset), hasher), io.LimitReader(body, t.size), *buf)
-	if closeErr := out.Close(); err == nil {
-		err = closeErr
-	}
 	if err != nil {
 		return n, err
 	}
@@ -267,26 +267,27 @@ func copyTarget(src, dst directTarget) error {
 	if dst.size != src.size {
 		return fmt.Errorf("content length mismatch for %s: chunk is %d bytes, want %d", dst.file.job.file.Path, src.size, dst.size)
 	}
-	in, err := os.Open(src.file.tmp)
+	in, err := src.file.handles.acquire(src.file)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst.file.tmp, os.O_WRONLY, 0)
+	defer src.file.handles.release(src.file)
+	out, err := dst.file.handles.acquire(dst.file)
 	if err != nil {
 		return err
 	}
+	defer dst.file.handles.release(dst.file)
 	buf := streamBufferPool.Get().(*[]byte)
 	defer streamBufferPool.Put(buf)
 	_, err = io.CopyBuffer(io.NewOffsetWriter(out, dst.offset), io.NewSectionReader(in, src.offset, src.size), *buf)
-	if closeErr := out.Close(); err == nil {
-		err = closeErr
-	}
 	return err
 }
 
 func (p *directPlan) complete(df *directFile) error {
 	f := df.job.file
+	if err := p.handles.close(df); err != nil {
+		return &materializeError{path: f.Path, err: err}
+	}
 	mode := materializedMode(f.Mode)
 	if df.job.prevMode != 1 && isReadOnlyFile(filepath.Join(p.root, filepath.FromSlash(f.Path))) {
 		mode &^= 0o222
@@ -312,6 +313,7 @@ func (p *directPlan) copyLocal(ctx context.Context, hashes []domain.Hash, load f
 // finish swaps every assembled file in once the whole sync succeeded, so a
 // failed download never leaves part of the new tree in the working copy.
 func (p *directPlan) finish(ctx context.Context) error {
+	p.handles.closeAll()
 	for _, df := range p.files {
 		if !df.done.Load() {
 			return &materializeError{path: df.job.file.Path, err: fmt.Errorf("incomplete download for %s", df.job.file.Path)}
@@ -333,6 +335,7 @@ func (p *directPlan) finish(ctx context.Context) error {
 }
 
 func (p *directPlan) cleanup() {
+	p.handles.closeAll()
 	for _, df := range p.files {
 		if !df.replaced.Load() {
 			_ = os.Remove(df.tmp)

@@ -1274,14 +1274,36 @@ describe("shelves", () => {
     expect(api.shelve).not.toHaveBeenCalled();
   });
 
-  it("goes ahead when the check fails or there is nothing to replace", async () => {
-    api.syncPlan.mockRejectedValue(new Error("offline"));
+  it("goes ahead when there is nothing to replace", async () => {
+    api.syncPlan.mockResolvedValue([]);
     api.update.mockResolvedValue({ branch: "main" });
     view();
     await screen.findByRole("button", { name: /Shelve…/ });
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
     await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("asks before updating when the check fails", async () => {
+    api.syncPlan.mockRejectedValue(new Error("offline"));
+    api.update.mockResolvedValue({ branch: "main" });
+    view();
+    await screen.findByRole("button", { name: /Shelve…/ });
+    await userEvent.click(screen.getByRole("button", { name: "Update" }));
+    let dialog = await screen.findByRole("alertdialog", { name: "Could not check your local changes" });
+    expect(within(dialog).getByText("offline")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Updating may replace local changes/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Shelve and continue" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.update).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Update" }));
+    dialog = await screen.findByRole("alertdialog", { name: "Could not check your local changes" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Continue anyway" }));
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
+    expect(api.shelve).not.toHaveBeenCalled();
   });
 
   it("describes shelve outcomes", () => {

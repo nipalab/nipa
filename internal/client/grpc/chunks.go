@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"strconv"
 	"strings"
@@ -353,17 +354,21 @@ func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retr
 	if err != nil {
 		return retryHint{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(job.data))
+	reqCtx, cancel := context.WithCancel(ctx)
+	guard := newStallGuard(c.stallTimeout, cancel)
+	defer guard.stop()
+	request, err := http.NewRequestWithContext(guard.traceUpload(reqCtx), http.MethodPut, target, bytes.NewReader(job.data))
 	if err != nil {
 		return retryHint{}, err
 	}
+	guard.wrapUpload(request, job.data)
 	for name, value := range job.headers {
 		request.Header.Set(name, value)
 	}
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
-		return retryHint{retryable: ctx.Err() == nil}, err
+		return retryHint{retryable: ctx.Err() == nil}, guard.explain(err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
@@ -731,7 +736,8 @@ func checkTransferRedirect(req *http.Request, via []*http.Request) error {
 var errTransferStalled = errors.New("chunk transfer stalled")
 
 // stallGuard cancels a transfer that makes no progress for timeout: nothing
-// arrives before the response, or between two reads of its body.
+// arrives before the response, or between two reads of its body (download),
+// or the transport takes no request body bytes (upload).
 type stallGuard struct {
 	body    io.ReadCloser
 	timer   *time.Timer
@@ -780,6 +786,51 @@ func (g *stallGuard) Close() error {
 	g.stop()
 	return g.body.Close()
 }
+
+// traceUpload disarms the guard once the transport wrote the whole request,
+// body included and flushed: from then on the response-header timeout bounds
+// the wait for the answer.
+func (g *stallGuard) traceUpload(ctx context.Context) context.Context {
+	return httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil && g.timer != nil {
+				g.timer.Stop()
+			}
+		},
+	})
+}
+
+// wrapUpload makes the guard watch the transport read the request body: the
+// transport asks for more only after it wrote what it had, so no read for
+// timeout means the connection stopped taking bytes. Content-Length stays as
+// set, and a replayed body (redirect, retried connection) arms the guard
+// again.
+func (g *stallGuard) wrapUpload(request *http.Request, data []byte) {
+	if g.timer == nil || len(data) == 0 {
+		return
+	}
+	request.Body = &uploadBody{guard: g, r: bytes.NewReader(data)}
+	request.GetBody = func() (io.ReadCloser, error) {
+		g.timer.Reset(g.timeout)
+		return &uploadBody{guard: g, r: bytes.NewReader(data)}, nil
+	}
+}
+
+// uploadBody is a request body whose reads count as upload progress.
+type uploadBody struct {
+	guard *stallGuard
+	r     *bytes.Reader
+}
+
+func (b *uploadBody) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if n > 0 && !b.guard.stalled.Load() {
+		b.guard.timer.Reset(b.guard.timeout)
+	}
+	return n, err
+}
+
+func (b *uploadBody) Close() error { return nil }
 
 func chunkHTTPError(res *http.Response) error {
 	if res.StatusCode == http.StatusNotFound {

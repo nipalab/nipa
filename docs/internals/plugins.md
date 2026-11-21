@@ -15,7 +15,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`ShelveCreate`/`ShelveApply`/`ShelveList`/`ShelveDrop`, Shelves tab, pending
   `shelf` banner), `SyncPlan` behind `NipaHost.Sync` ("Shelve and continue"
   before Update/switch/tag checkout, open scenes saved first through
-  `NipaHost.SaveOpenScenes`) and `ProxyLockRequestRelease` (Ask to release,
+  `NipaHost.SaveOpenScenes`; `SyncGuard.Decide` picks run / confirm / stop and
+  fails closed: a failed check asks Check again / Cancel / Continue anyway,
+  a cancelled one or a replaced session stops) and `ProxyLockRequestRelease` (Ask to release,
   `lock_requested` prompt), maintenance (`RepoActivity.maintenance` banner,
   `MaintenanceNotes`, `NipaHost.Allowed` gate, `DaemonException.Maintenance`),
   `PushPlan` push checks (`PushChecks`), lock TTL (`LockTtlHours`, `LockExpiry`,
@@ -62,6 +64,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `context_menu.gd` (FileSystem/scene-tab Lock/Unlock, History, Compare with
   last pushed), `inspector_plugin.gd`, and the dock (branch/tag switcher,
   Merge branch..., detached-tag, pending merge/revert and sidecar banners),
+  `Dock.sync_guard_step` after `request_sync_plan` (fails closed: a failed
+  check opens the "Could not check local changes" dialog, a cancelled one or
+  a closed session stops),
   `setup_checker`/`setup_row` scenes,
   `bottom_panel` (Locks, Conflicts, History, Image diff tab scenes) and
   `lock_badge` scenes; `_commit` runs the lock pre-check and refuses while
@@ -89,7 +94,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `needed`/`theirs` warnings, conflict rows with Take Mine/Theirs, Mark as
   Resolved (refused with markers) and Compare Sides per `ConflictSides`, a
   branch/tag picker, `SyncPlan` + `ShelveCreate` "Shelve and Continue" before
-  Update/Switch, `WatchEvents` incoming count and maintenance item, `nipa://`
+  Update/Switch (`guardSync` fails closed: a failed `SyncPlan` asks in a
+  modal with "Continue Anyway", a disposed repository stops), `WatchEvents` incoming count and maintenance item, `nipa://`
   links). Never calls
   `UnwatchRepo` (not ref-counted, it would unwatch the desktop's clone).
   vitest against `test/fakes/vscode.ts` + a fake bridge, 80% gate,

@@ -12,6 +12,8 @@
   offer Shelve and continue when local changes would be replaced; the new
   Shelves tab applies, keeps, deletes and aborts shelves, and the dock shows a
   pending shelf apply.
+- When that check fails, a dialog shows the error and asks before anything is
+  overwritten instead of going ahead.
 - Staging from the Version Control panel no longer rescans the project or
   toasts per file (failures still toast).
 - Activity polls refresh branches and tags; branch and tag events fire only

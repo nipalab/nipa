@@ -121,6 +121,37 @@ namespace Nipa.Core.Tests
         {
             Assert.That(OpSummary.ShelfName("update", new DateTime(2026, 11, 17, 9, 5, 0)), Is.EqualTo("Before update 2026-11-17 09:05"));
         }
+
+        [Test]
+        public void SyncGuardDecides()
+        {
+            var none = new List<string>();
+            var some = new List<string> { "a.prefab" };
+            Assert.That(SyncGuard.Decide(none, null, true), Is.EqualTo(SyncGuardStep.Run));
+            Assert.That(SyncGuard.Decide(some, null, true), Is.EqualTo(SyncGuardStep.ConfirmOverwrite));
+            Assert.That(SyncGuard.Decide(null, new DaemonException(503, "daemon unavailable"), true), Is.EqualTo(SyncGuardStep.ConfirmUnchecked));
+            Assert.That(SyncGuard.Decide(null, new TimeoutException(), true), Is.EqualTo(SyncGuardStep.ConfirmUnchecked));
+            Assert.That(SyncGuard.Decide(null, null, true), Is.EqualTo(SyncGuardStep.ConfirmUnchecked));
+            Assert.That(SyncGuard.Decide(null, new OperationCanceledException(), true), Is.EqualTo(SyncGuardStep.Stop));
+            Assert.That(SyncGuard.Decide(null, new TaskCanceledException(), true), Is.EqualTo(SyncGuardStep.Stop));
+            Assert.That(SyncGuard.Decide(null, new ObjectDisposedException("session"), true), Is.EqualTo(SyncGuardStep.Stop));
+            Assert.That(SyncGuard.Decide(none, null, false), Is.EqualTo(SyncGuardStep.Stop));
+            Assert.That(SyncGuard.Decide(some, null, false), Is.EqualTo(SyncGuardStep.Stop));
+        }
+
+        [Test]
+        public void SyncGuardTexts()
+        {
+            var text = SyncGuard.OverwriteText("Update", new List<string> { "a.prefab", "b.png" });
+            Assert.That(text, Does.StartWith("Update would replace your local changes to 2 file(s):\n• a.prefab\n• b.png\n\nShelve them first?"));
+            var many = Enumerable.Range(0, SyncGuard.Shown + 2).Select(i => "f" + i).ToList();
+            text = SyncGuard.OverwriteText("Update", many);
+            Assert.That(text, Does.Contain("12 file(s)").And.Contain("• f9\n…").And.Not.Contain("f10"));
+
+            text = SyncGuard.UncheckedText("switch to dev", new DaemonException(503, "daemon unavailable"));
+            Assert.That(text, Is.EqualTo("Could not check your local changes before switch to dev:\ndaemon unavailable\n\nIf you continue, local changes may be overwritten."));
+            Assert.That(SyncGuard.UncheckedText("update", null), Does.Contain("the check did not answer"));
+        }
     }
 
     [TestFixture]

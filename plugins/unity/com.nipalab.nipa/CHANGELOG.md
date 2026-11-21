@@ -9,6 +9,8 @@
 - Shelves: a Shelves tab (Apply, Keep, Delete), Shelve on the Changes and
   Staged lists, "Shelve and continue" when Update or a switch would replace
   local changes, and a pending shelf apply banner with Abort.
+- When the local-changes check before Update or a switch fails, a dialog shows
+  the error and asks before anything is overwritten instead of going ahead.
 - Ask to release a lock held by someone else (Inspector bar, Locks tab,
   Assets menu), with a Release prompt for the holder and request counts on
   your own locks.

@@ -9,6 +9,11 @@ const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview
 	"shelves", "lock-request"]
 const SYNC_OPS := ["update", "switch"]
 const SYNC_GUARD_LIST := 10
+const SYNC_RUN := "run"
+const SYNC_CONFIRM := "confirm"
+const SYNC_UNCHECKED := "unchecked"
+const SYNC_STOP := "stop"
+const SYNC_CANCELLED_MESSAGES := ["cancelled", "session stopped", "session is not open"]
 
 var _pending_action: Callable
 var _commit_message := ""
@@ -20,6 +25,7 @@ var _guard_action: Callable
 var _guard_label := ""
 var _guard_paths := PackedStringArray()
 var _shelve_dialog: ConfirmationDialog
+var _unchecked_dialog: ConfirmationDialog
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -81,6 +87,12 @@ func _ready() -> void:
 	_shelve_dialog.confirmed.connect(_on_shelve_confirmed)
 	_shelve_dialog.canceled.connect(_on_shelve_canceled)
 	add_child(_shelve_dialog)
+	_unchecked_dialog = ConfirmationDialog.new()
+	_unchecked_dialog.title = "Could not check local changes"
+	_unchecked_dialog.ok_button_text = "Continue anyway"
+	_unchecked_dialog.confirmed.connect(_on_unchecked_confirmed)
+	_unchecked_dialog.canceled.connect(_on_shelve_canceled)
+	add_child(_unchecked_dialog)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -152,21 +164,52 @@ static func shelf_name(label: String) -> String:
 	return "Before %s" % label.to_lower()
 
 
+static func sync_unchecked_text(label: String, message: String) -> String:
+	return "Could not check your local changes before: %s\n%s\n\nIf you continue, local changes may be overwritten." % [
+		label, message if not message.is_empty() else "The check did not answer."]
+
+
+# What to do once the SyncPlan check came back: a failed check asks instead of running,
+# a check cancelled by a closing session stops.
+static func sync_guard_step(session_open: bool, ok: bool, message: String, paths: Array) -> String:
+	if not session_open or (not ok and message in SYNC_CANCELLED_MESSAGES):
+		return SYNC_STOP
+	if not ok:
+		return SYNC_UNCHECKED
+	return SYNC_RUN if paths.is_empty() else SYNC_CONFIRM
+
+
 # Runs `action` unless it would replace local changes; then offers to shelve them first.
-# A failed check never blocks the operation.
+# A failed check asks before running, since it could replace changes nobody listed.
 func _guard_sync(branch: String, tag: String, label: String, action: Callable) -> void:
 	var plan: RefCounted = _session.request_sync_plan(branch, tag)
 	if not plan.is_done():
 		await plan.completed
 	var paths: Array = plan.get_result().get("overwritten", []) if plan.is_ok() else []
-	if paths.is_empty():
+	var step := sync_guard_step(_session != null and _session.is_open(), plan.is_ok(), plan.get_message(), paths)
+	if step == SYNC_STOP:
+		return
+	if step == SYNC_RUN:
 		action.call()
 		return
 	_guard_action = action
 	_guard_label = label
+	if step == SYNC_UNCHECKED:
+		_guard_paths = PackedStringArray()
+		_unchecked_dialog.dialog_text = sync_unchecked_text(label, plan.get_message())
+		_unchecked_dialog.popup_centered()
+		_unchecked_dialog.get_cancel_button().grab_focus()
+		return
 	_guard_paths = PackedStringArray(paths)
 	_shelve_dialog.dialog_text = sync_guard_text(label, paths)
 	_shelve_dialog.popup_centered()
+
+
+func _on_unchecked_confirmed() -> void:
+	var action := _guard_action
+	_guard_action = Callable()
+	if _session != null and action.is_valid():
+		action.call()
 
 
 func _on_shelve_confirmed() -> void:

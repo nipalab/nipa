@@ -91,6 +91,20 @@ func test_sync_guard_text_caps_the_list() -> void:
 	assert_str(Dock.shelf_name("Switch to dev")).is_equal("Before switch to dev")
 
 
+func test_sync_guard_step_fails_closed() -> void:
+	assert_str(Dock.sync_guard_step(true, true, "", [])).is_equal(Dock.SYNC_RUN)
+	assert_str(Dock.sync_guard_step(true, true, "", ["a.gd"])).is_equal(Dock.SYNC_CONFIRM)
+	assert_str(Dock.sync_guard_step(true, false, "daemon unavailable", [])).is_equal(Dock.SYNC_UNCHECKED)
+	assert_str(Dock.sync_guard_step(true, false, "", [])).is_equal(Dock.SYNC_UNCHECKED)
+	for message in Dock.SYNC_CANCELLED_MESSAGES:
+		assert_str(Dock.sync_guard_step(true, false, message, [])).is_equal(Dock.SYNC_STOP)
+	assert_str(Dock.sync_guard_step(false, true, "", [])).is_equal(Dock.SYNC_STOP)
+	assert_str(Dock.sync_guard_step(false, false, "daemon unavailable", [])).is_equal(Dock.SYNC_STOP)
+	var text: String = Dock.sync_unchecked_text("Switch to dev", "daemon unavailable")
+	assert_str(text).is_equal("Could not check your local changes before: Switch to dev\ndaemon unavailable\n\nIf you continue, local changes may be overwritten.")
+	assert_str(Dock.sync_unchecked_text("Update", "")).contains("The check did not answer.")
+
+
 func test_banner_and_conflicts_describe_a_pending_shelf() -> void:
 	var state: Dictionary = Dock.banner_state({"pending": "shelf"}, {"open": 1})
 	assert_str(state.pending_text).contains("Applying a shelf. 1 conflict(s) left.")

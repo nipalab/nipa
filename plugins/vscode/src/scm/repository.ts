@@ -307,8 +307,17 @@ export class NipaRepository implements vscode.Disposable, vscode.QuickDiffProvid
       const plan = await this.call<{ overwritten: string[] }>("SyncPlan", { branch: target.branch ?? "", tag: target.tag ?? "" });
       overwritten = plan.overwritten ?? [];
     } catch (err) {
-      this.deps.log(`sync plan: ${describeError(err)}`);
-      return true;
+      const reason = describeError(err);
+      this.deps.log(`sync plan: ${reason}`);
+      if (this.disposed) {
+        return false;
+      }
+      const choice = await vscode.window.showWarningMessage(
+        `${action}: could not check for local changes.`,
+        { modal: true, detail: `${reason}\n\nLocal changes may be overwritten if you continue.` },
+        "Continue Anyway",
+      );
+      return choice === "Continue Anyway";
     }
     if (!overwritten.length) {
       return true;

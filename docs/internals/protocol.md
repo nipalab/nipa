@@ -204,7 +204,16 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`checkTransferRedirect`). A download is cancelled and retried when nothing
   arrives for `Client.stallTimeout` (60 s, `stallGuard`, covering the wait
   for the response and every gap in the body); the transport also bounds the
-  wait for response headers to 2 minutes.
+  wait for response headers to 2 minutes. An upload has the same guard on
+  its request body (`putChunkOnce`, `stallGuard.wrapUpload`): the transport
+  asks the body for more only after it wrote what it had, so no body read
+  for `stallTimeout` means the connection stopped taking bytes, and the PUT
+  is cancelled with `errTransferStalled` and retried like any transient
+  failure. The guard is disarmed by the `httptrace` `WroteRequest` hook, once
+  the whole request is written and flushed, so a slow answer is left to the
+  response-header timeout; `Content-Length` is unchanged and `GetBody`
+  returns a fresh guarded reader (re-arming the timer) for redirects and
+  retried connections.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are

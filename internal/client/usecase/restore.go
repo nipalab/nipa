@@ -224,10 +224,24 @@ func (w *WorkingCopy) changedFromSnapshot(paths []string, tracked map[string]dom
 }
 
 // restoreTargets expands exact paths and directory prefixes to the tracked
-// files they cover, matching git's "pathspec" semantics for restore.
+// files they cover, matching git's "pathspec" semantics for restore. The
+// tracked paths are sorted once, so a target costs a binary search plus the
+// files it covers instead of a pass over every tracked path.
 func restoreTargets(targets []string, tracked map[string]domain.SnapshotFile) ([]string, error) {
-	seen := make(map[string]bool, len(tracked))
+	sorted := make([]string, 0, len(tracked))
+	for p := range tracked {
+		sorted = append(sorted, p)
+	}
+	sort.Strings(sorted)
+	seen := make(map[string]bool)
 	var paths []string
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	all := false
 	for _, raw := range targets {
 		if raw == "" {
 			return nil, fmt.Errorf("a path is required")
@@ -239,20 +253,31 @@ func restoreTargets(targets []string, tracked map[string]domain.SnapshotFile) ([
 		if isNipaPath(target) {
 			return nil, fmt.Errorf("cannot operate on path inside %q", nipaDir)
 		}
-		matched := false
-		for p := range tracked {
-			if target != "" && p != target && !strings.HasPrefix(p, target+"/") {
-				continue
+		if target == "" {
+			if len(sorted) == 0 {
+				return nil, fmt.Errorf("path %q is not tracked", raw)
 			}
+			all = true
+			continue
+		}
+		_, matched := tracked[target]
+		if matched && !all {
+			add(target)
+		}
+		prefix := target + "/"
+		for i := sort.SearchStrings(sorted, prefix); i < len(sorted) && strings.HasPrefix(sorted[i], prefix); i++ {
 			matched = true
-			if !seen[p] {
-				seen[p] = true
-				paths = append(paths, p)
+			if all {
+				break
 			}
+			add(sorted[i])
 		}
 		if !matched {
 			return nil, fmt.Errorf("path %q is not tracked", raw)
 		}
+	}
+	if all {
+		return sorted, nil
 	}
 	sort.Strings(paths)
 	return paths, nil

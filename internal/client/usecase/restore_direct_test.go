@@ -24,7 +24,13 @@ type restoreServer struct {
 	tree          *serverDomain.TreeNode
 	manifestErr   error
 	manifestPaths [][]string
+	manifestDirs  []string
 	connectErr    error
+}
+
+func (s *restoreServer) GetCommitDirManifest(_ context.Context, _, _, _, dir string) (*serverDomain.TreeNode, error) {
+	s.manifestDirs = append(s.manifestDirs, dir)
+	return s.tree, s.manifestErr
 }
 
 func (s *restoreServer) Connect(context.Context, string) error { return s.connectErr }
@@ -111,11 +117,12 @@ func TestRestore_RebuildsEditedBinaryInPlace(t *testing.T) {
 	last := d.file.Chunks[len(d.file.Chunks)-1].Hash
 	require.Equal(t, map[serverDomain.Hash]int{last: 1}, d.server.streamed, "only the chunk the edit destroyed is downloaded")
 	require.Empty(t, d.server.buffered)
-	require.Equal(t, [][]string{{"big.bin"}}, d.server.manifestPaths, "the manifest is asked for the restored file only")
+	require.Equal(t, []string{""}, d.server.manifestDirs, "a root file is read from the root's own manifest")
+	require.Empty(t, d.server.manifestPaths)
 	requireNoTempFiles(t, d.root)
 
 	require.NoError(t, d.wc.Restore(context.Background(), []string{"big.bin"}))
-	require.Len(t, d.server.manifestPaths, 1, "the restore recorded a fingerprint, so a repeat does nothing")
+	require.Len(t, d.server.manifestDirs, 1, "the restore recorded a fingerprint, so a repeat does nothing")
 }
 
 func TestRestore_RebuildsDeletedBinaryWithoutTheCache(t *testing.T) {
@@ -197,6 +204,83 @@ func TestRestore_ManyFilesAskForTheWholeCheckout(t *testing.T) {
 	require.NoError(t, d.wc.Restore(context.Background(), []string{"big.bin"}))
 	require.Equal(t, [][]string{nil}, d.server.manifestPaths)
 	require.Equal(t, d.content, readRepoFile(t, d.root, "big.bin"))
+}
+
+// treeOnlyServer is a restoreServer without GetCommitDirManifest.
+type treeOnlyServer struct {
+	s *restoreServer
+}
+
+func (o treeOnlyServer) Connect(ctx context.Context, host string) error {
+	return o.s.Connect(ctx, host)
+}
+
+func (o treeOnlyServer) GetCommitTreeManifest(ctx context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
+	return o.s.GetCommitTreeManifest(ctx, org, project, commitID, paths)
+}
+
+func (o treeOnlyServer) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
+	return o.s.DownloadChunks(ctx, scope, hashes, onChunk)
+}
+
+func TestRestore_RootFileWithoutDirManifestsAsksForTheWholeCheckout(t *testing.T) {
+	d := newDirectRestore(t)
+	d.wc.WithDownloader(nil, treeOnlyServer{d.server})
+	d.edit(t)
+
+	require.NoError(t, d.wc.Restore(context.Background(), []string{"big.bin"}))
+	require.Equal(t, [][]string{nil}, d.server.manifestPaths)
+	require.Equal(t, d.content, readRepoFile(t, d.root, "big.bin"))
+}
+
+// TestRestore_AsksTheManifestForFoldersNotFiles covers the server's path
+// filter: it takes folders, and answers 404 for a file path.
+func TestRestore_AsksTheManifestForFoldersNotFiles(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
+	data := map[serverDomain.Hash][]byte{}
+	dir := func(name string, files ...*serverDomain.File) *serverDomain.TreeNode {
+		return &serverDomain.TreeNode{Name: name, FileChildren: files}
+	}
+	tree := &serverDomain.TreeNode{Name: "root",
+		FileChildren: []*serverDomain.File{rawManifestFile("top.bin", data, "top content")},
+		TreeChildren: []*serverDomain.TreeNode{
+			dir("sfx", rawManifestFile("c.bin", data, "sfx c")),
+			dir("art", rawManifestFile("a.bin", data, "art a"), rawManifestFile("b.bin", data, "art b")),
+		},
+	}
+	server := &restoreServer{streamingFake: newStreamingFake(data), tree: tree}
+	require.NoError(t, syncTree(t, lr, root, server, tree))
+	require.NoError(t, lr.SaveCommit("c1", ""))
+	wc, err := NewWorkingCopy(lr, root)
+	require.NoError(t, err)
+	wc.WithDownloader(nil, server)
+	files := []string{"art/a.bin", "art/b.bin", "sfx/c.bin", "top.bin"}
+	remove := func() {
+		for _, p := range files {
+			require.NoError(t, os.Remove(filepath.Join(root, filepath.FromSlash(p))))
+		}
+	}
+
+	remove()
+	require.NoError(t, wc.Restore(context.Background(), []string{"."}))
+	require.Equal(t, [][]string{{"art", "sfx"}}, server.manifestPaths, "one request for the folders of the restored files")
+	require.Equal(t, []string{""}, server.manifestDirs, "the root's own files are read without its subtree")
+	require.Equal(t, "art b", string(readRepoFile(t, root, "art/b.bin")))
+	require.Equal(t, "top content", string(readRepoFile(t, root, "top.bin")))
+	require.Zero(t, objectCount(t, root), "every file took the direct path")
+
+	remove()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "top.bin"), []byte("top content"), 0o644))
+	server.manifestPaths, server.manifestDirs = nil, nil
+	require.NoError(t, wc.Restore(context.Background(), []string{"art", "sfx"}))
+	require.Equal(t, [][]string{{"art", "sfx"}}, server.manifestPaths)
+	require.Empty(t, server.manifestDirs, "no root file, no root request")
+
+	remove()
+	server.manifestErr = errors.New("no manifest")
+	require.NoError(t, wc.Restore(context.Background(), []string{"art"}), "a failed folder request falls back to the cache path")
+	require.Equal(t, "art a", string(readRepoFile(t, root, "art/a.bin")))
 }
 
 // countingRepo counts the whole-table reads a restore makes.

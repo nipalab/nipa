@@ -215,6 +215,8 @@
   "syncGuard.cancel": "Batal",
   "syncGuard.continueAnyway": "Tetap lanjutkan",
   "syncGuard.shelveAndContinue": "Shelve lalu lanjutkan",
+  "syncGuard.couldNotCheck": "Tidak dapat memeriksa perubahan lokal Anda",
+  "syncGuard.uncheckedWarning": "{{verb}} mungkin menimpa perubahan lokal: pemeriksaannya gagal. Batalkan agar tetap aman, atau lanjutkan dengan risiko perubahan tertimpa.",
   "tableDiff.tableView": "Tampilan tabel",
   "tableDiff.table": "Tabel",
   "tableDiff.text": "Teks",

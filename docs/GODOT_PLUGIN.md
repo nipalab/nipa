@@ -97,7 +97,10 @@ Settings:
 - **Shelves**: the dock's Update, branch switch and tag checkout first ask
   `SyncPlan` which local changes the operation would replace. When there are
   any, "Shelve and continue" shelves exactly those (`ShelveCreate`, untracked
-  included) and then runs the operation; a failed check never blocks. The
+  included) and then runs the operation. A failed check fails closed: a
+  "Could not check local changes" dialog shows the error and runs the
+  operation only on "Continue anyway" (Cancel is focused); a check cancelled
+  by a closing session does nothing. The
   bottom panel's Shelves tab lists shelves (Apply, Apply and keep, Delete) and
   an apply waiting on conflicts (Abort; the dock shows the pending banner and
   the Conflicts tab resolves the files). The native Pull and branch picker are
