@@ -22,6 +22,7 @@ read GET /api/v1/keys
 read GET /api/v1/me/invitations
 read GET /api/v1/me/mfa
 read GET /api/v1/orgs
+read GET /api/v1/orgs/{org}/deleted-projects
 read GET /api/v1/orgs/{org}/groups
 read GET /api/v1/orgs/{org}/groups/{group}
 read GET /api/v1/orgs/{org}/invitations
@@ -104,6 +105,7 @@ write POST /api/v1/me/mfa/totp
 write POST /api/v1/me/mfa/totp/confirm
 write POST /api/v1/me/password
 write POST /api/v1/orgs
+write POST /api/v1/orgs/{org}/deleted-projects/{id}/restore
 write POST /api/v1/orgs/{org}/groups
 write POST /api/v1/orgs/{org}/groups/{group}/members
 write POST /api/v1/orgs/{org}/invitations

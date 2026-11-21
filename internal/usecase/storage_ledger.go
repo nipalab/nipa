@@ -42,4 +42,9 @@ type StorageLedger interface {
 	// bytes back to the owner's quota. It returns the released bytes and is
 	// idempotent: releasing an already released project returns 0.
 	ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
+
+	// RestoreProject charges a restored project's history back to the owner's
+	// quota, rebuilding its chunk links. It returns the charged bytes and a
+	// quota error, recording nothing, when they do not fit.
+	RestoreProject(ctx context.Context, projectID snow.ID) (int64, error)
 }

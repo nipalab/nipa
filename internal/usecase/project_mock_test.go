@@ -12,6 +12,7 @@ package usecase
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
@@ -116,6 +117,21 @@ func (mr *MockprojectRepositoryMockRecorder) GetByOrgIDAndSlug(ctx, orgID, slug 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByOrgIDAndSlug", reflect.TypeOf((*MockprojectRepository)(nil).GetByOrgIDAndSlug), ctx, orgID, slug)
 }
 
+// GetDeleted mocks base method.
+func (m *MockprojectRepository) GetDeleted(ctx context.Context, orgID, id snow.ID) (*domain.Project, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDeleted", ctx, orgID, id)
+	ret0, _ := ret[0].(*domain.Project)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDeleted indicates an expected call of GetDeleted.
+func (mr *MockprojectRepositoryMockRecorder) GetDeleted(ctx, orgID, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeleted", reflect.TypeOf((*MockprojectRepository)(nil).GetDeleted), ctx, orgID, id)
+}
+
 // ListByOrgID mocks base method.
 func (m *MockprojectRepository) ListByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error) {
 	m.ctrl.T.Helper()
@@ -129,6 +145,36 @@ func (m *MockprojectRepository) ListByOrgID(ctx context.Context, orgID snow.ID) 
 func (mr *MockprojectRepositoryMockRecorder) ListByOrgID(ctx, orgID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByOrgID", reflect.TypeOf((*MockprojectRepository)(nil).ListByOrgID), ctx, orgID)
+}
+
+// ListDeletedByOrgID mocks base method.
+func (m *MockprojectRepository) ListDeletedByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDeletedByOrgID", ctx, orgID)
+	ret0, _ := ret[0].([]domain.Project)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDeletedByOrgID indicates an expected call of ListDeletedByOrgID.
+func (mr *MockprojectRepositoryMockRecorder) ListDeletedByOrgID(ctx, orgID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeletedByOrgID", reflect.TypeOf((*MockprojectRepository)(nil).ListDeletedByOrgID), ctx, orgID)
+}
+
+// Restore mocks base method.
+func (m *MockprojectRepository) Restore(ctx context.Context, id snow.ID, deletedSince *time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Restore", ctx, id, deletedSince)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Restore indicates an expected call of Restore.
+func (mr *MockprojectRepositoryMockRecorder) Restore(ctx, id, deletedSince any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockprojectRepository)(nil).Restore), ctx, id, deletedSince)
 }
 
 // Update mocks base method.
@@ -196,6 +242,60 @@ func (m *MockprojectAccess) HasProjectAccess(ctx context.Context, projectID snow
 func (mr *MockprojectAccessMockRecorder) HasProjectAccess(ctx, projectID, permission any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProjectAccess", reflect.TypeOf((*MockprojectAccess)(nil).HasProjectAccess), ctx, projectID, permission)
+}
+
+// MockprojectStorageLedger is a mock of projectStorageLedger interface.
+type MockprojectStorageLedger struct {
+	ctrl     *gomock.Controller
+	recorder *MockprojectStorageLedgerMockRecorder
+	isgomock struct{}
+}
+
+// MockprojectStorageLedgerMockRecorder is the mock recorder for MockprojectStorageLedger.
+type MockprojectStorageLedgerMockRecorder struct {
+	mock *MockprojectStorageLedger
+}
+
+// NewMockprojectStorageLedger creates a new mock instance.
+func NewMockprojectStorageLedger(ctrl *gomock.Controller) *MockprojectStorageLedger {
+	mock := &MockprojectStorageLedger{ctrl: ctrl}
+	mock.recorder = &MockprojectStorageLedgerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockprojectStorageLedger) EXPECT() *MockprojectStorageLedgerMockRecorder {
+	return m.recorder
+}
+
+// ReleaseProject mocks base method.
+func (m *MockprojectStorageLedger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReleaseProject", ctx, projectID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReleaseProject indicates an expected call of ReleaseProject.
+func (mr *MockprojectStorageLedgerMockRecorder) ReleaseProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseProject", reflect.TypeOf((*MockprojectStorageLedger)(nil).ReleaseProject), ctx, projectID)
+}
+
+// RestoreProject mocks base method.
+func (m *MockprojectStorageLedger) RestoreProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreProject", ctx, projectID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RestoreProject indicates an expected call of RestoreProject.
+func (mr *MockprojectStorageLedgerMockRecorder) RestoreProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreProject", reflect.TypeOf((*MockprojectStorageLedger)(nil).RestoreProject), ctx, projectID)
 }
 
 // MockProjectStorageAssigner is a mock of ProjectStorageAssigner interface.

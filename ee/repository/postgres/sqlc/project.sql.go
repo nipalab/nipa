@@ -7,6 +7,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createProject = `-- name: CreateProject :one
@@ -53,6 +54,32 @@ UPDATE projects SET deleted = true, deleted_at = now() WHERE id = $1 AND deleted
 func (q *Queries) DeleteProject(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProject, id)
 	return err
+}
+
+const getDeletedProjectByOrgIDAndID = `-- name: GetDeletedProjectByOrgIDAndID :one
+SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE id = $1 AND org_id = $2 AND deleted = true LIMIT 1
+`
+
+type GetDeletedProjectByOrgIDAndIDParams struct {
+	ID    int64 `json:"id"`
+	OrgID int64 `json:"org_id"`
+}
+
+func (q *Queries) GetDeletedProjectByOrgIDAndID(ctx context.Context, arg GetDeletedProjectByOrgIDAndIDParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, getDeletedProjectByOrgIDAndID, arg.ID, arg.OrgID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const getProject = `-- name: GetProject :one
@@ -128,6 +155,43 @@ func (q *Queries) GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectBy
 	return i, err
 }
 
+const listDeletedProjectsByOrgId = `-- name: ListDeletedProjectsByOrgId :many
+SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE org_id = $1 AND deleted = true ORDER BY deleted_at DESC, id DESC
+`
+
+func (q *Queries) ListDeletedProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedProjectsByOrgId, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Deleted,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectsByOrgId = `-- name: ListProjectsByOrgId :many
 SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE org_id = $1 AND deleted = false ORDER BY id
 `
@@ -163,6 +227,25 @@ func (q *Queries) ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Proje
 		return nil, err
 	}
 	return items, nil
+}
+
+const restoreProject = `-- name: RestoreProject :execrows
+UPDATE projects SET deleted = false, deleted_at = NULL, updated_at = now()
+WHERE id = $1 AND deleted = true
+  AND ($2::timestamptz IS NULL OR deleted_at >= $2::timestamptz)
+`
+
+type RestoreProjectParams struct {
+	ID           int64        `json:"id"`
+	DeletedSince sql.NullTime `json:"deleted_since"`
+}
+
+func (q *Queries) RestoreProject(ctx context.Context, arg RestoreProjectParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, restoreProject, arg.ID, arg.DeletedSince)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateProject = `-- name: UpdateProject :one

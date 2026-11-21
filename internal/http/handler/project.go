@@ -3,6 +3,7 @@ package handler
 import (
 	nethttp "net/http"
 	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http"
@@ -102,6 +103,63 @@ func (h *Handler) DeleteProject(appCtx http.AppContext) {
 		return
 	}
 	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "project deleted"})
+}
+
+// ListDeletedProjects lists the organization's restorable deleted projects.
+func (h *Handler) ListDeletedProjects(appCtx http.AppContext) {
+	org, err := h.resolveOrg(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	uc := h.useCase.Project()
+	projects, err := uc.ListDeleted(appCtx.Context(), org.ID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.DeletedProjectResponse, 0, len(projects))
+	for _, project := range projects {
+		resp = append(resp, toDeletedProjectResponse(project, uc.RestoreWindow()))
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
+}
+
+// RestoreProject undeletes a project by id; its slug stays reserved while it
+// is deleted, so the restored project keeps its URL.
+func (h *Handler) RestoreProject(appCtx http.AppContext) {
+	org, err := h.resolveOrg(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	projectID, err := snow.ParseBase36(appCtx.PathParameter("id"))
+	if err != nil {
+		appCtx.HandleError(domain.NewErrorNotFound("project not found"))
+		return
+	}
+	restored, err := h.useCase.Project().Restore(appCtx.Context(), org.ID, projectID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(restored))
+}
+
+func toDeletedProjectResponse(project *domain.Project, window time.Duration) model.DeletedProjectResponse {
+	resp := model.DeletedProjectResponse{
+		ID:    project.ID.Base36(),
+		OrgID: project.OrgID.Base36(),
+		Slug:  project.Slug,
+		Name:  project.Name,
+	}
+	if project.DeletedAt != nil {
+		resp.DeletedAt = project.DeletedAt.UTC().Format(time.RFC3339)
+		if window > 0 {
+			resp.PurgeAfter = project.DeletedAt.Add(window).UTC().Format(time.RFC3339)
+		}
+	}
+	return resp
 }
 
 func (h *Handler) resolveProject(appCtx http.AppContext) (*domain.Organization, *domain.Project, error) {

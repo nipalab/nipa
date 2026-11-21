@@ -64,6 +64,7 @@ type Querier interface {
 	DeleteProject(ctx context.Context, id int64) error
 	DeleteProjectChunks(ctx context.Context, projectID int64) error
 	DeleteStorageServer(ctx context.Context, id int64) (int64, error)
+	DetachProjectCommitParents(ctx context.Context, arg DetachProjectCommitParentsParams) (int64, error)
 	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
 	EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCreateParams) (EmailDelivery, error)
 	EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error)
@@ -104,6 +105,7 @@ type Querier interface {
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	GetBillingUser(ctx context.Context, id int64) (GetBillingUserRow, error)
 	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
+	GetDeletedProjectByOrgIDAndID(ctx context.Context, arg GetDeletedProjectByOrgIDAndIDParams) (Project, error)
 	GetLiveSubscription(ctx context.Context, userID int64) (BillingSubscription, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
 	GetOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
@@ -134,6 +136,7 @@ type Querier interface {
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	InsertProjectStorage(ctx context.Context, arg InsertProjectStorageParams) error
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
+	IsProjectExternal(ctx context.Context, projectID int64) (bool, error)
 	IssueJobClaimDue(ctx context.Context, arg IssueJobClaimDueParams) ([]IssueTrackerJob, error)
 	IssueJobCountByState(ctx context.Context) ([]IssueJobCountByStateRow, error)
 	IssueJobDefer(ctx context.Context, arg IssueJobDeferParams) (int64, error)
@@ -159,16 +162,19 @@ type Querier interface {
 	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
 	IssueTrackerLockOrg(ctx context.Context, lockKey int64) error
 	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
+	ListDeletedProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	ListPurgeableProjects(ctx context.Context, arg ListPurgeableProjectsParams) ([]int64, error)
 	ListQuotaOwners(ctx context.Context, arg ListQuotaOwnersParams) ([]int64, error)
 	ListStorageServersByOwner(ctx context.Context, ownerUserID int64) ([]StorageServer, error)
 	ListUnbilledProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
 	LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error)
+	LockPurgeableProject(ctx context.Context, arg LockPurgeableProjectParams) (LockPurgeableProjectRow, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
 	LockStorageServerOwner(ctx context.Context, lockKey int64) error
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
@@ -281,6 +287,15 @@ type Querier interface {
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
+	PurgeProjectBranches(ctx context.Context, projectID int64) (int64, error)
+	PurgeProjectChunkLinks(ctx context.Context, arg PurgeProjectChunkLinksParams) (int64, error)
+	PurgeProjectChunkUploads(ctx context.Context, arg PurgeProjectChunkUploadsParams) (int64, error)
+	PurgeProjectCommitBatch(ctx context.Context, arg PurgeProjectCommitBatchParams) ([]int64, error)
+	PurgeProjectFileLocks(ctx context.Context, projectID int64) (int64, error)
+	PurgeProjectMergeRequests(ctx context.Context, projectID int64) (int64, error)
+	PurgeProjectRow(ctx context.Context, id int64) (int64, error)
+	PurgeProjectTags(ctx context.Context, projectID int64) (int64, error)
+	PurgeTreeRoots(ctx context.Context, treeIds []int64) (int64, error)
 	RebuildProjectChunks(ctx context.Context, projectID int64) error
 	RefreshSessionCreate(ctx context.Context, arg RefreshSessionCreateParams) (int64, error)
 	RefreshSessionDelete(ctx context.Context, id int64) (int64, error)
@@ -288,6 +303,7 @@ type Querier interface {
 	RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
+	RestoreProject(ctx context.Context, arg RestoreProjectParams) (int64, error)
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"regexp"
 	"strings"
+	"time"
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
@@ -134,6 +135,50 @@ func (r *ProjectRepository) Delete(ctx context.Context, id snow.ID) error {
 	return r.queries.DeleteProject(ctx, id.Int64())
 }
 
+// GetDeleted returns a soft-deleted project of the organization.
+func (r *ProjectRepository) GetDeleted(ctx context.Context, orgID, id snow.ID) (*domain.Project, error) {
+	row, err := r.queries.GetDeletedProjectByOrgIDAndID(ctx, sqlcPostgres.GetDeletedProjectByOrgIDAndIDParams{
+		ID:    id.Int64(),
+		OrgID: orgID.Int64(),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return toDomainProject(row), nil
+}
+
+// ListDeletedByOrgID lists the organization's soft-deleted projects, most
+// recently deleted first.
+func (r *ProjectRepository) ListDeletedByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error) {
+	rows, err := r.queries.ListDeletedProjectsByOrgId(ctx, orgID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	projects := make([]domain.Project, 0, len(rows))
+	for _, row := range rows {
+		projects = append(projects, *toDomainProject(row))
+	}
+	return projects, nil
+}
+
+// Restore undeletes a project. With deletedSince set, only a project deleted
+// at or after it is restored; it reports false when nothing matched.
+func (r *ProjectRepository) Restore(ctx context.Context, id snow.ID, deletedSince *time.Time) (bool, error) {
+	var deletedSinceArg sql.NullTime
+	if deletedSince != nil {
+		since := *deletedSince
+		deletedSinceArg = sql.NullTime{Time: since, Valid: true}
+	}
+	affected, err := r.queries.RestoreProject(ctx, sqlcPostgres.RestoreProjectParams{
+		ID:           id.Int64(),
+		DeletedSince: deletedSinceArg,
+	})
+	if err != nil {
+		return false, handleError(err)
+	}
+	return affected > 0, nil
+}
+
 func toDomainProject(row sqlcPostgres.Project) *domain.Project {
 	return &domain.Project{
 		ID:          snow.ID(row.ID),
@@ -143,6 +188,7 @@ func toDomainProject(row sqlcPostgres.Project) *domain.Project {
 		Description: row.Description,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
+		Deleted:     row.Deleted,
 		DeletedAt:   nullTimePtr(row.DeletedAt),
 	}
 }

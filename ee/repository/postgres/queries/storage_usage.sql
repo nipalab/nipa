@@ -150,3 +150,6 @@ WHERE p.org_id = sqlc.arg(org_id)
   AND p.deleted = false
   AND NOT EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id)
 ON CONFLICT (org_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes;
+
+-- name: IsProjectExternal :one
+SELECT EXISTS (SELECT 1 FROM project_storage WHERE project_id = sqlc.arg(project_id))::BOOLEAN AS external;

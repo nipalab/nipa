@@ -136,6 +136,13 @@ STORAGE_LEDGER: ''
 # Quota in bytes for owners without an explicit quota row (default
 # 16106127360 = 15 GiB; set 0 for unlimited).
 STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 16106127360
+# Days a deleted project stays restorable before `nipad-ee` purges its history
+# and frees its slug (default 30; 0 never purges, so deleted projects stay
+# restorable). The free `nipad` never purges. See
+# docs/plans/STORAGE_RECLAIM.md.
+STORAGE_PURGE_RETENTION_DAYS: 30
+# Commits removed per purge transaction (default 100).
+STORAGE_PURGE_BATCH_SIZE: 100
 # Comma-separated hostnames, IPs or CIDR ranges webhooks may reach in addition
 # to public addresses (always allowed); loopback/private targets need an entry.
 WEBHOOK_EGRESS_ALLOWLIST: ''

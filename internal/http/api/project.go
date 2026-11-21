@@ -62,4 +62,23 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 			Returns(http.StatusOK, "deleted", model.MessageResponse{}).
 			Operation("deleteProject").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.GET("/orgs/{org}/deleted-projects").
+			To(Wrap(h.ListDeletedProjects)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Doc("List deleted projects that can still be restored (org owner or global admin)").
+			Returns(http.StatusOK, "deleted projects", []model.DeletedProjectResponse{}).
+			Operation("listDeletedProjects").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.POST("/orgs/{org}/deleted-projects/{id}/restore").
+			To(Wrap(h.RestoreProject)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("id", "deleted project id")).
+			Doc("Restore a deleted project within its restore window (org owner or global admin); 402 when its history no longer fits the storage quota").
+			Returns(http.StatusOK, "restored project", model.ProjectResponse{}).
+			Operation("restoreProject").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
 }

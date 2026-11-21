@@ -124,6 +124,17 @@ export interface ProjectResponse {
   description: string
 }
 
+// A deleted project an org owner can still restore. purge_after is when the
+// server removes it for good; absent when deleted projects are kept.
+export interface DeletedProjectResponse {
+  id: string
+  org_id: string
+  slug: string
+  name: string
+  deleted_at: string
+  purge_after?: string
+}
+
 export interface TreeEntryResponse {
   name: string
   path: string

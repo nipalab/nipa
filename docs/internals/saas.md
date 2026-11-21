@@ -123,8 +123,11 @@ write: under the owner advisory lock it drops the project's `project_chunks`,
 zeroes `project_usage`, subtracts the bytes from `org_usage` and returns them
 for the `project.deleted` audit entry (`released_bytes`). `attribute`
 rejects a deleted project with 404 under the same lock, so an in-flight
-confirm or merge cannot re-charge it. Phases 2–3 (purge, chunk GC):
-`docs/plans/STORAGE_RECLAIM.md`. REST routes
+confirm or merge cannot re-charge it. `Project.Restore` calls
+`RestoreProject` (rebuild links from history, charge the difference, 402 when
+it does not fit). The purge of deleted projects past
+`STORAGE_PURGE_RETENTION_DAYS` is `ee/projectpurge` (see
+`docs/internals/server.md`); chunk GC: `docs/plans/STORAGE_RECLAIM.md`. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
 registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
 when the ledger is enabled, so they 404 otherwise; the SPA hides the org

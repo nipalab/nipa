@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -38,6 +39,15 @@ func (r *listProjectRepo) Update(context.Context, domain.Project) (*domain.Proje
 	return nil, nil
 }
 func (r *listProjectRepo) Delete(context.Context, snow.ID) error { return nil }
+func (r *listProjectRepo) GetDeleted(context.Context, snow.ID, snow.ID) (*domain.Project, error) {
+	return nil, nil
+}
+func (r *listProjectRepo) ListDeletedByOrgID(context.Context, snow.ID) ([]domain.Project, error) {
+	return nil, nil
+}
+func (r *listProjectRepo) Restore(context.Context, snow.ID, *time.Time) (bool, error) {
+	return false, nil
+}
 
 type readableProjects map[snow.ID]bool
 

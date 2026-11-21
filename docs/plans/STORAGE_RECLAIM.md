@@ -1,7 +1,7 @@
 # Storage reclaim plan (enterprise)
 
 Plan for letting a billing owner get storage back. Written 2026-11-21.
-Phase 1 is implemented; phases 2 and 3 are not started.
+Phases 1 and 2 are implemented; phase 3 is not started.
 
 ## Today
 
@@ -56,35 +56,55 @@ one transaction. That is a one-off per delete, not on the push path, but a
 project with millions of chunks holds the owner lock for the duration; phase 2
 moves bulk deletes into batches.
 
-## Phase 2: retention window, restore, then purge
+## Phase 2: retention window, restore, then purge (implemented)
 
 Goal: deleted projects are restorable for a while, then their history rows go
 away for good.
 
-- Config: `STORAGE_PURGE_RETENTION_DAYS` (default 30; 0 disables purging).
-- Restore: `POST /api/v1/orgs/{org}/projects/{project}/restore` (org owner or
-  global admin) while `deleted_at` is within retention and the slug is free.
-  It clears `deleted`, rebuilds the project's links (`RebuildProjectChunks`),
-  and charges them back through the quota check: a restore that does not fit
-  fails with 402 and changes nothing. Needs a maintenance class and a web UI
-  entry (deleted projects list in org settings).
-- Purge worker in `ee/` (one per cluster: a postgres advisory lock picks the
-  leader, like the other ee background jobs), every hour:
-  1. Pick projects with `deleted_at < now() - retention`.
-  2. Delete in batches (e.g. 5k rows per statement, one transaction per
-     batch): review/MR rows that point at commits, tags, branches, commits,
-     then the trees the project's commits reached (cascading to `files` and
-     `file_chunks`), then `project_chunk_uploads`, then the project row.
-  3. Write an audit entry `project.purged` with the row counts.
-- Investigate before building:
-  - `tree_nodes` has no `project_id`. Confirm that trees are never shared
-    between projects (or commits of one project); if they are, the purge has
-    to reference-check trees as well.
-  - Columns that reference `commits(id)` without a cascade (audit
-    `commit_id`, MR / review head commits, tags) must be cleared or set null
-    in order, or the purge fails on a foreign key.
-- Org delete (if we add one) reuses this: soft delete releases every project,
-  purge removes them after retention.
+What was built (details in `docs/internals/server.md`, "Flow for project
+deletion, restore and purge"):
+
+- Config: `STORAGE_PURGE_RETENTION_DAYS` (default 30; 0 never purges and
+  keeps deleted projects restorable) and `STORAGE_PURGE_BATCH_SIZE` (commits
+  per transaction, default 100). Only `nipad-ee` purges; the free `nipad` has
+  restore without a window.
+- Restore: `GET /api/v1/orgs/{org}/deleted-projects` and `POST
+  /api/v1/orgs/{org}/deleted-projects/{id}/restore` (org owner or global
+  admin), the "Deleted projects" tab in org settings, `project.restored`
+  audit. Restore charges the history back through
+  `StorageLedger.RestoreProject` and fails with 402, changing nothing, when it
+  does not fit.
+- Purge: `ee/projectpurge`, an hourly background job; each step is its own
+  short transaction that re-locks the project row, so a restore wins and two
+  instances serialize without leader election. Audits `project.purged`.
+- Migration `000017_project_purge` (postgres) adds the indexes the purge
+  needs.
+
+Findings that shaped it:
+
+- `UNIQUE(org_id, slug)` ignores `deleted`: a deleted project keeps its slug
+  until it is purged, so restore never clashes on the slug, and the purge is
+  what frees it.
+- Tree reads are content-addressed across projects: a kept (unchanged)
+  directory is written as a bare node, and reads resolve it to the oldest node
+  with the same hash that has children or files, in any project. Purging is
+  still safe because every project wrote its own full copy of every directory
+  it keeps (first commits write full trees; a kept directory was in the
+  project's own previous head), so the lookup falls through to the next copy.
+  Covered by `TestPurgeExpired_RemovesTheProjectForGood`.
+- Every commit owns its root tree (the push repository always inserts fresh
+  tree rows), so deleting a commit's root cascades exactly that commit's
+  nodes, files and `file_chunks`.
+- All foreign keys into a project's commits, branches and merge requests come
+  from the project's own tables (branches, tags, merge requests and their
+  children, file locks), so the purge deletes those first, detaches commit
+  parents, then deletes commits in batches.
+- Without indexes on the columns referencing `commits(id)` (and on
+  `commits(project_id)`), each deleted commit would scan those tables across
+  all projects; the migration adds them.
+
+Not done: org delete (no org delete exists yet; when added, it should
+soft-delete and let this purge remove the projects).
 
 ## Phase 3: chunk GC (physical reclaim)
 

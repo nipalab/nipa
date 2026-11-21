@@ -302,3 +302,100 @@ describe('OrgSettingsPage groups', () => {
     act(() => root.unmount())
   })
 })
+describe('OrgSettingsPage deleted projects', () => {
+  it('lists deleted projects and restores one', async () => {
+    let deleted = [
+      {
+        id: 'p9',
+        org_id: 'o1',
+        slug: 'old-game',
+        name: 'Old Game',
+        deleted_at: '2026-11-20T10:00:00Z',
+        purge_after: '2026-12-20T10:00:00Z',
+      },
+      { id: 'p8', org_id: 'o1', slug: 'kept', name: 'Kept', deleted_at: '2026-11-19T10:00:00Z' },
+    ]
+    const restored: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) return jsonResponse(ME)
+        const path = url.split('?')[0]
+        const restore = path.match(/\/orgs\/sticker\/deleted-projects\/([^/]+)\/restore$/)
+        if (restore && init?.method === 'POST') {
+          restored.push(restore[1])
+          deleted = deleted.filter((project) => project.id !== restore[1])
+          return jsonResponse({ id: restore[1], org_id: 'o1', slug: 'old-game', name: 'Old Game', description: '' })
+        }
+        if (path.endsWith('/orgs/sticker/deleted-projects')) return jsonResponse(deleted)
+        if (path.endsWith('/orgs/sticker/members')) return jsonResponse(ORG_MEMBERS)
+        if (path.endsWith('/api/v1/orgs')) return jsonResponse(ORGS)
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    window.history.pushState({}, '', '/sticker/settings?tab=deleted')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Old Game')
+
+    expect(document.body.textContent).toContain('Kept until restored')
+    const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Old Game'))
+    const restoreButton = Array.from(row?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === 'Restore',
+    )
+    expect(restoreButton).toBeDefined()
+    await act(async () => {
+      restoreButton?.click()
+    })
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+    const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
+      (button) => button.textContent?.trim() === 'Restore',
+    ) as HTMLButtonElement | undefined
+    expect(confirm).toBeDefined()
+    await act(async () => {
+      confirm?.click()
+    })
+    await waitFor(() => restored.length === 1)
+    expect(restored).toEqual(['p9'])
+    await waitFor(() => !(document.body.textContent?.includes('Old Game') ?? false))
+    expect(document.body.textContent).toContain('Kept')
+    act(() => root.unmount())
+  })
+
+  it('shows the empty state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) return jsonResponse(ME)
+        const path = url.split('?')[0]
+        if (path.endsWith('/orgs/sticker/deleted-projects')) return jsonResponse([])
+        if (path.endsWith('/orgs/sticker/members')) return jsonResponse(ORG_MEMBERS)
+        if (path.endsWith('/api/v1/orgs')) return jsonResponse(ORGS)
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    window.history.pushState({}, '', '/sticker/settings?tab=deleted')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('No deleted projects.')
+    act(() => root.unmount())
+  })
+})

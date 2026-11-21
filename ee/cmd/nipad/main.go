@@ -217,6 +217,7 @@ func main() {
 	}
 	byoSetup.entitle(billingSetup)
 	byoSetup.wire(&deps)
+	deps.ProjectRestoreWindow = purgeRetention(cfg)
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),
@@ -257,6 +258,13 @@ func main() {
 	}
 	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
 		dispatchers = append(dispatchers, newQuotaReconcileJob(reconciler))
+	}
+	purgeJob, err := newPurgeJob(cfg, dbConn, storageLedger, uc.Audit)
+	if err != nil {
+		panic(fmt.Errorf("project purge: %w", err))
+	}
+	if purgeJob != nil {
+		dispatchers = append(dispatchers, purgeJob)
 	}
 	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies), serverapp.WithMaintenance(maintenanceService, maintenancePoller)}
 	if storageLedger != nil {

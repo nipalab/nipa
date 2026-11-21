@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -25,6 +26,9 @@ type projectRepository interface {
 	ListByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error)
 	Update(ctx context.Context, project domain.Project) (*domain.Project, error)
 	Delete(ctx context.Context, id snow.ID) error
+	GetDeleted(ctx context.Context, orgID, id snow.ID) (*domain.Project, error)
+	ListDeletedByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error)
+	Restore(ctx context.Context, id snow.ID, deletedSince *time.Time) (bool, error)
 }
 
 type projectAccess interface {
@@ -39,20 +43,38 @@ type Project struct {
 	orgs     orgAuthorizer
 	audit    AuditRecorder
 	storage  ProjectStorageAssigner
-	ledger   projectStorageReleaser
+	ledger   projectStorageLedger
+	window   time.Duration
+	now      func() time.Time
 }
 
-// projectStorageReleaser gives a deleted project's bytes back to the owner's
-// storage quota (the StorageLedger slice Project needs).
-type projectStorageReleaser interface {
+// projectStorageLedger releases a deleted project's bytes and charges them
+// back on restore (the StorageLedger slice Project needs).
+type projectStorageLedger interface {
 	ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
+	RestoreProject(ctx context.Context, projectID snow.ID) (int64, error)
 }
 
 // WithStorageLedger releases a project's attributed storage when it is
-// deleted. Without one (the free default) deletion touches no usage.
-func (p *Project) WithStorageLedger(ledger projectStorageReleaser) *Project {
+// deleted and charges it back on restore. Without one (the free default)
+// neither touches usage.
+func (p *Project) WithStorageLedger(ledger projectStorageLedger) *Project {
 	p.ledger = ledger
 	return p
+}
+
+// WithRestoreWindow limits restoring to projects deleted within window, the
+// retention after which the purge removes them for good. Zero (the default)
+// means a deleted project stays restorable.
+func (p *Project) WithRestoreWindow(window time.Duration) *Project {
+	p.window = window
+	return p
+}
+
+// RestoreWindow is the configured retention of deleted projects; zero means
+// unlimited.
+func (p *Project) RestoreWindow() time.Duration {
+	return p.window
 }
 
 // ProjectStorageAssigner picks where a new project's chunk content lives. It
@@ -80,6 +102,7 @@ func NewProject(repo projectRepository, snowNode snow.Node, perm projectAccess, 
 		snowNode: snowNode,
 		perm:     perm,
 		orgs:     orgs,
+		now:      time.Now,
 	}
 }
 
@@ -228,6 +251,79 @@ func (p *Project) Delete(ctx context.Context, projectID snow.ID) error {
 		}
 		return projectEntityAudit(domain.AuditProjectDeleted, project, metadata)
 	})
+}
+
+// ListDeleted lists the organization's deleted projects that can still be
+// restored (org owner or global admin).
+func (p *Project) ListDeleted(ctx context.Context, orgID snow.ID) ([]*domain.Project, error) {
+	if err := p.requireOrgAdmin(ctx, orgID); err != nil {
+		return nil, err
+	}
+	projects, err := p.repo.ListDeletedByOrgID(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	since := p.deletedSince()
+	restorable := make([]*domain.Project, 0, len(projects))
+	for i := range projects {
+		if since != nil && (projects[i].DeletedAt == nil || projects[i].DeletedAt.Before(*since)) {
+			continue
+		}
+		restorable = append(restorable, &projects[i])
+	}
+	return restorable, nil
+}
+
+// Restore undeletes a project of the organization deleted within the restore
+// window (org owner or global admin) and charges its history back to the
+// owner's storage quota; a restore that does not fit fails with the quota
+// error and changes nothing.
+func (p *Project) Restore(ctx context.Context, orgID, projectID snow.ID) (*domain.Project, error) {
+	if err := p.requireOrgAdmin(ctx, orgID); err != nil {
+		return nil, err
+	}
+	project, err := p.repo.GetDeleted(ctx, orgID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	var charged int64
+	err = auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		restored, err := p.repo.Restore(ctx, projectID, p.deletedSince())
+		if err != nil {
+			return err
+		}
+		if !restored {
+			return domain.NewErrorNotFound("project is past its restore window")
+		}
+		if p.ledger == nil {
+			return nil
+		}
+		charged, err = p.ledger.RestoreProject(ctx, projectID)
+		return err
+	}, func() *domain.AuditEntry {
+		metadata := map[string]any{
+			"name": project.Name,
+			"slug": project.Slug,
+		}
+		if p.ledger != nil {
+			metadata["charged_bytes"] = charged
+		}
+		return projectEntityAudit(domain.AuditProjectRestored, project, metadata)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return p.repo.Get(ctx, projectID)
+}
+
+// deletedSince is the oldest deletion time still inside the restore window;
+// nil when the window is unlimited.
+func (p *Project) deletedSince() *time.Time {
+	if p.window <= 0 {
+		return nil
+	}
+	since := p.now().Add(-p.window)
+	return &since
 }
 
 func projectEntityAudit(action string, project *domain.Project, metadata map[string]any) *domain.AuditEntry {
