@@ -98,3 +98,18 @@ func (mr *MockStorageLedgerMockRecorder) Headroom(ctx, org, project, projectedNe
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Headroom", reflect.TypeOf((*MockStorageLedger)(nil).Headroom), ctx, org, project, projectedNewBytes)
 }
+
+// ReleaseProject mocks base method.
+func (m *MockStorageLedger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReleaseProject", ctx, projectID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReleaseProject indicates an expected call of ReleaseProject.
+func (mr *MockStorageLedgerMockRecorder) ReleaseProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseProject", reflect.TypeOf((*MockStorageLedger)(nil).ReleaseProject), ctx, projectID)
+}

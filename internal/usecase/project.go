@@ -39,6 +39,20 @@ type Project struct {
 	orgs     orgAuthorizer
 	audit    AuditRecorder
 	storage  ProjectStorageAssigner
+	ledger   projectStorageReleaser
+}
+
+// projectStorageReleaser gives a deleted project's bytes back to the owner's
+// storage quota (the StorageLedger slice Project needs).
+type projectStorageReleaser interface {
+	ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
+}
+
+// WithStorageLedger releases a project's attributed storage when it is
+// deleted. Without one (the free default) deletion touches no usage.
+func (p *Project) WithStorageLedger(ledger projectStorageReleaser) *Project {
+	p.ledger = ledger
+	return p
 }
 
 // ProjectStorageAssigner picks where a new project's chunk content lives. It
@@ -193,13 +207,26 @@ func (p *Project) Delete(ctx context.Context, projectID snow.ID) error {
 	if err := p.requireOrgAdmin(ctx, project.OrgID); err != nil {
 		return err
 	}
+	var released int64
 	return auditedWrite(ctx, p.audit, func(ctx context.Context) error {
-		return p.repo.Delete(ctx, projectID)
+		if err := p.repo.Delete(ctx, projectID); err != nil {
+			return err
+		}
+		if p.ledger == nil {
+			return nil
+		}
+		var err error
+		released, err = p.ledger.ReleaseProject(ctx, projectID)
+		return err
 	}, func() *domain.AuditEntry {
-		return projectEntityAudit(domain.AuditProjectDeleted, project, map[string]any{
+		metadata := map[string]any{
 			"name": project.Name,
 			"slug": project.Slug,
-		})
+		}
+		if p.ledger != nil {
+			metadata["released_bytes"] = released
+		}
+		return projectEntityAudit(domain.AuditProjectDeleted, project, metadata)
 	})
 }
 

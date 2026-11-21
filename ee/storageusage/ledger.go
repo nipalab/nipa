@@ -173,6 +173,12 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 		if err := l.queries.LockBillingOwner(ctx, owner.Int64()); err != nil {
 			return dbError(err)
 		}
+		// A project deleted (and released) while this confirm was in flight
+		// must not be charged again. Checked under the owner lock that
+		// ReleaseProject also takes.
+		if err := l.ensureLiveProject(ctx, projectID); err != nil {
+			return err
+		}
 		var used int64
 		if quota > 0 {
 			used, err = l.queries.GetOwnerUsage(ctx, owner.Int64())
@@ -234,6 +240,64 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 		}
 		return nil
 	})
+}
+
+// ReleaseProject drops every chunk link of a deleted project and gives its
+// bytes back to the owner's quota, in one transaction under the owner lock
+// that Attribute takes. The links are read after the lock, so a confirm that
+// committed first is released too. It returns the released bytes; releasing
+// an already released project returns 0.
+func (l *Ledger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error) {
+	var released int64
+	err := l.transactor.WithinTx(ctx, func(ctx context.Context) error {
+		orgID, err := l.queries.GetProjectOrgID(ctx, projectID.Int64())
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.NewErrorNotFound(fmt.Sprintf("project %s not found", projectID.Base36()))
+		}
+		if err != nil {
+			return dbError(err)
+		}
+		owner, err := l.BillingOwner(ctx, snow.ID(orgID))
+		if err != nil {
+			return err
+		}
+		if err := l.queries.LockBillingOwner(ctx, owner.Int64()); err != nil {
+			return dbError(err)
+		}
+		used, err := l.queries.GetProjectUsageBytes(ctx, projectID.Int64())
+		if err != nil {
+			return dbError(err)
+		}
+		if err := l.queries.DeleteProjectChunks(ctx, projectID.Int64()); err != nil {
+			return dbError(err)
+		}
+		if err := l.queries.SetProjectUsage(ctx, projectID.Int64()); err != nil {
+			return dbError(err)
+		}
+		if used != 0 {
+			if err := l.queries.AddOrgUsage(ctx, sqlcPostgres.AddOrgUsageParams{
+				OrgID: orgID,
+				Delta: -used,
+			}); err != nil {
+				return dbError(err)
+			}
+		}
+		released = used
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return released, nil
+}
+
+// ensureLiveProject rejects attribution to a deleted or unknown project.
+func (l *Ledger) ensureLiveProject(ctx context.Context, projectID snow.ID) error {
+	deleted, err := l.queries.GetProjectDeleted(ctx, projectID.Int64())
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && deleted) {
+		return domain.NewErrorNotFound(fmt.Sprintf("project %s not found", projectID.Base36()))
+	}
+	return dbError(err)
 }
 
 // OrgStorage reports one organization's usage, its owner's quota and the

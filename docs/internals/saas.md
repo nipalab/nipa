@@ -115,7 +115,16 @@ every org to one owner user (lazily seeded from
 cached project/org counters, and enforces `owner_quota` (NULL/0 =
 unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default
 15 GiB, or `SAAS_FREE_QUOTA_BYTES` in SaaS mode via `ledgerDefaultQuotaBytes`). `RecountOrg`
-rebuilds links and counters from the stored history. REST routes
+rebuilds links and counters from the stored history and skips deleted
+projects (`ListUnbilledProjectIDsByOrg` covers deleted and BYO projects:
+links dropped, usage 0). `Project.Delete` calls `ReleaseProject` (attached by
+`BuildUsecases` through `Project.WithStorageLedger`) inside its audited
+write: under the owner advisory lock it drops the project's `project_chunks`,
+zeroes `project_usage`, subtracts the bytes from `org_usage` and returns them
+for the `project.deleted` audit entry (`released_bytes`). `attribute`
+rejects a deleted project with 404 under the same lock, so an in-flight
+confirm or merge cannot re-charge it. Phases 2–3 (purge, chunk GC):
+`docs/plans/STORAGE_RECLAIM.md`. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
 registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
 when the ledger is enabled, so they 404 otherwise; the SPA hides the org

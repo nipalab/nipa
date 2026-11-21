@@ -40,6 +40,12 @@ SELECT id FROM users WHERE id = sqlc.arg(id) AND deleted = false;
 -- name: GetProjectOrgID :one
 SELECT org_id FROM projects WHERE id = sqlc.arg(id);
 
+-- name: GetProjectDeleted :one
+SELECT deleted FROM projects WHERE id = sqlc.arg(id);
+
+-- name: GetProjectUsageBytes :one
+SELECT COALESCE((SELECT used_bytes FROM project_usage WHERE project_id = sqlc.arg(project_id)), 0)::BIGINT AS used_bytes;
+
 -- name: GetOwnerUsage :one
 SELECT COALESCE(SUM(u.used_bytes), 0)::BIGINT AS used_bytes
 FROM org_usage u
@@ -51,7 +57,7 @@ SELECT COALESCE((SELECT used_bytes FROM org_usage WHERE org_id = sqlc.arg(org_id
 
 -- name: ListProjectUsage :many
 SELECT p.id AS project_id, p.slug, p.name, p.deleted,
-       (CASE WHEN ps.project_id IS NULL THEN COALESCE(u.used_bytes, 0) ELSE 0 END)::BIGINT AS used_bytes,
+       (CASE WHEN ps.project_id IS NULL AND NOT p.deleted THEN COALESCE(u.used_bytes, 0) ELSE 0 END)::BIGINT AS used_bytes,
        (ps.project_id IS NOT NULL)::BOOLEAN AS external
 FROM projects p
 LEFT JOIN project_usage u ON u.project_id = p.id
@@ -102,12 +108,14 @@ ON CONFLICT (org_id) DO UPDATE SET used_bytes = org_usage.used_bytes + EXCLUDED.
 -- name: ListProjectIDsByOrg :many
 SELECT p.id FROM projects p
 WHERE p.org_id = sqlc.arg(org_id)
+  AND p.deleted = false
   AND NOT EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id);
 
--- name: ListExternalProjectIDsByOrg :many
+-- name: ListUnbilledProjectIDsByOrg :many
 SELECT p.id FROM projects p
-JOIN project_storage ps ON ps.project_id = p.id
-WHERE p.org_id = sqlc.arg(org_id);
+WHERE p.org_id = sqlc.arg(org_id)
+  AND (p.deleted = true
+       OR EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id));
 
 -- name: DeleteProjectChunks :exec
 DELETE FROM project_chunks WHERE project_id = sqlc.arg(project_id);
@@ -139,5 +147,6 @@ SELECT sqlc.arg(org_id), COALESCE(SUM(COALESCE(pu.used_bytes, 0)), 0)::BIGINT
 FROM projects p
 LEFT JOIN project_usage pu ON pu.project_id = p.id
 WHERE p.org_id = sqlc.arg(org_id)
+  AND p.deleted = false
   AND NOT EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id)
 ON CONFLICT (org_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes;

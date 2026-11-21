@@ -118,6 +118,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	}).WithChunkStores(chunkStores).WithMetrics(deps.Metrics)
 	if deps.StorageLedger != nil {
 		chunkUsecase = chunkUsecase.WithStorageLedger(deps.StorageLedger)
+		projectUsecase.WithStorageLedger(deps.StorageLedger)
 	}
 	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase).WithStorageGate(chunkUsecase)
 	pushUsecase = pushUsecase.WithStorageGate(chunkUsecase)

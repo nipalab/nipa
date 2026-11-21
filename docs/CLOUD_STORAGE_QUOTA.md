@@ -18,9 +18,10 @@ usage tracking.
   Chunks are charged per project on first link; identical content is charged
   again for another project of the same owner (per-project breakdown stays
   cheap). Owner usage = sum of the usage counters of the owner's orgs.
-- **History counts**: chunks are never pruned, so usage is monotonic between
-  recounts. Soft-deleted orgs/projects keep counting until a recount policy or
-  a hard delete says otherwise.
+- **History counts**: chunks are never pruned, so a live project's usage only
+  grows. Deleting a project releases its bytes immediately
+  (`ReleaseProject`, see "Releasing a deleted project"); physical deletion of
+  history and chunk content is planned in `docs/plans/STORAGE_RECLAIM.md`.
 - No quota row or a NULL quota means unlimited; the free version always runs
   unlimited because it wires no ledger at all.
 
@@ -43,6 +44,8 @@ type StorageLedger interface {
     Attribute(ctx context.Context, org *domain.Organization, project *domain.Project, chunks []LedgerChunk) error
     // Attribute server-generated content (merge output), project id only.
     AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
+    // Drop a deleted project's links and give its bytes back; returns them.
+    ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
 }
 ```
 
@@ -156,6 +159,35 @@ COMMIT
 - `AttributedSizes` is a per-hash lookup (`project_chunks JOIN chunks`); the
   presign page is small (page size <= `CHUNK_MAX_PAGE_SIZE`).
 
+## Releasing a deleted project
+
+`Project.Delete` (attached through `Project.WithStorageLedger` by
+`serverapp.BuildUsecases`, only when a ledger exists) soft-deletes the project
+and calls `ReleaseProject` inside the same audited write, so the delete, the
+release and the `project.deleted` audit entry (with `released_bytes`) commit
+together:
+
+```
+orgID  := SELECT org_id FROM projects WHERE id = $1   -- unknown project: 404
+owner  := billingOwner(orgID); pg_advisory_xact_lock(owner)
+used   := project_usage.used_bytes (0 when no row)
+DELETE FROM project_chunks WHERE project_id = $1
+project_usage := 0; org_usage -= used
+```
+
+- Shared content: a chunk linked to another project of the same owner stays
+  charged to that project; only this project's links go.
+- Idempotent: a second release returns 0.
+- Race with a confirm or merge: `Attribute` checks under the same owner lock
+  that the project is not deleted and returns 404 otherwise; a confirm that
+  committed before the release took the lock is released with the rest.
+- Recount bills only live projects: `ListProjectIDsByOrg` and
+  `SetOrgUsageFromProjects` filter `deleted = false`, and
+  `ListUnbilledProjectIDsByOrg` (deleted or BYO) drops links and zeroes usage.
+  `OrgStorage` lists a deleted project with `deleted: true` and 0 bytes.
+- There is no project restore and no org delete yet; both are part of phase 2
+  of `docs/plans/STORAGE_RECLAIM.md`.
+
 ## Buying additional storage
 
 Storage is bought through the SaaS billing module (`ee/billing`, Paddle); see
@@ -204,7 +236,7 @@ feature-detect the capability.
 | `PUT /api/v1/admin/billing/owners/{user}/quota` | super admin | set an owner's quota override (`quota_bytes` null = unlimited) |
 | `DELETE /api/v1/admin/billing/owners/{user}/quota` | super admin | clear the override so the computed quota applies |
 | `PUT /api/v1/admin/orgs/{org}/billing-owner` | super admin | transfer an org's billing owner |
-| `POST /api/v1/admin/orgs/{org}/storage/recount` | super admin | rebuild ledger + counters for one org |
+| `POST /api/v1/admin/orgs/{org}/storage/recount` | super admin | rebuild ledger + counters for one org (live projects only) |
 
 ## Config and wiring (`ee/cmd/nipad`)
 
@@ -254,11 +286,15 @@ It is exposed as the super-admin REST route.
   owner seeding, link idempotency and exactly-once counter increments, quota
   rejection rollback (no links, no counter changes), unlimited paths, shared
   quota across an owner's orgs, transfer moving the aggregate, recount
-  repairing drift.
+  repairing drift, release of a deleted project (shared content, idempotency,
+  joining the caller's transaction, deleted projects rejected by `Attribute`
+  and skipped by recount).
 - `internal/usecase`: the seam is covered with a gomock ledger (presign
   headroom, confirm attribution, merge chunk attribution).
 - `ee/e2e`: real-ledger integration through `Chunk` — a push over quota fails
-  with 402, the retry after raising the quota succeeds.
+  with 402, the retry after raising the quota succeeds; deleting a pushed
+  project through `uc.Project.Delete` releases exactly its bytes, audits
+  `released_bytes`, and a recount agrees.
 - Ginkgo client suite (`tests/`): ee runs enable `STORAGE_LEDGER=cloud`
   (`NIPA_TEST_STORAGE_LEDGER`, default cloud); the storage spec trips the
   quota, raises it over the admin API, verifies the retry and checks the
@@ -268,10 +304,10 @@ It is exposed as the super-admin REST route.
 
 1. Should owners be able to lower their own quota, or only buy above the
    current value? (Recommendation: purchase-only; admins can set anything.)
-2. Do soft-deleted orgs keep billing? (Current stance: yes; decide before
-   enabling.)
-3. Chunk GC is out of scope; until it exists, rejected/unreferenced content
-   occupies disk but is never billed.
+2. Do soft-deleted projects keep billing? Settled: no, a delete releases the
+   project's bytes immediately (see "Releasing a deleted project").
+3. Chunk GC is not built yet; until it exists, rejected/unreferenced content
+   occupies disk but is never billed. Plan: `docs/plans/STORAGE_RECLAIM.md`.
 
 ## Acceptance criteria
 
