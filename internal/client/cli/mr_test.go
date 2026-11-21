@@ -530,6 +530,24 @@ func TestSetupMrViewCmd_Success(t *testing.T) {
 	require.Contains(t, out, "Bob approved (stale)")
 }
 
+func TestSetupMrViewCmd_IssueKeys(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		getResult: &domain.MergeRequest{Number: 9, Title: "Rig", Status: domain.MergeRequestOpen,
+			IssueKeys: []serverDomain.IssueKeyRef{{Key: "GAME-1", URL: "https://jira/browse/GAME-1"}}},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "9")
+	require.NoError(t, err)
+	require.Contains(t, out, "issues:\n  GAME-1 https://jira/browse/GAME-1\n")
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "view", "9", "--json")
+	require.NoError(t, err)
+	require.Contains(t, out, `"issue_keys"`)
+	require.Contains(t, out, `"GAME-1"`)
+}
+
 func TestSetupMrViewCmd_Draft(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{

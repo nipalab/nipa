@@ -128,6 +128,7 @@ func (m *loginMockContainer) Project() *usecase.Project                     { re
 func (m *loginMockContainer) Maintenance() *usecase.Maintenance {
 	return m.maintenance
 }
+func (m *loginMockContainer) IssueTracker() *usecase.IssueTracker { return nil }
 
 const stubSessionSecret = "stub-session-secret"
 

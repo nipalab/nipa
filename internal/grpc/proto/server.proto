@@ -311,6 +311,7 @@ message Branch {
     bool require_status_checks = 10; // required checks must pass before merging
     repeated ReviewActor required_reviewers = 11; // reviewers whose approval is mandatory
     repeated string required_checks = 12; // status check names that must pass
+    repeated IssueKey issue_keys = 13; // linked issues; list responses only
 }
 
 message GetListBranchRequest {
@@ -490,6 +491,7 @@ message CommitLogEntry {
     string message = 7;
     google.protobuf.Timestamp created_at = 8;
     string origin = 9; // source-system commit for imported commits, see docs/GIT_IMPORT.md
+    repeated IssueKey issue_keys = 10; // linked issues of the project's tracker
 }
 
 message GetCommitLogRequest {
@@ -741,6 +743,7 @@ message MergeRequestDetail {
     bool draft = 15; // draft requests cannot be merged until marked ready
     repeated ReviewActor assignees = 16; // resolved per request
     optional string merged_source_commit_id = 17; // source head that was merged (base36), set for merged requests
+    repeated IssueKey issue_keys = 18; // linked issues; list and get responses only
 }
 
 message CreateMergeRequestRequest {
@@ -1317,6 +1320,45 @@ message GetMaintenanceStatusResponse {
     string source = 4; // db | file
 }
 
+// IssueKey is an issue key linked to a commit, branch or merge request, with
+// its URL on the tracker; building it never calls the tracker.
+message IssueKey {
+    string key = 1;
+    string url = 2;
+}
+
+message IssueDetail {
+    string key = 1;
+    string url = 2;
+    string state = 3; // ok, not_found or unavailable (tracker down: key and url only)
+    string title = 4;
+    string type = 5;
+    string status = 6;
+    string status_category = 7; // todo, in_progress or done
+    string assignee = 8;
+}
+
+message ResolveIssuesRequest {
+    ProjectContext context = 1;
+    repeated string keys = 2; // at most 50; keys outside the project's configured keys are left out
+}
+
+message ResolveIssuesResponse {
+    repeated IssueDetail issues = 1;
+}
+
+message SearchIssuesRequest {
+    ProjectContext context = 1;
+    string query = 2;
+    int32 limit = 3; // default 20, max 50
+}
+
+message SearchIssuesResponse {
+    repeated IssueDetail issues = 1;
+    bool supported = 2; // false when the tracker cannot search
+    bool unavailable = 3; // the tracker failed to answer
+}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
@@ -1328,6 +1370,8 @@ service NipaService {
     rpc ListMyProjects(ListMyProjectsRequest) returns (ListMyProjectsResponse);
     rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
     rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse);
+    rpc ResolveIssues(ResolveIssuesRequest) returns (ResolveIssuesResponse);
+    rpc SearchIssues(SearchIssuesRequest) returns (SearchIssuesResponse);
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);

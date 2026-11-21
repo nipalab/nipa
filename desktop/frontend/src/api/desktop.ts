@@ -113,6 +113,10 @@ import type {
   ShelfApplyOutcome,
   ShelfEntry,
   ShelveInput,
+  Issue,
+  IssueBranch,
+  IssueKey,
+  IssueSearch as RawIssueSearch,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import type { NotifySettings, Settings as RawSettings, Tool } from "../../bindings/github.com/nipalab/nipa/desktop/internal/workspace/models";
 
@@ -170,6 +174,8 @@ export type ShelfList = { shelves: Shelf[]; applying: string };
 export type ResolveChoice = "ours" | "theirs" | "content" | "working" | "delete";
 export type Commit = Omit<RawCommit, "parents"> & { parents: string[] };
 export type HistoryPage = { commits: Commit[]; next: string };
+export type { Issue, IssueBranch, IssueKey };
+export type IssueSearch = Omit<RawIssueSearch, "issues"> & { issues: Issue[] };
 export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
 export type RemoteListing = Omit<RawRemoteListing, "dirs"> & { dirs: RemoteDir[] };
 export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
@@ -363,6 +369,12 @@ export const desktop = {
     return { next: page?.next ?? 0, items: (page?.items ?? []).map(mergeRequest) };
   },
   members: async (root: string, query = ""): Promise<Person[]> => (await Service.Members(root, query)) ?? [],
+  searchIssues: async (root: string, query: string): Promise<IssueSearch> => {
+    const r = await Service.SearchIssues(root, query);
+    return { configured: r?.configured ?? false, supported: r?.supported ?? false, unavailable: r?.unavailable ?? false, issues: r?.issues ?? [] };
+  },
+  resolveIssues: async (root: string, keys: string[]): Promise<Issue[]> => (await Service.ResolveIssues(root, keys)) ?? [],
+  issueBranch: async (root: string, key: string, name = ""): Promise<IssueBranch> => required(await Service.IssueBranch(root, key, name), "branch name"),
   assignMergeRequest: async (root: string, number: number, userIds: string[]): Promise<MergeRequest> => mergeRequest(required(await Service.AssignMergeRequest(root, number, userIds), "merge request")),
   requestReview: (root: string, number: number, userId: string): Promise<void> => Service.RequestReview(root, number, userId),
   projectActivity: async (root: string, since: string): Promise<Feed> => {

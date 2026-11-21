@@ -61,6 +61,10 @@ type logJSON struct {
 		AuthorEmail string   `json:"author_email"`
 		CreatedAt   string   `json:"created_at"`
 		ParentIDs   []string `json:"parent_ids"`
+		IssueKeys   []struct {
+			Key string `json:"key"`
+			URL string `json:"url"`
+		} `json:"issue_keys"`
 	} `json:"commits"`
 }
 

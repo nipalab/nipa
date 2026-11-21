@@ -17,6 +17,7 @@ import (
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
 	"github.com/nipalab/nipa/internal/issuetracker/jira/jiratest"
 )
@@ -176,6 +177,22 @@ func testIssueTrackerLinks(t *testing.T, base, host, superToken string, dbConn *
 	require.Equal(t, "Hero rig", resolved.Issues[0].Title)
 	require.Equal(t, "in_progress", resolved.Issues[0].StatusCategory)
 	require.Equal(t, "not_found", resolved.Issues[1].State)
+
+	grpcLog, err := grpcClient.GetCommitLog(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, []serverDomain.IssueKeyRef{{Key: "GAME-1", URL: fake.URL + "/browse/GAME-1"}}, grpcLog[0].IssueKeys)
+	grpcMR, _, err := grpcClient.GetMergeRequest(ctx, e2eOrgSlug, e2eProjectSlug, mr.Number)
+	require.NoError(t, err)
+	require.Len(t, grpcMR.IssueKeys, 3)
+	grpcIssues, err := grpcClient.ResolveIssues(ctx, e2eOrgSlug, e2eProjectSlug, []string{"GAME-1", "GAME-2", "OTHER-5"})
+	require.NoError(t, err)
+	require.Len(t, grpcIssues, 2)
+	require.Equal(t, "Hero rig", grpcIssues[0].Title)
+	require.Equal(t, "not_found", grpcIssues[1].State)
+	grpcSearch, err := grpcClient.SearchIssues(ctx, e2eOrgSlug, e2eProjectSlug, "rig", 5)
+	require.NoError(t, err)
+	require.True(t, grpcSearch.Supported)
+	require.Equal(t, "GAME-1", grpcSearch.Issues[0].Key)
 
 	var links model.IssueLinksResponse
 	issueTrackerREST(t, http.MethodGet, projectBase+"/issues/GAME-2/links", "", superToken, http.StatusOK, &links)

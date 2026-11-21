@@ -81,7 +81,13 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   over `localrepo.SearchPaths`, a `LIKE` subsequence prefilter ranked in
   Go; `lib/fuzzy.ts` ranks the same way client-side), branches/tags, MRs by
   server search or number, commits by message/id/hash plus exact id
-  lookup; "Switch branch…"/"Lock file…" sub-modes; results become `Intent`s
+  lookup; "Switch branch…"/"Lock file…"/"Branch from issue…" sub-modes (the
+  issue mode searches through `SearchIssues` when the tracker can search and
+  always offers a typed key, `lib/palette.ts` `issueKey`; choosing one sends
+  the `issue-branch` intent, which `RepoView` runs as `IssueBranch` (daemon
+  `ProxyResolveIssues`, naming like `nipa branch --issue`; NotFound/
+  FailedPrecondition/Unimplemented skip the check) + `CreateBranch` from the
+  current branch + the guarded switch); results become `Intent`s
   with `action`/`target` (`components/tabs.ts`) that `RepoView` runs once
   per `seq`), keyboard shortcuts declared once in `lib/shortcuts.ts` and
   bound through `hooks/useShortcuts.ts` (ignored in text fields, IME
@@ -119,6 +125,12 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   clone in `desktop.json` `lockWatches`; a `lock_released` event that covers
   one raises a "free" notification instead of the generic one and clicking
   it locks the file through `Navigation.Action`),
+  issue chips (`components/issues/IssueChips.tsx`: `Commit.issues` and
+  `MergeRequest.issues` from the `issue_keys` fields, omitted when empty;
+  plain key chips in list rows; the commit and merge request headers pass
+  `root`, link each chip to the tracker and call `ResolveIssues` (daemon
+  `ProxyResolveIssues`, empty without a tracker) once per open view to show
+  title and status, quietly key-only when the tracker is down or fails),
   member pickers and the project activity feed (`Members`/`AssignMergeRequest`/
   `RequestReview`/`ProjectActivity`; daemon `ProxyProjectMembers` over the
   server `ListProjectMembers` RPC and `GET .../projects/{p}/members`, backed by

@@ -2809,6 +2809,7 @@ type Branch struct {
 	RequireStatusChecks   bool                   `protobuf:"varint,10,opt,name=require_status_checks,json=requireStatusChecks,proto3" json:"require_status_checks,omitempty"`      // required checks must pass before merging
 	RequiredReviewers     []*ReviewActor         `protobuf:"bytes,11,rep,name=required_reviewers,json=requiredReviewers,proto3" json:"required_reviewers,omitempty"`               // reviewers whose approval is mandatory
 	RequiredChecks        []string               `protobuf:"bytes,12,rep,name=required_checks,json=requiredChecks,proto3" json:"required_checks,omitempty"`                        // status check names that must pass
+	IssueKeys             []*IssueKey            `protobuf:"bytes,13,rep,name=issue_keys,json=issueKeys,proto3" json:"issue_keys,omitempty"`                                       // linked issues; list responses only
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -2923,6 +2924,13 @@ func (x *Branch) GetRequiredReviewers() []*ReviewActor {
 func (x *Branch) GetRequiredChecks() []string {
 	if x != nil {
 		return x.RequiredChecks
+	}
+	return nil
+}
+
+func (x *Branch) GetIssueKeys() []*IssueKey {
+	if x != nil {
+		return x.IssueKeys
 	}
 	return nil
 }
@@ -4649,7 +4657,8 @@ type CommitLogEntry struct {
 	AuthorEmail   string                 `protobuf:"bytes,6,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
 	Message       string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Origin        string                 `protobuf:"bytes,9,opt,name=origin,proto3" json:"origin,omitempty"` // source-system commit for imported commits, see docs/GIT_IMPORT.md
+	Origin        string                 `protobuf:"bytes,9,opt,name=origin,proto3" json:"origin,omitempty"`                         // source-system commit for imported commits, see docs/GIT_IMPORT.md
+	IssueKeys     []*IssueKey            `protobuf:"bytes,10,rep,name=issue_keys,json=issueKeys,proto3" json:"issue_keys,omitempty"` // linked issues of the project's tracker
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4745,6 +4754,13 @@ func (x *CommitLogEntry) GetOrigin() string {
 		return x.Origin
 	}
 	return ""
+}
+
+func (x *CommitLogEntry) GetIssueKeys() []*IssueKey {
+	if x != nil {
+		return x.IssueKeys
+	}
+	return nil
 }
 
 type GetCommitLogRequest struct {
@@ -7096,6 +7112,7 @@ type MergeRequestDetail struct {
 	Draft                bool                     `protobuf:"varint,15,opt,name=draft,proto3" json:"draft,omitempty"`                                                                    // draft requests cannot be merged until marked ready
 	Assignees            []*ReviewActor           `protobuf:"bytes,16,rep,name=assignees,proto3" json:"assignees,omitempty"`                                                             // resolved per request
 	MergedSourceCommitId *string                  `protobuf:"bytes,17,opt,name=merged_source_commit_id,json=mergedSourceCommitId,proto3,oneof" json:"merged_source_commit_id,omitempty"` // source head that was merged (base36), set for merged requests
+	IssueKeys            []*IssueKey              `protobuf:"bytes,18,rep,name=issue_keys,json=issueKeys,proto3" json:"issue_keys,omitempty"`                                            // linked issues; list and get responses only
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -7247,6 +7264,13 @@ func (x *MergeRequestDetail) GetMergedSourceCommitId() string {
 		return *x.MergedSourceCommitId
 	}
 	return ""
+}
+
+func (x *MergeRequestDetail) GetIssueKeys() []*IssueKey {
+	if x != nil {
+		return x.IssueKeys
+	}
+	return nil
 }
 
 type CreateMergeRequestRequest struct {
@@ -12932,6 +12956,376 @@ func (x *GetMaintenanceStatusResponse) GetSource() string {
 	return ""
 }
 
+// IssueKey is an issue key linked to a commit, branch or merge request, with
+// its URL on the tracker; building it never calls the tracker.
+type IssueKey struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IssueKey) Reset() {
+	*x = IssueKey{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[208]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueKey) ProtoMessage() {}
+
+func (x *IssueKey) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[208]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueKey.ProtoReflect.Descriptor instead.
+func (*IssueKey) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{208}
+}
+
+func (x *IssueKey) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *IssueKey) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+type IssueDetail struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Key            string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Url            string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	State          string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"` // ok, not_found or unavailable (tracker down: key and url only)
+	Title          string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Type           string                 `protobuf:"bytes,5,opt,name=type,proto3" json:"type,omitempty"`
+	Status         string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	StatusCategory string                 `protobuf:"bytes,7,opt,name=status_category,json=statusCategory,proto3" json:"status_category,omitempty"` // todo, in_progress or done
+	Assignee       string                 `protobuf:"bytes,8,opt,name=assignee,proto3" json:"assignee,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *IssueDetail) Reset() {
+	*x = IssueDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[209]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueDetail) ProtoMessage() {}
+
+func (x *IssueDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[209]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueDetail.ProtoReflect.Descriptor instead.
+func (*IssueDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{209}
+}
+
+func (x *IssueDetail) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetStatusCategory() string {
+	if x != nil {
+		return x.StatusCategory
+	}
+	return ""
+}
+
+func (x *IssueDetail) GetAssignee() string {
+	if x != nil {
+		return x.Assignee
+	}
+	return ""
+}
+
+type ResolveIssuesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Keys          []string               `protobuf:"bytes,2,rep,name=keys,proto3" json:"keys,omitempty"` // at most 50; keys outside the project's configured keys are left out
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveIssuesRequest) Reset() {
+	*x = ResolveIssuesRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[210]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveIssuesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveIssuesRequest) ProtoMessage() {}
+
+func (x *ResolveIssuesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[210]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveIssuesRequest.ProtoReflect.Descriptor instead.
+func (*ResolveIssuesRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{210}
+}
+
+func (x *ResolveIssuesRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ResolveIssuesRequest) GetKeys() []string {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type ResolveIssuesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issues        []*IssueDetail         `protobuf:"bytes,1,rep,name=issues,proto3" json:"issues,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveIssuesResponse) Reset() {
+	*x = ResolveIssuesResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[211]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveIssuesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveIssuesResponse) ProtoMessage() {}
+
+func (x *ResolveIssuesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[211]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveIssuesResponse.ProtoReflect.Descriptor instead.
+func (*ResolveIssuesResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{211}
+}
+
+func (x *ResolveIssuesResponse) GetIssues() []*IssueDetail {
+	if x != nil {
+		return x.Issues
+	}
+	return nil
+}
+
+type SearchIssuesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Query         string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // default 20, max 50
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchIssuesRequest) Reset() {
+	*x = SearchIssuesRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[212]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchIssuesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchIssuesRequest) ProtoMessage() {}
+
+func (x *SearchIssuesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[212]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchIssuesRequest.ProtoReflect.Descriptor instead.
+func (*SearchIssuesRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{212}
+}
+
+func (x *SearchIssuesRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *SearchIssuesRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchIssuesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type SearchIssuesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issues        []*IssueDetail         `protobuf:"bytes,1,rep,name=issues,proto3" json:"issues,omitempty"`
+	Supported     bool                   `protobuf:"varint,2,opt,name=supported,proto3" json:"supported,omitempty"`     // false when the tracker cannot search
+	Unavailable   bool                   `protobuf:"varint,3,opt,name=unavailable,proto3" json:"unavailable,omitempty"` // the tracker failed to answer
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchIssuesResponse) Reset() {
+	*x = SearchIssuesResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[213]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchIssuesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchIssuesResponse) ProtoMessage() {}
+
+func (x *SearchIssuesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[213]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchIssuesResponse.ProtoReflect.Descriptor instead.
+func (*SearchIssuesResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{213}
+}
+
+func (x *SearchIssuesResponse) GetIssues() []*IssueDetail {
+	if x != nil {
+		return x.Issues
+	}
+	return nil
+}
+
+func (x *SearchIssuesResponse) GetSupported() bool {
+	if x != nil {
+		return x.Supported
+	}
+	return false
+}
+
+func (x *SearchIssuesResponse) GetUnavailable() bool {
+	if x != nil {
+		return x.Unavailable
+	}
+	return false
+}
+
 var File_internal_grpc_proto_server_proto protoreflect.FileDescriptor
 
 const file_internal_grpc_proto_server_proto_rawDesc = "" +
@@ -13151,7 +13545,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tcommit_id\x18\x04 \x01(\tR\bcommitId\x12\x18\n" +
 	"\amessage\x18\x05 \x01(\tR\amessage\"C\n" +
 	"\x15ImportSetRefsResponse\x12*\n" +
-	"\x04refs\x18\x01 \x03(\v2\x16.greet.ImportRefResultR\x04refs\"\x9b\x04\n" +
+	"\x04refs\x18\x01 \x03(\v2\x16.greet.ImportRefResultR\x04refs\"\xcb\x04\n" +
 	"\x06Branch\x129\n" +
 	"\n" +
 	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
@@ -13168,7 +13562,9 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x15require_status_checks\x18\n" +
 	" \x01(\bR\x13requireStatusChecks\x12A\n" +
 	"\x12required_reviewers\x18\v \x03(\v2\x12.greet.ReviewActorR\x11requiredReviewers\x12'\n" +
-	"\x0frequired_checks\x18\f \x03(\tR\x0erequiredChecksB\f\n" +
+	"\x0frequired_checks\x18\f \x03(\tR\x0erequiredChecks\x12.\n" +
+	"\n" +
+	"issue_keys\x18\r \x03(\v2\x0f.greet.IssueKeyR\tissueKeysB\f\n" +
 	"\n" +
 	"_commit_id\"\xe4\x01\n" +
 	"\x14GetListBranchRequest\x12/\n" +
@@ -13297,7 +13693,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\"n\n" +
 	"\x18MergeFastForwardResponse\x12%\n" +
 	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\x12+\n" +
-	"\x12moved_to_commit_id\x18\x02 \x01(\tR\x0fmovedToCommitId\"\xe9\x02\n" +
+	"\x12moved_to_commit_id\x18\x02 \x01(\tR\x0fmovedToCommitId\"\x99\x03\n" +
 	"\x0eCommitLogEntry\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
@@ -13310,7 +13706,10 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\amessage\x18\a \x01(\tR\amessage\x129\n" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06origin\x18\t \x01(\tR\x06originB\x0e\n" +
+	"\x06origin\x18\t \x01(\tR\x06origin\x12.\n" +
+	"\n" +
+	"issue_keys\x18\n" +
+	" \x03(\v2\x0f.greet.IssueKeyR\tissueKeysB\x0e\n" +
 	"\f_parent_1_idB\x0e\n" +
 	"\f_parent_2_id\"\xc9\x01\n" +
 	"\x13GetCommitLogRequest\x12/\n" +
@@ -13503,7 +13902,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"blocked_by\x18\x05 \x01(\tR\tblockedByB\x13\n" +
 	"\x11_source_commit_idB\x13\n" +
 	"\x11_target_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\xf2\x05\n" +
+	"\x15_merge_base_commit_id\"\xa2\x06\n" +
 	"\x12MergeRequestDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1d\n" +
@@ -13526,7 +13925,9 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x06review\x18\x0e \x01(\v2\x1e.greet.MergeRequestReviewStateR\x06review\x12\x14\n" +
 	"\x05draft\x18\x0f \x01(\bR\x05draft\x120\n" +
 	"\tassignees\x18\x10 \x03(\v2\x12.greet.ReviewActorR\tassignees\x12:\n" +
-	"\x17merged_source_commit_id\x18\x11 \x01(\tH\x02R\x14mergedSourceCommitId\x88\x01\x01B\x12\n" +
+	"\x17merged_source_commit_id\x18\x11 \x01(\tH\x02R\x14mergedSourceCommitId\x88\x01\x01\x12.\n" +
+	"\n" +
+	"issue_keys\x18\x12 \x03(\v2\x0f.greet.IssueKeyR\tissueKeysB\x12\n" +
 	"\x10_merge_commit_idB\x17\n" +
 	"\x15_merge_base_commit_idB\x1a\n" +
 	"\x18_merged_source_commit_id\"\xaa\x02\n" +
@@ -13950,12 +14351,37 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x06server\x18\x01 \x01(\v2\x18.greet.MaintenanceWindowR\x06server\x122\n" +
 	"\aproject\x18\x02 \x01(\v2\x18.greet.MaintenanceWindowR\aproject\x12*\n" +
 	"\x03org\x18\x03 \x01(\v2\x18.greet.MaintenanceWindowR\x03org\x12\x16\n" +
-	"\x06source\x18\x04 \x01(\tR\x06source*r\n" +
+	"\x06source\x18\x04 \x01(\tR\x06source\".\n" +
+	"\bIssueKey\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xce\x01\n" +
+	"\vIssueDetail\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x14\n" +
+	"\x05title\x18\x04 \x01(\tR\x05title\x12\x12\n" +
+	"\x04type\x18\x05 \x01(\tR\x04type\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12'\n" +
+	"\x0fstatus_category\x18\a \x01(\tR\x0estatusCategory\x12\x1a\n" +
+	"\bassignee\x18\b \x01(\tR\bassignee\"[\n" +
+	"\x14ResolveIssuesRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x12\n" +
+	"\x04keys\x18\x02 \x03(\tR\x04keys\"C\n" +
+	"\x15ResolveIssuesResponse\x12*\n" +
+	"\x06issues\x18\x01 \x03(\v2\x12.greet.IssueDetailR\x06issues\"r\n" +
+	"\x13SearchIssuesRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
+	"\x05query\x18\x02 \x01(\tR\x05query\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\x82\x01\n" +
+	"\x14SearchIssuesResponse\x12*\n" +
+	"\x06issues\x18\x01 \x03(\v2\x12.greet.IssueDetailR\x06issues\x12\x1c\n" +
+	"\tsupported\x18\x02 \x01(\bR\tsupported\x12 \n" +
+	"\vunavailable\x18\x03 \x01(\bR\vunavailable*r\n" +
 	"\bFileMode\x12\x19\n" +
 	"\x15FILE_MODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FILE_MODE_READ_ONLY\x10\x01\x12\x18\n" +
 	"\x14FILE_MODE_READ_WRITE\x10\x02\x12\x18\n" +
-	"\x14FILE_MODE_EXECUTABLE\x10\x032\xab9\n" +
+	"\x14FILE_MODE_EXECUTABLE\x10\x032\xc0:\n" +
 	"\vNipaService\x12V\n" +
 	"\x19LoginWithUsernamePassword\x12#.greet.LoginUsernamePasswordRequest\x1a\x14.greet.LoginResponse\x12M\n" +
 	"\x15LoginWithRefreshToken\x12\x1e.greet.LoginWithRefreshRequest\x1a\x14.greet.LoginResponse\x12S\n" +
@@ -13967,6 +14393,8 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x0eListMyProjects\x12\x1c.greet.ListMyProjectsRequest\x1a\x1d.greet.ListMyProjectsResponse\x12J\n" +
 	"\rListDirectory\x12\x1b.greet.ListDirectoryRequest\x1a\x1c.greet.ListDirectoryResponse\x12Y\n" +
 	"\x12ListProjectMembers\x12 .greet.ListProjectMembersRequest\x1a!.greet.ListProjectMembersResponse\x12J\n" +
+	"\rResolveIssues\x12\x1b.greet.ResolveIssuesRequest\x1a\x1c.greet.ResolveIssuesResponse\x12G\n" +
+	"\fSearchIssues\x12\x1a.greet.SearchIssuesRequest\x1a\x1b.greet.SearchIssuesResponse\x12J\n" +
 	"\rGetListBranch\x12\x1b.greet.GetListBranchRequest\x1a\x1c.greet.GetListBranchResponse\x12>\n" +
 	"\tGetBranch\x12\x17.greet.GetBranchRequest\x1a\x18.greet.GetBranchResponse\x12P\n" +
 	"\x0fGetBranchByName\x12\x1d.greet.GetBranchByNameRequest\x1a\x1e.greet.GetBranchByNameResponse\x12L\n" +
@@ -14057,7 +14485,7 @@ func file_internal_grpc_proto_server_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_grpc_proto_server_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 209)
+var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 215)
 var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(FileMode)(0),                                   // 0: greet.FileMode
 	(*ProjectContext)(nil),                          // 1: greet.ProjectContext
@@ -14268,8 +14696,14 @@ var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(*MaintenanceWindow)(nil),                       // 206: greet.MaintenanceWindow
 	(*GetMaintenanceStatusRequest)(nil),             // 207: greet.GetMaintenanceStatusRequest
 	(*GetMaintenanceStatusResponse)(nil),            // 208: greet.GetMaintenanceStatusResponse
-	nil,                                             // 209: greet.PresignedChunkUrl.HeadersEntry
-	(*timestamppb.Timestamp)(nil),                   // 210: google.protobuf.Timestamp
+	(*IssueKey)(nil),                                // 209: greet.IssueKey
+	(*IssueDetail)(nil),                             // 210: greet.IssueDetail
+	(*ResolveIssuesRequest)(nil),                    // 211: greet.ResolveIssuesRequest
+	(*ResolveIssuesResponse)(nil),                   // 212: greet.ResolveIssuesResponse
+	(*SearchIssuesRequest)(nil),                     // 213: greet.SearchIssuesRequest
+	(*SearchIssuesResponse)(nil),                    // 214: greet.SearchIssuesResponse
+	nil,                                             // 215: greet.PresignedChunkUrl.HeadersEntry
+	(*timestamppb.Timestamp)(nil),                   // 216: google.protobuf.Timestamp
 }
 var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	0,   // 0: greet.FileNode.mode:type_name -> greet.FileMode
@@ -14284,7 +14718,7 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	74,  // 9: greet.TreeManifestPart.commit:type_name -> greet.CommitDetail
 	9,   // 10: greet.TreeManifestPart.entries:type_name -> greet.TreeManifestEntry
 	0,   // 11: greet.PushFile.mode:type_name -> greet.FileMode
-	209, // 12: greet.PresignedChunkUrl.headers:type_name -> greet.PresignedChunkUrl.HeadersEntry
+	215, // 12: greet.PresignedChunkUrl.headers:type_name -> greet.PresignedChunkUrl.HeadersEntry
 	1,   // 13: greet.GetChunkUploadUrlsRequest.context:type_name -> greet.ProjectContext
 	12,  // 14: greet.GetChunkUploadUrlsRequest.chunks:type_name -> greet.ChunkRef
 	13,  // 15: greet.GetChunkUploadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
@@ -14304,7 +14738,7 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,   // 29: greet.ImportLookupRequest.context:type_name -> greet.ProjectContext
 	30,  // 30: greet.ImportLookupResponse.commits:type_name -> greet.ImportedCommit
 	1,   // 31: greet.ImportCommitHeader.context:type_name -> greet.ProjectContext
-	210, // 32: greet.ImportCommitHeader.authored_at:type_name -> google.protobuf.Timestamp
+	216, // 32: greet.ImportCommitHeader.authored_at:type_name -> google.protobuf.Timestamp
 	32,  // 33: greet.ImportStreamRequest.header:type_name -> greet.ImportCommitHeader
 	24,  // 34: greet.ImportStreamRequest.files:type_name -> greet.PushStreamFiles
 	25,  // 35: greet.ImportStreamRequest.chunks:type_name -> greet.PushStreamChunks
@@ -14314,345 +14748,356 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	36,  // 39: greet.ImportSetRefsRequest.branches:type_name -> greet.ImportRef
 	36,  // 40: greet.ImportSetRefsRequest.tags:type_name -> greet.ImportRef
 	38,  // 41: greet.ImportSetRefsResponse.refs:type_name -> greet.ImportRefResult
-	210, // 42: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	210, // 43: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	216, // 42: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	216, // 43: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
 	145, // 44: greet.Branch.required_reviewers:type_name -> greet.ReviewActor
-	1,   // 45: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	210, // 46: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
-	40,  // 47: greet.GetListBranchResponse.branches:type_name -> greet.Branch
-	1,   // 48: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
-	1,   // 49: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
-	40,  // 50: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
-	1,   // 51: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	40,  // 52: greet.GetBranchResponse.branch:type_name -> greet.Branch
-	1,   // 53: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
-	40,  // 54: greet.CreateBranchResponse.branch:type_name -> greet.Branch
-	1,   // 55: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
-	40,  // 56: greet.RenameBranchResponse.branch:type_name -> greet.Branch
-	1,   // 57: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
-	1,   // 58: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	40,  // 59: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
-	1,   // 60: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
-	40,  // 61: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
-	210, // 62: greet.Tag.created_at:type_name -> google.protobuf.Timestamp
-	210, // 63: greet.Tag.updated_at:type_name -> google.protobuf.Timestamp
-	1,   // 64: greet.CreateTagRequest.context:type_name -> greet.ProjectContext
-	58,  // 65: greet.CreateTagResponse.tag:type_name -> greet.Tag
-	1,   // 66: greet.GetTagByNameRequest.context:type_name -> greet.ProjectContext
-	58,  // 67: greet.GetTagByNameResponse.tag:type_name -> greet.Tag
-	1,   // 68: greet.ListTagsRequest.context:type_name -> greet.ProjectContext
-	210, // 69: greet.ListTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
-	58,  // 70: greet.ListTagsResponse.tags:type_name -> greet.Tag
-	1,   // 71: greet.DeleteTagRequest.context:type_name -> greet.ProjectContext
-	1,   // 72: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
-	3,   // 73: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
-	1,   // 74: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
-	40,  // 75: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
-	210, // 76: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,   // 77: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
-	71,  // 78: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
-	210, // 79: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,   // 80: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
-	74,  // 81: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
-	3,   // 82: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
-	210, // 83: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,   // 84: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
-	77,  // 85: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
-	210, // 86: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,   // 87: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
-	88,  // 88: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
-	1,   // 89: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
-	88,  // 90: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
-	1,   // 91: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
-	1,   // 92: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
-	87,  // 93: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
-	1,   // 94: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	87,  // 95: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
-	1,   // 96: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	1,   // 97: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
-	87,  // 98: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
-	87,  // 99: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
-	103, // 100: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
-	103, // 101: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
-	210, // 102: greet.MergeRequestDetail.created_at:type_name -> google.protobuf.Timestamp
-	210, // 103: greet.MergeRequestDetail.updated_at:type_name -> google.protobuf.Timestamp
-	149, // 104: greet.MergeRequestDetail.review:type_name -> greet.MergeRequestReviewState
-	145, // 105: greet.MergeRequestDetail.assignees:type_name -> greet.ReviewActor
-	1,   // 106: greet.CreateMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 107: greet.CreateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	1,   // 108: greet.UpdateMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 109: greet.UpdateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	1,   // 110: greet.ListMergeRequestsRequest.context:type_name -> greet.ProjectContext
-	113, // 111: greet.ListMergeRequestsResponse.merge_requests:type_name -> greet.MergeRequestDetail
-	1,   // 112: greet.GetMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 113: greet.GetMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	112, // 114: greet.GetMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
-	1,   // 115: greet.SetMergeRequestAssigneesRequest.context:type_name -> greet.ProjectContext
-	113, // 116: greet.SetMergeRequestAssigneesResponse.merge_request:type_name -> greet.MergeRequestDetail
-	1,   // 117: greet.MergeMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 118: greet.MergeMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	112, // 119: greet.MergeMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
-	1,   // 120: greet.CloseMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 121: greet.CloseMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	1,   // 122: greet.ReopenMergeRequestRequest.context:type_name -> greet.ProjectContext
-	113, // 123: greet.ReopenMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	1,   // 124: greet.CheckMergeRequestRequest.context:type_name -> greet.ProjectContext
-	112, // 125: greet.CheckMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
-	145, // 126: greet.MergeRequestCheckDetail.reporter:type_name -> greet.ReviewActor
-	210, // 127: greet.MergeRequestCheckDetail.created_at:type_name -> google.protobuf.Timestamp
-	210, // 128: greet.MergeRequestCheckDetail.updated_at:type_name -> google.protobuf.Timestamp
-	1,   // 129: greet.ReportMergeRequestCheckRequest.context:type_name -> greet.ProjectContext
-	132, // 130: greet.ReportMergeRequestCheckResponse.check:type_name -> greet.MergeRequestCheckDetail
-	1,   // 131: greet.ListMergeRequestChecksRequest.context:type_name -> greet.ProjectContext
-	132, // 132: greet.ListMergeRequestChecksResponse.checks:type_name -> greet.MergeRequestCheckDetail
-	1,   // 133: greet.ListMergeRequestCommitsRequest.context:type_name -> greet.ProjectContext
-	71,  // 134: greet.ListMergeRequestCommitsResponse.commits:type_name -> greet.CommitLogEntry
-	139, // 135: greet.DiffHunkDetail.lines:type_name -> greet.DiffLineDetail
-	140, // 136: greet.DiffFileDetail.hunks:type_name -> greet.DiffHunkDetail
-	1,   // 137: greet.GetMergeRequestDiffRequest.context:type_name -> greet.ProjectContext
-	141, // 138: greet.GetMergeRequestDiffResponse.files:type_name -> greet.DiffFileDetail
-	141, // 139: greet.MergeRequestDiffPart.files:type_name -> greet.DiffFileDetail
-	145, // 140: greet.ReviewCommentDetail.user:type_name -> greet.ReviewActor
-	210, // 141: greet.ReviewCommentDetail.created_at:type_name -> google.protobuf.Timestamp
-	210, // 142: greet.ReviewCommentDetail.updated_at:type_name -> google.protobuf.Timestamp
-	145, // 143: greet.MergeRequestThreadDetail.resolved_by:type_name -> greet.ReviewActor
-	210, // 144: greet.MergeRequestThreadDetail.resolved_at:type_name -> google.protobuf.Timestamp
-	145, // 145: greet.MergeRequestThreadDetail.created_by:type_name -> greet.ReviewActor
-	210, // 146: greet.MergeRequestThreadDetail.created_at:type_name -> google.protobuf.Timestamp
-	146, // 147: greet.MergeRequestThreadDetail.comments:type_name -> greet.ReviewCommentDetail
-	145, // 148: greet.MergeRequestReviewDetail.reviewer:type_name -> greet.ReviewActor
-	210, // 149: greet.MergeRequestReviewDetail.dismissed_at:type_name -> google.protobuf.Timestamp
-	145, // 150: greet.MergeRequestReviewDetail.dismissed_by:type_name -> greet.ReviewActor
-	210, // 151: greet.MergeRequestReviewDetail.created_at:type_name -> google.protobuf.Timestamp
-	210, // 152: greet.MergeRequestReviewDetail.updated_at:type_name -> google.protobuf.Timestamp
-	145, // 153: greet.ReviewRequestDetail.reviewer:type_name -> greet.ReviewActor
-	145, // 154: greet.ReviewRequestDetail.requested_by:type_name -> greet.ReviewActor
-	210, // 155: greet.ReviewRequestDetail.created_at:type_name -> google.protobuf.Timestamp
-	145, // 156: greet.MergeRequestTimelineItem.actor:type_name -> greet.ReviewActor
-	145, // 157: greet.MergeRequestTimelineItem.subject:type_name -> greet.ReviewActor
-	210, // 158: greet.MergeRequestTimelineItem.created_at:type_name -> google.protobuf.Timestamp
-	1,   // 159: greet.SubmitMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
-	152, // 160: greet.SubmitMergeRequestReviewRequest.comments:type_name -> greet.ReviewCommentInput
-	148, // 161: greet.SubmitMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
-	1,   // 162: greet.ListMergeRequestReviewsRequest.context:type_name -> greet.ProjectContext
-	148, // 163: greet.ListMergeRequestReviewsResponse.reviews:type_name -> greet.MergeRequestReviewDetail
-	1,   // 164: greet.GetMergeRequestReviewStateRequest.context:type_name -> greet.ProjectContext
-	149, // 165: greet.GetMergeRequestReviewStateResponse.state:type_name -> greet.MergeRequestReviewState
-	1,   // 166: greet.WithdrawMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
-	1,   // 167: greet.DismissMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
-	148, // 168: greet.DismissMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
-	1,   // 169: greet.ListMergeRequestThreadsRequest.context:type_name -> greet.ProjectContext
-	147, // 170: greet.ListMergeRequestThreadsResponse.threads:type_name -> greet.MergeRequestThreadDetail
-	1,   // 171: greet.AddMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
-	147, // 172: greet.AddMergeRequestCommentResponse.thread:type_name -> greet.MergeRequestThreadDetail
-	1,   // 173: greet.ReplyMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
-	146, // 174: greet.ReplyMergeRequestThreadResponse.comment:type_name -> greet.ReviewCommentDetail
-	1,   // 175: greet.UpdateMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
-	146, // 176: greet.UpdateMergeRequestCommentResponse.comment:type_name -> greet.ReviewCommentDetail
-	1,   // 177: greet.DeleteMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
-	1,   // 178: greet.ResolveMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
-	147, // 179: greet.ResolveMergeRequestThreadResponse.thread:type_name -> greet.MergeRequestThreadDetail
-	1,   // 180: greet.DeleteMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
-	1,   // 181: greet.ListMergeRequestReviewRequestsRequest.context:type_name -> greet.ProjectContext
-	150, // 182: greet.ListMergeRequestReviewRequestsResponse.review_requests:type_name -> greet.ReviewRequestDetail
-	1,   // 183: greet.RequestMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
-	150, // 184: greet.RequestMergeRequestReviewResponse.review_request:type_name -> greet.ReviewRequestDetail
-	1,   // 185: greet.RemoveMergeRequestReviewRequestRequest.context:type_name -> greet.ProjectContext
-	1,   // 186: greet.ListMergeRequestTimelineRequest.context:type_name -> greet.ProjectContext
-	151, // 187: greet.ListMergeRequestTimelineResponse.items:type_name -> greet.MergeRequestTimelineItem
-	210, // 188: greet.FileLockDetail.acquired_at:type_name -> google.protobuf.Timestamp
-	210, // 189: greet.FileLockDetail.expires_at:type_name -> google.protobuf.Timestamp
-	186, // 190: greet.FileLockDetail.requests:type_name -> greet.FileLockRequestDetail
-	210, // 191: greet.FileLockRequestDetail.requested_at:type_name -> google.protobuf.Timestamp
-	1,   // 192: greet.RequestFileLockReleaseRequest.context:type_name -> greet.ProjectContext
-	186, // 193: greet.RequestFileLockReleaseResponse.request:type_name -> greet.FileLockRequestDetail
-	1,   // 194: greet.LockFileRequest.context:type_name -> greet.ProjectContext
-	185, // 195: greet.LockFileResponse.lock:type_name -> greet.FileLockDetail
-	1,   // 196: greet.UnlockFileRequest.context:type_name -> greet.ProjectContext
-	1,   // 197: greet.ListFileLocksRequest.context:type_name -> greet.ProjectContext
-	185, // 198: greet.ListFileLocksResponse.locks:type_name -> greet.FileLockDetail
-	196, // 199: greet.ListMyProjectsResponse.projects:type_name -> greet.ProjectSummary
-	1,   // 200: greet.ListProjectMembersRequest.context:type_name -> greet.ProjectContext
-	199, // 201: greet.ListProjectMembersResponse.members:type_name -> greet.ProjectMember
-	1,   // 202: greet.ListDirectoryRequest.context:type_name -> greet.ProjectContext
-	202, // 203: greet.ListDirectoryResponse.entries:type_name -> greet.DirectoryEntry
-	210, // 204: greet.MaintenanceWindow.starts_at:type_name -> google.protobuf.Timestamp
-	210, // 205: greet.MaintenanceWindow.ends_at:type_name -> google.protobuf.Timestamp
-	1,   // 206: greet.GetMaintenanceStatusRequest.context:type_name -> greet.ProjectContext
-	206, // 207: greet.GetMaintenanceStatusResponse.server:type_name -> greet.MaintenanceWindow
-	206, // 208: greet.GetMaintenanceStatusResponse.project:type_name -> greet.MaintenanceWindow
-	206, // 209: greet.GetMaintenanceStatusResponse.org:type_name -> greet.MaintenanceWindow
-	80,  // 210: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	82,  // 211: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	83,  // 212: greet.NipaService.BeginLoginSSHKey:input_type -> greet.BeginLoginSSHKeyRequest
-	85,  // 213: greet.NipaService.CompleteLoginSSHKey:input_type -> greet.CompleteLoginSSHKeyRequest
-	81,  // 214: greet.NipaService.CompleteLoginMFA:input_type -> greet.CompleteLoginMFARequest
-	204, // 215: greet.NipaService.GetServerVersion:input_type -> greet.GetServerVersionRequest
-	207, // 216: greet.NipaService.GetMaintenanceStatus:input_type -> greet.GetMaintenanceStatusRequest
-	195, // 217: greet.NipaService.ListMyProjects:input_type -> greet.ListMyProjectsRequest
-	201, // 218: greet.NipaService.ListDirectory:input_type -> greet.ListDirectoryRequest
-	198, // 219: greet.NipaService.ListProjectMembers:input_type -> greet.ListProjectMembersRequest
-	41,  // 220: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	43,  // 221: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	44,  // 222: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
-	46,  // 223: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	48,  // 224: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	50,  // 225: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
-	52,  // 226: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
-	54,  // 227: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
-	56,  // 228: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
-	63,  // 229: greet.NipaService.ListTags:input_type -> greet.ListTagsRequest
-	61,  // 230: greet.NipaService.GetTagByName:input_type -> greet.GetTagByNameRequest
-	59,  // 231: greet.NipaService.CreateTag:input_type -> greet.CreateTagRequest
-	65,  // 232: greet.NipaService.DeleteTag:input_type -> greet.DeleteTagRequest
-	4,   // 233: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	4,   // 234: greet.NipaService.StreamTreeManifest:input_type -> greet.GetTreeManifestRequest
-	72,  // 235: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
-	75,  // 236: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
-	78,  // 237: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
-	67,  // 238: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
-	69,  // 239: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
-	114, // 240: greet.NipaService.CreateMergeRequest:input_type -> greet.CreateMergeRequestRequest
-	116, // 241: greet.NipaService.UpdateMergeRequest:input_type -> greet.UpdateMergeRequestRequest
-	118, // 242: greet.NipaService.ListMergeRequests:input_type -> greet.ListMergeRequestsRequest
-	120, // 243: greet.NipaService.GetMergeRequest:input_type -> greet.GetMergeRequestRequest
-	122, // 244: greet.NipaService.SetMergeRequestAssignees:input_type -> greet.SetMergeRequestAssigneesRequest
-	124, // 245: greet.NipaService.MergeMergeRequest:input_type -> greet.MergeMergeRequestRequest
-	126, // 246: greet.NipaService.CloseMergeRequest:input_type -> greet.CloseMergeRequestRequest
-	128, // 247: greet.NipaService.ReopenMergeRequest:input_type -> greet.ReopenMergeRequestRequest
-	130, // 248: greet.NipaService.CheckMergeRequest:input_type -> greet.CheckMergeRequestRequest
-	133, // 249: greet.NipaService.ReportMergeRequestCheck:input_type -> greet.ReportMergeRequestCheckRequest
-	135, // 250: greet.NipaService.ListMergeRequestChecks:input_type -> greet.ListMergeRequestChecksRequest
-	137, // 251: greet.NipaService.ListMergeRequestCommits:input_type -> greet.ListMergeRequestCommitsRequest
-	142, // 252: greet.NipaService.GetMergeRequestDiff:input_type -> greet.GetMergeRequestDiffRequest
-	142, // 253: greet.NipaService.StreamMergeRequestDiff:input_type -> greet.GetMergeRequestDiffRequest
-	153, // 254: greet.NipaService.SubmitMergeRequestReview:input_type -> greet.SubmitMergeRequestReviewRequest
-	155, // 255: greet.NipaService.ListMergeRequestReviews:input_type -> greet.ListMergeRequestReviewsRequest
-	157, // 256: greet.NipaService.GetMergeRequestReviewState:input_type -> greet.GetMergeRequestReviewStateRequest
-	159, // 257: greet.NipaService.WithdrawMergeRequestReview:input_type -> greet.WithdrawMergeRequestReviewRequest
-	161, // 258: greet.NipaService.DismissMergeRequestReview:input_type -> greet.DismissMergeRequestReviewRequest
-	163, // 259: greet.NipaService.ListMergeRequestThreads:input_type -> greet.ListMergeRequestThreadsRequest
-	165, // 260: greet.NipaService.AddMergeRequestComment:input_type -> greet.AddMergeRequestCommentRequest
-	167, // 261: greet.NipaService.ReplyMergeRequestThread:input_type -> greet.ReplyMergeRequestThreadRequest
-	169, // 262: greet.NipaService.UpdateMergeRequestComment:input_type -> greet.UpdateMergeRequestCommentRequest
-	171, // 263: greet.NipaService.DeleteMergeRequestComment:input_type -> greet.DeleteMergeRequestCommentRequest
-	173, // 264: greet.NipaService.ResolveMergeRequestThread:input_type -> greet.ResolveMergeRequestThreadRequest
-	175, // 265: greet.NipaService.DeleteMergeRequestThread:input_type -> greet.DeleteMergeRequestThreadRequest
-	177, // 266: greet.NipaService.ListMergeRequestReviewRequests:input_type -> greet.ListMergeRequestReviewRequestsRequest
-	179, // 267: greet.NipaService.RequestMergeRequestReview:input_type -> greet.RequestMergeRequestReviewRequest
-	181, // 268: greet.NipaService.RemoveMergeRequestReviewRequest:input_type -> greet.RemoveMergeRequestReviewRequestRequest
-	183, // 269: greet.NipaService.ListMergeRequestTimeline:input_type -> greet.ListMergeRequestTimelineRequest
-	21,  // 270: greet.NipaService.Push:input_type -> greet.PushRequest
-	27,  // 271: greet.NipaService.PushStream:input_type -> greet.PushStreamRequest
-	29,  // 272: greet.NipaService.ImportLookup:input_type -> greet.ImportLookupRequest
-	34,  // 273: greet.NipaService.ImportStream:input_type -> greet.ImportStreamRequest
-	37,  // 274: greet.NipaService.ImportSetRefs:input_type -> greet.ImportSetRefsRequest
-	14,  // 275: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
-	16,  // 276: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
-	18,  // 277: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
-	189, // 278: greet.NipaService.LockFile:input_type -> greet.LockFileRequest
-	191, // 279: greet.NipaService.UnlockFile:input_type -> greet.UnlockFileRequest
-	193, // 280: greet.NipaService.ListFileLocks:input_type -> greet.ListFileLocksRequest
-	187, // 281: greet.NipaService.RequestFileLockRelease:input_type -> greet.RequestFileLockReleaseRequest
-	101, // 282: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
-	89,  // 283: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
-	91,  // 284: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
-	93,  // 285: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
-	95,  // 286: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
-	97,  // 287: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
-	99,  // 288: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
-	104, // 289: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
-	106, // 290: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
-	108, // 291: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
-	110, // 292: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
-	86,  // 293: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	86,  // 294: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	84,  // 295: greet.NipaService.BeginLoginSSHKey:output_type -> greet.BeginLoginSSHKeyResponse
-	86,  // 296: greet.NipaService.CompleteLoginSSHKey:output_type -> greet.LoginResponse
-	86,  // 297: greet.NipaService.CompleteLoginMFA:output_type -> greet.LoginResponse
-	205, // 298: greet.NipaService.GetServerVersion:output_type -> greet.GetServerVersionResponse
-	208, // 299: greet.NipaService.GetMaintenanceStatus:output_type -> greet.GetMaintenanceStatusResponse
-	197, // 300: greet.NipaService.ListMyProjects:output_type -> greet.ListMyProjectsResponse
-	203, // 301: greet.NipaService.ListDirectory:output_type -> greet.ListDirectoryResponse
-	200, // 302: greet.NipaService.ListProjectMembers:output_type -> greet.ListProjectMembersResponse
-	42,  // 303: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	47,  // 304: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	45,  // 305: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
-	47,  // 306: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	49,  // 307: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	51,  // 308: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
-	53,  // 309: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
-	55,  // 310: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
-	57,  // 311: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
-	64,  // 312: greet.NipaService.ListTags:output_type -> greet.ListTagsResponse
-	62,  // 313: greet.NipaService.GetTagByName:output_type -> greet.GetTagByNameResponse
-	60,  // 314: greet.NipaService.CreateTag:output_type -> greet.CreateTagResponse
-	66,  // 315: greet.NipaService.DeleteTag:output_type -> greet.DeleteTagResponse
-	5,   // 316: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	10,  // 317: greet.NipaService.StreamTreeManifest:output_type -> greet.TreeManifestPart
-	73,  // 318: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
-	76,  // 319: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
-	79,  // 320: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
-	68,  // 321: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
-	70,  // 322: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
-	115, // 323: greet.NipaService.CreateMergeRequest:output_type -> greet.CreateMergeRequestResponse
-	117, // 324: greet.NipaService.UpdateMergeRequest:output_type -> greet.UpdateMergeRequestResponse
-	119, // 325: greet.NipaService.ListMergeRequests:output_type -> greet.ListMergeRequestsResponse
-	121, // 326: greet.NipaService.GetMergeRequest:output_type -> greet.GetMergeRequestResponse
-	123, // 327: greet.NipaService.SetMergeRequestAssignees:output_type -> greet.SetMergeRequestAssigneesResponse
-	125, // 328: greet.NipaService.MergeMergeRequest:output_type -> greet.MergeMergeRequestResponse
-	127, // 329: greet.NipaService.CloseMergeRequest:output_type -> greet.CloseMergeRequestResponse
-	129, // 330: greet.NipaService.ReopenMergeRequest:output_type -> greet.ReopenMergeRequestResponse
-	131, // 331: greet.NipaService.CheckMergeRequest:output_type -> greet.CheckMergeRequestResponse
-	134, // 332: greet.NipaService.ReportMergeRequestCheck:output_type -> greet.ReportMergeRequestCheckResponse
-	136, // 333: greet.NipaService.ListMergeRequestChecks:output_type -> greet.ListMergeRequestChecksResponse
-	138, // 334: greet.NipaService.ListMergeRequestCommits:output_type -> greet.ListMergeRequestCommitsResponse
-	143, // 335: greet.NipaService.GetMergeRequestDiff:output_type -> greet.GetMergeRequestDiffResponse
-	144, // 336: greet.NipaService.StreamMergeRequestDiff:output_type -> greet.MergeRequestDiffPart
-	154, // 337: greet.NipaService.SubmitMergeRequestReview:output_type -> greet.SubmitMergeRequestReviewResponse
-	156, // 338: greet.NipaService.ListMergeRequestReviews:output_type -> greet.ListMergeRequestReviewsResponse
-	158, // 339: greet.NipaService.GetMergeRequestReviewState:output_type -> greet.GetMergeRequestReviewStateResponse
-	160, // 340: greet.NipaService.WithdrawMergeRequestReview:output_type -> greet.WithdrawMergeRequestReviewResponse
-	162, // 341: greet.NipaService.DismissMergeRequestReview:output_type -> greet.DismissMergeRequestReviewResponse
-	164, // 342: greet.NipaService.ListMergeRequestThreads:output_type -> greet.ListMergeRequestThreadsResponse
-	166, // 343: greet.NipaService.AddMergeRequestComment:output_type -> greet.AddMergeRequestCommentResponse
-	168, // 344: greet.NipaService.ReplyMergeRequestThread:output_type -> greet.ReplyMergeRequestThreadResponse
-	170, // 345: greet.NipaService.UpdateMergeRequestComment:output_type -> greet.UpdateMergeRequestCommentResponse
-	172, // 346: greet.NipaService.DeleteMergeRequestComment:output_type -> greet.DeleteMergeRequestCommentResponse
-	174, // 347: greet.NipaService.ResolveMergeRequestThread:output_type -> greet.ResolveMergeRequestThreadResponse
-	176, // 348: greet.NipaService.DeleteMergeRequestThread:output_type -> greet.DeleteMergeRequestThreadResponse
-	178, // 349: greet.NipaService.ListMergeRequestReviewRequests:output_type -> greet.ListMergeRequestReviewRequestsResponse
-	180, // 350: greet.NipaService.RequestMergeRequestReview:output_type -> greet.RequestMergeRequestReviewResponse
-	182, // 351: greet.NipaService.RemoveMergeRequestReviewRequest:output_type -> greet.RemoveMergeRequestReviewRequestResponse
-	184, // 352: greet.NipaService.ListMergeRequestTimeline:output_type -> greet.ListMergeRequestTimelineResponse
-	28,  // 353: greet.NipaService.Push:output_type -> greet.PushResponse
-	28,  // 354: greet.NipaService.PushStream:output_type -> greet.PushResponse
-	31,  // 355: greet.NipaService.ImportLookup:output_type -> greet.ImportLookupResponse
-	35,  // 356: greet.NipaService.ImportStream:output_type -> greet.ImportStreamResponse
-	39,  // 357: greet.NipaService.ImportSetRefs:output_type -> greet.ImportSetRefsResponse
-	15,  // 358: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
-	17,  // 359: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
-	20,  // 360: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
-	190, // 361: greet.NipaService.LockFile:output_type -> greet.LockFileResponse
-	192, // 362: greet.NipaService.UnlockFile:output_type -> greet.UnlockFileResponse
-	194, // 363: greet.NipaService.ListFileLocks:output_type -> greet.ListFileLocksResponse
-	188, // 364: greet.NipaService.RequestFileLockRelease:output_type -> greet.RequestFileLockReleaseResponse
-	102, // 365: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
-	90,  // 366: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
-	92,  // 367: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
-	94,  // 368: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
-	96,  // 369: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
-	98,  // 370: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
-	100, // 371: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
-	105, // 372: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
-	107, // 373: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
-	109, // 374: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
-	111, // 375: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
-	293, // [293:376] is the sub-list for method output_type
-	210, // [210:293] is the sub-list for method input_type
-	210, // [210:210] is the sub-list for extension type_name
-	210, // [210:210] is the sub-list for extension extendee
-	0,   // [0:210] is the sub-list for field type_name
+	209, // 45: greet.Branch.issue_keys:type_name -> greet.IssueKey
+	1,   // 46: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
+	216, // 47: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	40,  // 48: greet.GetListBranchResponse.branches:type_name -> greet.Branch
+	1,   // 49: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
+	1,   // 50: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
+	40,  // 51: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
+	1,   // 52: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	40,  // 53: greet.GetBranchResponse.branch:type_name -> greet.Branch
+	1,   // 54: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
+	40,  // 55: greet.CreateBranchResponse.branch:type_name -> greet.Branch
+	1,   // 56: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
+	40,  // 57: greet.RenameBranchResponse.branch:type_name -> greet.Branch
+	1,   // 58: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
+	1,   // 59: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	40,  // 60: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
+	1,   // 61: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
+	40,  // 62: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
+	216, // 63: greet.Tag.created_at:type_name -> google.protobuf.Timestamp
+	216, // 64: greet.Tag.updated_at:type_name -> google.protobuf.Timestamp
+	1,   // 65: greet.CreateTagRequest.context:type_name -> greet.ProjectContext
+	58,  // 66: greet.CreateTagResponse.tag:type_name -> greet.Tag
+	1,   // 67: greet.GetTagByNameRequest.context:type_name -> greet.ProjectContext
+	58,  // 68: greet.GetTagByNameResponse.tag:type_name -> greet.Tag
+	1,   // 69: greet.ListTagsRequest.context:type_name -> greet.ProjectContext
+	216, // 70: greet.ListTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	58,  // 71: greet.ListTagsResponse.tags:type_name -> greet.Tag
+	1,   // 72: greet.DeleteTagRequest.context:type_name -> greet.ProjectContext
+	1,   // 73: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
+	3,   // 74: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
+	1,   // 75: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
+	40,  // 76: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
+	216, // 77: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	209, // 78: greet.CommitLogEntry.issue_keys:type_name -> greet.IssueKey
+	1,   // 79: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
+	71,  // 80: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
+	216, // 81: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 82: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
+	74,  // 83: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
+	3,   // 84: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
+	216, // 85: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 86: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
+	77,  // 87: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
+	216, // 88: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 89: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
+	88,  // 90: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
+	1,   // 91: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
+	88,  // 92: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
+	1,   // 93: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
+	1,   // 94: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
+	87,  // 95: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
+	1,   // 96: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	87,  // 97: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
+	1,   // 98: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	1,   // 99: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
+	87,  // 100: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
+	87,  // 101: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
+	103, // 102: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
+	103, // 103: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
+	216, // 104: greet.MergeRequestDetail.created_at:type_name -> google.protobuf.Timestamp
+	216, // 105: greet.MergeRequestDetail.updated_at:type_name -> google.protobuf.Timestamp
+	149, // 106: greet.MergeRequestDetail.review:type_name -> greet.MergeRequestReviewState
+	145, // 107: greet.MergeRequestDetail.assignees:type_name -> greet.ReviewActor
+	209, // 108: greet.MergeRequestDetail.issue_keys:type_name -> greet.IssueKey
+	1,   // 109: greet.CreateMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 110: greet.CreateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 111: greet.UpdateMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 112: greet.UpdateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 113: greet.ListMergeRequestsRequest.context:type_name -> greet.ProjectContext
+	113, // 114: greet.ListMergeRequestsResponse.merge_requests:type_name -> greet.MergeRequestDetail
+	1,   // 115: greet.GetMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 116: greet.GetMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	112, // 117: greet.GetMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
+	1,   // 118: greet.SetMergeRequestAssigneesRequest.context:type_name -> greet.ProjectContext
+	113, // 119: greet.SetMergeRequestAssigneesResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 120: greet.MergeMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 121: greet.MergeMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	112, // 122: greet.MergeMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
+	1,   // 123: greet.CloseMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 124: greet.CloseMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 125: greet.ReopenMergeRequestRequest.context:type_name -> greet.ProjectContext
+	113, // 126: greet.ReopenMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 127: greet.CheckMergeRequestRequest.context:type_name -> greet.ProjectContext
+	112, // 128: greet.CheckMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
+	145, // 129: greet.MergeRequestCheckDetail.reporter:type_name -> greet.ReviewActor
+	216, // 130: greet.MergeRequestCheckDetail.created_at:type_name -> google.protobuf.Timestamp
+	216, // 131: greet.MergeRequestCheckDetail.updated_at:type_name -> google.protobuf.Timestamp
+	1,   // 132: greet.ReportMergeRequestCheckRequest.context:type_name -> greet.ProjectContext
+	132, // 133: greet.ReportMergeRequestCheckResponse.check:type_name -> greet.MergeRequestCheckDetail
+	1,   // 134: greet.ListMergeRequestChecksRequest.context:type_name -> greet.ProjectContext
+	132, // 135: greet.ListMergeRequestChecksResponse.checks:type_name -> greet.MergeRequestCheckDetail
+	1,   // 136: greet.ListMergeRequestCommitsRequest.context:type_name -> greet.ProjectContext
+	71,  // 137: greet.ListMergeRequestCommitsResponse.commits:type_name -> greet.CommitLogEntry
+	139, // 138: greet.DiffHunkDetail.lines:type_name -> greet.DiffLineDetail
+	140, // 139: greet.DiffFileDetail.hunks:type_name -> greet.DiffHunkDetail
+	1,   // 140: greet.GetMergeRequestDiffRequest.context:type_name -> greet.ProjectContext
+	141, // 141: greet.GetMergeRequestDiffResponse.files:type_name -> greet.DiffFileDetail
+	141, // 142: greet.MergeRequestDiffPart.files:type_name -> greet.DiffFileDetail
+	145, // 143: greet.ReviewCommentDetail.user:type_name -> greet.ReviewActor
+	216, // 144: greet.ReviewCommentDetail.created_at:type_name -> google.protobuf.Timestamp
+	216, // 145: greet.ReviewCommentDetail.updated_at:type_name -> google.protobuf.Timestamp
+	145, // 146: greet.MergeRequestThreadDetail.resolved_by:type_name -> greet.ReviewActor
+	216, // 147: greet.MergeRequestThreadDetail.resolved_at:type_name -> google.protobuf.Timestamp
+	145, // 148: greet.MergeRequestThreadDetail.created_by:type_name -> greet.ReviewActor
+	216, // 149: greet.MergeRequestThreadDetail.created_at:type_name -> google.protobuf.Timestamp
+	146, // 150: greet.MergeRequestThreadDetail.comments:type_name -> greet.ReviewCommentDetail
+	145, // 151: greet.MergeRequestReviewDetail.reviewer:type_name -> greet.ReviewActor
+	216, // 152: greet.MergeRequestReviewDetail.dismissed_at:type_name -> google.protobuf.Timestamp
+	145, // 153: greet.MergeRequestReviewDetail.dismissed_by:type_name -> greet.ReviewActor
+	216, // 154: greet.MergeRequestReviewDetail.created_at:type_name -> google.protobuf.Timestamp
+	216, // 155: greet.MergeRequestReviewDetail.updated_at:type_name -> google.protobuf.Timestamp
+	145, // 156: greet.ReviewRequestDetail.reviewer:type_name -> greet.ReviewActor
+	145, // 157: greet.ReviewRequestDetail.requested_by:type_name -> greet.ReviewActor
+	216, // 158: greet.ReviewRequestDetail.created_at:type_name -> google.protobuf.Timestamp
+	145, // 159: greet.MergeRequestTimelineItem.actor:type_name -> greet.ReviewActor
+	145, // 160: greet.MergeRequestTimelineItem.subject:type_name -> greet.ReviewActor
+	216, // 161: greet.MergeRequestTimelineItem.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 162: greet.SubmitMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	152, // 163: greet.SubmitMergeRequestReviewRequest.comments:type_name -> greet.ReviewCommentInput
+	148, // 164: greet.SubmitMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
+	1,   // 165: greet.ListMergeRequestReviewsRequest.context:type_name -> greet.ProjectContext
+	148, // 166: greet.ListMergeRequestReviewsResponse.reviews:type_name -> greet.MergeRequestReviewDetail
+	1,   // 167: greet.GetMergeRequestReviewStateRequest.context:type_name -> greet.ProjectContext
+	149, // 168: greet.GetMergeRequestReviewStateResponse.state:type_name -> greet.MergeRequestReviewState
+	1,   // 169: greet.WithdrawMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	1,   // 170: greet.DismissMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	148, // 171: greet.DismissMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
+	1,   // 172: greet.ListMergeRequestThreadsRequest.context:type_name -> greet.ProjectContext
+	147, // 173: greet.ListMergeRequestThreadsResponse.threads:type_name -> greet.MergeRequestThreadDetail
+	1,   // 174: greet.AddMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	147, // 175: greet.AddMergeRequestCommentResponse.thread:type_name -> greet.MergeRequestThreadDetail
+	1,   // 176: greet.ReplyMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	146, // 177: greet.ReplyMergeRequestThreadResponse.comment:type_name -> greet.ReviewCommentDetail
+	1,   // 178: greet.UpdateMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	146, // 179: greet.UpdateMergeRequestCommentResponse.comment:type_name -> greet.ReviewCommentDetail
+	1,   // 180: greet.DeleteMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	1,   // 181: greet.ResolveMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	147, // 182: greet.ResolveMergeRequestThreadResponse.thread:type_name -> greet.MergeRequestThreadDetail
+	1,   // 183: greet.DeleteMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	1,   // 184: greet.ListMergeRequestReviewRequestsRequest.context:type_name -> greet.ProjectContext
+	150, // 185: greet.ListMergeRequestReviewRequestsResponse.review_requests:type_name -> greet.ReviewRequestDetail
+	1,   // 186: greet.RequestMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	150, // 187: greet.RequestMergeRequestReviewResponse.review_request:type_name -> greet.ReviewRequestDetail
+	1,   // 188: greet.RemoveMergeRequestReviewRequestRequest.context:type_name -> greet.ProjectContext
+	1,   // 189: greet.ListMergeRequestTimelineRequest.context:type_name -> greet.ProjectContext
+	151, // 190: greet.ListMergeRequestTimelineResponse.items:type_name -> greet.MergeRequestTimelineItem
+	216, // 191: greet.FileLockDetail.acquired_at:type_name -> google.protobuf.Timestamp
+	216, // 192: greet.FileLockDetail.expires_at:type_name -> google.protobuf.Timestamp
+	186, // 193: greet.FileLockDetail.requests:type_name -> greet.FileLockRequestDetail
+	216, // 194: greet.FileLockRequestDetail.requested_at:type_name -> google.protobuf.Timestamp
+	1,   // 195: greet.RequestFileLockReleaseRequest.context:type_name -> greet.ProjectContext
+	186, // 196: greet.RequestFileLockReleaseResponse.request:type_name -> greet.FileLockRequestDetail
+	1,   // 197: greet.LockFileRequest.context:type_name -> greet.ProjectContext
+	185, // 198: greet.LockFileResponse.lock:type_name -> greet.FileLockDetail
+	1,   // 199: greet.UnlockFileRequest.context:type_name -> greet.ProjectContext
+	1,   // 200: greet.ListFileLocksRequest.context:type_name -> greet.ProjectContext
+	185, // 201: greet.ListFileLocksResponse.locks:type_name -> greet.FileLockDetail
+	196, // 202: greet.ListMyProjectsResponse.projects:type_name -> greet.ProjectSummary
+	1,   // 203: greet.ListProjectMembersRequest.context:type_name -> greet.ProjectContext
+	199, // 204: greet.ListProjectMembersResponse.members:type_name -> greet.ProjectMember
+	1,   // 205: greet.ListDirectoryRequest.context:type_name -> greet.ProjectContext
+	202, // 206: greet.ListDirectoryResponse.entries:type_name -> greet.DirectoryEntry
+	216, // 207: greet.MaintenanceWindow.starts_at:type_name -> google.protobuf.Timestamp
+	216, // 208: greet.MaintenanceWindow.ends_at:type_name -> google.protobuf.Timestamp
+	1,   // 209: greet.GetMaintenanceStatusRequest.context:type_name -> greet.ProjectContext
+	206, // 210: greet.GetMaintenanceStatusResponse.server:type_name -> greet.MaintenanceWindow
+	206, // 211: greet.GetMaintenanceStatusResponse.project:type_name -> greet.MaintenanceWindow
+	206, // 212: greet.GetMaintenanceStatusResponse.org:type_name -> greet.MaintenanceWindow
+	1,   // 213: greet.ResolveIssuesRequest.context:type_name -> greet.ProjectContext
+	210, // 214: greet.ResolveIssuesResponse.issues:type_name -> greet.IssueDetail
+	1,   // 215: greet.SearchIssuesRequest.context:type_name -> greet.ProjectContext
+	210, // 216: greet.SearchIssuesResponse.issues:type_name -> greet.IssueDetail
+	80,  // 217: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	82,  // 218: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	83,  // 219: greet.NipaService.BeginLoginSSHKey:input_type -> greet.BeginLoginSSHKeyRequest
+	85,  // 220: greet.NipaService.CompleteLoginSSHKey:input_type -> greet.CompleteLoginSSHKeyRequest
+	81,  // 221: greet.NipaService.CompleteLoginMFA:input_type -> greet.CompleteLoginMFARequest
+	204, // 222: greet.NipaService.GetServerVersion:input_type -> greet.GetServerVersionRequest
+	207, // 223: greet.NipaService.GetMaintenanceStatus:input_type -> greet.GetMaintenanceStatusRequest
+	195, // 224: greet.NipaService.ListMyProjects:input_type -> greet.ListMyProjectsRequest
+	201, // 225: greet.NipaService.ListDirectory:input_type -> greet.ListDirectoryRequest
+	198, // 226: greet.NipaService.ListProjectMembers:input_type -> greet.ListProjectMembersRequest
+	211, // 227: greet.NipaService.ResolveIssues:input_type -> greet.ResolveIssuesRequest
+	213, // 228: greet.NipaService.SearchIssues:input_type -> greet.SearchIssuesRequest
+	41,  // 229: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	43,  // 230: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	44,  // 231: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
+	46,  // 232: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	48,  // 233: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	50,  // 234: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
+	52,  // 235: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
+	54,  // 236: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
+	56,  // 237: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
+	63,  // 238: greet.NipaService.ListTags:input_type -> greet.ListTagsRequest
+	61,  // 239: greet.NipaService.GetTagByName:input_type -> greet.GetTagByNameRequest
+	59,  // 240: greet.NipaService.CreateTag:input_type -> greet.CreateTagRequest
+	65,  // 241: greet.NipaService.DeleteTag:input_type -> greet.DeleteTagRequest
+	4,   // 242: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	4,   // 243: greet.NipaService.StreamTreeManifest:input_type -> greet.GetTreeManifestRequest
+	72,  // 244: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
+	75,  // 245: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
+	78,  // 246: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
+	67,  // 247: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	69,  // 248: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	114, // 249: greet.NipaService.CreateMergeRequest:input_type -> greet.CreateMergeRequestRequest
+	116, // 250: greet.NipaService.UpdateMergeRequest:input_type -> greet.UpdateMergeRequestRequest
+	118, // 251: greet.NipaService.ListMergeRequests:input_type -> greet.ListMergeRequestsRequest
+	120, // 252: greet.NipaService.GetMergeRequest:input_type -> greet.GetMergeRequestRequest
+	122, // 253: greet.NipaService.SetMergeRequestAssignees:input_type -> greet.SetMergeRequestAssigneesRequest
+	124, // 254: greet.NipaService.MergeMergeRequest:input_type -> greet.MergeMergeRequestRequest
+	126, // 255: greet.NipaService.CloseMergeRequest:input_type -> greet.CloseMergeRequestRequest
+	128, // 256: greet.NipaService.ReopenMergeRequest:input_type -> greet.ReopenMergeRequestRequest
+	130, // 257: greet.NipaService.CheckMergeRequest:input_type -> greet.CheckMergeRequestRequest
+	133, // 258: greet.NipaService.ReportMergeRequestCheck:input_type -> greet.ReportMergeRequestCheckRequest
+	135, // 259: greet.NipaService.ListMergeRequestChecks:input_type -> greet.ListMergeRequestChecksRequest
+	137, // 260: greet.NipaService.ListMergeRequestCommits:input_type -> greet.ListMergeRequestCommitsRequest
+	142, // 261: greet.NipaService.GetMergeRequestDiff:input_type -> greet.GetMergeRequestDiffRequest
+	142, // 262: greet.NipaService.StreamMergeRequestDiff:input_type -> greet.GetMergeRequestDiffRequest
+	153, // 263: greet.NipaService.SubmitMergeRequestReview:input_type -> greet.SubmitMergeRequestReviewRequest
+	155, // 264: greet.NipaService.ListMergeRequestReviews:input_type -> greet.ListMergeRequestReviewsRequest
+	157, // 265: greet.NipaService.GetMergeRequestReviewState:input_type -> greet.GetMergeRequestReviewStateRequest
+	159, // 266: greet.NipaService.WithdrawMergeRequestReview:input_type -> greet.WithdrawMergeRequestReviewRequest
+	161, // 267: greet.NipaService.DismissMergeRequestReview:input_type -> greet.DismissMergeRequestReviewRequest
+	163, // 268: greet.NipaService.ListMergeRequestThreads:input_type -> greet.ListMergeRequestThreadsRequest
+	165, // 269: greet.NipaService.AddMergeRequestComment:input_type -> greet.AddMergeRequestCommentRequest
+	167, // 270: greet.NipaService.ReplyMergeRequestThread:input_type -> greet.ReplyMergeRequestThreadRequest
+	169, // 271: greet.NipaService.UpdateMergeRequestComment:input_type -> greet.UpdateMergeRequestCommentRequest
+	171, // 272: greet.NipaService.DeleteMergeRequestComment:input_type -> greet.DeleteMergeRequestCommentRequest
+	173, // 273: greet.NipaService.ResolveMergeRequestThread:input_type -> greet.ResolveMergeRequestThreadRequest
+	175, // 274: greet.NipaService.DeleteMergeRequestThread:input_type -> greet.DeleteMergeRequestThreadRequest
+	177, // 275: greet.NipaService.ListMergeRequestReviewRequests:input_type -> greet.ListMergeRequestReviewRequestsRequest
+	179, // 276: greet.NipaService.RequestMergeRequestReview:input_type -> greet.RequestMergeRequestReviewRequest
+	181, // 277: greet.NipaService.RemoveMergeRequestReviewRequest:input_type -> greet.RemoveMergeRequestReviewRequestRequest
+	183, // 278: greet.NipaService.ListMergeRequestTimeline:input_type -> greet.ListMergeRequestTimelineRequest
+	21,  // 279: greet.NipaService.Push:input_type -> greet.PushRequest
+	27,  // 280: greet.NipaService.PushStream:input_type -> greet.PushStreamRequest
+	29,  // 281: greet.NipaService.ImportLookup:input_type -> greet.ImportLookupRequest
+	34,  // 282: greet.NipaService.ImportStream:input_type -> greet.ImportStreamRequest
+	37,  // 283: greet.NipaService.ImportSetRefs:input_type -> greet.ImportSetRefsRequest
+	14,  // 284: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
+	16,  // 285: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
+	18,  // 286: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
+	189, // 287: greet.NipaService.LockFile:input_type -> greet.LockFileRequest
+	191, // 288: greet.NipaService.UnlockFile:input_type -> greet.UnlockFileRequest
+	193, // 289: greet.NipaService.ListFileLocks:input_type -> greet.ListFileLocksRequest
+	187, // 290: greet.NipaService.RequestFileLockRelease:input_type -> greet.RequestFileLockReleaseRequest
+	101, // 291: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
+	89,  // 292: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
+	91,  // 293: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
+	93,  // 294: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
+	95,  // 295: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
+	97,  // 296: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
+	99,  // 297: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
+	104, // 298: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
+	106, // 299: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
+	108, // 300: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
+	110, // 301: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
+	86,  // 302: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	86,  // 303: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	84,  // 304: greet.NipaService.BeginLoginSSHKey:output_type -> greet.BeginLoginSSHKeyResponse
+	86,  // 305: greet.NipaService.CompleteLoginSSHKey:output_type -> greet.LoginResponse
+	86,  // 306: greet.NipaService.CompleteLoginMFA:output_type -> greet.LoginResponse
+	205, // 307: greet.NipaService.GetServerVersion:output_type -> greet.GetServerVersionResponse
+	208, // 308: greet.NipaService.GetMaintenanceStatus:output_type -> greet.GetMaintenanceStatusResponse
+	197, // 309: greet.NipaService.ListMyProjects:output_type -> greet.ListMyProjectsResponse
+	203, // 310: greet.NipaService.ListDirectory:output_type -> greet.ListDirectoryResponse
+	200, // 311: greet.NipaService.ListProjectMembers:output_type -> greet.ListProjectMembersResponse
+	212, // 312: greet.NipaService.ResolveIssues:output_type -> greet.ResolveIssuesResponse
+	214, // 313: greet.NipaService.SearchIssues:output_type -> greet.SearchIssuesResponse
+	42,  // 314: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	47,  // 315: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	45,  // 316: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
+	47,  // 317: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	49,  // 318: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	51,  // 319: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
+	53,  // 320: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
+	55,  // 321: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
+	57,  // 322: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
+	64,  // 323: greet.NipaService.ListTags:output_type -> greet.ListTagsResponse
+	62,  // 324: greet.NipaService.GetTagByName:output_type -> greet.GetTagByNameResponse
+	60,  // 325: greet.NipaService.CreateTag:output_type -> greet.CreateTagResponse
+	66,  // 326: greet.NipaService.DeleteTag:output_type -> greet.DeleteTagResponse
+	5,   // 327: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	10,  // 328: greet.NipaService.StreamTreeManifest:output_type -> greet.TreeManifestPart
+	73,  // 329: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
+	76,  // 330: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
+	79,  // 331: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
+	68,  // 332: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	70,  // 333: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	115, // 334: greet.NipaService.CreateMergeRequest:output_type -> greet.CreateMergeRequestResponse
+	117, // 335: greet.NipaService.UpdateMergeRequest:output_type -> greet.UpdateMergeRequestResponse
+	119, // 336: greet.NipaService.ListMergeRequests:output_type -> greet.ListMergeRequestsResponse
+	121, // 337: greet.NipaService.GetMergeRequest:output_type -> greet.GetMergeRequestResponse
+	123, // 338: greet.NipaService.SetMergeRequestAssignees:output_type -> greet.SetMergeRequestAssigneesResponse
+	125, // 339: greet.NipaService.MergeMergeRequest:output_type -> greet.MergeMergeRequestResponse
+	127, // 340: greet.NipaService.CloseMergeRequest:output_type -> greet.CloseMergeRequestResponse
+	129, // 341: greet.NipaService.ReopenMergeRequest:output_type -> greet.ReopenMergeRequestResponse
+	131, // 342: greet.NipaService.CheckMergeRequest:output_type -> greet.CheckMergeRequestResponse
+	134, // 343: greet.NipaService.ReportMergeRequestCheck:output_type -> greet.ReportMergeRequestCheckResponse
+	136, // 344: greet.NipaService.ListMergeRequestChecks:output_type -> greet.ListMergeRequestChecksResponse
+	138, // 345: greet.NipaService.ListMergeRequestCommits:output_type -> greet.ListMergeRequestCommitsResponse
+	143, // 346: greet.NipaService.GetMergeRequestDiff:output_type -> greet.GetMergeRequestDiffResponse
+	144, // 347: greet.NipaService.StreamMergeRequestDiff:output_type -> greet.MergeRequestDiffPart
+	154, // 348: greet.NipaService.SubmitMergeRequestReview:output_type -> greet.SubmitMergeRequestReviewResponse
+	156, // 349: greet.NipaService.ListMergeRequestReviews:output_type -> greet.ListMergeRequestReviewsResponse
+	158, // 350: greet.NipaService.GetMergeRequestReviewState:output_type -> greet.GetMergeRequestReviewStateResponse
+	160, // 351: greet.NipaService.WithdrawMergeRequestReview:output_type -> greet.WithdrawMergeRequestReviewResponse
+	162, // 352: greet.NipaService.DismissMergeRequestReview:output_type -> greet.DismissMergeRequestReviewResponse
+	164, // 353: greet.NipaService.ListMergeRequestThreads:output_type -> greet.ListMergeRequestThreadsResponse
+	166, // 354: greet.NipaService.AddMergeRequestComment:output_type -> greet.AddMergeRequestCommentResponse
+	168, // 355: greet.NipaService.ReplyMergeRequestThread:output_type -> greet.ReplyMergeRequestThreadResponse
+	170, // 356: greet.NipaService.UpdateMergeRequestComment:output_type -> greet.UpdateMergeRequestCommentResponse
+	172, // 357: greet.NipaService.DeleteMergeRequestComment:output_type -> greet.DeleteMergeRequestCommentResponse
+	174, // 358: greet.NipaService.ResolveMergeRequestThread:output_type -> greet.ResolveMergeRequestThreadResponse
+	176, // 359: greet.NipaService.DeleteMergeRequestThread:output_type -> greet.DeleteMergeRequestThreadResponse
+	178, // 360: greet.NipaService.ListMergeRequestReviewRequests:output_type -> greet.ListMergeRequestReviewRequestsResponse
+	180, // 361: greet.NipaService.RequestMergeRequestReview:output_type -> greet.RequestMergeRequestReviewResponse
+	182, // 362: greet.NipaService.RemoveMergeRequestReviewRequest:output_type -> greet.RemoveMergeRequestReviewRequestResponse
+	184, // 363: greet.NipaService.ListMergeRequestTimeline:output_type -> greet.ListMergeRequestTimelineResponse
+	28,  // 364: greet.NipaService.Push:output_type -> greet.PushResponse
+	28,  // 365: greet.NipaService.PushStream:output_type -> greet.PushResponse
+	31,  // 366: greet.NipaService.ImportLookup:output_type -> greet.ImportLookupResponse
+	35,  // 367: greet.NipaService.ImportStream:output_type -> greet.ImportStreamResponse
+	39,  // 368: greet.NipaService.ImportSetRefs:output_type -> greet.ImportSetRefsResponse
+	15,  // 369: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
+	17,  // 370: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
+	20,  // 371: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
+	190, // 372: greet.NipaService.LockFile:output_type -> greet.LockFileResponse
+	192, // 373: greet.NipaService.UnlockFile:output_type -> greet.UnlockFileResponse
+	194, // 374: greet.NipaService.ListFileLocks:output_type -> greet.ListFileLocksResponse
+	188, // 375: greet.NipaService.RequestFileLockRelease:output_type -> greet.RequestFileLockReleaseResponse
+	102, // 376: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
+	90,  // 377: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
+	92,  // 378: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
+	94,  // 379: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
+	96,  // 380: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
+	98,  // 381: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
+	100, // 382: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
+	105, // 383: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
+	107, // 384: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
+	109, // 385: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
+	111, // 386: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
+	302, // [302:387] is the sub-list for method output_type
+	217, // [217:302] is the sub-list for method input_type
+	217, // [217:217] is the sub-list for extension type_name
+	217, // [217:217] is the sub-list for extension extendee
+	0,   // [0:217] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }
@@ -14712,7 +15157,7 @@ func file_internal_grpc_proto_server_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_server_proto_rawDesc), len(file_internal_grpc_proto_server_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   209,
+			NumMessages:   215,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -64,6 +64,7 @@ func main() {
 		diffUsecase:       diffUsecase,
 		permissionUsecase: permissionUsecase,
 		mrUsecase:         mrUsecase,
+		issueUsecase:      usecase.NewIssue(authUsecase, grpcClient),
 		lockUsecase:       lockUsecase,
 		tagUsecase:        tagUsecase,
 		versionUsecase:    versionUsecase,

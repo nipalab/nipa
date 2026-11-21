@@ -221,6 +221,7 @@ export interface Commit {
      */
     "date": string;
     "origin": string;
+    "issues"?: IssueKey[] | null;
 }
 
 export interface ConflictFile {
@@ -701,6 +702,51 @@ export interface ImageStats {
 }
 
 /**
+ * Issue is an issue of the project's tracker; State is ok, not_found or
+ * unavailable (the tracker did not answer: key and URL only).
+ */
+export interface Issue {
+    "key": string;
+    "url": string;
+    "state": string;
+    "title": string;
+    "type": string;
+    "status": string;
+    "statusCategory": string;
+    "assignee": string;
+}
+
+/**
+ * IssueBranch is the branch to create for an issue; Issue is nil when the
+ * project has no issue tracker.
+ */
+export interface IssueBranch {
+    "key": string;
+    "name": string;
+    "issue": Issue | null;
+}
+
+/**
+ * IssueKey is an issue linked to a commit or merge request, with its page on
+ * the tracker.
+ */
+export interface IssueKey {
+    "key": string;
+    "url": string;
+}
+
+/**
+ * IssueSearch answers an issue picker. Configured is false when the project
+ * has no issue tracker, Supported false when the tracker cannot search.
+ */
+export interface IssueSearch {
+    "issues": Issue[] | null;
+    "configured": boolean;
+    "supported": boolean;
+    "unavailable": boolean;
+}
+
+/**
  * LLMSettings never carries the key: KeySaved only says one is stored.
  */
 export interface LLMSettings {
@@ -797,6 +843,7 @@ export interface MergeRequest {
     "approvals": number;
     "changesRequested": number;
     "assignees": Person[] | null;
+    "issues"?: IssueKey[] | null;
 }
 
 export interface MergeRequestDetail {

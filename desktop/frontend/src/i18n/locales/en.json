@@ -1641,5 +1641,16 @@
   "aISection.testConnection": "Test the connection",
   "aISection.testConnectionHint": "Sends one short request with these values.",
   "updatesSection.autoDownloadHint": "New versions download in the background; you choose when to restart.",
-  "updatesSection.autoCheckHint": "Nipa tells you when a new version is out."
+  "updatesSection.autoCheckHint": "Nipa tells you when a new version is out.",
+  "commandPalette.branchFromIssue": "Branch from issue…",
+  "commandPalette.findAnIssue": "Search issues or type a key like GAME-123",
+  "commandPalette.createBranchFor": "Create a branch for {{key}}",
+  "commandPalette.typeAnIssueKey": "Type an issue key like GAME-123",
+  "commandPalette.issueTrackerUnavailable": "The issue tracker is unavailable; type an issue key",
+  "commandPalette.section.Issues": "Issues",
+  "repoView.createdIssueBranch": "Created branch {{name}} for {{key}}",
+  "repoView.createdUncheckedIssueBranch": "Created branch {{name}}; {{key}} was not checked with the issue tracker",
+  "repoView.couldNotCreateIssueBranch": "Could not create the branch: {{value}}",
+  "issues.linkedIssues": "Linked issues",
+  "issues.openInTracker": "Open {{key}} in the issue tracker"
 }

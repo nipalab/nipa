@@ -5,7 +5,7 @@ import type { Commit, FileHit, MergeRequest, Repo } from "@/api/desktop";
 import { setMode } from "@/lib/mode";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ changes: vi.fn(), searchFiles: vi.fn(), branches: vi.fn(), tags: vi.fn(), mergeRequests: vi.fn(), history: vi.fn() }));
+const api = vi.hoisted(() => ({ changes: vi.fn(), searchFiles: vi.fn(), branches: vi.fn(), tags: vi.fn(), mergeRequests: vi.fn(), history: vi.fn(), searchIssues: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { CommandPalette, type PaletteMode } from "./CommandPalette";
@@ -291,5 +291,49 @@ describe("CommandPalette", () => {
     await userEvent.keyboard("j");
     expect(outer).not.toHaveBeenCalled();
     document.removeEventListener("keydown", outer);
+  });
+});
+
+describe("CommandPalette branch from issue", () => {
+  const search = (over: object) => ({ configured: true, supported: true, unavailable: false, issues: [], ...over });
+  const issue = { key: "GAME-7", url: "", state: "ok", title: "Hero rig", type: "", status: "To Do", statusCategory: "todo", assignee: "" };
+
+  it("searches the issue tracker and branches from the chosen issue", async () => {
+    api.searchIssues.mockResolvedValue(search({ issues: [issue] }));
+    open();
+    await userEvent.click(screen.getByRole("option", { name: /Branch from issue/ }));
+    expect(input()).toHaveAttribute("placeholder", "Search issues or type a key like GAME-123");
+    expect(screen.getByText("Type an issue key like GAME-123")).toBeInTheDocument();
+    await userEvent.type(input(), "rig");
+    const item = await optionWith("GAME-7 Hero rig");
+    expect(item).toHaveTextContent("To Do");
+    expect(api.searchIssues).toHaveBeenCalledWith("/game", "rig");
+    await userEvent.click(item);
+    expect(onGo).toHaveBeenCalledWith("/game", { tab: "branches", action: "issue-branch", target: "GAME-7" });
+  });
+
+  it("offers a typed key when the tracker cannot search", async () => {
+    api.searchIssues.mockResolvedValue(search({ configured: false, supported: false }));
+    open({ mode: "issue" });
+    await userEvent.type(input(), "game-9");
+    const item = await optionWith("Create a branch for GAME-9");
+    await userEvent.keyboard("{Enter}");
+    expect(item).toBeDefined();
+    expect(onGo).toHaveBeenCalledWith("/game", { tab: "branches", action: "issue-branch", target: "GAME-9" });
+  });
+
+  it("says when the tracker is unavailable and when nothing matched", async () => {
+    api.searchIssues.mockResolvedValue(search({ unavailable: true }));
+    open({ mode: "issue" });
+    await userEvent.type(input(), "rig");
+    expect(await screen.findByText("The issue tracker is unavailable; type an issue key")).toBeInTheDocument();
+    api.searchIssues.mockResolvedValue(search({}));
+    await userEvent.type(input(), "s");
+    expect(await screen.findByText("No results")).toBeInTheDocument();
+    await userEvent.clear(input());
+    await userEvent.type(input(), "x");
+    api.searchIssues.mockRejectedValue(new Error("down"));
+    await userEvent.type(input(), "y");
+    expect(await screen.findByText("The issue tracker is unavailable; type an issue key")).toBeInTheDocument();
   });
 });

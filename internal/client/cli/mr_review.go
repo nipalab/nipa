@@ -66,6 +66,12 @@ func (c *Cli) setupMrViewCmd() *cobra.Command {
 				}
 				cmd.Printf("assignees: %s\n", strings.Join(names, ", "))
 			}
+			if len(mr.IssueKeys) > 0 {
+				cmd.Println("issues:")
+				for _, key := range mr.IssueKeys {
+					cmd.Printf("  %s %s\n", key.Key, key.URL)
+				}
+			}
 			cmd.Printf("commits: %d\n", len(commits))
 			if mr.Review != nil {
 				cmd.Printf("approvals: %d · changes requested: %d · outstanding reviewers: %d\n",

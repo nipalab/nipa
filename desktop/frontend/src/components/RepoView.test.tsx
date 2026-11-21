@@ -66,6 +66,8 @@ const api = vi.hoisted(() => ({
   dropShelf: vi.fn(),
   shelfFiles: vi.fn(),
   syncPlan: vi.fn(),
+  issueBranch: vi.fn(),
+  createBranch: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -1372,5 +1374,37 @@ describe("Maintenance", () => {
     render(withWindows([window()]), { tab: "changes", action: "lock", path: "art/hero.png", seq: 3 });
     await waitFor(() => expect(notify).toHaveBeenCalledWith(note));
     expect(api.lock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Branch from issue", () => {
+  const issueIntent = (target: string, seq: number): Intent => ({ tab: "branches", action: "issue-branch", target, seq });
+  const render = (intent: Intent) => <RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={intent} />;
+
+  beforeEach(() => {
+    api.branches.mockResolvedValue([{ name: "main", commitId: "c1", default: true, protected: false }]);
+    api.tags.mockResolvedValue([]);
+    api.switchBranch.mockResolvedValue({ branch: "GAME-7-hero-rig" });
+  });
+
+  it("creates the branch the issue names and switches to it", async () => {
+    api.issueBranch.mockResolvedValue({ key: "GAME-7", name: "GAME-7-hero-rig", issue: { key: "GAME-7", state: "ok" } });
+    api.createBranch.mockResolvedValue({ name: "GAME-7-hero-rig", commitId: "c1", default: false, protected: false });
+    renderWithProviders(render(issueIntent("GAME-7", 1)));
+    await waitFor(() => expect(api.switchBranch).toHaveBeenCalledWith("/work/game", "GAME-7-hero-rig"));
+    expect(api.issueBranch).toHaveBeenCalledWith("/work/game", "GAME-7");
+    expect(api.createBranch).toHaveBeenCalledWith("/work/game", "GAME-7-hero-rig", { branch: "main" });
+    expect(notify).toHaveBeenCalledWith("Created branch GAME-7-hero-rig for GAME-7", "success");
+  });
+
+  it("says when the issue was not checked and when the branch could not be created", async () => {
+    api.issueBranch.mockResolvedValue({ key: "GAME-9", name: "GAME-9", issue: null });
+    api.createBranch.mockResolvedValue({ name: "GAME-9", commitId: "c1", default: false, protected: false });
+    const { rerender } = renderWithProviders(render(issueIntent("GAME-9", 1)));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Created branch GAME-9; GAME-9 was not checked with the issue tracker", "success"));
+
+    api.issueBranch.mockRejectedValue(new Error("issue GAME-10 was not found in the issue tracker"));
+    rerender(render(issueIntent("GAME-10", 2)));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not create the branch: issue GAME-10 was not found in the issue tracker"));
   });
 });

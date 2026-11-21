@@ -185,6 +185,14 @@ func (emptyService) ListProjectMembers(context.Context, *pb.ListProjectMembersRe
 	return &pb.ListProjectMembersResponse{}, nil
 }
 
+func (emptyService) ResolveIssues(context.Context, *pb.ResolveIssuesRequest, ...grpc.CallOption) (*pb.ResolveIssuesResponse, error) {
+	return &pb.ResolveIssuesResponse{}, nil
+}
+
+func (emptyService) SearchIssues(context.Context, *pb.SearchIssuesRequest, ...grpc.CallOption) (*pb.SearchIssuesResponse, error) {
+	return &pb.SearchIssuesResponse{}, nil
+}
+
 func (emptyService) ListTags(context.Context, *pb.ListTagsRequest, ...grpc.CallOption) (*pb.ListTagsResponse, error) {
 	return &pb.ListTagsResponse{}, nil
 }
@@ -300,6 +308,14 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 		}},
 		{"ProjectMembers", func() error {
 			_, err := srv.ProxyProjectMembers(ctx, &daemonpb.ProxyProjectMembersRequest{Root: root})
+			return err
+		}},
+		{"ResolveIssues", func() error {
+			_, err := srv.ProxyResolveIssues(ctx, &daemonpb.ProxyResolveIssuesRequest{Root: root})
+			return err
+		}},
+		{"SearchIssues", func() error {
+			_, err := srv.ProxySearchIssues(ctx, &daemonpb.ProxySearchIssuesRequest{Root: root})
 			return err
 		}},
 		{"TagList", func() error {

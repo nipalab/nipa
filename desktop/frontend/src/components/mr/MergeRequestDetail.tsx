@@ -32,6 +32,7 @@ import { commitTitle, shortId } from "@/lib/history";
 import { blockedReason, conversation, eventText, mergeabilityText, reviewText, strategies, threadSnippet, type Strategy } from "@/lib/mergeRequests";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { IssueChips } from "@/components/issues/IssueChips";
 import { Trans, useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
@@ -113,6 +114,7 @@ export function MergeRequestDetail({ root, number, notify, onSourceDeleted }: De
           <ArrowRight className="size-3" />
           <span className="font-mono">{request.target}</span>
           <span title={request.createdAt}>{t("mergeRequestDetail.opened", { when: timeAgo(request.createdAt) })}</span>
+          <IssueChips issues={request.issues} root={root} />
           {request.approvals > 0 && (
             <span className="text-success">
               {t("mergeRequestDetail.approvals", { count: request.approvals })}

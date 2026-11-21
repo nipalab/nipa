@@ -800,6 +800,24 @@ message ProxyProjectMembersResponse {
     greet.ListProjectMembersResponse response = 1;
 }
 
+message ProxyResolveIssuesRequest {
+    string root = 1;
+    greet.ResolveIssuesRequest request = 2;
+}
+
+message ProxyResolveIssuesResponse {
+    greet.ResolveIssuesResponse response = 1;
+}
+
+message ProxySearchIssuesRequest {
+    string root = 1;
+    greet.SearchIssuesRequest request = 2;
+}
+
+message ProxySearchIssuesResponse {
+    greet.SearchIssuesResponse response = 1;
+}
+
 message ProxyTagCreateRequest {
     string root = 1;
     greet.CreateTagRequest request = 2;
@@ -1281,6 +1299,8 @@ service NipaDaemon {
     rpc ProxyBranchDelete(ProxyBranchDeleteRequest) returns (ProxyBranchDeleteResponse);
     rpc ProxyTagList(ProxyTagListRequest) returns (ProxyTagListResponse);
     rpc ProxyProjectMembers(ProxyProjectMembersRequest) returns (ProxyProjectMembersResponse);
+    rpc ProxyResolveIssues(ProxyResolveIssuesRequest) returns (ProxyResolveIssuesResponse);
+    rpc ProxySearchIssues(ProxySearchIssuesRequest) returns (ProxySearchIssuesResponse);
     rpc ProxyTagCreate(ProxyTagCreateRequest) returns (ProxyTagCreateResponse);
     rpc ProxyTagDelete(ProxyTagDeleteRequest) returns (ProxyTagDeleteResponse);
     rpc ProxyTreeManifest(ProxyTreeManifestRequest) returns (ProxyTreeManifestResponse);

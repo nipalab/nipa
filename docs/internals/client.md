@@ -103,6 +103,20 @@ update and switch record the branch head commit id locally so `HEAD`/`@` (and
 branch creation via `nipa branch -c`, which forks from the pinned commit)
 resolve offline.
 
+Issue keys: `usecase.Issue` (`issue.go`, `Resolve`/`Search` over the
+`ResolveIssues`/`SearchIssues` RPCs) backs `nipa branch --issue KEY [-c name]`
+(also `-c --issue KEY`, which pflag reads as `-c "--issue"` plus an argument).
+`BranchFor` validates the key client-side (`issuetracker.ParseAnyKey`), names
+the branch with `issuetracker.BranchName` (a `-c` name not led by the key is
+prefixed with it; no name gives `KEY-<slug of the title>`, max 48 slug bytes,
+or `KEY` when the title is unknown), refuses an unknown issue (`not_found`)
+or a key outside the project's keys (empty answer), and only skips the check
+on 404/409/503 (no tracker, integration off; an `Unimplemented` older server
+maps to 404) or an `unavailable` tracker. `CommitLogEntry.IssueKeys`
+(`domain.IssueKeyRef`) and `MergeRequest.IssueKeys` come from the gRPC
+`issue_keys` fields; `nipa log` prints an `Issues:` line in the full format,
+` [KEY, ...]` after the subject with `--oneline` and `issue_keys` in `--json`, `nipa mr view` an `issues:` block.
+
 Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
 `syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`
 (`nipa update --force`, `nipa switch --force`, the MCP tools' `force`).

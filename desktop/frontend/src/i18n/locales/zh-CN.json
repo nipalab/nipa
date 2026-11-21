@@ -1588,5 +1588,16 @@
   "aISection.testConnection": "测试连接",
   "aISection.testConnectionHint": "使用这些值发送一个简短请求。",
   "updatesSection.autoDownloadHint": "新版本会在后台下载，由你决定何时重启。",
-  "updatesSection.autoCheckHint": "有新版本时 Nipa 会通知你。"
+  "updatesSection.autoCheckHint": "有新版本时 Nipa 会通知你。",
+  "commandPalette.branchFromIssue": "从议题创建分支…",
+  "commandPalette.findAnIssue": "搜索议题或输入类似 GAME-123 的键",
+  "commandPalette.createBranchFor": "为 {{key}} 创建分支",
+  "commandPalette.typeAnIssueKey": "输入类似 GAME-123 的议题键",
+  "commandPalette.issueTrackerUnavailable": "议题跟踪器不可用；请输入议题键",
+  "commandPalette.section.Issues": "议题",
+  "repoView.createdIssueBranch": "已为 {{key}} 创建分支 {{name}}",
+  "repoView.createdUncheckedIssueBranch": "已创建分支 {{name}}；{{key}} 未经议题跟踪器确认",
+  "repoView.couldNotCreateIssueBranch": "无法创建分支：{{value}}",
+  "issues.linkedIssues": "关联的议题",
+  "issues.openInTracker": "在议题跟踪器中打开 {{key}}"
 }

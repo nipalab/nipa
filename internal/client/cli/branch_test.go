@@ -277,3 +277,88 @@ func TestSetupBranchCmd_FlagsMutuallyExclusive(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mutually exclusive")
 }
+
+type fakeIssueClient struct {
+	issues []domain.Issue
+	err    error
+	keys   []string
+}
+
+func (f *fakeIssueClient) ResolveIssues(_ context.Context, _, _ string, keys []string) ([]domain.Issue, error) {
+	f.keys = keys
+	return f.issues, f.err
+}
+
+func (f *fakeIssueClient) SearchIssues(context.Context, string, string, string, int) (*domain.IssueSearch, error) {
+	return &domain.IssueSearch{}, f.err
+}
+
+func newIssueBranchCli(issues *fakeIssueClient) *Cli {
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	return NewCli(&fakeUsecaseContainer{
+		auth:  auth,
+		repo:  usecase.NewRepo(auth, &fakeListRepoInterface{}, fakeLocalRepo{}),
+		issue: usecase.NewIssue(auth, issues),
+	}, &fakeConnector{})
+}
+
+func TestSetupBranchCmd_Issue(t *testing.T) {
+	root := setupRepo(t, "main")
+	issues := &fakeIssueClient{issues: []domain.Issue{{Key: "GAME-12", State: domain.IssueStateOK, Title: "New rig", Status: "To Do"}}}
+	cli := newIssueBranchCli(issues)
+
+	out, err := runBranchCmd(t, cli, root, "--issue", "game-12")
+	require.NoError(t, err)
+	require.Equal(t, "GAME-12: New rig [To Do]\nCreated and switched to branch \"GAME-12-new-rig\"\n", out)
+	require.Equal(t, []string{"GAME-12"}, issues.keys)
+
+	out, err = runBranchCmd(t, cli, root, "-c", "--issue", "GAME-12")
+	require.NoError(t, err)
+	require.Contains(t, out, "\"GAME-12-new-rig\"")
+
+	out, err = runBranchCmd(t, cli, root, "-c", "--issue=GAME-12")
+	require.NoError(t, err)
+	require.Contains(t, out, "\"GAME-12-new-rig\"")
+
+	out, err = runBranchCmd(t, cli, root, "-c", "hero", "--issue", "GAME-12")
+	require.NoError(t, err)
+	require.Contains(t, out, "\"GAME-12-hero\"")
+
+	issues.issues = []domain.Issue{{Key: "GAME-12", State: domain.IssueStateOK, Title: "New rig"}}
+	out, err = runBranchCmd(t, cli, root, "--issue", "GAME-12")
+	require.NoError(t, err)
+	require.Contains(t, out, "GAME-12: New rig\n")
+
+	issues.issues = []domain.Issue{{Key: "GAME-12", State: domain.IssueStateUnavailable}}
+	out, err = runBranchCmd(t, cli, root, "--issue", "GAME-12")
+	require.NoError(t, err)
+	require.Equal(t, "The issue tracker is unavailable; GAME-12 was not checked\nCreated and switched to branch \"GAME-12\"\n", out)
+
+	issues.err = &domain.Error{Code: 404, Message: "the project does not use an issue tracker"}
+	out, err = runBranchCmd(t, cli, root, "-c", "GAME-12-rig", "--issue", "GAME-12")
+	require.NoError(t, err)
+	require.Equal(t, "This project has no issue tracker; GAME-12 was not checked\nCreated and switched to branch \"GAME-12-rig\"\n", out)
+}
+
+func TestSetupBranchCmd_IssueRefusals(t *testing.T) {
+	root := setupRepo(t, "main")
+	issues := &fakeIssueClient{issues: []domain.Issue{{Key: "GAME-12", State: domain.IssueStateNotFound}}}
+	cli := newIssueBranchCli(issues)
+
+	_, err := runBranchCmd(t, cli, root, "--issue", "GAME-12")
+	require.ErrorContains(t, err, "was not found")
+	_, err = runBranchCmd(t, cli, root, "--issue", "not-a-key")
+	require.ErrorContains(t, err, "is not an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue")
+	require.ErrorContains(t, err, "--issue needs an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue=")
+	require.ErrorContains(t, err, "--issue needs an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue", "GAME-12", "extra")
+	require.Error(t, err)
+	_, err = runBranchCmd(t, cli, root, "--issue", "GAME-12", "-d", "old")
+	require.ErrorContains(t, err, "mutually exclusive")
+	_, err = runBranchCmd(t, cli, root, "--issue", "GAME-12", "--json")
+	require.ErrorContains(t, err, "--json cannot be combined")
+	_, err = runBranchCmd(t, cli, root, "-c", "x", "GAME-12")
+	require.Error(t, err)
+}

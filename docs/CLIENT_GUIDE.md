@@ -133,8 +133,24 @@ server.
 | `nipa branch -a` | List all server branches; the current one is marked `*`. |
 | `nipa branch -c <name>` | Create a branch from the pinned commit and switch to it. |
 | `nipa branch -d <name>` | Delete a branch (protected branches are refused). |
+| `nipa branch --issue GAME-123 [-c <name>]` | Create a branch for an issue of the project's issue tracker and switch to it (`nipa branch -c --issue GAME-123` works too). |
 
 `--json` is available for the current branch and the list form.
+
+`--issue` checks the key with the project's issue tracker (Jira) before
+creating anything and prints `GAME-123: <title> [<status>]`. Without `-c`
+the branch is named `GAME-123-<slug of the title>` (only the key when the
+title is unknown); a `-c` name that does not already start with the key is
+prefixed with it (`-c rig` gives `GAME-123-rig`), so the server links the
+branch to the issue. An issue the tracker does not know, or a key outside the
+project's configured issue keys, is refused. A project without an issue
+tracker, a server without the integration or a tracker that is down only
+skips the check (a notice says so) and the branch is still created.
+
+`nipa log` prints the linked issue keys of each commit on an `Issues:` line
+(`--oneline` appends them after the subject, `abc123 Fix rig [GAME-123,
+GAME-7]`; `issue_keys` with their tracker URLs in `--json`); `nipa mr view` lists
+the request's issues with their URLs.
 
 ### `nipa switch <branch>` / `nipa switch --tag <name>`
 

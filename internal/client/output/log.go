@@ -11,14 +11,15 @@ type Log struct {
 }
 
 type LogCommit struct {
-	ID          string   `json:"id"`
-	Hash        string   `json:"hash"`
-	Message     string   `json:"message"`
-	AuthorName  string   `json:"author_name,omitempty"`
-	AuthorEmail string   `json:"author_email,omitempty"`
-	Origin      string   `json:"origin,omitempty"`
-	CreatedAt   string   `json:"created_at"`
-	ParentIDs   []string `json:"parent_ids"`
+	ID          string                     `json:"id"`
+	Hash        string                     `json:"hash"`
+	Message     string                     `json:"message"`
+	AuthorName  string                     `json:"author_name,omitempty"`
+	AuthorEmail string                     `json:"author_email,omitempty"`
+	Origin      string                     `json:"origin,omitempty"`
+	CreatedAt   string                     `json:"created_at"`
+	ParentIDs   []string                   `json:"parent_ids"`
+	IssueKeys   []serverDomain.IssueKeyRef `json:"issue_keys,omitempty"`
 }
 
 func NewLog(entries []*serverDomain.CommitLogEntry) Log {
@@ -37,6 +38,7 @@ func NewLog(entries []*serverDomain.CommitLogEntry) Log {
 			Origin:      e.Origin,
 			CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
 			ParentIDs:   parentIDs(e),
+			IssueKeys:   e.IssueKeys,
 		})
 	}
 	return out

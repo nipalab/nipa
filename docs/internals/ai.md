@@ -28,7 +28,9 @@ push messages, MR descriptions, comments, replies and review bodies (not
 titles; skipped for blank text, an existing trailer or `--no-agent-trailer`).
 Budgets (`budget.go`): `capDiff`/`capMRDiff` trim `nipa_diff`/`nipa_mr_diff`
 to `max_bytes` (default 256 KiB, max 2 MiB; `truncated` per file,
-`omitted_files`), `nipa_log` 50/500, `nipa_mr_list` ≤200, summaries 50/200
+`omitted_files`), `nipa_log` 50/500, `nipa_mr_list` ≤200, `nipa_issues` (read-only,
+`tools_issue.go`, `UseCases.Issue`: `keys` ≤50 through `ResolveIssues` or
+`query` through `SearchIssues`, 20/50 results, exactly one of the two), summaries 50/200
 files, asset tables 200/2000 rows, scene changes 500/5000. Asset tools read
 both sides through `assetscan.BlobLoader` over `usecase.Diff.ReadBlob`
 (working/snapshot offline, revisions through the commit-scoped download) with

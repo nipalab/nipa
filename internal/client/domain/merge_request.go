@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	serverDomain "github.com/nipalab/nipa/internal/domain"
+)
 
 // MergeRequest mirrors the server merge-request record. ID is a base36 snow ID;
 // Number is the sequential per-project reference used to address the request.
@@ -23,7 +27,8 @@ type MergeRequest struct {
 	Assignees []ReviewActor
 	// Review is resolved per request, not stored: it counts only the reviews
 	// given for the current source head.
-	Review *MergeRequestReviewState
+	Review    *MergeRequestReviewState
+	IssueKeys []serverDomain.IssueKeyRef
 }
 
 // MergeRequestReviewState is the live review summary of a merge request.

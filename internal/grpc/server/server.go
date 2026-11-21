@@ -23,6 +23,7 @@ type usecaseContainer interface {
 	Org() *usecase.Org
 	Project() *usecase.Project
 	Maintenance() *usecase.Maintenance
+	IssueTracker() *usecase.IssueTracker
 }
 
 type nipaServer struct {

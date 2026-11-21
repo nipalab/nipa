@@ -18,22 +18,23 @@ type Person struct {
 }
 
 type MergeRequest struct {
-	Number           int64    `json:"number"`
-	Title            string   `json:"title"`
-	Description      string   `json:"description"`
-	Status           string   `json:"status"` // open, merged, closed
-	Draft            bool     `json:"draft"`
-	Source           string   `json:"source"`
-	Target           string   `json:"target"`
-	AuthorID         string   `json:"authorId"`
-	CreatedAt        string   `json:"createdAt"`
-	UpdatedAt        string   `json:"updatedAt"`
-	MergeCommitID    string   `json:"mergeCommitId"`
-	MergeBaseID      string   `json:"mergeBaseId"`
-	MergedSourceID   string   `json:"mergedSourceId"`
-	Approvals        int      `json:"approvals"`
-	ChangesRequested int      `json:"changesRequested"`
-	Assignees        []Person `json:"assignees"`
+	Number           int64      `json:"number"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Status           string     `json:"status"` // open, merged, closed
+	Draft            bool       `json:"draft"`
+	Source           string     `json:"source"`
+	Target           string     `json:"target"`
+	AuthorID         string     `json:"authorId"`
+	CreatedAt        string     `json:"createdAt"`
+	UpdatedAt        string     `json:"updatedAt"`
+	MergeCommitID    string     `json:"mergeCommitId"`
+	MergeBaseID      string     `json:"mergeBaseId"`
+	MergedSourceID   string     `json:"mergedSourceId"`
+	Approvals        int        `json:"approvals"`
+	ChangesRequested int        `json:"changesRequested"`
+	Assignees        []Person   `json:"assignees"`
+	Issues           []IssueKey `json:"issues,omitempty"`
 }
 
 // MergeRequestFilter narrows the list; Status draft means open drafts.
@@ -169,7 +170,7 @@ func toMergeRequest(mr *pb.MergeRequestDetail) MergeRequest {
 		Number: mr.GetNumber(), Title: mr.GetTitle(), Description: mr.GetDescription(), Status: mr.GetStatus(), Draft: mr.GetDraft(),
 		Source: mr.GetSourceBranch(), Target: mr.GetTargetBranch(), AuthorID: mr.GetCreatedBy(),
 		CreatedAt: rfc3339(mr.GetCreatedAt()), UpdatedAt: rfc3339(mr.GetUpdatedAt()), MergeCommitID: mr.GetMergeCommitId(), MergeBaseID: mr.GetMergeBaseCommitId(), MergedSourceID: mr.GetMergedSourceCommitId(),
-		Approvals: int(mr.GetReview().GetApprovals()), ChangesRequested: int(mr.GetReview().GetChangesRequested()), Assignees: []Person{},
+		Approvals: int(mr.GetReview().GetApprovals()), ChangesRequested: int(mr.GetReview().GetChangesRequested()), Assignees: []Person{}, Issues: toIssueKeys(mr.GetIssueKeys()),
 	}
 	for _, a := range mr.GetAssignees() {
 		out.Assignees = append(out.Assignees, toPerson(a))

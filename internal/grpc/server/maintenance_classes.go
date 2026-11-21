@@ -26,6 +26,8 @@ var methodClass = buildMethodClasses(map[maintenance.Class][]string{
 		nipaSvc + "ListMyProjects",
 		nipaSvc + "ListDirectory",
 		nipaSvc + "ListProjectMembers",
+		nipaSvc + "ResolveIssues",
+		nipaSvc + "SearchIssues",
 		nipaSvc + "GetListBranch",
 		nipaSvc + "GetBranch",
 		nipaSvc + "GetBranchByName",

@@ -36,6 +36,7 @@ type mockUsecaseContainer struct {
 	mergeCheck   *usecase.MergeRequestCheck
 	org          *usecase.Org
 	project      *usecase.Project
+	issues       *usecase.IssueTracker
 }
 
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
@@ -67,6 +68,7 @@ func (m *mockUsecaseContainer) Project() *usecase.Project   { return m.project }
 func (m *mockUsecaseContainer) Maintenance() *usecase.Maintenance {
 	return nil
 }
+func (m *mockUsecaseContainer) IssueTracker() *usecase.IssueTracker { return m.issues }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()

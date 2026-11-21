@@ -249,6 +249,17 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
       notify(translate("repoView.lockingFailed", { value: errorMessage(err) }));
     }
   };
+  const branchFromIssue = async (key: string) => {
+    try {
+      const plan = await desktop.issueBranch(repo.root, key);
+      const created = await desktop.createBranch(repo.root, plan.name, { branch: repo.branch });
+      void queryClient.invalidateQueries({ queryKey: ["branches", repo.root] });
+      notify(translate(plan.issue?.state === "ok" ? "repoView.createdIssueBranch" : "repoView.createdUncheckedIssueBranch", { name: created.name, key: plan.key }), "success");
+      switchTo(created.name);
+    } catch (err) {
+      notify(translate("repoView.couldNotCreateIssueBranch", { value: errorMessage(err) }));
+    }
+  };
   const handled = useRef(0);
   useEffect(() => {
     if (!intent?.action || intent.seq === handled.current || repo.error) return;
@@ -274,6 +285,11 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
       case "checkout-tag":
         if (op) return busyNote();
         return checkoutTag(target);
+      case "issue-branch":
+        if (op) return busyNote();
+        if (detached) return notify(translate("repoView.checkedOutAtTag", { detached }));
+        if (maintenance.writes) return notify(maintenance.writes);
+        return void branchFromIssue(target);
     }
   });
   useShortcuts(

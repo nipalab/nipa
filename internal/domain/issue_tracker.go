@@ -53,6 +53,12 @@ const (
 	IssueSubjectBranch       = "branch"
 )
 
+// IssueKeyRef is an issue key with its link on the tracker.
+type IssueKeyRef struct {
+	Key string `json:"key"`
+	URL string `json:"url"`
+}
+
 // IssueLink ties a commit, merge request or branch to an issue key.
 type IssueLink struct {
 	ID          snow.ID

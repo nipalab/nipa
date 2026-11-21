@@ -10,7 +10,6 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/typ.v4/slices"
 )
 
 func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchRequest) (*pb.GetListBranchResponse, error) {
@@ -35,11 +34,7 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 		return nil, handleError(err)
 	}
 
-	return &pb.GetListBranchResponse{
-		Branches: slices.Map(branches, func(b *domain.Branch) *pb.Branch {
-			return domainBranchToPB(b)
-		}),
-	}, nil
+	return &pb.GetListBranchResponse{Branches: n.branchesToPB(ctx, project.ID, branches)}, nil
 }
 
 func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*pb.GetBranchResponse, error) {

@@ -179,6 +179,8 @@ tests/
     email_test.go         email notifications (lifecycle, thread headers,
                           retries/redelivery)
     audit_test.go         admin audit log REST API
+    issue_tracker_test.go nipa branch --issue, issue keys in log and mr view
+                          against the in-process fake Jira
     admin_rest_test.go    admin REST (auth refresh/logout, users, orgs,
                           projects, branches, browser, signed chunk URLs)
     storage_quota_test.go storage quota (ee) / absent routes incl. billing
@@ -213,6 +215,10 @@ tests/
   The generated server config sets `WEBHOOK_EGRESS_ALLOWLIST: 127.0.0.1` so the
   loopback receiver is reachable; deliveries are asynchronous, so specs wait on
   the receiver (`wait`/`waitCount`) or the delivery ledger with `Eventually`.
+- Issue tracker specs start the `jiratest` fake Jira in-process and point the
+  suite org's connection at it over REST; the generated config sets
+  `INTEGRATIONS_ENCRYPTION_KEY` and `ISSUE_TRACKER_EGRESS_ALLOWLIST: 127.0.0.1`
+  (a server without the key makes the specs skip).
 - `admin_rest_test.go` signs expired chunk URLs itself with `chunkSigningKey`,
   a copy of `CHUNK_URL_SIGNING_KEY` from `run.sh`; keep the two in sync.
 - Known product bugs are kept as pending specs (`PIt`) naming the cause, so the

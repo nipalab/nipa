@@ -16,6 +16,7 @@ type Registry struct {
 	diffUsecase       *usecase.Diff
 	permissionUsecase *usecase.Permission
 	mrUsecase         *usecase.MergeRequest
+	issueUsecase      *usecase.Issue
 	lockUsecase       *usecase.FileLock
 	tagUsecase        *usecase.Tag
 	versionUsecase    *usecase.Version
@@ -57,6 +58,10 @@ func (r *Registry) Permission() *usecase.Permission {
 
 func (r *Registry) MR() *usecase.MergeRequest {
 	return r.mrUsecase
+}
+
+func (r *Registry) Issue() *usecase.Issue {
+	return r.issueUsecase
 }
 
 func (r *Registry) Lock() *usecase.FileLock {

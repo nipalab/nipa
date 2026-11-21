@@ -633,6 +633,7 @@ func toServerCommitLogEntry(e *pb.CommitLogEntry) *serverDomain.CommitLogEntry {
 		},
 		AuthorName:  e.GetAuthorName(),
 		AuthorEmail: e.GetAuthorEmail(),
+		IssueKeys:   toIssueKeys(e.GetIssueKeys()),
 	}
 }
 

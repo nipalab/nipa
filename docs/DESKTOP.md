@@ -308,7 +308,13 @@ Sonar never compile it.
   opens that number) and Commits (message words or id/hash prefix within the
   first loaded history page, plus an exact base36 id lookup). "Switch
   branch…" and "Lock file…" narrow the palette to branches or the current
-  clone's files; Esc or Backspace on an empty query goes back. Results reach
+  clone's files, "Branch from issue…" to issues of the project's issue
+  tracker (search when the tracker supports it, otherwise a typed key such
+  as `GAME-123`); choosing one creates `GAME-123-<slug of the title>` from
+  the current branch and switches to it. Esc or Backspace on an empty query
+  goes back. Commits and merge requests show their linked issues as chips
+  (the detail headers link them to the tracker and show each issue's title
+  and status when the tracker answers). Results reach
   the repository view as an `Intent` (`components/tabs.ts`) carrying a tab
   and, for actions, `action`/`target`/`path`; `RepoView` runs each intent
   once (by `seq`), and choosing a clone in the sidebar drops the pending

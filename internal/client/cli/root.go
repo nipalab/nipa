@@ -19,6 +19,7 @@ type usecaseContainer interface {
 	Diff() *usecase.Diff
 	Permission() *usecase.Permission
 	MR() *usecase.MergeRequest
+	Issue() *usecase.Issue
 	Lock() *usecase.FileLock
 	Tag() *usecase.Tag
 	Version() *usecase.Version

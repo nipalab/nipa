@@ -125,6 +125,7 @@ server maintenance refusal reads like `project acme/game is in maintenance
 | `nipa_log` | `limit` | `commits` of the configured branch, newest first |
 | `nipa_branch_list` | | `current`, `branches` with head commit and protection |
 | `nipa_tag_list` | | `tags` with the commit each points at |
+| `nipa_issues` | `keys` (≤50) or `query`, `limit` | `issues` of the project's issue tracker (`key`, `url`, `state`, `title`, `status`, `type`, `assignee`); a search also returns `supported`/`unavailable` |
 | `nipa_lock_list` | | active `locks` |
 | `nipa_lock_query` | `path`, `branch` | `scope` (`mainline` for the default branch, else `branch`), `locked`, covering `locks` in that scope, covering locks of other scopes in `other_scopes` |
 | `nipa_conflicts` | | pending `op` (merge/revert), `base`/`ours`/`theirs`, `files` (`kind`, `binary`, `resolved`); offline |
@@ -248,6 +249,7 @@ Results are capped so they fit an agent's context:
 | `nipa_diff`, `nipa_mr_diff` `max_bytes` | 256 KiB | 2 MiB |
 | `nipa_log` `limit` | 50 | 500 |
 | `nipa_mr_list` `limit` | 50 | 200 |
+| `nipa_issues` `limit` (search) | 20 | 50 |
 | `nipa_describe_changes`, `nipa_mr_describe_changes` `max_files` | 50 | 200 |
 | `nipa_asset_diff` `max_rows` | 200 | 2000 |
 | `nipa_asset_diff` `max_changes` | 500 | 5000 |
