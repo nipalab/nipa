@@ -15,8 +15,12 @@ import (
 // after .nipa itself.
 var metadataDirs = []string{ObjectsDir, WritesDir, ShelvesDir}
 
-// checkMetadataDirs refuses a clone whose .nipa folder, or a folder in it the
-// client writes and prunes in, is a symbolic link or junction: the metadata,
+// metadataFiles are the files of .nipa the client opens and writes: the
+// database with its WAL sidecars and the repository lock.
+var metadataFiles = []string{DBFile, DBFile + "-wal", DBFile + "-shm", LockFile}
+
+// checkMetadataDirs refuses a clone whose .nipa folder, a folder in it the
+// client writes and prunes in, or its database, WAL/SHM sidecar or lock file, is a symbolic link or junction: the metadata,
 // the object cache and its pruning would act on wherever the link points.
 // Missing folders are fine; Init creates them as real ones. It costs one
 // Lstat per folder, whatever the cache holds.
@@ -30,6 +34,19 @@ func checkMetadataDirs(target string) error {
 			if i == 0 {
 				return nil
 			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if kind := domain.LinkKind(info.Mode()); kind != "" {
+			return linkedMetadataError(rel, kind)
+		}
+	}
+	for _, name := range metadataFiles {
+		rel := filepath.Join(ConfigDir, name)
+		info, err := os.Lstat(filepath.Join(target, rel))
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {

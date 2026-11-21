@@ -1,6 +1,8 @@
 package localrepo
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -28,12 +30,17 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 	if l.db == nil {
 		return nil, false, errors.New("local repo not initialized")
 	}
-	dir := l.writesDir()
 	writes, err := ensureRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
 	if err != nil {
 		return nil, false, err
 	}
-	defer func() { _ = writes.Close() }()
+	// The root stays open until end runs; every error path closes it.
+	keep := false
+	defer func() {
+		if !keep {
+			_ = writes.Close()
+		}
+	}()
 	entries, err := fs.ReadDir(writes.FS(), ".")
 	if err != nil {
 		return nil, false, err
@@ -55,13 +62,13 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 		interrupted = len(stale) > 0
 	}
 
-	marker, err := os.CreateTemp(dir, "w-*")
+	marker, name, err := createMarker(writes)
 	if err != nil {
 		return nil, false, err
 	}
 	if ok, err := tryLockExclusiveFile(marker); err != nil || !ok {
 		_ = marker.Close()
-		_ = os.Remove(marker.Name())
+		_ = writes.Remove(name)
 		if err == nil {
 			err = errors.New("could not lock the working-copy write marker")
 		}
@@ -72,10 +79,30 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 		once.Do(func() {
 			_ = unlockFile(marker)
 			_ = marker.Close()
-			_ = os.Remove(marker.Name())
+			_ = writes.Remove(name)
+			_ = writes.Close()
 		})
 	}
+	keep = true
 	return end, interrupted, nil
+}
+
+// createMarker creates a new marker with a random name inside the verified
+// writes folder.
+func createMarker(writes *os.Root) (*os.File, string, error) {
+	for range 10 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return nil, "", err
+		}
+		name := "w-" + hex.EncodeToString(b[:])
+		f, err := writes.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, name, err
+	}
+	return nil, "", errors.New("could not create a working-copy write marker")
 }
 
 type markerLock int
