@@ -215,6 +215,8 @@
   "syncGuard.cancel": "Cancel",
   "syncGuard.continueAnyway": "Continue anyway",
   "syncGuard.shelveAndContinue": "Shelve and continue",
+  "syncGuard.couldNotCheck": "Could not check your local changes",
+  "syncGuard.uncheckedWarning": "{{verb}} may replace local changes: the check for them failed. Cancel to keep them safe, or continue knowing they could be overwritten.",
   "tableDiff.tableView": "Table view",
   "tableDiff.table": "Table",
   "tableDiff.text": "Text",

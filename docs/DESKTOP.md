@@ -359,8 +359,10 @@ Sonar never compile it.
   which of them the operation would replace; when there are some the
   "Your changes would be replaced" dialog offers Shelve and continue (shelves
   exactly those files as "Before updating"/"Before switching to …", then
-  runs the operation), Continue anyway and Cancel. A failed check never
-  blocks.
+  runs the operation), Continue anyway and Cancel. A failed check fails
+  closed: the "Could not check your local changes" dialog shows the error
+  with Cancel (focused) and Continue anyway, and nothing runs until the user
+  picks one.
 - Open at line: external tools in Settings may be command templates with
   `{file}` and `{line}` (`code --goto {file}:{line}`; words are split on
   spaces outside quotes, so quote program paths with spaces; a command

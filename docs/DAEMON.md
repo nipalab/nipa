@@ -489,13 +489,18 @@ searched and no server call is made.
 `RestoreRevision(root, path, commit_id)` ("get this version") writes the file
 as it was in a commit over the working file under the exclusive slot and
 streams `OpEvent`s (phase `restore`, download progress, result `restore {path,
-commit_id}`). `usecase.RevisionRestore` resolves the commit through
-`GetCommit`, downloads the missing chunks commit-scoped to that path into the
-object cache and writes the file through `materializeFile` (zstd chunks are
-decoded; a read-only working file stays read-only, like update), then prunes
-the cache. Nothing is staged: the file shows as modified (or untracked when
-the path is not tracked any more). It refuses a pending merge or revert, a
-path outside the sparse checkout, a folder, a commit that does not exist
+commit_id}`). `usecase.RevisionRestore` reads the file's entry from the manifest of its
+folder in that commit (`GetCommitDirManifest`, not the whole tree) and
+downloads the missing chunks commit-scoped to that path. Raw content is
+streamed straight into a temp file next to the working file and swapped in
+when complete, without passing through the object cache; zstd text goes
+through the cache and `materializeFile` (chunks are decoded), and the cache
+is pruned after. A read-only working file stays read-only, like update.
+Local edits to the file are overwritten (the desktop asks first). Nothing is
+staged: the file shows as modified (or untracked when
+the path is not tracked any more). It refuses a pending merge, revert or
+shelf apply, a path outside the sparse checkout, a path that is unsafe or
+leaves the clone through a symlink, a folder, a commit that does not exist
 (`revision "<id>" not found`) and a path the commit does not have (`<path>
 does not exist in <id>`, 404).
 

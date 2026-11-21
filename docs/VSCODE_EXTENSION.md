@@ -109,7 +109,9 @@ Only stable VS Code APIs are used:
     pages each).
   - Before `Switch` or `Update`, `SyncPlan` names the local changes the
     operation would replace. "Shelve and Continue" runs `ShelveCreate` with
-    exactly those paths. A failed check never blocks.
+    exactly those paths. A failed check fails closed: a modal names the
+    error and only "Continue Anyway" runs the operation (Cancel, or a
+    repository disposed meanwhile, does not).
 - **Activity:** `WatchEvents` adds incoming commits to the Update button and
   shows the strictest active maintenance window in the status bar. A string
   `error` field on a streamed message is data, not a stream failure; only an

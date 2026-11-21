@@ -54,7 +54,7 @@ fingerprints; raw files no pin covers whose manifest chunk sizes
 the file size are written directly (`direct.go`): a truncated
 `.nipa-materialize-*` temp file per file, chunks already in `.nipa/objects`
 copied locally, the rest written by `downloadChunks`' hash-verifying workers
-at every offset they occupy (open/close per write), a file is chmodded
+at every offset they occupy, a file is chmodded
 (same read-only rule as `materializeFile`) when its last chunk landed, and
 the working files are `replaceFile`d (bounded pool) only after the whole
 download and `materializeAll` succeeded; any failure removes the unreplaced
@@ -67,7 +67,16 @@ offsets, and `settle` books it once (`downloadChunksStream` dedups under a
 lock, since streamed chunks are booked from the transfer workers), so memory
 no longer grows with chunk size or transfer concurrency; nothing a failed or
 repeated `receive` wrote is used, because files are swapped in only after
-every chunk settled. Chunks the object cache keeps are streamed too
+every chunk settled. Temp files are not reopened per chunk: every write,
+streamed or buffered, borrows the file's handle from the plan's `tempHandles`
+(`usecase/direct_handles.go`) and writes by offset (`WriteAt`), so concurrent
+workers share one handle per file. At most `maxOpenTemps` (64) handles stay
+open between writes (the least recently used idle one is closed to make
+room; handles being written are never closed, so a burst can exceed the
+bound by the files in flight), a file's handle is closed when its last chunk
+settled, and `finish`/`cleanup` close everything before a temp file is
+renamed or removed (Windows refuses both on an open file); a close error of
+an evicted handle fails the file when it completes. Chunks the object cache keeps are streamed too
 (`syncStreamTarget`): into the cache through `localrepo.StoreChunkFrom`
 (temp file, hashed on the way, renamed only when the hash matches), and a
 chunk both a cached and a direct file need is stored first and placed from
@@ -226,15 +235,40 @@ and the prune only runs when the restore put content into the object cache.
 `changedFromSnapshot` keeps the chunk layout the hash pass produces
 (`rehashLayout`), and `restoreDirect` (`usecase/restore_direct.go`) rebuilds
 raw, unpinned files whose content is not cached without the cache: it asks
-the pinned commit's manifest for the chunk sizes
-(`GetCommitTreeManifest`, the restored paths, or the sparse set above 256
-files), builds a `directPlan`, copies cached chunks, copies the chunks the
+the pinned commit's manifest for the chunk sizes (`restoreManifest`: the
+server's path filter takes folders and answers 404 for a file path, so the
+request names the folders the files sit in, the root's own files come from a
+non-recursive `GetCommitDirManifest`, and the sparse set is asked for above
+256 files or when a root file is restored through a downloader without
+`GetCommitDirManifest`), builds a `directPlan`, copies cached chunks, copies the chunks the
 changed working file still holds from that file by offset (`salvage`: no
 second read-and-hash; trusted only while the file's size and mtime are what
 they were when hashed), and streams the rest from the server. A downloader
 without `GetCommitTreeManifest`, an unreachable server, a missing commit pin
 or a manifest that does not match the snapshot leaves the file to the cache
-path described above.
+path described above. `restoreTargets` sorts the tracked paths once and
+binary-searches each target's `target/` range, so expanding targets costs
+the files they cover, not targets × tracked files.
+
+"Get this version" (`usecase/restore_revision.go`, `RevisionRestore.Run`,
+daemon `RestoreRevision`) writes one file of a commit over the working file
+(an explicit overwrite: local edits to that file are replaced, nothing is
+staged). The path goes through `cleanBlobPath` and `checkWorkingPath` before
+any request, and `checkWriteInsideRoot` refuses a path whose nearest existing
+folder resolves outside the clone or into `.nipa` through a symlink. It holds
+the shared repo lock, refuses a pending merge, revert or shelf apply, a path
+outside the sparse set and a folder, and brackets the write with
+`beginWorkingWrite`. The file's entry comes from the manifest of its folder
+(`GetCommitDirManifest`, never the commit's whole tree; a 404 is told apart
+as missing commit or missing path by asking for the commit's root). Raw
+content with known chunk sizes is assembled by a one-file `directPlan`
+(cached chunks copied, the rest streamed, swapped in when complete) whether
+or not the path is pinned, since the cache never keeps a past revision;
+zstd text and files without chunk sizes are streamed into the object cache
+and written by `materializeFile`, and only that path prunes the cache
+afterwards. Chunks the working file already holds are not reused (it is not
+hashed), and no `stat_cache` fingerprint is recorded, so the next status
+hashes the file once.
 
 Flow for `nipa diff [<rev1> [<rev2>]] [--] [<path>...]`: `cli/diff.go` splits
 revisions from paths (paths only after `--`; `<a>..<b>`/`<a>...<b>` expand to two

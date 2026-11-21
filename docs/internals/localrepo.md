@@ -32,7 +32,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
 - Content lives in `.nipa/objects/<hash[:2]>/<hash[2:]>` (content-addressed loose
   objects, written temp+rename (`.tmp-*` in the object's directory) so `nipa
   update` can skip unchanged content). `StoreChunks`/`StoreChunk` write objects; `OpenChunk`/`LoadChunk` read
-  them; `MissingChunks` stats them. Update/switch download only the chunks of
+  them; `MissingChunks` stats them, after one listing of the 256 fan-out
+  directories when it is asked about 16 hashes or more (`objectFanout`): a
+  hash whose `<hash[:2]>` directory does not exist is missing without a
+  probe, so a fresh clone (empty store) stats nothing. Update/switch download only the chunks of
   files they rewrite and store only those of cached files (zstd text, pinned
   raw content, raw files without known chunk sizes): raw unpinned chunks go
   straight into the working file and never touch `.nipa/objects`, so there is

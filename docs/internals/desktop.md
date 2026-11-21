@@ -120,7 +120,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   "Shelve and continue" before Update, branch switch and tag checkout
   (`changes/SyncGuard.tsx` `useSyncGuard` over `SyncPlan`, daemon
   `SyncPlan`: only the local changes the operation would replace are
-  shelved, then the operation runs; a failed check never blocks),
+  shelved, then the operation runs; a failed check fails closed: the same
+  dialog shows the error with only Cancel and Continue anyway. `SetSparse`
+  is not previewed: `SyncPlan` cannot express a new sparse set),
   lock watching (`WatchLock`/`UnwatchLock`/`LockWatches`: paths kept per
   clone in `desktop.json` `lockWatches`; a `lock_released` event that covers
   one raises a "free" notification instead of the generic one and clicking

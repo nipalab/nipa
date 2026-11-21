@@ -24,7 +24,8 @@ plugins.
   check out a tag. Incoming commits show on the Update button, and an active
   maintenance window shows as its own item.
 - Before an update or a switch, if it would replace local changes, the
-  extension offers to shelve just those files first.
+  extension offers to shelve just those files first. If that check fails,
+  it shows the error and asks before continuing.
 - Lock, Unlock and Ask to Release from the Explorer, the editor tab or the
   Source Control view. Locks can cover a file or a whole folder. When a
   changed binary needs your lock, or someone else holds it, you get one

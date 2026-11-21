@@ -24,8 +24,8 @@ const (
 )
 
 const (
-	// defaultStallTimeout is how long a chunk download may receive nothing
-	// before it is cancelled and retried.
+	// defaultStallTimeout is how long a chunk download may receive nothing,
+	// or an upload may send nothing, before it is cancelled and retried.
 	defaultStallTimeout = 60 * time.Second
 	// responseHeaderTimeout bounds the wait for a storage endpoint to answer
 	// once a request, upload body included, was sent.

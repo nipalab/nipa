@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -20,8 +22,58 @@ import (
 type revisionFixture struct {
 	root   string
 	lr     *localrepo.LocalRepo
-	client *stubDiffClient
+	client *revisionServer
 	commit string
+}
+
+// revisionServer answers directory manifests of the commits a stubDiffClient
+// holds, the way the server does: 404 for a commit or a folder it lacks.
+type revisionServer struct {
+	*stubDiffClient
+	dirs        []string
+	manifestErr error
+	rootErr     error
+}
+
+func (s *revisionServer) GetCommitDirManifest(_ context.Context, _, _, commitID, dir string) (*serverDomain.TreeNode, error) {
+	s.dirs = append(s.dirs, dir)
+	if s.manifestErr != nil {
+		return nil, s.manifestErr
+	}
+	if dir == "" && s.rootErr != nil {
+		return nil, s.rootErr
+	}
+	commit, ok := s.commits[commitID]
+	if !ok {
+		return nil, &clientDomain.Error{Code: 404, Message: "commit not found"}
+	}
+	node := commit.Tree
+	for _, name := range strings.Split(dir, "/") {
+		if name == "" {
+			continue
+		}
+		var next *serverDomain.TreeNode
+		for _, child := range node.TreeChildren {
+			if child.Name == name {
+				next = child
+			}
+		}
+		if next == nil {
+			return nil, &clientDomain.Error{Code: 404, Message: "path not found in commit"}
+		}
+		node = next
+	}
+	return commit.Tree, nil
+}
+
+// streamingRevisionServer also streams chunk bodies, like the gRPC client.
+type streamingRevisionServer struct {
+	*revisionServer
+	*streamingFake
+}
+
+func (s *streamingRevisionServer) DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
+	return s.streamingFake.DownloadChunks(ctx, scope, hashes, onChunk)
 }
 
 func encodedTree(t *testing.T, files map[string]string, stored map[serverDomain.Hash][]byte) *serverDomain.TreeNode {
@@ -53,10 +105,10 @@ func newRevisionFixture(t *testing.T, current, old map[string]string) *revisionF
 		writeRepoFile(t, fx.root, name, content)
 	}
 	revisionChunks := map[serverDomain.Hash][]byte{}
-	fx.client = &stubDiffClient{
-		commits:  map[string]*clientDomain.CommitDetail{fx.commit: {ID: fx.commit, Tree: encodedTree(t, old, revisionChunks)}},
+	fx.client = &revisionServer{stubDiffClient: &stubDiffClient{
+		commits:  map[string]*clientDomain.CommitDetail{fx.commit: {ID: fx.commit, Tree: blameTree(t, old, revisionChunks)}},
 		download: revisionChunks,
-	}
+	}}
 	return fx
 }
 
@@ -204,7 +256,7 @@ func TestRevisionRestore_TransportErrors(t *testing.T) {
 
 func TestRevisionRestore_InitError(t *testing.T) {
 	repo := &failingRevisionRepo{LocalRepo: localrepo.NewLocalRepo()}
-	err := NewRevisionRestore(diffAuth(t), &stubDiffClient{}, repo).Run(context.Background(), filepath.Join(t.TempDir(), "file-not-dir", "x"), "a.txt", snow.ID(7).Base36())
+	err := NewRevisionRestore(diffAuth(t), &revisionServer{stubDiffClient: &stubDiffClient{}}, repo).Run(context.Background(), filepath.Join(t.TempDir(), "file-not-dir", "x"), "a.txt", snow.ID(7).Base36())
 	require.Error(t, err)
 }
 
@@ -213,3 +265,181 @@ type failingRevisionRepo struct {
 }
 
 func (f *failingRevisionRepo) Init(string) error { return errors.New("init failed") }
+
+func TestRevisionRestore_BinaryIsWrittenWithoutTheCache(t *testing.T) {
+	bin := "\x89PNG\x00\x01\x02 old pixels"
+	fx := newRevisionFixture(t, map[string]string{"keep.txt": "x\n"}, map[string]string{"art/deep/hero.png": bin, "art/notes.txt": "old\n"})
+	repo := &pruneCountingRepo{LocalRepo: fx.lr}
+	run := func(path string) error {
+		return NewRevisionRestore(diffAuth(t), fx.client, repo).Run(context.Background(), fx.root, path, fx.commit)
+	}
+
+	require.NoError(t, run("art/deep/hero.png"))
+	require.Equal(t, bin, fx.read(t, "art/deep/hero.png"))
+	require.Equal(t, []string{"art/deep"}, fx.client.dirs, "only the file's folder is asked for, never the commit's whole tree")
+	require.Empty(t, fx.client.commitLookups)
+	require.Zero(t, objectCount(t, fx.root), "raw content never passes through the object cache")
+	require.Zero(t, repo.prunes, "nothing was cached, so nothing is pruned")
+	requireNoTempFiles(t, fx.root)
+
+	require.NoError(t, run("art/notes.txt"))
+	require.Equal(t, "old\n", fx.read(t, "art/notes.txt"))
+	require.Equal(t, 1, repo.prunes, "text goes through the cache and is pruned after")
+	require.Zero(t, objectCount(t, fx.root))
+
+	require.NoError(t, run("art/notes.txt"))
+	require.Equal(t, 2, repo.prunes)
+}
+
+type pruneCountingRepo struct {
+	*localrepo.LocalRepo
+	prunes int
+}
+
+func (p *pruneCountingRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int64, error) {
+	p.prunes++
+	return p.LocalRepo.PruneObjects(keep)
+}
+
+func TestRevisionRestore_StreamsBinaryAndCopiesCachedChunks(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"keep.txt": "x\n"}, nil)
+	data := map[serverDomain.Hash][]byte{}
+	file := rawManifestFile("big.bin", data, "HEAD", "BODY", "HEAD")
+	fx.client.commits[fx.commit].Tree = &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{file}}
+	body := chunker.Sum([]byte("BODY"))
+	require.NoError(t, fx.lr.StoreChunk(body, []byte("BODY")))
+	server := &streamingRevisionServer{revisionServer: fx.client, streamingFake: newStreamingFake(data)}
+
+	require.NoError(t, NewRevisionRestore(diffAuth(t), server, fx.lr).Run(context.Background(), fx.root, "big.bin", fx.commit))
+
+	require.Equal(t, "HEADBODYHEAD", fx.read(t, "big.bin"))
+	require.Equal(t, map[serverDomain.Hash]int{chunker.Sum([]byte("HEAD")): 1}, server.streamed, "the cached chunk is copied, the other streamed once")
+	require.Empty(t, server.buffered)
+	requireNoTempFiles(t, fx.root)
+}
+
+func TestRevisionRestore_DirectFailureLeavesTheFile(t *testing.T) {
+	bin := "\x00 old pixels"
+	fx := newRevisionFixture(t, map[string]string{"hero.png": "\x00 new pixels"}, map[string]string{"hero.png": bin})
+	fx.client.download = map[serverDomain.Hash][]byte{}
+	err := fx.run(t, "hero.png", fx.commit)
+	require.ErrorContains(t, err, "did not return chunk")
+	require.Equal(t, "\x00 new pixels", fx.read(t, "hero.png"))
+	requireNoTempFiles(t, fx.root)
+
+	fx.client.downloadErr = errors.New("download failed")
+	require.ErrorContains(t, fx.run(t, "hero.png", fx.commit), "download failed")
+	requireNoTempFiles(t, fx.root)
+}
+
+func TestRevisionRestore_RefusesUnsafePathsBeforeAnyRequest(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"a.txt": "old\n"})
+	for _, p := range []string{".nipa/config", "sub/.NIPA/config", "sub/.nipa./x", "a/b\x00c"} {
+		requireCode(t, fx.run(t, p, fx.commit), 400)
+	}
+	require.Empty(t, fx.client.connectHost)
+	require.Empty(t, fx.client.dirs)
+}
+
+func TestRevisionRestore_RefusesToWriteThroughASymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges")
+	}
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"out/secret.txt": "old\n", "meta/x.txt": "old\n"})
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(fx.root, "out")))
+	require.NoError(t, os.Symlink(filepath.Join(fx.root, ".nipa"), filepath.Join(fx.root, "meta")))
+
+	err := fx.run(t, "out/secret.txt", fx.commit)
+	requireCode(t, err, 400)
+	require.ErrorContains(t, err, "resolves outside the repository")
+	require.NoFileExists(t, filepath.Join(outside, "secret.txt"))
+	err = fx.run(t, "out/new/deeper/secret.txt", fx.commit)
+	require.ErrorContains(t, err, "resolves outside the repository", "folders that do not exist yet are checked through their parent")
+
+	require.ErrorContains(t, fx.run(t, "meta/x.txt", fx.commit), "cannot operate on path inside")
+	require.NoFileExists(t, filepath.Join(fx.root, ".nipa", "x.txt"))
+	require.Empty(t, fx.client.dirs)
+}
+
+func TestCheckWriteInsideRoot(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, checkWriteInsideRoot(root, "a/b/c.txt"))
+	require.Error(t, checkWriteInsideRoot(filepath.Join(root, "missing"), "a.txt"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o644))
+	err := checkWriteInsideRoot(root, "file/below/x.txt")
+	require.Error(t, err, "a file where a folder is needed")
+	require.NotErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestRevisionRestore_RefusesPendingShelfApply(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"a.txt": "old\n"})
+	require.NoError(t, fx.lr.SaveShelfState(&clientDomain.ShelfState{ShelfID: "s1", ShelfName: "wip"}))
+	err := fx.run(t, "a.txt", fx.commit)
+	requireCode(t, err, 400)
+	require.ErrorContains(t, err, "stopped on conflicts")
+	require.Equal(t, "new\n", fx.read(t, "a.txt"))
+}
+
+func TestRevisionRestore_SweepsTempFilesOfAKilledWrite(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"a.txt": "old\n"})
+	leftover := leaveTemp(t, fx.root, "dir/.nipa-materialize-999", time.Minute)
+	leaveDeadWriteMarker(t, fx.root)
+
+	require.NoError(t, fx.run(t, "a.txt", fx.commit))
+	require.NoFileExists(t, leftover)
+	require.Equal(t, "old\n", fx.read(t, "a.txt"))
+}
+
+func TestRevisionRestore_TellsAMissingFolderFromAMissingCommit(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"art/a.txt": "old\n"})
+
+	err := fx.run(t, "gone/a.txt", fx.commit)
+	require.ErrorIs(t, err, ErrFileMissing)
+	require.Equal(t, []string{"gone", ""}, fx.client.dirs, "the commit's root tells the two apart")
+
+	err = fx.run(t, "art/a.txt", snow.ID(99).Base36())
+	requireCode(t, err, 400)
+	require.ErrorContains(t, err, "not found")
+
+	fx.client.rootErr = errors.New("root unavailable")
+	require.EqualError(t, fx.run(t, "gone/a.txt", fx.commit), "root unavailable")
+
+	fx.client.manifestErr = errors.New("manifest unavailable")
+	require.EqualError(t, fx.run(t, "art/a.txt", fx.commit), "manifest unavailable")
+}
+
+type brokenRevisionRepo struct {
+	*localrepo.LocalRepo
+	missingErr, snapshotErr error
+}
+
+func (b *brokenRevisionRepo) MissingChunks(h []serverDomain.Hash) ([]serverDomain.Hash, error) {
+	if b.missingErr != nil {
+		return nil, b.missingErr
+	}
+	return b.LocalRepo.MissingChunks(h)
+}
+
+func (b *brokenRevisionRepo) SnapshotFile(p string) (clientDomain.SnapshotFile, bool, error) {
+	if b.snapshotErr != nil {
+		return clientDomain.SnapshotFile{}, false, b.snapshotErr
+	}
+	return b.LocalRepo.SnapshotFile(p)
+}
+
+func TestRevisionRestore_LocalRepoErrors(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"a.txt": "old\n", "hero.png": "\x00 old"})
+	repo := &brokenRevisionRepo{LocalRepo: fx.lr, missingErr: errors.New("cache unreadable")}
+	run := func(path string) error {
+		return NewRevisionRestore(diffAuth(t), fx.client, repo).Run(context.Background(), fx.root, path, fx.commit)
+	}
+	require.EqualError(t, run("a.txt"), "cache unreadable")
+	require.EqualError(t, run("hero.png"), "cache unreadable")
+	requireNoTempFiles(t, fx.root)
+
+	repo.missingErr, repo.snapshotErr = nil, errors.New("snapshot unreadable")
+	require.EqualError(t, run("a.txt"), "snapshot unreadable")
+	require.Equal(t, "new\n", fx.read(t, "a.txt"))
+}

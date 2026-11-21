@@ -215,6 +215,8 @@
   "syncGuard.cancel": "キャンセル",
   "syncGuard.continueAnyway": "このまま続行",
   "syncGuard.shelveAndContinue": "退避して続行",
+  "syncGuard.couldNotCheck": "ローカルの変更を確認できませんでした",
+  "syncGuard.uncheckedWarning": "{{verb}}によりローカルの変更が置き換えられる可能性があります（確認に失敗しました）。安全のためキャンセルするか、上書きされる可能性を承知のうえで続行してください。",
   "tableDiff.tableView": "テーブルビュー",
   "tableDiff.table": "テーブル",
   "tableDiff.text": "テキスト",

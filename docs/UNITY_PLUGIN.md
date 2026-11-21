@@ -109,7 +109,9 @@ shows in the window while it is disconnected.
   changes they would replace (`SyncPlan`). When there are any, a dialog offers
   **Shelve and continue** (shelves exactly those paths, untracked included,
   as "Before <operation> <time>", then runs the operation), **Overwrite them**
-  or **Cancel**. A failed check never blocks the operation.
+  or **Cancel**. A failed check fails closed: a dialog shows the error and
+  offers **Check again**, **Cancel** or **Continue anyway** (local changes
+  may be overwritten); a check cancelled by a closing session does nothing.
 - **Window › Nipa › Pending Changes › Shelves** lists shelves with their branch,
   file count and time (hover for the files): **Apply** (applies and deletes),
   **Keep** (applies and keeps) and **Delete**. An apply that hits conflicts
@@ -228,7 +230,8 @@ plugins/unity/com.nipalab.nipa/
                  classification), SystemMergeProcess
     Session/     NipaSession (WatchRepo, Status, WatchChanges + WatchEvents
                  loops, ops, lock/unlock/release requests, merge, branches,
-                 shelves, SyncPlan), OpSummary (result and event text),
+                 shelves, SyncPlan), SyncGuard (what a sync does after the
+                 SyncPlan check), OpSummary (result and event text),
                  NipaSettings
   Editor/        Unity glue: NipaVersionControl, NipaHost, NipaWindow,
                  NipaMenus, NipaIcons, NipaBranches, NipaSceneOverlay, MainThread, NipaAssetProcessor,

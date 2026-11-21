@@ -409,9 +409,24 @@ describe("switching and updating", () => {
     expect(calls("Switch")).toHaveLength(0);
 
     daemon.on("SyncPlan", () => ({ status: 501, json: { code: "Unimplemented", message: "old daemon" } }));
+    fake.answers.push(undefined);
     await repo.update();
-    expect(calls("Update")).toHaveLength(2);
+    expect(calls("Update")).toHaveLength(1);
     expect(logs).toContain("sync plan: old daemon");
+    expect(fake.messages.at(-1)?.text).toBe("Updating: could not check for local changes.");
+    expect(fake.messages.at(-1)?.options).toMatchObject({ modal: true, detail: expect.stringContaining("old daemon") });
+
+    fake.answers.push("Continue Anyway");
+    await repo.switchTo({ branch: "feature" });
+    expect(fake.messages.find((m) => m.text === "Switching to feature: could not check for local changes.")).toBeDefined();
+    expect(calls("Switch")).toHaveLength(1);
+    expect(calls("ShelveCreate")).toHaveLength(2);
+
+    const prompts = fake.messages.length;
+    repo.dispose();
+    await repo.update();
+    expect(calls("Update")).toHaveLength(1);
+    expect(fake.messages).toHaveLength(prompts);
   });
 });
 

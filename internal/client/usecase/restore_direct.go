@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -82,20 +83,10 @@ func (w *WorkingCopy) restoreDirect(ctx context.Context, changed []domain.Snapsh
 			paths = append(paths, f.Path)
 		}
 	}
-	tree, err := fetcher.GetCommitTreeManifest(ctx, nu.Org, nu.Project, commitID, paths)
+	manifest, err := restoreManifest(ctx, fetcher, nu, commitID, need, cfg.Sparse)
 	if err != nil {
 		return entries, changed, nil
 	}
-	manifest := make(map[string]materializedFile)
-	wantPath := make(map[string]struct{}, len(need))
-	for _, f := range need {
-		wantPath[f.Path] = struct{}{}
-	}
-	walkTreeFiles(tree, "", func(path string, f *serverDomain.File) {
-		if _, ok := wantPath[path]; ok {
-			manifest[path] = materializedFromTree(path, f)
-		}
-	})
 	var jobs []materializeJob
 	var estimated int64
 	for _, f := range need {
@@ -160,6 +151,66 @@ func (w *WorkingCopy) restoreDirect(ctx context.Context, changed []domain.Snapsh
 		entries[path] = entry
 	}
 	return entries, rest, nil
+}
+
+type dirManifestFetcher interface {
+	GetCommitDirManifest(ctx context.Context, org, project, commitID, dir string) (*serverDomain.TreeNode, error)
+}
+
+// restoreManifest reads the manifest entries of the files in need from the
+// commit. The server's path filter takes folders, not files, so a small
+// restore asks for the folders its files sit in (the root's own files through
+// GetCommitDirManifest when the fetcher has it); a restore of more than
+// maxRestoreManifestPaths files, or of root files without that call, asks for
+// the whole checkout.
+func restoreManifest(ctx context.Context, fetcher manifestFetcher, nu *domain.NipaUrl, commitID string, need []domain.SnapshotFile, sparse []string) (map[string]materializedFile, error) {
+	want := make(map[string]struct{}, len(need))
+	for _, f := range need {
+		want[f.Path] = struct{}{}
+	}
+	manifest := make(map[string]materializedFile, len(need))
+	collect := func(tree *serverDomain.TreeNode, err error) error {
+		if err != nil {
+			return err
+		}
+		walkTreeFiles(tree, "", func(path string, f *serverDomain.File) {
+			if _, ok := want[path]; ok {
+				manifest[path] = materializedFromTree(path, f)
+			}
+		})
+		return nil
+	}
+	dirFetcher, hasDirs := fetcher.(dirManifestFetcher)
+	seen := map[string]struct{}{}
+	var dirs []string
+	root := false
+	for _, f := range need {
+		dir := parentDir(f.Path)
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		if dir == "" {
+			root = true
+		} else {
+			dirs = append(dirs, dir)
+		}
+	}
+	sort.Strings(dirs)
+	if len(need) > maxRestoreManifestPaths || (root && !hasDirs) {
+		return manifest, collect(fetcher.GetCommitTreeManifest(ctx, nu.Org, nu.Project, commitID, sparse))
+	}
+	if root {
+		if err := collect(dirFetcher.GetCommitDirManifest(ctx, nu.Org, nu.Project, commitID, "")); err != nil {
+			return nil, err
+		}
+	}
+	if len(dirs) > 0 {
+		if err := collect(fetcher.GetCommitTreeManifest(ctx, nu.Org, nu.Project, commitID, dirs)); err != nil {
+			return nil, err
+		}
+	}
+	return manifest, nil
 }
 
 func (w *WorkingCopy) loadChunk(h serverDomain.Hash) ([]byte, error) {
@@ -236,23 +287,22 @@ func sameFileState(f *os.File, want os.FileInfo) bool {
 // needs it, then books it.
 func (p *directPlan) copyFrom(h serverDomain.Hash, src io.ReaderAt, offset, size int64) error {
 	err := eachTargetFile(p.targets[h], func(df *directFile, targets []directTarget) error {
-		out, err := os.OpenFile(df.tmp, os.O_WRONLY, 0)
+		out, err := df.handles.acquire(df)
 		if err != nil {
 			return err
 		}
+		defer df.handles.release(df)
 		buf := streamBufferPool.Get().(*[]byte)
 		defer streamBufferPool.Put(buf)
 		for _, t := range targets {
 			if t.size != size {
-				_ = out.Close()
 				return fmt.Errorf("content length mismatch for %s: chunk is %d bytes, want %d", df.job.file.Path, size, t.size)
 			}
 			if _, err := io.CopyBuffer(io.NewOffsetWriter(out, t.offset), io.NewSectionReader(src, offset, size), *buf); err != nil {
-				_ = out.Close()
 				return err
 			}
 		}
-		return out.Close()
+		return nil
 	})
 	if err != nil {
 		return err

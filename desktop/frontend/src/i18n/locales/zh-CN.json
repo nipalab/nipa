@@ -215,6 +215,8 @@
   "syncGuard.cancel": "取消",
   "syncGuard.continueAnyway": "仍然继续",
   "syncGuard.shelveAndContinue": "搁置并继续",
+  "syncGuard.couldNotCheck": "无法检查您的本地更改",
+  "syncGuard.uncheckedWarning": "{{verb}}可能会替换本地更改：检查失败。取消以保证安全，或在知晓更改可能被覆盖的情况下继续。",
   "tableDiff.tableView": "表格视图",
   "tableDiff.table": "表格",
   "tableDiff.text": "文本",

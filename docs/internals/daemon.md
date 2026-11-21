@@ -97,9 +97,10 @@ generation is unchanged and younger than 5 s; the `Status` RPC refreshes it)
 plus untracked/added files and on-disk-only folders; no lock data and no
 server call. `RestoreRevision` (exclusive slot, `OpEvent` stream, result
 `restore`) runs `RepoOps.Restore` (`usecase.RevisionRestore`: commit-scoped
-download of one file of a commit, `materializeFile` over the working file,
-nothing staged; refuses pending merge/revert, paths outside the sparse set,
-folders, unknown commits or paths). `AssetRefs`, `Provenance` and
+download of one file of a commit, raw content streamed into place and text
+through the cache and `materializeFile`, nothing staged; refuses pending
+merge/revert/shelf apply, unsafe paths, paths outside the sparse set,
+folders, unknown commits or paths; details in `client.md`). `AssetRefs`, `Provenance` and
 `SetProvenance` (`daemon/assetrefs.go`, `daemon/provenance.go`, shared slot)
 serve the desktop where-used and origin panels; see the asset references and
 provenance flows. `Blame` (`daemon/blame.go`, shared slot, `SerialBlame`

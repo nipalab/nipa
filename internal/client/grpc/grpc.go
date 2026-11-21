@@ -251,7 +251,7 @@ type Client struct {
 	uploadWorkers int
 	retry         retryPolicy
 	confirmMu     sync.Mutex
-	// stallTimeout is how long a chunk download may make no progress.
+	// stallTimeout is how long a chunk transfer may make no progress.
 	stallTimeout time.Duration
 }
 

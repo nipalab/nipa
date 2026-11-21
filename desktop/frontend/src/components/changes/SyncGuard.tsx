@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { desktop } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
 export type SyncAction = {
@@ -11,14 +12,15 @@ export type SyncAction = {
   start: () => void;
 };
 
-type Pending = SyncAction & { files: string[] };
+type Pending = SyncAction & { files: string[]; error?: string };
 
 const SHOWN = 8;
 
 // useSyncGuard checks, before an update, switch or tag checkout, which local
 // changes it would replace. When there are some it asks first and offers to
-// shelve exactly those files and then go on. A failed check never blocks;
-// hasChanges undefined (not read yet) always checks.
+// shelve exactly those files and then go on. A failed check asks too, since
+// the operation could replace changes nobody listed; hasChanges undefined
+// (not read yet) always checks.
 export function useSyncGuard(root: string, hasChanges: boolean | undefined, shelveThen: (paths: string[], name: string, next: () => void) => void) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [checking, setChecking] = useState(false);
@@ -37,8 +39,11 @@ export function useSyncGuard(root: string, hasChanges: boolean | undefined, shel
       let files: string[] = [];
       try {
         files = await desktop.syncPlan(root, action.target);
-      } catch {
-        files = [];
+      } catch (err) {
+        if (!live.current) return;
+        setChecking(false);
+        setPending({ ...action, files: [], error: errorMessage(err) });
+        return;
       }
       if (!live.current) return;
       setChecking(false);
@@ -67,26 +72,28 @@ export function useSyncGuard(root: string, hasChanges: boolean | undefined, shel
 
 function SyncGuardDialog({ pending, onCancel, onContinue, onShelve }: { pending: Pending; onCancel: () => void; onContinue: () => void; onShelve: () => void }) {
   const { t } = useTranslation();
-  const { files, verb } = pending;
+  const { files, verb, error } = pending;
+  const unchecked = error !== undefined;
   const more = files.length - SHOWN;
   return (
     <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onCancel()}>
       <div role="alertdialog" aria-modal="true" aria-labelledby="sync-guard-title" className="w-full max-w-md space-y-3 rounded-lg border border-border bg-card p-5 shadow-xl">
         <h2 id="sync-guard-title" className="flex items-center gap-2 text-sm font-semibold">
           <AlertTriangle className="size-4 text-warning" />
-          {t("syncGuard.yourChangesWouldBeReplaced")}
+          {unchecked ? t("syncGuard.couldNotCheck") : t("syncGuard.yourChangesWouldBeReplaced")}
         </h2>
         <p className="text-xs text-muted-foreground">
-          {t("syncGuard.replaces", { verb, count: files.length })}
+          {unchecked ? t("syncGuard.uncheckedWarning", { verb }) : t("syncGuard.replaces", { verb, count: files.length })}
         </p>
-        <ul aria-label={t("syncGuard.changesThatWouldBeReplaced")} className="max-h-40 overflow-y-auto rounded-md border border-border px-2 py-1 font-mono text-[11px]">
+        {unchecked && <p className="break-words rounded-md border border-border px-2 py-1 font-mono text-[11px]">{error}</p>}
+        {!unchecked && <ul aria-label={t("syncGuard.changesThatWouldBeReplaced")} className="max-h-40 overflow-y-auto rounded-md border border-border px-2 py-1 font-mono text-[11px]">
           {files.slice(0, SHOWN).map((f) => (
             <li key={f} className="truncate" title={f}>
               {f}
             </li>
           ))}
           {more > 0 && <li className="text-muted-foreground">{t("syncGuard.more", { count: more })}</li>}
-        </ul>
+        </ul>}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           <Button size="sm" onClick={onCancel} autoFocus>
             {t("syncGuard.cancel")}
@@ -94,9 +101,11 @@ function SyncGuardDialog({ pending, onCancel, onContinue, onShelve }: { pending:
           <Button size="sm" variant="ghost" className="text-danger" onClick={onContinue}>
             {t("syncGuard.continueAnyway")}
           </Button>
-          <Button size="sm" variant="primary" onClick={onShelve}>
-            {t("syncGuard.shelveAndContinue")}
-          </Button>
+          {!unchecked && (
+            <Button size="sm" variant="primary" onClick={onShelve}>
+              {t("syncGuard.shelveAndContinue")}
+            </Button>
+          )}
         </div>
       </div>
     </div>

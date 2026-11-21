@@ -1224,6 +1224,18 @@ TEST_CASE("a sync plan lists the local changes an update or switch would replace
     CHECK(h.op_finished(sw)->name == "sync-plan");
 }
 
+TEST_CASE("a failed sync plan finishes not ok with the daemon's reason") {
+    Harness h;
+    h.fake.on_unary("SyncPlan", [](const json&) {
+        return Reply{503, {{"code", "Unavailable"}, {"message", "server unreachable"}}};
+    });
+    h.start();
+    auto plan = h.session->submit_sync_plan("", "");
+    CHECK(h.wait([&](const Events&) { return h.op_finished(plan) != nullptr; }));
+    CHECK_FALSE(h.op_finished(plan)->ok);
+    CHECK(h.op_finished(plan)->message.find("server unreachable") != std::string::npos);
+}
+
 TEST_CASE("shelving streams the operation and reloads the status") {
     Harness h;
     auto shelved = std::make_shared<std::atomic<bool>>(false);
