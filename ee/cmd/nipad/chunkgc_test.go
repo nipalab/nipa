@@ -29,6 +29,11 @@ func TestChunkGCSetup(t *testing.T) {
 	require.Error(t, err)
 	_, _, err = chunkGCSetup(&config.Config{ChunkGCGraceHours: 1, ChunkPresignTTLSeconds: 3600})
 	require.ErrorContains(t, err, "twice")
+
+	// A disabled collector never sweeps, so the grace/TTL rule does not apply.
+	mode, _, err = chunkGCSetup(&config.Config{ChunkGCMode: "off", ChunkPresignTTLSeconds: 86400 * 7})
+	require.NoError(t, err)
+	require.Equal(t, chunkgc.ModeOff, mode)
 }
 
 type gcObjects struct{ storage.ChunkStore }

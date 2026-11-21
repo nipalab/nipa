@@ -28,6 +28,9 @@ func chunkGCSetup(cfg *config.Config) (chunkgc.Mode, time.Duration, error) {
 	if grace <= 0 {
 		grace = chunkgc.DefaultGrace
 	}
+	if mode == chunkgc.ModeOff {
+		return mode, grace, nil
+	}
 	if ttl := time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second; grace < 2*ttl {
 		return "", 0, fmt.Errorf("CHUNK_GC_GRACE_HOURS (%s) must be at least twice CHUNK_PRESIGN_TTL_SECONDS (%s)", grace, ttl)
 	}
