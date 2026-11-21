@@ -75,6 +75,7 @@ func streamImport(t *testing.T, c *clientgrpc.Client, commits []*clientgrpc.Impo
 }
 
 func TestEndToEnd_GitImport(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -166,6 +167,7 @@ func TestEndToEnd_GitImport(t *testing.T) {
 }
 
 func TestEndToEnd_GitImportPreflight(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

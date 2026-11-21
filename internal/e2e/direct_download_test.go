@@ -26,6 +26,7 @@ func (r *storeCountingRepo) StoreChunks(chunks []*serverDomain.ChunkData) error 
 }
 
 func TestEndToEnd_CloneAndUpdateWriteBinariesDirectly(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 	grpcClient, auth, _ := newBenchClient(t, host)

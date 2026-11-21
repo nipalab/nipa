@@ -24,6 +24,7 @@ func repoConfigOf(t *testing.T, target string) domain.Config {
 }
 
 func TestEndToEnd_TagCheckoutDetachedHead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

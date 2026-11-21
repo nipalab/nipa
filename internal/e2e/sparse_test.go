@@ -24,6 +24,7 @@ func assertNoFile(t *testing.T, target, path string) {
 }
 
 func TestEndToEnd_RestrictedUserSparsePush(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -83,6 +84,7 @@ func TestEndToEnd_RestrictedUserSparsePush(t *testing.T) {
 }
 
 func TestEndToEnd_SparseCheckout(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

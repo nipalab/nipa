@@ -15,6 +15,7 @@ import (
 )
 
 func TestEndToEnd_DiffWorkingTree(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 
@@ -74,6 +75,7 @@ func TestEndToEnd_DiffWorkingTree(t *testing.T) {
 }
 
 func TestEndToEnd_DiffRevisions(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

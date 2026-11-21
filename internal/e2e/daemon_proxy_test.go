@@ -30,6 +30,7 @@ func proxyTreePaths(root *pb.TreeManifest) []string {
 }
 
 func TestEndToEnd_DaemonProxyBranchesMergeRequestsLocks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

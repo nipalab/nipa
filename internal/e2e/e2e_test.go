@@ -108,6 +108,10 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	return host
 }
 
+// startTestServerWithUsecases starts an in-process server over dbConn. Each
+// test owns its server (~30ms) and database (a dbtest copy), so tests call
+// t.Parallel(); only tests that use t.Setenv/t.Chdir or measure memory and
+// throughput (bench_test.go) stay serial.
 func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*serverapp.UsecaseDeps)) (string, serverapp.Usecases) {
 	t.Helper()
 
@@ -262,6 +266,7 @@ func assertFileContent(t *testing.T, target, path, want string) {
 }
 
 func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 
@@ -378,6 +383,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 }
 
 func TestEndToEnd_RefreshTokenRevoked_FallsBackToPasswordLogin(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 
@@ -414,6 +420,7 @@ func TestEndToEnd_RefreshTokenRevoked_FallsBackToPasswordLogin(t *testing.T) {
 }
 
 func TestEndToEnd_CreateBranch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 
@@ -498,6 +505,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 }
 
 func TestEndToEnd_SwitchBranch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

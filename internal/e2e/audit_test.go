@@ -43,6 +43,7 @@ func auditLogin(t *testing.T, base, email, password string) string {
 // The REST container is process-global, so this is the only e2e test that
 // mounts it; other REST scenarios run as its subtests.
 func TestEndToEnd_AuditLog(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host, uc := startTestServerWithUsecases(t, dbConn, func(d *serverapp.UsecaseDeps) { d.Config.PublicBaseURL = "https://nipa.example" })

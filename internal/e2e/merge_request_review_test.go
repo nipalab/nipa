@@ -57,6 +57,7 @@ func mintToken(t *testing.T, userID snow.ID) string {
 // against a real server: decisions, threads, comments, review requests and the
 // timeline, including the permission and validation errors.
 func TestEndToEnd_MergeRequestReviewRPCs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

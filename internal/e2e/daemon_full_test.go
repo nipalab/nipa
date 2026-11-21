@@ -19,6 +19,7 @@ import (
 // surface: watch, status, stage, lock, push, update, the merge-request proxy
 // and gracefully shutting the daemon down.
 func TestEndToEnd_DaemonFullFlow(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

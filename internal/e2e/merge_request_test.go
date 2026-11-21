@@ -13,6 +13,7 @@ import (
 )
 
 func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
