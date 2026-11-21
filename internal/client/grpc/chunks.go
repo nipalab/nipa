@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -345,7 +349,11 @@ func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retr
 		attribute.Int(obs.AttrChunkSize, len(job.data)))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
+	target, err := c.transferURL(job.url)
+	if err != nil {
+		return retryHint{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(job.data))
 	if err != nil {
 		return retryHint{}, err
 	}
@@ -483,17 +491,30 @@ func (r *countingReader) Read(p []byte) (int, error) {
 }
 
 // openChunk sends the GET for one chunk and returns the response once it is a
-// 200 whose declared length fits a chunk. The caller closes the body.
+// 200 whose declared length fits a chunk. The caller closes the body, which
+// fails with errTransferStalled when the server stops sending for longer than
+// the client's stall timeout.
 func (c *Client) openChunk(ctx context.Context, span trace.Span, job chunkTransfer) (*http.Response, retryHint, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
+	target, err := c.transferURL(job.url)
 	if err != nil {
+		return nil, retryHint{}, err
+	}
+	reqCtx, cancel := context.WithCancel(ctx)
+	guard := newStallGuard(c.stallTimeout, cancel)
+	request, err := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil)
+	if err != nil {
+		guard.stop()
 		return nil, retryHint{}, err
 	}
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
+		err = guard.explain(err)
+		guard.stop()
 		return nil, retryHint{retryable: ctx.Err() == nil}, err
 	}
+	guard.body = res.Body
+	res.Body = guard
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	fail := func(hint retryHint, err error) (*http.Response, retryHint, error) {
 		_ = res.Body.Close()
@@ -662,6 +683,102 @@ func (c *Client) httpURL(path string) string {
 		base = "http://" + base
 	}
 	return strings.TrimRight(base, "/") + path
+}
+
+// allowInsecureChunkURLsEnv lets a TLS session use cleartext chunk URLs, for
+// deployments whose object storage is only reachable over http.
+const allowInsecureChunkURLsEnv = "NIPA_ALLOW_INSECURE_CHUNK_URLS"
+
+func insecureChunkURLsAllowed() bool {
+	allowed, _ := strconv.ParseBool(os.Getenv(allowInsecureChunkURLsEnv))
+	return allowed
+}
+
+func isScheme(rawURL, scheme string) bool {
+	return len(rawURL) > len(scheme)+2 && strings.EqualFold(rawURL[:len(scheme)+3], scheme+"://")
+}
+
+// transferURL resolves a chunk transfer URL from the server. A session that
+// talks TLS to the server does not follow it to a cleartext URL: the content
+// would cross the network unencrypted although the user asked for https.
+func (c *Client) transferURL(raw string) (string, error) {
+	target := c.httpURL(raw)
+	if isScheme(c.transport.url, "https") && isScheme(target, "http") && !insecureChunkURLsAllowed() {
+		return "", errInsecureChunkURL()
+	}
+	return target, nil
+}
+
+func errInsecureChunkURL() error {
+	return domain.NewUserError("the server sent a cleartext (http) chunk transfer URL on a TLS session; refusing to use it").
+		WithHint("file content would be sent or received unencrypted", "ask the server administrator to serve chunk storage over https, or set "+allowInsecureChunkURLsEnv+"=1 to allow it")
+}
+
+// maxTransferRedirects bounds the redirects one chunk transfer follows.
+const maxTransferRedirects = 3
+
+// checkTransferRedirect stops redirect chains and https to http downgrades.
+func checkTransferRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) > maxTransferRedirects {
+		return fmt.Errorf("chunk transfer stopped after %d redirects", maxTransferRedirects)
+	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" && !insecureChunkURLsAllowed() {
+		return errInsecureChunkURL()
+	}
+	return nil
+}
+
+var errTransferStalled = errors.New("chunk transfer stalled")
+
+// stallGuard cancels a transfer that makes no progress for timeout: nothing
+// arrives before the response, or between two reads of its body.
+type stallGuard struct {
+	body    io.ReadCloser
+	timer   *time.Timer
+	timeout time.Duration
+	cancel  context.CancelFunc
+	stalled atomic.Bool
+}
+
+func newStallGuard(timeout time.Duration, cancel context.CancelFunc) *stallGuard {
+	g := &stallGuard{timeout: timeout, cancel: cancel}
+	if timeout > 0 {
+		g.timer = time.AfterFunc(timeout, func() {
+			g.stalled.Store(true)
+			cancel()
+		})
+	}
+	return g
+}
+
+func (g *stallGuard) explain(err error) error {
+	if err != nil && g.stalled.Load() {
+		return fmt.Errorf("%w: no data for %s", errTransferStalled, g.timeout)
+	}
+	return err
+}
+
+func (g *stallGuard) stop() {
+	if g.timer != nil {
+		g.timer.Stop()
+	}
+	g.cancel()
+}
+
+func (g *stallGuard) Read(p []byte) (int, error) {
+	n, err := g.body.Read(p)
+	if n > 0 && g.timer != nil {
+		g.timer.Reset(g.timeout)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		err = g.explain(err)
+	}
+	return n, err
+}
+
+func (g *stallGuard) Close() error {
+	g.stop()
+	return g.body.Close()
 }
 
 func chunkHTTPError(res *http.Response) error {

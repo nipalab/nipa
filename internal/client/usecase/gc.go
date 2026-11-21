@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"log/slog"
+	"time"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/domain"
@@ -56,7 +57,13 @@ func (g *GC) Run(root string) (PruneResult, error) {
 	if err := g.localRepo.Init(root); err != nil {
 		return PruneResult{}, err
 	}
-	return pruneCache(g.localRepo)
+	result, err := pruneCache(g.localRepo)
+	if err == nil && !result.Skipped {
+		// Temp files of writes that died long ago; anything younger may
+		// belong to a write that starts right after the prune.
+		sweepMaterializeTemps(root, time.Now().Add(-staleTempAge))
+	}
+	return result, err
 }
 
 func lockShared(lr any) (func(), error) {

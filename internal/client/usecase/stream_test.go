@@ -147,7 +147,7 @@ func TestSyncWorkingCopy_StreamsRawChunksIntoWorkingFiles(t *testing.T) {
 	}
 }
 
-func TestSyncWorkingCopy_BuffersChunksTheCacheKeeps(t *testing.T) {
+func TestSyncWorkingCopy_StreamsCachedChunksIntoTheObjectCache(t *testing.T) {
 	lr, root := newDirectRepo(t)
 	require.NoError(t, lr.PinPaths([]string{"pinned"}))
 	data := map[serverDomain.Hash][]byte{}
@@ -173,9 +173,9 @@ func TestSyncWorkingCopy_BuffersChunksTheCacheKeeps(t *testing.T) {
 	require.Equal(t, "SHAREDFREE", string(readRepoFile(t, root, "free.bin")))
 	require.Equal(t, "SHAREDPIN", string(readRepoFile(t, root, "pinned/p.bin")))
 	require.Equal(t, "some text\n", string(readRepoFile(t, root, "notes.txt")))
-	require.Equal(t, map[serverDomain.Hash]int{chunker.Sum([]byte("FREE")): 1}, client.streamed, "only the chunk no cached file needs is streamed")
-	require.Len(t, client.buffered, 3)
-	require.Equal(t, 3, objectCount(t, root), "the pinned and text chunks are cached")
+	require.Len(t, client.streamed, 4, "cached chunks are streamed too, into the object cache")
+	require.Empty(t, client.buffered)
+	require.Equal(t, 3, objectCount(t, root), "the pinned and text chunks are cached, the free one is not")
 }
 
 func TestSyncWorkingCopy_StreamRejectsWrongContent(t *testing.T) {
@@ -359,4 +359,147 @@ func (r repeatReader) Read(p []byte) (int, error) {
 		p[i] = byte(r)
 	}
 	return len(p), nil
+}
+
+// bufferOnlyRepo hides the stream store of a real repository, like a
+// repository implementation that can only store whole chunks.
+type bufferOnlyRepo struct{ lr workingCopyLocalRepo }
+
+func (b bufferOnlyRepo) Snapshot() (*domain.Snapshot, error) { return b.lr.Snapshot() }
+func (b bufferOnlyRepo) MissingChunks(h []serverDomain.Hash) ([]serverDomain.Hash, error) {
+	return b.lr.MissingChunks(h)
+}
+func (b bufferOnlyRepo) StoreChunks(c []*serverDomain.ChunkData) error { return b.lr.StoreChunks(c) }
+func (b bufferOnlyRepo) OpenChunk(h serverDomain.Hash) (io.ReadCloser, error) {
+	return b.lr.OpenChunk(h)
+}
+func (b bufferOnlyRepo) LoadChunk(h serverDomain.Hash) ([]byte, error) { return b.lr.LoadChunk(h) }
+func (b bufferOnlyRepo) SaveStatEntries(e map[string]domain.StatEntry) error {
+	return b.lr.SaveStatEntries(e)
+}
+func (b bufferOnlyRepo) ListPins() ([]string, error) { return b.lr.(pinLister).ListPins() }
+
+func pinnedAndFreeTree(t *testing.T, data map[serverDomain.Hash][]byte) *serverDomain.TreeNode {
+	t.Helper()
+	return &serverDomain.TreeNode{
+		Name:         "root",
+		FileChildren: []*serverDomain.File{rawManifestFile("free.bin", data, "SHARED", "FREE")},
+		TreeChildren: []*serverDomain.TreeNode{{
+			Name:         "pinned",
+			FileChildren: []*serverDomain.File{rawManifestFile("p.bin", data, "SHARED", "PIN")},
+		}},
+	}
+}
+
+func TestSyncWorkingCopy_BuffersCachedChunksWithoutAStreamStore(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	require.NoError(t, lr.PinPaths([]string{"pinned"}))
+	data := map[serverDomain.Hash][]byte{}
+	client := newStreamingFake(data)
+
+	require.NoError(t, syncWorkingCopy(context.Background(), client, bufferOnlyRepo{lr}, root, pinnedAndFreeTree(t, data), domain.ChunkScope{Org: "o", Project: "p"}))
+
+	require.Equal(t, "SHAREDFREE", string(readRepoFile(t, root, "free.bin")))
+	require.Equal(t, "SHAREDPIN", string(readRepoFile(t, root, "pinned/p.bin")))
+	require.Equal(t, map[serverDomain.Hash]int{chunker.Sum([]byte("FREE")): 1}, client.streamed, "only the chunk no cached file needs is streamed")
+	require.Len(t, client.buffered, 2)
+	require.Equal(t, 2, objectCount(t, root))
+}
+
+func TestSyncWorkingCopy_StreamedCachedChunkIsVerified(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	require.NoError(t, lr.PinPaths([]string{"pinned"}))
+	data := map[serverDomain.Hash][]byte{}
+	tree := pinnedAndFreeTree(t, data)
+	data[chunker.Sum([]byte("SHARED"))] = []byte("FORGED")
+	client := newStreamingFake(data)
+
+	err := syncWorkingCopy(context.Background(), client, lr, root, tree, domain.ChunkScope{Org: "o", Project: "p"})
+	require.ErrorContains(t, err, "chunk hash mismatch")
+	require.Zero(t, objectCount(t, root)-countValidObjects(t, lr, data), "the forged chunk is not stored under the hash it claims")
+	requireNoTempFiles(t, root)
+	_, statErr := os.Stat(filepath.Join(root, "free.bin"))
+	require.True(t, os.IsNotExist(statErr), "no working file is written from a failed sync")
+}
+
+// countValidObjects counts the cached objects whose content matches a hash
+// the test data really has.
+func countValidObjects(t *testing.T, lr workingCopyLocalRepo, data map[serverDomain.Hash][]byte) int {
+	t.Helper()
+	n := 0
+	for h := range data {
+		if stored, err := lr.LoadChunk(h); err == nil && chunker.Sum(stored) == h {
+			n++
+		}
+	}
+	return n
+}
+
+func TestGuardedRemoveCached_TrustsAFreshFingerprint(t *testing.T) {
+	root := t.TempDir()
+	base := domain.SnapshotFile{Path: "old.bin", Hash: serverDomain.Hash{1}}
+	fingerprint := func(hash serverDomain.Hash) map[string]domain.StatEntry {
+		writeRepoFile(t, root, "old.bin", "bytes that hash to neither")
+		info, err := os.Stat(filepath.Join(root, "old.bin"))
+		require.NoError(t, err)
+		return map[string]domain.StatEntry{"old.bin": statEntryFromInfo(info, hash)}
+	}
+
+	removed, err := guardedRemoveCached(root, base, fingerprint(serverDomain.Hash{2}))
+	require.NoError(t, err)
+	require.False(t, removed, "a fingerprint of other content keeps the file without reading it")
+	require.FileExists(t, filepath.Join(root, "old.bin"))
+
+	removed, err = guardedRemoveCached(root, base, fingerprint(base.Hash))
+	require.NoError(t, err)
+	require.True(t, removed, "a fingerprint of the synced content removes it without reading it")
+	require.NoFileExists(t, filepath.Join(root, "old.bin"))
+
+	stale := fingerprint(base.Hash)
+	writeRepoFile(t, root, "old.bin", "edited after the fingerprint, longer")
+	removed, err = guardedRemoveCached(root, base, stale)
+	require.NoError(t, err)
+	require.False(t, removed, "a stale fingerprint is not trusted: the file is hashed and kept")
+}
+
+func TestRemoveLeftFiles(t *testing.T) {
+	root := t.TempDir()
+	hashOf := func(content string) serverDomain.Hash {
+		h, _, _, err := chunkFile("f", []byte(content), chunker.EncodingRaw)
+		require.NoError(t, err)
+		return h
+	}
+	var removals []domain.SnapshotFile
+	for _, name := range []string{"a.bin", "b.bin", "c.bin"} {
+		writeRepoFile(t, root, name, "synced "+name)
+		removals = append(removals, domain.SnapshotFile{Path: name, Hash: hashOf("synced " + name), Encoding: chunker.EncodingRaw})
+	}
+	writeRepoFile(t, root, "b.bin", "edited locally")
+
+	require.NoError(t, removeLeftFiles(context.Background(), root, &stubLocalRepo{}, removals))
+	require.NoFileExists(t, filepath.Join(root, "a.bin"))
+	require.FileExists(t, filepath.Join(root, "b.bin"), "a locally edited file that left the tree is kept")
+	require.NoFileExists(t, filepath.Join(root, "c.bin"))
+
+	require.NoError(t, removeLeftFiles(context.Background(), root, struct{}{}, nil))
+	wantErr := errors.New("stat cache failed")
+	require.ErrorIs(t, removeLeftFiles(context.Background(), root, &stubLocalRepo{statCacheErr: wantErr}, removals), wantErr)
+
+	require.NoError(t, os.Remove(filepath.Join(root, "b.bin")))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "b.bin"), 0o755))
+	require.ErrorContains(t, removeLeftFiles(context.Background(), root, struct{}{}, removals), "remove b.bin")
+}
+
+func TestTreeFileHelpers(t *testing.T) {
+	data := map[serverDomain.Hash][]byte{}
+	tree := sharedChunkTree(data)
+	var paths []string
+	walkTreeFiles(tree, "", func(path string, f *serverDomain.File) {
+		paths = append(paths, path)
+		require.Equal(t, f.Hash, treeFileHash(f), "the streamed hash equals the file hash")
+		require.Equal(t, f.Hash, materializedFromTree(path, f).FileHash)
+	})
+	require.Equal(t, []string{"a.bin", "empty.bin", "dir/b.bin"}, paths)
+	walkTreeFiles(nil, "", func(string, *serverDomain.File) { t.Fatal("a nil tree has no files") })
+	require.Len(t, flattenTree(tree, ""), 3)
 }

@@ -141,3 +141,16 @@ func TestSetupSparseSetCmd_InvalidConfigURL(t *testing.T) {
 	_, err := runCmdInDir(t, root, cli.setupSparseCheckoutCmd(), "set", "assets")
 	require.Error(t, err)
 }
+
+func TestSetupSparseCheckout_RefusesToOverwriteLocalEditsWithoutForce(t *testing.T) {
+	root, client := editedRepo(t)
+	cli := newSparseCli(t, client)
+
+	_, err := runCmdInDir(t, root, cli.setupSparseCheckoutCmd(), "disable")
+	require.ErrorContains(t, err, "local changes to 1 file(s) would be overwritten")
+	requireFileContent(t, root, "a.txt", "my local edit")
+
+	_, err = runCmdInDir(t, root, cli.setupSparseCheckoutCmd(), "disable", "--force")
+	require.NoError(t, err)
+	requireFileContent(t, root, "a.txt", "content from the server")
+}

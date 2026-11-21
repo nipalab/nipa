@@ -11,6 +11,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/fsperm"
 	"github.com/nipalab/nipa/internal/domain"
 )
 
@@ -110,7 +111,7 @@ func materializeFile(root string, f materializedFile, prevMode int, openChunk fu
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".nipa-materialize-*")
+	tmp, err := os.CreateTemp(dir, materializeTempPrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -125,7 +126,7 @@ func materializeFile(root string, f materializedFile, prevMode int, openChunk fu
 	if prevMode != 1 && isReadOnlyFile(fp) {
 		mode &^= 0o222
 	}
-	if err := tmp.Chmod(mode); err != nil {
+	if err := tmp.Chmod(fsperm.Mask(mode)); err != nil {
 		_ = tmp.Close()
 		return err
 	}

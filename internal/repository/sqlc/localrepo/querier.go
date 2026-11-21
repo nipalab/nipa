@@ -27,6 +27,7 @@ type Querier interface {
 	StagedFileDeleteAll(ctx context.Context) error
 	StagedFileInsert(ctx context.Context, path string) error
 	StagedFileList(ctx context.Context) ([]string, error)
+	StatCacheGet(ctx context.Context, path string) (StatCache, error)
 	StatCacheList(ctx context.Context) ([]StatCache, error)
 	StatCacheSweep(ctx context.Context) error
 	StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error

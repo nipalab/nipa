@@ -197,6 +197,14 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Get*TreeManifest`) assembles the stream directly into the domain tree
   (`treeAssembler`), with no protobuf/hex copy; `StreamTreeManifest` still
   returns the protobuf tree for the daemon proxy and `GetCommit`.
+  Chunk transfer URLs go through `transferURL`: a session whose server
+  address is `https://` refuses an `http://` chunk URL (upload and download)
+  unless `NIPA_ALLOW_INSECURE_CHUNK_URLS=1`, and the default HTTP client
+  follows at most 3 redirects and none from https to http
+  (`checkTransferRedirect`). A download is cancelled and retried when nothing
+  arrives for `Client.stallTimeout` (60 s, `stallGuard`, covering the wait
+  for the response and every gap in the body); the transport also bounds the
+  wait for response headers to 2 minutes.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are

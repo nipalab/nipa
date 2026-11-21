@@ -251,6 +251,8 @@ type Client struct {
 	uploadWorkers int
 	retry         retryPolicy
 	confirmMu     sync.Mutex
+	// stallTimeout is how long a chunk download may make no progress.
+	stallTimeout time.Duration
 }
 
 func NewClient(transport *Transport, session tokenSession, opts ...ClientOption) *Client {
@@ -262,6 +264,7 @@ func NewClient(transport *Transport, session tokenSession, opts ...ClientOption)
 		tuner:         newConcurrencyTuner(minUploadWorkers, maxUploadWorkers, defaultUploadWorkers),
 		uploadWorkers: defaultUploadWorkers,
 		retry:         defaultRetryPolicy,
+		stallTimeout:  defaultStallTimeout,
 	}
 	for _, opt := range opts {
 		opt(c)

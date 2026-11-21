@@ -67,7 +67,24 @@ offsets, and `settle` books it once (`downloadChunksStream` dedups under a
 lock, since streamed chunks are booked from the transfer workers), so memory
 no longer grows with chunk size or transfer concurrency; nothing a failed or
 repeated `receive` wrote is used, because files are swapped in only after
-every chunk settled, and everything else (zstd text, pinned raw, unknown chunk sizes)
+every chunk settled. Chunks the object cache keeps are streamed too
+(`syncStreamTarget`): into the cache through `localrepo.StoreChunkFrom`
+(temp file, hashed on the way, renamed only when the hash matches), and a
+chunk both a cached and a direct file need is stored first and placed from
+there; only a repository without `StoreChunkFrom` (test stubs) buffers them.
+`downloadMissing` (diff, blob, shelve, merge, the restore cache path) streams
+into the cache the same way. Planning walks the tree with `walkTreeFiles` and
+copies chunk lists only for the files it rewrites (`treeFileHash` compares an
+unchanged file without copying). Removals (`removeLeftFiles`) run on the
+`runPool` and trust a fresh `stat_cache` fingerprint before hashing a file.
+Every sync and restore brackets its writes with `beginWorkingWrite`
+(`usecase/sweep.go`): `localrepo.BeginWorkingWrite` keeps a locked marker in
+`.nipa/writes/`, so a marker nobody holds means a write was killed, and the
+next write then sweeps `.nipa-materialize-*` files older than itself minus 5 s
+from the working copy (younger ones re-arm the marker; nothing is walked on a
+clone that was never interrupted; `nipa gc` also removes ones older than an
+hour). Modes set by `Chmod` go through `fsperm.Mask`, which drops the group
+and other bits the process umask clears. Everything else (zstd text, pinned raw, unknown chunk sizes)
 goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Every
 server-supplied directory and file name is a single path segment
 (`domain.ValidateLocalPathSegment`: no empty/`.`/`..`, `/`, `\`, NUL, and no
@@ -186,6 +203,24 @@ error `content not cached locally; connect to the server`. A successful
 restore prunes the cache like update does (`pruneAfterSuccess`), so a
 downloaded unpinned binary does not stay in `.nipa/objects`. The daemon
 exposes it as the unary `Restore` RPC returning the refreshed status.
+
+Restore reads as little as it restores: when every target names one tracked
+file, `restoreSelection` looks them up with `SnapshotFile` instead of loading
+the snapshot, `restoreStatCache` reads their fingerprint rows
+(`localrepo.StatEntries`, up to 512 paths) instead of the whole `stat_cache`,
+and the prune only runs when the restore put content into the object cache.
+`changedFromSnapshot` keeps the chunk layout the hash pass produces
+(`rehashLayout`), and `restoreDirect` (`usecase/restore_direct.go`) rebuilds
+raw, unpinned files whose content is not cached without the cache: it asks
+the pinned commit's manifest for the chunk sizes
+(`GetCommitTreeManifest`, the restored paths, or the sparse set above 256
+files), builds a `directPlan`, copies cached chunks, copies the chunks the
+changed working file still holds from that file by offset (`salvage`: no
+second read-and-hash; trusted only while the file's size and mtime are what
+they were when hashed), and streams the rest from the server. A downloader
+without `GetCommitTreeManifest`, an unreachable server, a missing commit pin
+or a manifest that does not match the snapshot leaves the file to the cache
+path described above.
 
 Flow for `nipa diff [<rev1> [<rev2>]] [--] [<path>...]`: `cli/diff.go` splits
 revisions from paths (paths only after `--`; `<a>..<b>`/`<a>...<b>` expand to two

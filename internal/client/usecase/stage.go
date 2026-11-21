@@ -43,8 +43,9 @@ type WorkingCopyRepo interface {
 }
 
 type WorkingCopy struct {
-	localRepo  WorkingCopyRepo
-	root       string
+	localRepo WorkingCopyRepo
+	root      string
+	// hashFile replaces the working file hasher in tests; nil hashes the file.
 	hashFile   func(path, encoding string) (serverDomain.Hash, error)
 	auth       *Auth
 	downloader ContentDownloader
@@ -54,9 +55,7 @@ func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error
 	if err := localRepo.Init(root); err != nil {
 		return nil, err
 	}
-	w := &WorkingCopy{localRepo: localRepo, root: root}
-	w.hashFile = w.workingFileHash
-	return w, nil
+	return &WorkingCopy{localRepo: localRepo, root: root}, nil
 }
 
 // WithDownloader lets content reads fetch snapshot chunks that are missing
@@ -483,6 +482,8 @@ type statusHashJob struct {
 type statusHashResult struct {
 	hash serverDomain.Hash
 	err  error
+	// chunks is the file's chunk layout, kept only when a caller asks for it.
+	chunks []serverDomain.Chunk
 }
 
 const maxStatusHashWorkers = 8
@@ -501,13 +502,26 @@ func statusHashWorkers() int {
 // rehash hashes the files whose stat no longer matches the cache, with bounded
 // parallelism. Results are indexed so callers can walk them in path order.
 func (w *WorkingCopy) rehash(jobs []statusHashJob) []statusHashResult {
+	return w.rehashLayout(jobs, false)
+}
+
+// rehashLayout is rehash that can also keep each file's chunk layout (hashes
+// and sizes in file order), which the one read produces anyway.
+func (w *WorkingCopy) rehashLayout(jobs []statusHashJob, keepLayout bool) []statusHashResult {
 	results := make([]statusHashResult, len(jobs))
 	if len(jobs) == 0 {
 		return results
 	}
-	hashFile := w.hashFile
-	if hashFile == nil {
-		hashFile = w.workingFileHash
+	hashJob := func(job statusHashJob) statusHashResult {
+		if w.hashFile != nil {
+			hash, err := w.hashFile(job.path, job.encoding)
+			return statusHashResult{hash: hash, err: err}
+		}
+		hash, chunks, err := hashWorkingLayout(w.root, job.path, job.encoding)
+		if !keepLayout {
+			chunks = nil
+		}
+		return statusHashResult{hash: hash, err: err, chunks: chunks}
 	}
 	workers := statusHashWorkers()
 	if workers > len(jobs) {
@@ -520,9 +534,7 @@ func (w *WorkingCopy) rehash(jobs []statusHashJob) []statusHashResult {
 		go func() {
 			defer wg.Done()
 			for idx := range indices {
-				job := jobs[idx]
-				hash, err := hashFile(job.path, job.encoding)
-				results[idx] = statusHashResult{hash: hash, err: err}
+				results[idx] = hashJob(jobs[idx])
 			}
 		}()
 	}

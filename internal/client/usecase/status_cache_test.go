@@ -22,7 +22,7 @@ func (h *hashCount) Load() int { return int(h.n.Load()) }
 
 func countHashes(wc *WorkingCopy) *hashCount {
 	calls := &hashCount{}
-	orig := wc.hashFile
+	orig := wc.workingFileHash
 	wc.hashFile = func(path, encoding string) (serverDomain.Hash, error) {
 		calls.n.Add(1)
 		return orig(path, encoding)

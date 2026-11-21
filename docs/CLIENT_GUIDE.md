@@ -343,7 +343,10 @@ nipa sparse-checkout remove assets
 nipa sparse-checkout disable     # restore the full working copy
 ```
 
-Each command re-syncs the working copy immediately. Files outside the set are
+Each command re-syncs the working copy immediately, and like `nipa update`
+refuses when the sync would overwrite local changes; the new set is already
+saved at that point, so repeat the command with `--force` (or run
+`nipa update --force`) to complete it. Files outside the set are
 removed from disk but stay on the server; adding a prefix back downloads only
 what is missing. Push and update work with the sparse set, and pushes use the
 pinned head commit as the base so the server applies the delta to the full tree.
@@ -578,6 +581,9 @@ subdirectory.
 | `not a nipa repository (or any of the parent directories)` | Run the command inside a clone. |
 | A command unexpectedly prompts for credentials | No stored session for that host. Log in once with `nipa login --host <url>`, or set `NIPA_TOKEN_FILE` in headless environments. |
 | `local changes to N file(s) would be overwritten` on update or switch | The listed files have unpushed edits (or are untracked files in the way). Push or `nipa shelve` them, `nipa restore` them, or repeat with `--force` to discard them. |
+| `the server sent a cleartext (http) chunk transfer URL on a TLS session` | The server is reached over https but its chunk storage answers with http URLs. Fix the storage endpoint, or set `NIPA_ALLOW_INSECURE_CHUNK_URLS=1` to accept unencrypted transfers. |
+| `chunk transfer stalled` | A download received nothing for 60 seconds and its retries ran out. Check the connection and run the command again. |
+| `.nipa-materialize-*` files in the working copy | Left by a clone, update or restore that was killed. The next update, switch or restore removes them; `nipa gc` removes ones older than an hour. |
 | `changes are staged` when switching | Push the staged changes or unstage them (`nipa remove -a`) before `nipa switch`. |
 | `binary file ... requires a lock` | `nipa lock <path>` (or cover it with a directory lock) before pushing. |
 | `... is locked by <holder>` | Someone else's lock covers the path; ask them to unlock or use another path. |

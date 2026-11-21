@@ -116,3 +116,21 @@ func TestStatCache_NotInitialized(t *testing.T) {
 	require.Error(t, lr.SaveStatEntries(map[string]domain.StatEntry{"a.txt": statEntry(0x01, 1)}))
 	require.Error(t, lr.SweepStatCache())
 }
+
+func TestStatEntries_ReadsOnlyTheNamedPaths(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	t.Cleanup(func() { _ = lr.Close() })
+	want := domain.StatEntry{SizeBytes: 7, MtimeNS: 11, Mode: 2, Hash: serverDomain.Hash{9}, CachedAt: 13}
+	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{"a.bin": want, "b.bin": {SizeBytes: 1}}))
+
+	got, err := lr.StatEntries([]string{"a.bin", "missing.bin"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]domain.StatEntry{"a.bin": want}, got)
+
+	require.NoError(t, lr.Close())
+	_, err = lr.StatEntries([]string{"a.bin"})
+	require.Error(t, err)
+	_, err = NewLocalRepo().StatEntries(nil)
+	require.Error(t, err)
+}

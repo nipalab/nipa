@@ -37,6 +37,16 @@ type pristine struct {
 	repo   pristineRepo
 	auth   *Auth
 	client ContentDownloader
+	// statCache, when set, is used instead of loading the whole cache again.
+	statCache map[string]clientDomain.StatEntry
+	// stored, when set, is flagged once content was added to the object cache.
+	stored *bool
+}
+
+func (p pristine) markStored() {
+	if p.stored != nil {
+		*p.stored = true
+	}
 }
 
 func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomain.SnapshotFile) error {
@@ -44,9 +54,11 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 	if err != nil || len(missing) == 0 {
 		return err
 	}
-	statCache, err := p.repo.LoadStatCache()
-	if err != nil {
-		return err
+	statCache := p.statCache
+	if statCache == nil {
+		if statCache, err = p.repo.LoadStatCache(); err != nil {
+			return err
+		}
 	}
 	for _, f := range files {
 		if !needsAny(f, missing) {
@@ -156,36 +168,48 @@ func (p pristine) recapture(f clientDomain.SnapshotFile, statCache map[string]cl
 			return err
 		}
 		delete(missing, c.Hash)
+		p.markStored()
 		return nil
 	})
 	return err
 }
 
-func (p pristine) download(ctx context.Context, files []clientDomain.SnapshotFile, missing map[domain.Hash]struct{}) error {
+// connect reaches the clone's server and returns its address and the pinned
+// commit, which scopes what the clone may download.
+func (p pristine) connect(ctx context.Context) (*clientDomain.NipaUrl, string, error) {
 	if p.client == nil {
-		return clientDomain.NewUserError(errNotCached)
+		return nil, "", clientDomain.NewUserError(errNotCached)
 	}
 	cfg, err := p.repo.LoadConfig()
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if err := p.client.Connect(ctx, nu.Origin); err != nil {
-		return err
+		return nil, "", err
 	}
 	if p.auth != nil {
 		if err := p.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
-			return err
+			return nil, "", err
 		}
 	}
-	var commitID string
-	if pin, err := p.repo.LoadCommit(); err != nil {
+	pin, err := p.repo.LoadCommit()
+	if err != nil {
+		return nil, "", err
+	}
+	if pin == nil {
+		return nu, "", nil
+	}
+	return nu, pin.CommitID, nil
+}
+
+func (p pristine) download(ctx context.Context, files []clientDomain.SnapshotFile, missing map[domain.Hash]struct{}) error {
+	nu, commitID, err := p.connect(ctx)
+	if err != nil {
 		return err
-	} else if pin != nil {
-		commitID = pin.CommitID
 	}
 	paths := make([]string, 0, len(files))
 	var estimated int64
@@ -198,6 +222,7 @@ func (p pristine) download(ctx context.Context, files []clientDomain.SnapshotFil
 		hashes = append(hashes, h)
 	}
 	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(commitID), Paths: paths}
+	p.markStored()
 	return downloadMissing(ctx, p.client, p.repo, scope, hashes, estimated)
 }
 
