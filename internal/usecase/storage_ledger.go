@@ -37,4 +37,9 @@ type StorageLedger interface {
 	// (merge strategies), where only the project id is at hand.
 	// Implementations resolve the owning organization.
 	AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
+
+	// ReleaseProject drops every chunk link of a deleted project and gives its
+	// bytes back to the owner's quota. It returns the released bytes and is
+	// idempotent: releasing an already released project returns 0.
+	ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
 }

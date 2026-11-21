@@ -115,8 +115,10 @@ type Querier interface {
 	GetProject(ctx context.Context, id int64) (Project, error)
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
 	GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error)
+	GetProjectDeleted(ctx context.Context, id int64) (bool, error)
 	GetProjectOrgID(ctx context.Context, id int64) (int64, error)
 	GetProjectStorageServer(ctx context.Context, projectID int64) (StorageServer, error)
+	GetProjectUsageBytes(ctx context.Context, projectID int64) (int64, error)
 	GetStorageServer(ctx context.Context, id int64) (StorageServer, error)
 	GroupCreate(ctx context.Context, arg GroupCreateParams) (Group, error)
 	GroupGet(ctx context.Context, id int64) (Group, error)
@@ -157,7 +159,6 @@ type Querier interface {
 	IssueTrackerGetByOrg(ctx context.Context, orgID int64) (IssueTracker, error)
 	IssueTrackerLockOrg(ctx context.Context, lockKey int64) error
 	IssueTrackerUpdate(ctx context.Context, arg IssueTrackerUpdateParams) (IssueTracker, error)
-	ListExternalProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
@@ -165,6 +166,7 @@ type Querier interface {
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	ListQuotaOwners(ctx context.Context, arg ListQuotaOwnersParams) ([]int64, error)
 	ListStorageServersByOwner(ctx context.Context, ownerUserID int64) ([]StorageServer, error)
+	ListUnbilledProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
 	LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error

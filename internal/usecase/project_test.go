@@ -325,6 +325,69 @@ func TestProject_Delete_OrgOwner(t *testing.T) {
 	require.NoError(t, project.Delete(ctx, snow.ID(10)))
 }
 
+func TestProject_Delete_ReleasesStorage(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	rec := &captureRecorder{}
+	project.WithStorageLedger(ledger).WithAudit(rec)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1, Name: "Game", Slug: "game"}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	gomock.InOrder(
+		repo.EXPECT().Delete(gomock.Any(), snow.ID(10)).Return(nil),
+		ledger.EXPECT().ReleaseProject(gomock.Any(), snow.ID(10)).Return(int64(4096), nil),
+	)
+
+	require.NoError(t, project.Delete(permissionCtx(42), snow.ID(10)))
+	require.Equal(t, 1, rec.txs, "delete, release and audit share one transaction")
+	entry := rec.only(t)
+	require.Equal(t, domain.AuditProjectDeleted, entry.Action)
+	require.Equal(t, int64(4096), entry.Metadata["released_bytes"])
+	require.Equal(t, "game", entry.Metadata["slug"])
+}
+
+func TestProject_Delete_ReleaseErrorFailsTheDelete(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	rec := &captureRecorder{}
+	project.WithStorageLedger(ledger).WithAudit(rec)
+	errRelease := domain.NewErrorDatabase("boom")
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().Delete(gomock.Any(), snow.ID(10)).Return(nil)
+	ledger.EXPECT().ReleaseProject(gomock.Any(), snow.ID(10)).Return(int64(0), errRelease)
+
+	require.ErrorIs(t, project.Delete(permissionCtx(42), snow.ID(10)), errRelease)
+	require.Empty(t, rec.entries, "nothing is audited when the transaction fails")
+}
+
+func TestProject_Delete_RepoErrorSkipsRelease(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	project.WithStorageLedger(ledger)
+	errDelete := domain.NewErrorDatabase("boom")
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().Delete(gomock.Any(), snow.ID(10)).Return(errDelete)
+
+	require.ErrorIs(t, project.Delete(permissionCtx(42), snow.ID(10)), errDelete)
+}
+
+func TestProject_Delete_WithoutLedgerAuditsNoReleasedBytes(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	rec := &captureRecorder{}
+	project.WithAudit(rec)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().Delete(gomock.Any(), snow.ID(10)).Return(nil)
+
+	require.NoError(t, project.Delete(permissionCtx(42), snow.ID(10)))
+	require.NotContains(t, rec.entries[0].Metadata, "released_bytes", "the free server tracks no usage")
+}
+
 func TestProject_Delete_NoPermission(t *testing.T) {
 	project, repo, _, orgs := newTestProject(t)
 

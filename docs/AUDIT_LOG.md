@@ -58,7 +58,7 @@ Constants live in `internal/domain/audit_actions.go`.
 | `auth.refresh_token.reuse_detected` | `Auth.LoginWithRefreshToken` when a refresh session is presented with a stale secret (actor `system`; the session is deleted) | target = user; `session_id` (base36 row id), `reason` (`previous_secret_after_grace`, `unknown_secret`); never a secret or hash |
 | `project.created` | `Project.Create` | `name`, `slug`, `description` |
 | `project.updated` | `Project.Update` (skipped when unchanged) | `old`, `new` (`name`, `description`) |
-| `project.deleted` | `Project.Delete` | `name`, `slug` |
+| `project.deleted` | `Project.Delete` | `name`, `slug`, `released_bytes` (storage ledger on) |
 | `project.git_imported` | `Import.SetRefs` (`nipa import git`, once per run, in the ref transaction; the commits themselves are not audited) | target = project; `branches`, `tags` (refs asked for), `commits` (commits the client imported in this run), `update`, `default` (default branch asked for, may be empty), `results` (count per `<kind>.<status>`, e.g. `branch.created`, `tag.exists`, `default.updated`), `heads` (up to 100 `branch:<name>=<origin>` / `tag:<name>=<origin>` for refs created or moved) |
 | `webhook.created` / `webhook.deleted` | `Webhook.Create` / `Delete` | `name`, `url`, `events`, `path_prefix`, `is_active`, `insecure_tls` |
 | `webhook.updated` | `Webhook.Update` (skipped when unchanged) | `old`, `new` with the fields above |

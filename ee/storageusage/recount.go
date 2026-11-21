@@ -11,8 +11,8 @@ import (
 // link set and usage from the commit trees, then derives the org counter. It
 // takes the same per-owner advisory lock as Attribute, so a recount cannot
 // interleave with an in-flight confirm and leave the counters disagreeing with
-// the links. Projects on their own storage server are never attributed: their
-// links are dropped and they count nothing.
+// the links. Deleted projects and projects on their own storage server are
+// never attributed: their links are dropped and they count nothing.
 func (l *Ledger) RecountOrg(ctx context.Context, orgID snow.ID) error {
 	return l.transactor.WithinTx(ctx, func(ctx context.Context) error {
 		owner, err := l.BillingOwner(ctx, orgID)
@@ -37,11 +37,11 @@ func (l *Ledger) RecountOrg(ctx context.Context, orgID snow.ID) error {
 				return dbError(err)
 			}
 		}
-		external, err := l.queries.ListExternalProjectIDsByOrg(ctx, orgID.Int64())
+		unbilled, err := l.queries.ListUnbilledProjectIDsByOrg(ctx, orgID.Int64())
 		if err != nil {
 			return dbError(err)
 		}
-		for _, projectID := range external {
+		for _, projectID := range unbilled {
 			if err := l.queries.DeleteProjectChunks(ctx, projectID); err != nil {
 				return dbError(err)
 			}
