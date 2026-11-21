@@ -329,7 +329,7 @@ func TestDispatcher_EgressBlockedFailsImmediately(t *testing.T) {
 
 	row, _ := store.delivery(created.ID)
 	require.Equal(t, int64(1), row.Attempt, "blocked deliveries are not retried")
-	require.Contains(t, row.LastError, "egress allowlist")
+	require.Contains(t, row.LastError, "egress blocked")
 	require.Zero(t, hits.Load())
 }
 

@@ -51,3 +51,7 @@ export function parentPath(path: string): string {
   segments.pop()
   return segments.join('/')
 }
+
+export function issueUrl(org: string, project: string, key: string): string {
+  return `${repoUrl(org, project)}/issues/${encodeSegment(key)}`
+}

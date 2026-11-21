@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/render";
 
@@ -30,6 +30,22 @@ describe("IssueChips", () => {
     expect(chips).toHaveTextContent("GAME-1");
     expect(chips).toHaveTextContent("ART-2");
     expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(api.resolveIssues).not.toHaveBeenCalled();
+  });
+
+  it("links key-only chips to the tracker without bubbling the click to the row", () => {
+    const row = vi.fn();
+    renderWithProviders(
+      <div onClick={row}>
+        <IssueChips issues={issues} link />
+      </div>,
+    );
+    const link = screen.getByRole("link", { name: "GAME-1" });
+    expect(link).toHaveAttribute("href", "https://jira.test/browse/GAME-1");
+    expect(link).toHaveAttribute("target", "_blank");
+    link.addEventListener("click", (e) => e.preventDefault());
+    fireEvent.click(link);
+    expect(row).not.toHaveBeenCalled();
     expect(api.resolveIssues).not.toHaveBeenCalled();
   });
 

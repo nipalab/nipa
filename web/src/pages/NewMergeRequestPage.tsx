@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from '@primer/octicons-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createMergeRequest } from '../api/endpoints'
 import { useAuth } from '../auth'
+import { IssuePicker, useIssueInsertion, useIssueTrackerEnabled } from '../components/repo/IssuePicker'
 import { BranchPicker, MemberMultiPicker } from '../components/repo/MemberPicker'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
@@ -28,6 +29,8 @@ export default function NewMergeRequestPage() {
   const reviewerCandidates = (members ?? []).filter((member) => member.user_id !== me?.id)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const trackerEnabled = useIssueTrackerEnabled(org, project)
+  const issueInsertion = useIssueInsertion(description, setDescription)
 
   const targetBranch = target || defaultBranch
   const canSubmit = title.trim() !== '' && source !== '' && targetBranch !== '' && source !== targetBranch && !saving
@@ -79,8 +82,19 @@ export default function NewMergeRequestPage() {
         </FormControl>
         <FormControl>
           <FormControl.Label>Description</FormControl.Label>
-          <Textarea block rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+          <Textarea
+            block
+            rows={4}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            onBlur={issueInsertion.onBlur}
+          />
         </FormControl>
+        {trackerEnabled && (
+          <div>
+            <IssuePicker org={org} project={project} onPick={issueInsertion.insert} disabled={saving} />
+          </div>
+        )}
         <div className="nipa-branch-pair">
           <div>
             <span className="nipa-field-label">Base (target)</span>

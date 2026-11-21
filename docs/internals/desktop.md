@@ -127,9 +127,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   clone in `desktop.json` `lockWatches`; a `lock_released` event that covers
   one raises a "free" notification instead of the generic one and clicking
   it locks the file through `Navigation.Action`),
-  issue chips (`components/issues/IssueChips.tsx`: `Commit.issues` and
-  `MergeRequest.issues` from the `issue_keys` fields, omitted when empty;
-  plain key chips in list rows; the commit and merge request headers pass
+  issue chips (`components/issues/IssueChips.tsx`: `Commit.issues`,
+  `MergeRequest.issues` and `Branch.issues` from the `issue_keys` fields,
+  omitted when empty; plain key chips in list rows; the Branches view passes
+  `link` so its key chips open the issue URL (click does not bubble to the
+  row, no `ResolveIssues`); the commit and merge request headers pass
   `root`, link each chip to the tracker and call `ResolveIssues` (daemon
   `ProxyResolveIssues`, empty without a tracker) once per open view to show
   title and status, quietly key-only when the tracker is down or fails),

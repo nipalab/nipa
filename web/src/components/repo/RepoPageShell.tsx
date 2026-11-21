@@ -18,7 +18,7 @@ export function RepoPageShell({
 }: {
   org: string
   project: string
-  active: RepoTab
+  active?: RepoTab
   rev?: string
   canAdmin?: boolean
   heading?: ReactNode

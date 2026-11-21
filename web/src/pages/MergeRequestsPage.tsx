@@ -231,7 +231,7 @@ export default function MergeRequestsPage() {
                 </div>
                 {(request.issue_keys ?? []).length > 0 && (
                   <div className="nipa-list-row-meta">
-                    <IssueChips refs={request.issue_keys} issues={issues} />
+                    <IssueChips org={org} project={project} refs={request.issue_keys} issues={issues} />
                   </div>
                 )}
               </div>

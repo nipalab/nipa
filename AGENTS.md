@@ -75,7 +75,7 @@ enterprise).
 | Asset previews/diffs, budgets, provenance, references | `docs/internals/assets.md` | `docs/AI.md` |
 | `nipa mcp`, LLM generation | `docs/internals/ai.md` | `docs/AI.md` |
 | `nipa import git` | `docs/internals/git-import.md` | `docs/GIT_IMPORT.md` |
-| Tags, service tokens, issue tracker integration, org creation, file locks, merge requests/reviews/strategies | `docs/internals/server.md` | `docs/LOCKING.md`, `docs/BRANCH_MERGING.md`, `docs/WEBHOOKS.md`, `docs/PBAC.md` |
+| Tags, service tokens, issue tracker integration, org creation, file locks, merge requests/reviews/strategies | `docs/internals/server.md` | `docs/LOCKING.md`, `docs/BRANCH_MERGING.md`, `docs/WEBHOOKS.md`, `docs/PBAC.md`, `docs/ISSUE_TRACKER.md` |
 | Sessions, refresh tokens, SSH login, MFA | `docs/internals/auth.md` | `docs/SSH.md`, `docs/MFA.md` |
 | Email, SaaS onboarding, storage quota, BYO storage, billing | `docs/internals/saas.md` | `docs/EMAIL.md`, `docs/SAAS_ONBOARDING.md`, `docs/CLOUD_STORAGE_QUOTA.md`, `docs/BYO_STORAGE.md`, `docs/BILLING.md` |
 | Rate limit, audit log, maintenance mode, tracing, observability, benchmarks, Docker, deployment | `docs/internals/operations.md` | `docs/RATE_LIMIT.md`, `docs/AUDIT_LOG.md`, `docs/MAINTENANCE.md`, `docs/TRACING.md`, `docs/OBSERVABILITY.md`, `docs/PERFORMANCE.md`, `docs/DOCKER.md`, `docs/DEPLOY.md` |

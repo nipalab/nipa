@@ -86,8 +86,9 @@ site}`), `GetProject`/`PutProject`/`DeleteProject` (project admin; keys via
 `off|default_branch|all`). Tokens are sealed with `sealbox` (label `nipa
 issue tracker secret v1`, AAD `issue_tracker:<id>`) under
 `INTEGRATIONS_ENCRYPTION_KEY`; without it every route answers 503. Trackers
-are built by `GuardedIssueTrackerFactory(ISSUE_TRACKER_EGRESS_ALLOWLIST)`
-(`WithFactory` in tests); both config keys are validated at startup
+are built by `GuardedIssueTrackerFactory(ISSUE_TRACKER_EGRESS_ALLOWLIST)`,
+an `egress.Guard` whose list only adds private destinations on top of the
+always-allowed public ones, as for webhooks (`WithFactory` in tests); both config keys are validated at startup
 (`Config.ValidateIntegrations`). REST: `GET/PUT/DELETE /orgs/{org}/issue-tracker`,
 `POST .../issue-tracker/test`, `GET/PUT/DELETE
 /orgs/{org}/projects/{project}/issue-tracker`; audited as

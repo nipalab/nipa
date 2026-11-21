@@ -31,9 +31,8 @@ const (
 type ClientConfig struct {
 	// Timeout per attempt; defaults to DefaultTimeout.
 	Timeout time.Duration
-	// EgressAllowlist limits deliveries to these destinations. Entries may be
-	// hostnames (no port), IPs or CIDR ranges. Empty allows public addresses
-	// only; loopback, link-local and private ranges require an explicit entry.
+	// EgressAllowlist adds private destinations to the always-allowed public
+	// addresses. Entries may be hostnames (no port), IPs or CIDR ranges.
 	EgressAllowlist []string
 }
 
@@ -92,9 +91,6 @@ func (c *Client) Post(ctx context.Context, req PostRequest) Result {
 		return Result{Duration: time.Since(start), Err: err}
 	}
 
-	if err := c.guard.CheckURL(req.URL); err != nil {
-		return fail(err)
-	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.URL, bytes.NewReader(req.Payload))
 	if err != nil {
 		return fail(err)

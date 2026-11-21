@@ -1216,21 +1216,37 @@
 .nipa-issue-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 2px;
+  padding: 0 4px 0 6px;
   border: 1px solid var(--borderColor-default);
   border-radius: 999px;
   color: var(--fgColor-muted);
   font-size: 12px;
   line-height: 20px;
-  text-decoration: none;
   max-width: 100%;
 }
 
 .nipa-issue-chip:hover {
   border-color: var(--borderColor-accent-emphasis);
+}
+
+.nipa-issue-chip-main,
+.nipa-issue-chip-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.nipa-issue-chip-main:hover,
+.nipa-issue-chip-external:hover {
   color: var(--fgColor-accent);
   text-decoration: none;
+}
+
+.nipa-issue-chip-external {
+  padding: 0 2px;
 }
 
 .nipa-issue-key {

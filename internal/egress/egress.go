@@ -1,8 +1,8 @@
 // Package egress guards outbound HTTP requests whose destination is user
 // input (webhooks, issue trackers). Destinations are checked on the address
-// actually dialed: an empty allowlist admits public addresses only, a
-// configured allowlist admits only listed hosts or ranges. Resolving once and
-// dialing the validated IP keeps DNS rebinding from slipping past the check.
+// actually dialed: public addresses are always admitted, and the allowlist
+// adds private hosts or ranges on top. Resolving once and dialing the
+// validated IP keeps DNS rebinding from slipping past the check.
 package egress
 
 import (
@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -29,8 +28,8 @@ func IsBlocked(err error) bool {
 }
 
 type Config struct {
-	// Allowlist entries may be hostnames (no port), IPs or CIDR ranges. Empty
-	// allows public addresses only; loopback, link-local and private ranges
+	// Allowlist entries may be hostnames (no port), IPs or CIDR ranges allowed
+	// on top of public addresses; loopback, link-local and private ranges
 	// require an explicit entry.
 	Allowlist []string
 	// Label names the destination in errors ("webhook host ..."); defaults to
@@ -120,29 +119,6 @@ func (g *Guard) DialContext(ctx context.Context, network, addr string) (net.Conn
 	return nil, fmt.Errorf("%w: %s host %q has no addresses", ErrBlocked, g.label, host)
 }
 
-// CheckURL refuses early a URL whose host can never pass the allowlist. It
-// admits everything when no allowlist is set, since the dial guard decides.
-func (g *Guard) CheckURL(rawURL string) error {
-	if g.policy.Empty() {
-		return nil
-	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid %s url: %w", g.label, err)
-	}
-	host := parsed.Hostname()
-	if g.policy.AllowsHost(host) {
-		return nil
-	}
-	if ip := net.ParseIP(host); ip != nil && g.policy.AllowsIP(ip) {
-		return nil
-	}
-	if len(g.policy.nets) > 0 {
-		return nil
-	}
-	return fmt.Errorf("%w: %s host %q is not in the egress allowlist", ErrBlocked, g.label, parsed.Host)
-}
-
 type Policy struct {
 	hosts []string
 	nets  []*net.IPNet
@@ -201,10 +177,6 @@ func normalizeHost(host string) string {
 	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
-func (p Policy) Empty() bool {
-	return len(p.hosts) == 0 && len(p.nets) == 0
-}
-
 func (p Policy) AllowsHost(host string) bool {
 	host = normalizeHost(host)
 	for _, entry := range p.hosts {
@@ -224,14 +196,10 @@ func (p Policy) AllowsIP(ip net.IP) bool {
 	return false
 }
 
-// AllowsDial decides on the address the connection would use. An explicitly
-// listed hostname is trusted; otherwise the resolved IP must be listed, or be
-// public when no allowlist is configured.
+// AllowsDial decides on the address the connection would use: public, or a
+// listed IP, or behind an explicitly listed hostname.
 func (p Policy) AllowsDial(host string, ip net.IP) bool {
-	if p.AllowsHost(host) || p.AllowsIP(ip) {
-		return true
-	}
-	return p.Empty() && IsPublicIP(ip)
+	return IsPublicIP(ip) || p.AllowsHost(host) || p.AllowsIP(ip)
 }
 
 func IsPublicIP(ip net.IP) bool {

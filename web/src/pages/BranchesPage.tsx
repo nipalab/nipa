@@ -20,6 +20,7 @@ import { CopyButton } from '../components/CopyButton'
 import { FormDialog } from '../components/FormDialog'
 import { LoadMore } from '../components/LoadMore'
 import { absoluteTime, relativeTime, shortSha } from '../components/repo/format'
+import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { commitUrl, commitsUrl, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
@@ -90,6 +91,7 @@ export default function BranchesPage() {
   const { run, error: actionError, clearError } = useAction(reloadAll)
   const [renaming, setRenaming] = useState<BranchResponse | null>(null)
   const [query, setQuery] = useState('')
+  const issues = useIssues(org, project, collectIssueKeys(branches))
 
   async function toggleProtection(branch: BranchResponse) {
     if (branch.is_protected) {
@@ -145,6 +147,7 @@ export default function BranchesPage() {
                 <ShieldLockIcon size={12} /> Protected
               </Label>
             )}
+            <IssueChips org={org} project={project} refs={branch.issue_keys} issues={issues} />
           </div>
           <div className="nipa-list-row-meta">
             {branch.commit_id ? (
