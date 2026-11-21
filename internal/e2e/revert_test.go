@@ -25,6 +25,7 @@ func loadRevertState(t *testing.T, target string) *domain.RevertState {
 }
 
 func TestEndToEnd_Revert_HeadCommit(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -65,6 +66,7 @@ func TestEndToEnd_Revert_HeadCommit(t *testing.T) {
 }
 
 func TestEndToEnd_Revert_Range(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -108,6 +110,7 @@ func TestEndToEnd_Revert_Range(t *testing.T) {
 }
 
 func TestEndToEnd_Revert_ConflictContinue(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -150,6 +153,7 @@ func TestEndToEnd_Revert_ConflictContinue(t *testing.T) {
 }
 
 func TestEndToEnd_Revert_Abort(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -187,6 +191,7 @@ func TestEndToEnd_Revert_Abort(t *testing.T) {
 }
 
 func TestEndToEnd_Revert_RangeKeepsUntouchedFile(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

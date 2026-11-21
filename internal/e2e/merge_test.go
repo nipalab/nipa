@@ -82,6 +82,7 @@ func loadMergeState(t *testing.T, target string) *domain.MergeState {
 }
 
 func TestEndToEnd_Merge_FastForward(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -135,6 +136,7 @@ func TestEndToEnd_Merge_FastForward(t *testing.T) {
 }
 
 func TestEndToEnd_Merge_CleanThreeWay(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -190,6 +192,7 @@ func TestEndToEnd_Merge_CleanThreeWay(t *testing.T) {
 }
 
 func TestEndToEnd_Merge_ConflictResolve(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -246,6 +249,7 @@ func TestEndToEnd_Merge_ConflictResolve(t *testing.T) {
 }
 
 func TestEndToEnd_Merge_ConflictAbort(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

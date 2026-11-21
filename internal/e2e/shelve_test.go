@@ -103,6 +103,7 @@ var (
 // main, switches to a branch that moved the same text file, applies the
 // shelf there (three-way text merge) and pushes the result.
 func TestEndToEnd_ShelveSwitchApplyPush(t *testing.T) {
+	t.Parallel()
 	h := newShelfHarness(t)
 	work := h.clone(t, "work")
 	h.push(t, work, "seed", map[string]string{"notes.txt": "1\n2\n3\n4\n5\n", "art/hero.png": pngV1})
@@ -163,6 +164,7 @@ func TestEndToEnd_ShelveSwitchApplyPush(t *testing.T) {
 // teammate changed the same lines: the apply waits, push refuses, abort
 // restores the synced version, and a second apply is finished by resolving.
 func TestEndToEnd_ShelveConflictResolveAndAbort(t *testing.T) {
+	t.Parallel()
 	h := newShelfHarness(t)
 	work := h.clone(t, "work")
 	h.push(t, work, "seed", map[string]string{"a.txt": "base\n", "art/hero.png": pngV1})
@@ -238,6 +240,7 @@ func TestEndToEnd_ShelveConflictResolveAndAbort(t *testing.T) {
 // overwrite check before an update, "shelve and continue", the update, and
 // a conflicting apply resolved from the shelf.
 func TestEndToEnd_SyncPlanShelveThroughDaemon(t *testing.T) {
+	t.Parallel()
 	h := newShelfHarness(t)
 	work := h.clone(t, "work")
 	h.push(t, work, "seed", map[string]string{"a.txt": "a\n", "b.txt": "b\n"})

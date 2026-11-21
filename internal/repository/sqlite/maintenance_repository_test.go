@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
@@ -19,10 +18,7 @@ import (
 
 func newMaintenanceTestDB(t *testing.T) (*sql.DB, *sqlcSqlite.Queries) {
 	t.Helper()
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	require.NoError(t, database.MigrateUp(db, "sqlite3"))
+	db := dbtest.SQLite(t)
 	return db, sqlcSqlite.New(db)
 }
 

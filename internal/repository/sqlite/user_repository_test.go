@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/domain"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
@@ -17,12 +17,8 @@ import (
 func newSQLiteTestDB(t *testing.T) (*sql.DB, *sqlcSqlite.Queries) {
 	t.Helper()
 
-	db, err := database.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	db := dbtest.SQLite(t)
 	db.SetMaxOpenConns(1)
-
-	require.NoError(t, database.MigrateUp(db, "sqlite3"))
 	return db, sqlcSqlite.New(db)
 }
 

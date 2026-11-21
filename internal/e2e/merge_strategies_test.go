@@ -135,6 +135,7 @@ func lineage(t *testing.T, dbConn *sql.DB, head *serverDomain.Commit, n int) []*
 }
 
 func TestEndToEnd_MergeRequestSquashStrategy(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\nb\nc\n", "seed main")
 
@@ -179,6 +180,7 @@ func TestEndToEnd_MergeRequestSquashStrategy(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestMergeCommitStrategy(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\nb\nc\n", "seed main")
 
@@ -207,6 +209,7 @@ func TestEndToEnd_MergeRequestMergeCommitStrategy(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestRebaseStrategy(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\n", "seed main")
 
@@ -237,6 +240,7 @@ func TestEndToEnd_MergeRequestRebaseStrategy(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestRebaseAfterSourceMergedTarget(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\n", "seed main")
 
@@ -273,6 +277,7 @@ func TestEndToEnd_MergeRequestRebaseAfterSourceMergedTarget(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestBehindTargetStaysReviewGated(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\n", "seed main")
 
@@ -299,6 +304,7 @@ func TestEndToEnd_MergeRequestBehindTargetStaysReviewGated(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestAncestorSourceIsUpToDate(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\n", "seed main")
 
@@ -322,6 +328,7 @@ func TestEndToEnd_MergeRequestAncestorSourceIsUpToDate(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestStrategyConflicts(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\nb\nc\n", "seed main")
 
@@ -352,6 +359,7 @@ func TestEndToEnd_MergeRequestStrategyConflicts(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestAddAddConflict(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "a.txt", "a\n", "seed main")
 
@@ -368,6 +376,7 @@ func TestEndToEnd_MergeRequestAddAddConflict(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestMergeDeletesRemovedFiles(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "keep.txt", "keep\n", "seed keep")
 	env.commit(t, env.mainDir, "gone.txt", "gone\n", "seed gone")
@@ -388,6 +397,7 @@ func TestEndToEnd_MergeRequestMergeDeletesRemovedFiles(t *testing.T) {
 }
 
 func TestEndToEnd_MergeRequestMergeStrategyCopiesStoredChunks(t *testing.T) {
+	t.Parallel()
 	env := setupStrategyEnv(t)
 	env.commit(t, env.mainDir, "pack.bin", "\x00\x01\x02\x03packed", "seed main")
 

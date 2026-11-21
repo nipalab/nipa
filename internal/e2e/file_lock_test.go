@@ -57,6 +57,7 @@ func seedOtherUserLock(t *testing.T, dbConn *sql.DB, path string) {
 }
 
 func TestEndToEnd_FileLockPushLifecycle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 	grpcClient, auth := newLoggedInClient(t, host)
@@ -92,6 +93,7 @@ func TestEndToEnd_FileLockPushLifecycle(t *testing.T) {
 }
 
 func TestEndToEnd_FileLockConflictAndBranchScope(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -158,6 +160,7 @@ func TestEndToEnd_FileLockConflictAndBranchScope(t *testing.T) {
 }
 
 func TestEndToEnd_FileLockMergeRequest(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -249,6 +252,7 @@ func newClientWithPassword(t *testing.T, host, email, password string) (*clientg
 }
 
 func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -300,6 +304,7 @@ func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
 }
 
 func TestEndToEnd_FileLockExpiry(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host, uc := startTestServerWithUsecases(t, dbConn)

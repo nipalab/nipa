@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/db/dbtest"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
@@ -39,11 +39,8 @@ func newFileLockTestServer(t *testing.T) (*nipaServer, context.Context) {
 
 func newFileLockTestServerDB(t *testing.T) (*nipaServer, context.Context, *sql.DB) {
 	t.Helper()
-	dbConn, err := database.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, dbConn.Close()) })
+	dbConn := dbtest.SQLite(t)
 	dbConn.SetMaxOpenConns(1)
-	require.NoError(t, database.MigrateUp(dbConn, "sqlite3"))
 
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)

@@ -202,7 +202,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 - **Testing**: testify (`require`/`assert`) + gomock (`go.uber.org/mock`,
   `github.com/golang/mock` legacy mocks exist in `*_mock_test.go`). Server usecase
   tests use `NewMock<h1>...` gomock controllers; client usecases use hand-written
-  stubs. SQLite-backed tests use `t.TempDir()` for real DBs. Enterprise postgres
+  stubs. SQLite-backed tests use `t.TempDir()` for real DBs; get a migrated
+  server DB from `db/dbtest.SQLite(t)` (copies a once-migrated template)
+  rather than calling `MigrateUp` per test, which costs ~0.6s under `-race`. Enterprise postgres
   tests are testify suites over testcontainers (postgres + minio, one schema per
   test); override with `NIPA_TEST_POSTGRES_DSN`/`NIPA_TEST_S3_ENDPOINT`/
   `NIPA_TEST_S3_IMAGE` when using service containers.

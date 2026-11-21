@@ -19,12 +19,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build ./...
-
+      # go vet type-checks every package (tests included) and go test compiles
+      # them, so a separate `go build ./...` only adds a non-race build.
       - name: Vet
         run: go vet ./...
-      
+
       - name: Run Tests & Generate Reports
         run: |
           set -o pipefail
@@ -37,6 +36,28 @@ jobs:
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$NF); print $NF}')
           echo "total coverage: ${total}% (minimum ${MIN_COVERAGE}%)"
           awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { exit !(t+0 >= m+0) }'
+
+      - name: Upload Go coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-go
+          path: |
+            coverage.out
+            report.json
+          retention-days: 1
+
+  # Runs beside the main Go suite instead of after it; SonarQube merges both.
+  extra-coverage:
+    name: Desktop & VS Code coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
 
       - name: Desktop Go coverage
         working-directory: desktop
@@ -62,17 +83,37 @@ jobs:
           npm ci --ignore-scripts
           npx vitest run --coverage --coverage.reporter=lcov
 
-      - name: Upload Test and Coverage Reports
+      - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-and-coverage-reports
+          name: coverage-extra
           path: |
-            coverage.out
-            report.json
             desktop/coverage.out
             desktop/frontend/coverage/lcov.info
             plugins/vscode/coverage/lcov.info
+          retention-days: 1
+
+  godot-coverage:
+    name: Godot core coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Godot core coverage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+          python3 -m pip install --user --only-binary :all: gcovr==8.8
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          make godot-test GCOVR=gcovr
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-godot
+          path: plugins/godot/coverage.xml
           retention-days: 1
 
   lint:
@@ -158,16 +199,28 @@ jobs:
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, extra-coverage, godot-coverage]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 
-      - name: Download coverage report
+      # upload-artifact strips the paths' common prefix, so each artifact is
+      # downloaded to the directory it was uploaded from.
+      - name: Download Go coverage
         uses: actions/download-artifact@v4
         with:
-          name: test-and-coverage-reports
+          name: coverage-go
           path: .
+      - name: Download desktop & VS Code coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-extra
+          path: .
+      - name: Download Godot coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-godot
+          path: plugins/godot
       - name: Verify coverage file
         run: |
           if [ -f coverage.out ]; then
@@ -188,13 +241,6 @@ jobs:
             echo "❌ Report file not found!"
             exit 1
           fi
-      - name: Godot core coverage
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake
-          python3 -m pip install --user --only-binary :all: gcovr==8.8
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          make godot-test GCOVR=gcovr
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
         env:

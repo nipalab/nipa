@@ -72,6 +72,7 @@ func countTreeFiles(node *serverDomain.TreeNode) int {
 // directory, the recursive manifest and the commit/merge-request diff. It is
 // skipped unless NIPA_BENCH_FILES is set.
 func TestEndToEnd_WideTreeScale(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("wide-tree harness skipped in short mode")
 	}

@@ -19,6 +19,7 @@ import (
 // tree has 25000 files, so the unary PushRequest and GetTreeManifestResponse
 // would both exceed the 4 MiB gRPC message limit.
 func TestEndToEnd_ManifestsOverGRPCDefault(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("large manifest skipped in short mode")
 	}

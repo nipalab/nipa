@@ -14,6 +14,7 @@ import (
 )
 
 func TestEndToEnd_AddDeletedFilesPush(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	host := startTestServer(t, openTestDB(t))
 

@@ -21,6 +21,7 @@ import (
 // real gRPC surface: branch approvals, objection blocks, the reopened/merged
 // lifecycle events and the diff/commits RPCs.
 func TestEndToEnd_MergeRequestApprovalGate(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

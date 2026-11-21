@@ -42,6 +42,7 @@ func clientErrorCode(t *testing.T, err error) int {
 }
 
 func TestEndToEnd_PBACAdminSurface(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -124,6 +125,7 @@ func TestEndToEnd_PBACAdminSurface(t *testing.T) {
 }
 
 func TestEndToEnd_PBACDefaultDenyFolder(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -192,6 +194,7 @@ func TestEndToEnd_PBACDefaultDenyFolder(t *testing.T) {
 }
 
 func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -253,6 +256,7 @@ func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 }
 
 func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -353,6 +357,7 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 }
 
 func TestEndToEnd_PBACRuleSubjectValidation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)
@@ -381,6 +386,7 @@ func TestEndToEnd_PBACRuleSubjectValidation(t *testing.T) {
 }
 
 func TestEndToEnd_PBACOrgWideRuleDeletion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host := startTestServer(t, dbConn)

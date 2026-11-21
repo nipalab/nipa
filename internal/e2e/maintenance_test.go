@@ -26,6 +26,7 @@ import (
 )
 
 func TestEndToEnd_MaintenanceWindowsPropagate(t *testing.T) {
+	t.Parallel()
 	dbConn := openTestDB(t)
 	_, uc := startTestServerWithUsecases(t, dbConn)
 	ctx := serverDomain.ContextWithClaim(context.Background(), serverDomain.Claims{UserID: 1, IsSuperAdmin: true})
@@ -75,6 +76,7 @@ func rawChunk(t *testing.T, method, host, project string) *http.Response {
 }
 
 func TestEndToEnd_MaintenanceEnforcement(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host, uc := startTestServerWithUsecases(t, dbConn)
@@ -172,6 +174,7 @@ func TestEndToEnd_MaintenanceEnforcement(t *testing.T) {
 }
 
 func TestEndToEnd_MaintenanceAnnouncements(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	sender := &countingSender{}
