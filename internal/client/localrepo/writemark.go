@@ -110,10 +110,12 @@ func (l *LocalRepo) MarkInterruptedWrite() error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
-	if err := os.MkdirAll(l.writesDir(), 0o755); err != nil {
+	writes, err := ensureRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
+	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(l.writesDir(), interruptedMarker), os.O_RDWR|os.O_CREATE, 0o644)
+	defer func() { _ = writes.Close() }()
+	f, err := writes.OpenFile(interruptedMarker, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return err
 	}

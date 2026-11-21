@@ -31,25 +31,31 @@ type workingWriteMarker interface {
 // killed before it could clean up, the temp files it left in the working
 // copy are swept first; a clone that was never interrupted pays nothing. The
 // write also shares one folder guard (guardWrites) until it ends.
-func beginWorkingWrite(lr any, root string) func() {
+//
+// A marker that cannot be taken fails the write: the metadata guard refuses a
+// linked .nipa, and writing on regardless would act through the link.
+func beginWorkingWrite(lr any, root string) (func(), error) {
 	endGuard := guardWrites(root)
-	end := beginWriteMarker(lr, root)
+	end, err := beginWriteMarker(lr, root)
+	if err != nil {
+		endGuard()
+		return nil, err
+	}
 	return func() {
 		end()
 		endGuard()
-	}
+	}, nil
 }
 
-func beginWriteMarker(lr any, root string) func() {
+func beginWriteMarker(lr any, root string) (func(), error) {
 	marker, ok := lr.(workingWriteMarker)
 	if !ok {
-		return func() {}
+		return func() {}, nil
 	}
 	started := time.Now()
 	end, interrupted, err := marker.BeginWorkingWrite()
 	if err != nil {
-		slog.Warn("could not mark the working-copy write", "error", err)
-		return func() {}
+		return nil, err
 	}
 	if interrupted {
 		removed, young := sweepMaterializeTemps(root, started.Add(-sweepMargin))
@@ -60,7 +66,7 @@ func beginWriteMarker(lr any, root string) func() {
 			}
 		}
 	}
-	return end
+	return end, nil
 }
 
 // sweepMaterializeTemps removes the materialize temp files under root last

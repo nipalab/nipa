@@ -140,7 +140,11 @@ func (w *WorkingCopy) restoreSnapshotCached(ctx context.Context, paths []string,
 }
 
 func (w *WorkingCopy) restoreFiles(ctx context.Context, paths []string, tracked map[string]domain.SnapshotFile, cached *bool) error {
-	defer beginWorkingWrite(w.localRepo, w.root)()
+	endWrite, err := beginWorkingWrite(w.localRepo, w.root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	statCache, err := w.restoreStatCache(paths)
 	if err != nil {
 		return err

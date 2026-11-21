@@ -107,12 +107,15 @@ func (m *interruptedMarker) MarkInterruptedWrite() error {
 
 func TestBeginWorkingWrite_Degrades(t *testing.T) {
 	root := t.TempDir()
-	beginWorkingWrite(struct{}{}, root)()
-	beginWorkingWrite(failingMarker{}, root)()
+	end, err := beginWorkingWrite(struct{}{}, root)
+	require.NoError(t, err)
+	end()
 
 	leaveTemp(t, root, ".nipa-materialize-666", 0)
 	marker := &interruptedMarker{failingMarker: failingMarker{markErr: errors.New("read-only")}}
-	beginWorkingWrite(marker, root)()
+	end, err = beginWorkingWrite(marker, root)
+	require.NoError(t, err)
+	end()
 	require.Equal(t, 1, marker.remarked, "leftovers too young to remove keep the sweep pending")
 	require.Equal(t, 1, marker.ended)
 }
@@ -134,4 +137,31 @@ func TestIsMaterializeTemp(t *testing.T) {
 	require.False(t, isMaterializeTemp(".nipa-materialize-"))
 	require.False(t, isMaterializeTemp(".nipa-materialize-notes.txt"))
 	require.False(t, isMaterializeTemp("other"))
+}
+
+func TestBeginWorkingWrite_FailsWhenTheMarkerIsRefused(t *testing.T) {
+	root := t.TempDir()
+	end, err := beginWorkingWrite(failingMarker{}, root)
+	require.Error(t, err)
+	require.Nil(t, end)
+	// the folder guard was released: a later write is not blocked
+	end, err = beginWorkingWrite(struct{}{}, root)
+	require.NoError(t, err)
+	end()
+}
+
+func TestBeginWorkingWrite_RefusesALinkedMetadataFolder(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	outside := t.TempDir()
+	require.NoError(t, os.Rename(filepath.Join(root, ".nipa"), filepath.Join(t.TempDir(), "moved")))
+	if err := os.Symlink(outside, filepath.Join(root, ".nipa")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	end, err := beginWorkingWrite(lr, root)
+	require.Error(t, err)
+	require.Nil(t, end)
+	require.Contains(t, err.Error(), "symbolic link")
+	entries, rerr := os.ReadDir(outside)
+	require.NoError(t, rerr)
+	require.Empty(t, entries)
 }

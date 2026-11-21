@@ -414,7 +414,11 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	if err := validateSyncTree(tree); err != nil {
 		return err
 	}
-	defer beginWorkingWrite(lr, root)()
+	endWrite, err := beginWorkingWrite(lr, root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err

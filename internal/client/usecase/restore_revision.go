@@ -104,7 +104,11 @@ func (r *RevisionRestore) Run(ctx context.Context, root, path, commitID string, 
 	}
 	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(commitID), Paths: []string{p}}
 
-	defer beginWorkingWrite(r.repo, root)()
+	endWrite, err := beginWorkingWrite(r.repo, root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	if directEligible(file, nil) {
 		// The object cache never keeps a past revision, so raw content goes
 		// straight into the working file whether or not the path is pinned.

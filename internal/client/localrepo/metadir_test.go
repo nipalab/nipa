@@ -1,6 +1,9 @@
 package localrepo
 
 import (
+	"bytes"
+	"io"
+	"strings"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -279,4 +282,80 @@ func TestEnsureRealDirCreatesMissing(t *testing.T) {
 	info, err := os.Lstat(filepath.Join(root, ConfigDir, WritesDir))
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
+}
+
+func TestObjectWrites_RefuseLinkedFolders(t *testing.T) {
+	hash := chunker.Sum([]byte("payload"))
+	hex := hash.String()
+	cases := []struct{ name, rel string }{
+		{"nipa", ConfigDir},
+		{"objects", filepath.Join(ConfigDir, ObjectsDir)},
+		{"fanout", filepath.Join(ConfigDir, ObjectsDir, hex[:2])},
+	}
+	ops := map[string]func(*LocalRepo) error{
+		"putObject": func(l *LocalRepo) error { return l.putObject(hash, []byte("payload")) },
+		"StoreChunkFrom": func(l *LocalRepo) error {
+			_, err := l.StoreChunkFrom(hash, strings.NewReader("payload"))
+			return err
+		},
+		"MarkInterruptedWrite": func(l *LocalRepo) error { return l.MarkInterruptedWrite() },
+	}
+	for _, tc := range cases {
+		for opName, op := range ops {
+			if opName == "MarkInterruptedWrite" && tc.name == "fanout" {
+				continue
+			}
+			t.Run(tc.name+"/"+opName, func(t *testing.T) {
+				root := t.TempDir()
+				l := &LocalRepo{}
+				require.NoError(t, l.Init(root))
+				t.Cleanup(func() { _ = l.Close() })
+				link := filepath.Join(root, tc.rel)
+				require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
+				require.NoError(t, os.Rename(link, filepath.Join(t.TempDir(), "moved")))
+				outside := t.TempDir()
+				symlinkOrSkip(t, outside, link)
+				err := op(l)
+				requireLinkedMetadata(t, err, tc.rel)
+				entries, rerr := os.ReadDir(outside)
+				require.NoError(t, rerr)
+				require.Empty(t, entries)
+			})
+		}
+	}
+}
+
+func TestObjectWrites_NormalPaths(t *testing.T) {
+	root := t.TempDir()
+	l := &LocalRepo{}
+	require.NoError(t, l.Init(root))
+	t.Cleanup(func() { _ = l.Close() })
+	data := []byte("payload")
+	hash := chunker.Sum(data)
+	require.NoError(t, l.putObject(hash, data))
+	require.NoError(t, l.putObject(hash, data), "an existing object is kept")
+	n, err := l.StoreChunkFrom(hash, strings.NewReader("payload"))
+	require.NoError(t, err)
+	require.EqualValues(t, len(data), n)
+
+	other := []byte("other payload")
+	oh := chunker.Sum(other)
+	n, err = l.StoreChunkFrom(oh, bytes.NewReader(other))
+	require.NoError(t, err)
+	require.EqualValues(t, len(other), n)
+	_, err = l.StoreChunkFrom(oh, strings.NewReader("tampered"))
+	require.NoError(t, err)
+	bad := chunker.Sum([]byte("x"))
+	_, err = l.StoreChunkFrom(bad, strings.NewReader("y"))
+	require.ErrorContains(t, err, "hash mismatch")
+
+	rc, err := l.OpenChunk(oh)
+	require.NoError(t, err)
+	got, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	require.Equal(t, other, got)
+	require.NoError(t, l.MarkInterruptedWrite())
+	require.FileExists(t, filepath.Join(root, ConfigDir, WritesDir, interruptedMarker))
+	matches, _ := filepath.Glob(filepath.Join(root, ConfigDir, ObjectsDir, "*", tempFilePrefix+"*"))
+	require.Empty(t, matches)
 }
