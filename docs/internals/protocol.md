@@ -45,7 +45,14 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `files` (`path, mode, size_bytes, is_binary, chunk_hashes, encoding,
   chunk_sizes`; `chunk_sizes` parallels `chunk_hashes` and is filled by
   `domainFileToPB` from the chunk rows `ListFilesByTree` already joins, so it
-  costs no query, and left empty unless every chunk has a size). `GetBranch` takes
+  costs no query, and left empty unless every chunk has a size). File `mode`
+  is the `pb.FileMode` class, classified from the Unix permission by one rule,
+  `domain.ClassifyPerm` (any exec bit → EXECUTABLE, else no write bit →
+  READ_ONLY, else READ_WRITE; only `0o777` counts), shared by client status
+  (`serverModeFromPerm`) and the push transport (`intToPBFileMode`); the server
+  stores 0o755/0o444/0o644. Tree hashes do not include modes and tree contents
+  are shared by hash (`FileListByTree`), so a mode-only push is currently an
+  empty commit. `GetBranch` takes
   `branch_id` (base36) and `GetBranchByName` takes `name`; both return the branch
   with its head `commit_id`. `CreateBranch` takes `from_branch` and/or
   `from_commit_id`/`from_commit_hash` (exact fork point, base36/hex).
