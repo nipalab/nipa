@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -16,7 +17,8 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 		Short: "Show the current branch",
 		Long:  "Show the current branch of the local working copy, list all branches from the server with -a, create and switch to a new branch with -c, or delete a branch with -d. With --issue KEY the new branch is named after the issue (KEY-<slug of its title>, or the -c name prefixed with KEY) after the project's issue tracker confirmed it; a project without a tracker or a tracker that is down skips the check. Searches up to 32 parent directories for a .nipa/config file.",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if create, _ := cmd.Flags().GetString("create"); create == "--issue" && len(args) == 1 {
+			create, _ := cmd.Flags().GetString("create")
+			if strings.HasPrefix(create, "--issue") {
 				return nil
 			}
 			return cobra.NoArgs(cmd, args)
@@ -28,8 +30,16 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 			create, _ := cmd.Flags().GetString("create")
 			remove, _ := cmd.Flags().GetString("delete")
 			issue, _ := cmd.Flags().GetString("issue")
-			if create == "--issue" && len(args) == 1 {
-				create, issue = "", args[0]
+			if strings.HasPrefix(create, "--issue") {
+				// "-c --issue KEY": pflag consumed --issue as the value of -c.
+				switch {
+				case create == "--issue" && len(args) == 1:
+					create, issue = "", args[0]
+				case strings.HasPrefix(create, "--issue=") && len(args) == 0 && len(create) > len("--issue="):
+					create, issue = "", strings.TrimPrefix(create, "--issue=")
+				default:
+					return domain.NewUserError("--issue needs an issue key, e.g. --issue GAME-123")
+				}
 			}
 			creating := create != "" || issue != ""
 			selected := 0

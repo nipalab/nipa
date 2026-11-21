@@ -316,6 +316,10 @@ func TestSetupBranchCmd_Issue(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "\"GAME-12-new-rig\"")
 
+	out, err = runBranchCmd(t, cli, root, "-c", "--issue=GAME-12")
+	require.NoError(t, err)
+	require.Contains(t, out, "\"GAME-12-new-rig\"")
+
 	out, err = runBranchCmd(t, cli, root, "-c", "hero", "--issue", "GAME-12")
 	require.NoError(t, err)
 	require.Contains(t, out, "\"GAME-12-hero\"")
@@ -345,6 +349,12 @@ func TestSetupBranchCmd_IssueRefusals(t *testing.T) {
 	require.ErrorContains(t, err, "was not found")
 	_, err = runBranchCmd(t, cli, root, "--issue", "not-a-key")
 	require.ErrorContains(t, err, "is not an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue")
+	require.ErrorContains(t, err, "--issue needs an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue=")
+	require.ErrorContains(t, err, "--issue needs an issue key")
+	_, err = runBranchCmd(t, cli, root, "-c", "--issue", "GAME-12", "extra")
+	require.Error(t, err)
 	_, err = runBranchCmd(t, cli, root, "--issue", "GAME-12", "-d", "old")
 	require.ErrorContains(t, err, "mutually exclusive")
 	_, err = runBranchCmd(t, cli, root, "--issue", "GAME-12", "--json")
