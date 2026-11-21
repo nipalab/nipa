@@ -237,3 +237,46 @@ func TestOpenRealDirOpensRealTreeAndReportsMissing(t *testing.T) {
 	require.NoError(t, r.Close())
 	require.FileExists(t, filepath.Join(target, rel, "f"))
 }
+
+func TestEnsureRealDirRefusesLinkWithoutCreating(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(l *LocalRepo) error
+	}{
+		{"writes", func(l *LocalRepo) error { _, _, err := l.BeginWorkingWrite(); return err }},
+		{"shelves", func(l *LocalRepo) error { _, err := l.NewShelfWriter(); return err }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			l := &LocalRepo{}
+			require.NoError(t, l.Init(root))
+			require.NoError(t, os.RemoveAll(filepath.Join(root, ConfigDir, WritesDir)))
+			require.NoError(t, os.RemoveAll(filepath.Join(root, ConfigDir, ShelvesDir)))
+			outside := t.TempDir()
+			moved := filepath.Join(t.TempDir(), "moved")
+			require.NoError(t, os.Rename(filepath.Join(root, ConfigDir), moved))
+			symlinkOrSkip(t, outside, filepath.Join(root, ConfigDir))
+			err := tc.run(l)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "symbolic link")
+			entries, rerr := os.ReadDir(outside)
+			require.NoError(t, rerr)
+			require.Empty(t, entries)
+		})
+	}
+}
+
+func TestEnsureRealDirCreatesMissing(t *testing.T) {
+	root := t.TempDir()
+	l := &LocalRepo{}
+	require.NoError(t, l.Init(root))
+	end, _, err := l.BeginWorkingWrite()
+	require.NoError(t, err)
+	end()
+	w, err := l.NewShelfWriter()
+	require.NoError(t, err)
+	w.Abort()
+	info, err := os.Lstat(filepath.Join(root, ConfigDir, WritesDir))
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}

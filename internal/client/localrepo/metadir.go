@@ -102,3 +102,34 @@ func openRealChild(parent *os.Root, name, so string) (*os.Root, error) {
 	}
 	return r, nil
 }
+
+// ensureRealDir is openRealDir that creates a missing folder on the way, one
+// component at a time through the verified parent Root (Root.Mkdir), so
+// nothing is ever created through a link: a .nipa swapped for a link to
+// another folder is refused before anything is made in the link target.
+func ensureRealDir(target, rel string) (*os.Root, error) {
+	cur, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, err
+	}
+	so := ""
+	for _, part := range strings.Split(filepath.ToSlash(filepath.Clean(rel)), "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		so = filepath.Join(so, part)
+		if _, err := cur.Lstat(part); errors.Is(err, fs.ErrNotExist) {
+			if err := cur.Mkdir(part, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+				_ = cur.Close()
+				return nil, err
+			}
+		}
+		next, err := openRealChild(cur, part, so)
+		_ = cur.Close()
+		if err != nil {
+			return nil, err
+		}
+		cur = next
+	}
+	return cur, nil
+}

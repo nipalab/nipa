@@ -29,10 +29,7 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 		return nil, false, errors.New("local repo not initialized")
 	}
 	dir := l.writesDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, false, err
-	}
-	writes, err := openRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
+	writes, err := ensureRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
 	if err != nil {
 		return nil, false, err
 	}

@@ -64,9 +64,11 @@ func (l *LocalRepo) NewShelfWriter() (*ShelfWriter, error) {
 		return nil, errors.New("local repo not initialized")
 	}
 	root := l.shelvesRoot()
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	rootDir, err := ensureRealDir(l.target, filepath.Join(ConfigDir, ShelvesDir))
+	if err != nil {
 		return nil, err
 	}
+	_ = rootDir.Close()
 	if err := l.sweepShelfTemps(); err != nil {
 		return nil, err
 	}
