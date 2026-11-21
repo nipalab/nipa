@@ -87,9 +87,15 @@ func (w *WorkingCopy) restoreDirect(ctx context.Context, changed []domain.Snapsh
 		return entries, changed, nil
 	}
 	manifest := make(map[string]materializedFile)
-	for _, mf := range flattenTree(tree, "") {
-		manifest[mf.Path] = mf
+	wantPath := make(map[string]struct{}, len(need))
+	for _, f := range need {
+		wantPath[f.Path] = struct{}{}
 	}
+	walkTreeFiles(tree, "", func(path string, f *serverDomain.File) {
+		if _, ok := wantPath[path]; ok {
+			manifest[path] = materializedFromTree(path, f)
+		}
+	})
 	var jobs []materializeJob
 	var estimated int64
 	for _, f := range need {

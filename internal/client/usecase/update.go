@@ -655,14 +655,10 @@ type streamingDownloader interface {
 	DownloadChunksStream(ctx context.Context, scope clientDomain.ChunkScope, hashes []domain.Hash, stream *clientDomain.ChunkStream, onChunk func(h domain.Hash, data []byte) error) error
 }
 
-// downloadChunks fetches the missing chunks. The transport delivers chunks one
-// at a time, so delivery only books progress and hands each chunk to a worker
-// pool that verifies its hash and passes it to sink.
-func downloadChunks(ctx context.Context, client chunkDownloader, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, sink func(*domain.ChunkData) error, progress ...DownloadProgress) error {
-	return downloadChunksStream(ctx, client, scope, missing, estimatedBytes, sink, nil, progress...)
-}
-
-// downloadChunksStream is downloadChunks with an optional stream target: when
+// downloadChunksStream fetches the missing chunks. The transport delivers
+// chunks one at a time, so delivery only books progress and hands each chunk to
+// a worker pool that verifies its hash and passes it to sink. It takes an
+// optional stream target: when
 // the client can stream, the chunks the target wants go from the response body
 // straight to it and are never held in memory; with a client that cannot,
 // every chunk reaches sink.

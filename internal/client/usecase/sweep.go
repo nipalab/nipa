@@ -71,7 +71,7 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() || !strings.HasPrefix(d.Name(), materializeTempPrefix) {
+		if !d.Type().IsRegular() || !isMaterializeTemp(d.Name()) {
 			return nil
 		}
 		info, err := d.Info()
@@ -88,4 +88,20 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 		return nil
 	})
 	return removed, young
+}
+
+// isMaterializeTemp reports whether name is one os.CreateTemp made for
+// materializeTempPrefix: the prefix followed only by the random decimal
+// suffix, so a user file that merely starts with the prefix is left alone.
+func isMaterializeTemp(name string) bool {
+	suffix, ok := strings.CutPrefix(name, materializeTempPrefix)
+	if !ok || suffix == "" {
+		return false
+	}
+	for _, c := range suffix {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

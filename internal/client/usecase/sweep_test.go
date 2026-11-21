@@ -63,7 +63,7 @@ func TestSync_SweepsTempFilesOfAKilledWrite(t *testing.T) {
 	require.FileExists(t, leftover, "without a dead marker nothing walks the working copy")
 
 	leaveDeadWriteMarker(t, root)
-	fresh := leaveTemp(t, root, "dir/.nipa-materialize-fresh", 0)
+	fresh := leaveTemp(t, root, "dir/.nipa-materialize-555", 0)
 	require.NoError(t, syncTree(t, lr, root, &recordingDownloader{data: data}, tree))
 	require.NoFileExists(t, leftover, "the next write after a killed one sweeps its temp files")
 	require.FileExists(t, fresh, "a temp file as young as this write may belong to another process")
@@ -110,7 +110,7 @@ func TestBeginWorkingWrite_Degrades(t *testing.T) {
 	beginWorkingWrite(struct{}{}, root)()
 	beginWorkingWrite(failingMarker{}, root)()
 
-	leaveTemp(t, root, ".nipa-materialize-young", 0)
+	leaveTemp(t, root, ".nipa-materialize-666", 0)
 	marker := &interruptedMarker{failingMarker: failingMarker{markErr: errors.New("read-only")}}
 	beginWorkingWrite(marker, root)()
 	require.Equal(t, 1, marker.remarked, "leftovers too young to remove keep the sweep pending")
@@ -120,11 +120,18 @@ func TestBeginWorkingWrite_Degrades(t *testing.T) {
 func TestGC_SweepsOldTempFiles(t *testing.T) {
 	lr, root := newDirectRepo(t)
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
-	old := leaveTemp(t, root, "a/.nipa-materialize-old", 2*time.Hour)
-	recent := leaveTemp(t, root, "a/.nipa-materialize-recent", time.Minute)
+	old := leaveTemp(t, root, "a/.nipa-materialize-777", 2*time.Hour)
+	recent := leaveTemp(t, root, "a/.nipa-materialize-888", time.Minute)
 
 	_, err := NewGC(lr).Run(root)
 	require.NoError(t, err)
 	require.NoFileExists(t, old)
 	require.FileExists(t, recent, "gc cannot tell whether a recent temp file is in use")
+}
+
+func TestIsMaterializeTemp(t *testing.T) {
+	require.True(t, isMaterializeTemp(".nipa-materialize-123456"))
+	require.False(t, isMaterializeTemp(".nipa-materialize-"))
+	require.False(t, isMaterializeTemp(".nipa-materialize-notes.txt"))
+	require.False(t, isMaterializeTemp("other"))
 }
