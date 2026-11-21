@@ -38,12 +38,30 @@ func (r *threeWayResult) conflict(p, kind string, binary bool) {
 // neither the working copy nor the local metadata.
 func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result, scope domain.ChunkScope, write bool) (*threeWayResult, error) {
 	var needs []merge.File
-	for _, e := range res.Entries {
+	var writes []string
+	for p, e := range res.Entries {
 		switch e.Decision {
 		case merge.KeepTheirs:
 			needs = append(needs, e.Theirs)
+			writes = append(writes, p)
 		case merge.TextMerge:
 			needs = append(needs, e.Base, e.Ours, e.Theirs)
+			writes = append(writes, p)
+		}
+	}
+	if write {
+		defer guardWrites(root)()
+		if err := checkTargets(root, "write", writes); err != nil {
+			return nil, err
+		}
+		var removes []string
+		for _, p := range res.Deleted {
+			if _, ok := baseByPath[p]; ok {
+				removes = append(removes, p)
+			}
+		}
+		if err := checkTargets(root, "remove", removes); err != nil {
+			return nil, err
 		}
 	}
 	var want []serverDomain.Hash

@@ -413,6 +413,9 @@ func (s *Shelve) clearShelved(ctx context.Context, shelf *domain.Shelf, restore 
 
 // removeWorkingFile deletes a file and the folders it leaves empty.
 func removeWorkingFile(root, p string) error {
+	if err := checkRemoveInsideRoot(root, p); err != nil {
+		return err
+	}
 	abs := filepath.Join(root, filepath.FromSlash(p))
 	if err := os.Remove(abs); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err

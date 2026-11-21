@@ -111,7 +111,7 @@ func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
 }
 
 func createSizedTemp(root string, f materializedFile) (string, error) {
-	if err := checkWorkingPath(f.Path); err != nil {
+	if err := checkWriteInsideRoot(root, f.Path); err != nil {
 		return "", err
 	}
 	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(f.Path)))

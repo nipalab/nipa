@@ -351,26 +351,32 @@ func TestRevisionRestore_RefusesToWriteThroughASymlink(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(fx.root, ".nipa"), filepath.Join(fx.root, "meta")))
 
 	err := fx.run(t, "out/secret.txt", fx.commit)
-	requireCode(t, err, 400)
-	require.ErrorContains(t, err, "resolves outside the repository")
+	requireLinkRefusal(t, err, "write", "out/secret.txt", "out")
 	require.NoFileExists(t, filepath.Join(outside, "secret.txt"))
 	err = fx.run(t, "out/new/deeper/secret.txt", fx.commit)
-	require.ErrorContains(t, err, "resolves outside the repository", "folders that do not exist yet are checked through their parent")
+	requireLinkRefusal(t, err, "write", "out/new/deeper/secret.txt", "out")
 
-	require.ErrorContains(t, fx.run(t, "meta/x.txt", fx.commit), "cannot operate on path inside")
+	requireLinkRefusal(t, fx.run(t, "meta/x.txt", fx.commit), "write", "meta/x.txt", "meta")
 	require.NoFileExists(t, filepath.Join(fx.root, ".nipa", "x.txt"))
 	require.Empty(t, fx.client.dirs)
+	require.Empty(t, listing(t, outside))
+	requireNoTempFiles(t, fx.root)
+}
+
+func TestRevisionRestore_RefusesALinkPointingInsideTheClone(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"alias/a.txt": "old\n"})
+	symlinkOrSkip(t, fx.root, filepath.Join(fx.root, "alias"))
+	requireLinkRefusal(t, fx.run(t, "alias/a.txt", fx.commit), "write", "alias/a.txt", "alias")
+	require.Equal(t, "new\n", fx.read(t, "a.txt"))
 }
 
 func TestCheckWriteInsideRoot(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, checkWriteInsideRoot(root, "a/b/c.txt"))
-	require.Error(t, checkWriteInsideRoot(filepath.Join(root, "missing"), "a.txt"))
+	requireCode(t, checkWriteInsideRoot(root, "a/../../x.txt"), 400)
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o644))
-	err := checkWriteInsideRoot(root, "file/below/x.txt")
-	require.Error(t, err, "a file where a folder is needed")
-	require.NotErrorIs(t, err, os.ErrNotExist)
+	require.NoError(t, checkWriteInsideRoot(root, "file/below/x.txt"), "a file in the way is left to the write, which fails on it")
 }
 
 func TestRevisionRestore_RefusesPendingShelfApply(t *testing.T) {

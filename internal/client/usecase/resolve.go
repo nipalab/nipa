@@ -161,10 +161,16 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 
 	switch {
 	case res.Delete:
+		if err := checkRemoveInsideRoot(c.root, p); err != nil {
+			return err
+		}
 		if err := os.Remove(abs); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	case res.Content != nil:
+		if err := checkWriteInsideRoot(c.root, p); err != nil {
+			return err
+		}
 		if err := c.write(abs, res.Content, !file.Binary && !res.AllowMarkers, p, res.Mode); err != nil {
 			return err
 		}

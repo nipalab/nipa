@@ -30,8 +30,18 @@ type workingWriteMarker interface {
 // beginWorkingWrite marks a working-copy write on repositories that track
 // them and returns the function that ends it. When an earlier write was
 // killed before it could clean up, the temp files it left in the working
-// copy are swept first; a clone that was never interrupted pays nothing.
+// copy are swept first; a clone that was never interrupted pays nothing. The
+// write also shares one folder guard (guardWrites) until it ends.
 func beginWorkingWrite(lr any, root string) func() {
+	endGuard := guardWrites(root)
+	end := beginWriteMarker(lr, root)
+	return func() {
+		end()
+		endGuard()
+	}
+}
+
+func beginWriteMarker(lr any, root string) func() {
 	marker, ok := lr.(workingWriteMarker)
 	if !ok {
 		return func() {}

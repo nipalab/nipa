@@ -104,7 +104,44 @@ grpc manifest assembler and `GetMergeBase` reject a bad name, `syncWorkingCopy`
 re-checks the whole tree (`validateSyncTree`) before writing anything, and
 `materializeFile`/`createSizedTemp` refuse any unsafe path
 (`checkWorkingPath`), so merge/revert/shelve/restore writes are covered too;
-the root's own name is only a label. A repo that already tracks such a path
+the root's own name is only a label.
+
+Working-copy write guard (`usecase/write_guard.go`): names alone do not stop a
+write through a folder on disk that is a symlink or junction (`assets ->
+~/.ssh`, or `-> .nipa`). Every write or delete of a tracked path goes through
+`checkWriteInsideRoot` / `checkRemoveInsideRoot` (`checkWorkingPath` plus a
+`dirGuard.check`): `materializeFile`, `createSizedTemp` (direct plan),
+`guardedRemoveCached` (`removeLeftFiles`, three-way deletions),
+`removeWorkingFile` (shelve), `Conflicts.Resolve` (write and delete) and
+`RevisionRestore`. The rule: every folder below the root on the way to the path
+must not be a symlink (`ModeSymlink`) or a junction/name-surrogate reparse
+point (Go reports those as `ModeIrregular` without `ModeDir`; a folder with
+`ModeDir|ModeIrregular`, e.g. a OneDrive placeholder, is a real folder),
+wherever it points, even inside the clone; Nipa never tracks or materializes
+symlinks (`nipa import git --symlinks file` stores the target as content), so
+nothing legitimate is lost. The root itself is never Lstat'ed, so a clone
+reached through a symlink works. The final component may be a link: writes
+rename over it (`replaceFile`; the Windows read-only path only chmods a
+regular file, `isReadOnlyFile` uses `Lstat`) and deletes unlink it, never its
+target. Refusals are 400 user errors `refusing to write|remove %q: %q is a
+symbolic link` and are not bypassed by `--force`. Cost: a `dirGuard` caches
+each verified folder (and folders found missing, which the operation creates,
+so nothing below them is Lstat'ed), so a guard costs at most one `Lstat` per
+distinct folder; `beginWorkingWrite` (every sync and restore) and
+`applyThreeWay` open a `guardWrites(root)` scope that shares one guard across
+the planning check and every write-time check of that operation (scopes nest,
+keyed by the cleaned root, dropped when the last closes, so a later operation
+never trusts an earlier one's folders); outside a scope `guardFor` returns a
+fresh guard. Planning checks run before anything is read, downloaded or
+written: `syncWorkingCopyOpts` checks every file it rewrites and every
+removal (`checkSyncTargets`, before `localChangeConflicts`), `restoreFiles`
+the changed files (`checkRestoreTargets`, before `restoreDirect`), and
+`applyThreeWay` (write mode) its writes and deletions before
+`MissingChunks`. Residual risk: check-then-write is not atomic; a local process
+that swaps a verified folder for a link mid-operation is not stopped (no
+`openat`-style walk). `.nipa/` itself and root-level files written by
+`SaveProvenance` (rename over a link) and `ignore.AppendRules` (`os.WriteFile`,
+follows a symlinked `.nipaignore`; user-initiated) are outside the guard. A repo that already tracks such a path
 fails to sync with a 400 "refusing to sync unsafe path" error. `isNipaPath`
 (stage/push/restore/shelve exclusion) uses the same case-insensitive
 `domain.IsMetadataSegment`. Clone,
@@ -254,8 +291,8 @@ the files they cover, not targets × tracked files.
 daemon `RestoreRevision`) writes one file of a commit over the working file
 (an explicit overwrite: local edits to that file are replaced, nothing is
 staged). The path goes through `cleanBlobPath` and `checkWorkingPath` before
-any request, and `checkWriteInsideRoot` refuses a path whose nearest existing
-folder resolves outside the clone or into `.nipa` through a symlink. It holds
+any request, and `checkWriteInsideRoot` refuses a path below a symlinked
+folder (the working-copy write guard below). It holds
 the shared repo lock, refuses a pending merge, revert or shelf apply, a path
 outside the sparse set and a folder, and brackets the write with
 `beginWorkingWrite`. The file's entry comes from the manifest of its folder

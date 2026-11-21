@@ -103,7 +103,7 @@ var chunkBufferPool = sync.Pool{New: func() any { return &chunkBuffers{} }}
 // was tracked with before (0 when unknown): a read-only file that the previous
 // tracked mode does not explain is a local lock, so it stays read-only.
 func materializeFile(root string, f materializedFile, prevMode int, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
-	if err := checkWorkingPath(f.Path); err != nil {
+	if err := checkWriteInsideRoot(root, f.Path); err != nil {
 		return err
 	}
 	fp := filepath.Join(root, filepath.FromSlash(f.Path))

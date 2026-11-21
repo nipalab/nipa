@@ -128,4 +128,39 @@ var _ = Describe("nipa update", func() {
 		Expect(res.ExitCode).To(Equal(0), res.Stderr)
 		Expect(readText(dir, "src/deep/file.txt")).To(Equal("v2\n"))
 	})
+
+	It("refuses to write through a symlinked folder, even forced", func() {
+		project := newProject("update-symlink")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"assets/a.txt": []byte("v1\n"),
+			"top.txt":      []byte("top v1\n"),
+		}, "seed")
+
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		outside := filepath.Join(parent, "outside")
+		Expect(os.Mkdir(outside, 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(outside, "a.txt"), []byte("v1\n"), 0o644)).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(dir, "assets"))).To(Succeed())
+		if err := os.Symlink(outside, filepath.Join(dir, "assets")); err != nil {
+			Skip("symlinks unavailable: " + err.Error())
+		}
+
+		seedRepo(orgSlug, project, map[string][]byte{
+			"assets/a.txt":   []byte("v2\n"),
+			"assets/new.bin": append([]byte{0x00}, randomBytes(1024)...),
+			"top.txt":        []byte("top v2\n"),
+		}, "remote update")
+
+		for _, args := range [][]string{{"update"}, {"update", "--force"}} {
+			res := runNipa(dir, args...)
+			Expect(res.ExitCode).NotTo(Equal(0), res.Output())
+			Expect(res.Output()).To(MatchRegexp(`refusing to write "assets/[a-z.]+": "assets" is a symbolic link`))
+			Expect(readText(dir, "top.txt")).To(Equal("top v1\n"), "nothing is written when the sync is refused")
+			entries, err := os.ReadDir(outside)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).To(HaveLen(1))
+			Expect(readText(outside, "a.txt")).To(Equal("v1\n"), "the link target is untouched")
+		}
+	})
 })

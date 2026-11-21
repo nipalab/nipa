@@ -463,6 +463,16 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		want = append(want, f.ChunkHashes...)
 	})
 
+	var removals []clientDomain.SnapshotFile
+	for path, base := range baseByPath {
+		if _, kept := present[path]; !kept {
+			removals = append(removals, base)
+		}
+	}
+	if err := checkSyncTargets(root, jobFiles, removals); err != nil {
+		return err
+	}
+
 	conflicts, err := localChangeConflicts(ctx, root, lr, replaced)
 	if err != nil {
 		return err
@@ -523,12 +533,6 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		statEntries[path] = entry
 	}
 
-	var removals []clientDomain.SnapshotFile
-	for path, base := range baseByPath {
-		if _, kept := present[path]; !kept {
-			removals = append(removals, base)
-		}
-	}
 	if err := removeLeftFiles(ctx, root, lr, removals); err != nil {
 		return err
 	}
@@ -539,6 +543,24 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 	}
 	return nil
+}
+
+// checkSyncTargets refuses a sync, before anything is read, downloaded or
+// written, when a file it writes or removes sits below a symbolic link or
+// junction.
+func checkSyncTargets(root string, writes []materializedFile, removals []clientDomain.SnapshotFile) error {
+	paths := make([]string, 0, len(writes))
+	for _, f := range writes {
+		paths = append(paths, f.Path)
+	}
+	if err := checkTargets(root, "write", paths); err != nil {
+		return err
+	}
+	paths = paths[:0]
+	for _, f := range removals {
+		paths = append(paths, f.Path)
+	}
+	return checkTargets(root, "remove", paths)
 }
 
 type chunkStreamStore interface {
@@ -902,6 +924,9 @@ func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 // guardedRemoveCached is guardedRemove that trusts a fresh stat fingerprint
 // instead of reading the file.
 func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache map[string]clientDomain.StatEntry) (bool, error) {
+	if err := checkRemoveInsideRoot(root, base.Path); err != nil {
+		return false, err
+	}
 	fp := filepath.Join(root, filepath.FromSlash(base.Path))
 	if entry, ok := statCache[base.Path]; ok {
 		if info, err := os.Lstat(fp); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
