@@ -235,11 +235,11 @@ func TestDirectPlan_StreamFailsOnUnwritableTemp(t *testing.T) {
 	defer plan.cleanup()
 	h := chunker.Sum([]byte("AAAA"))
 
-	require.NoError(t, os.Remove(plan.files[1].tmp))
+	require.NoError(t, os.Remove(filepath.Join(plan.root, plan.files[1].tmp)))
 	_, err = plan.receive(h, bytes.NewReader([]byte("AAAA")))
 	require.Error(t, err, "the copy to the second file has nowhere to go")
 
-	require.NoError(t, os.Remove(plan.files[0].tmp))
+	require.NoError(t, os.Remove(filepath.Join(plan.root, plan.files[0].tmp)))
 	_, err = plan.receive(h, bytes.NewReader([]byte("AAAA")))
 	require.Error(t, err)
 	require.Error(t, copyTarget(plan.targets[h][0], plan.targets[h][1]))
@@ -273,7 +273,7 @@ func TestDirectPlan_RetryAfterOversizedBrokenBody(t *testing.T) {
 	require.NoError(t, plan.settle(head))
 	require.True(t, plan.files[0].done.Load())
 
-	got, err := os.ReadFile(plan.files[0].tmp)
+	got, err := os.ReadFile(filepath.Join(plan.root, plan.files[0].tmp))
 	require.NoError(t, err)
 	require.Equal(t, "AAAATAIL", string(got))
 }

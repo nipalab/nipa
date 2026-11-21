@@ -107,7 +107,7 @@ func TestMaterializeWritersRefuseUnsafePaths(t *testing.T) {
 	for _, p := range []string{"../escaped.bin", "a/../../escaped.bin", ".nipa/config", "a/.NIPA/x", ""} {
 		f := materializedFile{Path: p, SizeBytes: 1}
 		require.ErrorContains(t, materializeFile(root, f, 0, nil), "refusing to sync unsafe path", p)
-		_, err := createSizedTemp(root, f)
+		_, err := createSizedTemp(testWorkTree(t, root), root, f)
 		require.ErrorContains(t, err, "refusing to sync unsafe path", p)
 	}
 	require.NoFileExists(t, filepath.Join(parent, "escaped.bin"))

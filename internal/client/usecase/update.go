@@ -414,7 +414,11 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	if err := validateSyncTree(tree); err != nil {
 		return err
 	}
-	defer beginWorkingWrite(lr, root)()
+	endWrite, err := beginWorkingWrite(lr, root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err
@@ -462,6 +466,16 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		jobFiles = append(jobFiles, f)
 		want = append(want, f.ChunkHashes...)
 	})
+
+	var removals []clientDomain.SnapshotFile
+	for path, base := range baseByPath {
+		if _, kept := present[path]; !kept {
+			removals = append(removals, base)
+		}
+	}
+	if err := checkSyncTargets(root, jobFiles, removals); err != nil {
+		return err
+	}
 
 	conflicts, err := localChangeConflicts(ctx, root, lr, replaced)
 	if err != nil {
@@ -523,12 +537,6 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		statEntries[path] = entry
 	}
 
-	var removals []clientDomain.SnapshotFile
-	for path, base := range baseByPath {
-		if _, kept := present[path]; !kept {
-			removals = append(removals, base)
-		}
-	}
 	if err := removeLeftFiles(ctx, root, lr, removals); err != nil {
 		return err
 	}
@@ -539,6 +547,24 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 	}
 	return nil
+}
+
+// checkSyncTargets refuses a sync, before anything is read, downloaded or
+// written, when a file it writes or removes sits below a symbolic link or
+// junction.
+func checkSyncTargets(root string, writes []materializedFile, removals []clientDomain.SnapshotFile) error {
+	paths := make([]string, 0, len(writes))
+	for _, f := range writes {
+		paths = append(paths, f.Path)
+	}
+	if err := checkTargets(root, "write", paths); err != nil {
+		return err
+	}
+	paths = paths[:0]
+	for _, f := range removals {
+		paths = append(paths, f.Path)
+	}
+	return checkTargets(root, "remove", paths)
 }
 
 type chunkStreamStore interface {
@@ -879,8 +905,8 @@ func fileExists(root, path string) bool {
 	return err == nil
 }
 
-func isReadOnlyFile(p string) bool {
-	info, err := os.Lstat(p)
+func isReadOnlyIn(fsys replaceFS, p string) bool {
+	info, err := fsys.Lstat(p)
 	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o200 == 0
 }
 
@@ -902,20 +928,39 @@ func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 // guardedRemoveCached is guardedRemove that trusts a fresh stat fingerprint
 // instead of reading the file.
 func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache map[string]clientDomain.StatEntry) (bool, error) {
-	fp := filepath.Join(root, filepath.FromSlash(base.Path))
+	if err := checkRemoveInsideRoot(root, base.Path); err != nil {
+		return false, err
+	}
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	name := filepath.FromSlash(base.Path)
+	dir, done, err := wt.dirOf("remove", name, false)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer done()
+	leaf := filepath.Base(name)
 	if entry, ok := statCache[base.Path]; ok {
-		if info, err := os.Lstat(fp); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
+		if info, err := dir.Lstat(leaf); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
 			if entry.Hash != base.Hash {
 				return false, nil
 			}
-			err := os.Remove(fp)
+			err := dir.Remove(leaf)
 			if os.IsNotExist(err) {
 				err = nil
 			}
 			return true, err
 		}
 	}
-	f, err := os.Open(fp)
+	f, err := dir.Open(leaf)
+	if isRootEscape(err) {
+		// The file was replaced by a link out of the clone: not content
+		// this sync wrote, so it is kept like any local change.
+		return false, nil
+	}
 	if os.IsNotExist(err) {
 		return true, nil
 	}
@@ -935,7 +980,7 @@ func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache 
 		return false, err
 	}
 	if chunker.FileHash(hashes) == base.Hash {
-		return true, os.Remove(fp)
+		return true, dir.Remove(leaf)
 	}
 	return false, nil
 }

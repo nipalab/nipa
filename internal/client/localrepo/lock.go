@@ -2,9 +2,12 @@ package localrepo
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/nipalab/nipa/internal/client/domain"
 )
 
 const LockFile = "lock"
@@ -15,7 +18,35 @@ func (l *LocalRepo) openLock() (*os.File, error) {
 	if l.db == nil {
 		return nil, errors.New("local repo not initialized")
 	}
-	return os.OpenFile(filepath.Join(l.target, ConfigDir, LockFile), os.O_RDWR|os.O_CREATE, 0o644)
+	dir, err := openRealDir(l.target, ConfigDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = dir.Close() }()
+	rel := filepath.Join(ConfigDir, LockFile)
+	found, err := dir.Lstat(LockFile)
+	switch {
+	case err == nil:
+		if kind := domain.LinkKind(found.Mode()); kind != "" {
+			return nil, linkedMetadataError(rel, kind)
+		}
+	case !errors.Is(err, fs.ErrNotExist):
+		return nil, err
+	}
+	f, err := dir.OpenFile(LockFile, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if found != nil {
+		if opened, err := f.Stat(); err != nil || !os.SameFile(opened, found) {
+			_ = f.Close()
+			if err == nil {
+				err = linkedMetadataError(rel, "file that changed while it was opened")
+			}
+			return nil, err
+		}
+	}
+	return f, nil
 }
 
 // LockShared blocks until the repository lock is held in shared mode.

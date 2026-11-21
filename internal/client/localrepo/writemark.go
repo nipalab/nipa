@@ -1,7 +1,10 @@
 package localrepo
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,39 +30,45 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 	if l.db == nil {
 		return nil, false, errors.New("local repo not initialized")
 	}
-	dir := l.writesDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	writes, err := ensureRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
+	if err != nil {
 		return nil, false, err
 	}
-	entries, err := os.ReadDir(dir)
+	// The root stays open until end runs; every error path closes it.
+	keep := false
+	defer func() {
+		if !keep {
+			_ = writes.Close()
+		}
+	}()
+	entries, err := fs.ReadDir(writes.FS(), ".")
 	if err != nil {
 		return nil, false, err
 	}
 	var stale []string
 	live := false
 	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		switch markerState(path) {
+		switch markerState(writes, entry.Name()) {
 		case markerStale:
-			stale = append(stale, path)
+			stale = append(stale, entry.Name())
 		case markerLive:
 			live = true
 		}
 	}
 	if !live {
-		for _, path := range stale {
-			_ = os.Remove(path)
+		for _, name := range stale {
+			_ = writes.Remove(name)
 		}
 		interrupted = len(stale) > 0
 	}
 
-	marker, err := os.CreateTemp(dir, "w-*")
+	marker, name, err := createMarker(writes)
 	if err != nil {
 		return nil, false, err
 	}
 	if ok, err := tryLockExclusiveFile(marker); err != nil || !ok {
 		_ = marker.Close()
-		_ = os.Remove(marker.Name())
+		_ = writes.Remove(name)
 		if err == nil {
 			err = errors.New("could not lock the working-copy write marker")
 		}
@@ -70,10 +79,30 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 		once.Do(func() {
 			_ = unlockFile(marker)
 			_ = marker.Close()
-			_ = os.Remove(marker.Name())
+			_ = writes.Remove(name)
+			_ = writes.Close()
 		})
 	}
+	keep = true
 	return end, interrupted, nil
+}
+
+// createMarker creates a new marker with a random name inside the verified
+// writes folder.
+func createMarker(writes *os.Root) (*os.File, string, error) {
+	for range 10 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return nil, "", err
+		}
+		name := "w-" + hex.EncodeToString(b[:])
+		f, err := writes.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, name, err
+	}
+	return nil, "", errors.New("could not create a working-copy write marker")
 }
 
 type markerLock int
@@ -84,8 +113,8 @@ const (
 	markerLive
 )
 
-func markerState(path string) markerLock {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+func markerState(dir *os.Root, name string) markerLock {
+	f, err := dir.OpenFile(name, os.O_RDWR, 0)
 	if err != nil {
 		return markerGone
 	}
@@ -108,10 +137,12 @@ func (l *LocalRepo) MarkInterruptedWrite() error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
-	if err := os.MkdirAll(l.writesDir(), 0o755); err != nil {
+	writes, err := ensureRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
+	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(l.writesDir(), interruptedMarker), os.O_RDWR|os.O_CREATE, 0o644)
+	defer func() { _ = writes.Close() }()
+	f, err := writes.OpenFile(interruptedMarker, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return err
 	}

@@ -138,7 +138,10 @@ tests/
     branch_test.go        nipa branch
     push_test.go          nipa push (+ add/remove/status glue)
     restore_test.go       nipa restore (discard modifications/deletions)
-    update_test.go        nipa update
+    restore_direct_test.go nipa restore of raw binaries takes the direct path
+                          (no chunk reaches .nipa/objects: fan-out folders a
+                          prune leaves behind are the probe) vs. text control
+    update_test.go        nipa update (incl. refusing a symlinked folder)
     switch_test.go        nipa switch (branches, detached tags)
     shelve_test.go        nipa shelve (untracked selection, binary/text
                           conflicts, continue/abort, tag and sparse clones,

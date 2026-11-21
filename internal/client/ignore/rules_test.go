@@ -133,3 +133,55 @@ func TestImportGitignore_BOM(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(root, FileName))
 	require.Equal(t, "# imported from .gitignore\nnode_modules/\n", string(data))
 }
+
+func TestAppendRules_ReplacesALinkedIgnoreFile(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(t.TempDir(), "shared-ignore")
+	require.NoError(t, os.WriteFile(target, []byte("*.tmp\n"), 0o644))
+	if err := os.Symlink(target, filepath.Join(root, FileName)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	added, err := AppendRules(root, []string{"*.tmp", "*.log"})
+	require.NoError(t, err)
+	require.Equal(t, 1, added)
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "*.tmp\n", string(got), "the link target is never written")
+	info, err := os.Lstat(filepath.Join(root, FileName))
+	require.NoError(t, err)
+	require.True(t, info.Mode().IsRegular(), "the link is replaced by a real file")
+	got, err = os.ReadFile(filepath.Join(root, FileName))
+	require.NoError(t, err)
+	require.Equal(t, "*.tmp\n*.log\n", string(got), "the rules in effect are kept")
+	requireOnly(t, root, FileName)
+}
+
+func TestAppendRules_KeepsTheFileMode(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, FileName, "a\n")
+	require.NoError(t, os.Chmod(filepath.Join(root, FileName), 0o600))
+	_, err := AppendRules(root, []string{"b"})
+	require.NoError(t, err)
+	info, err := os.Stat(filepath.Join(root, FileName))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	requireOnly(t, root, FileName)
+}
+
+func TestAppendRules_ReportsAWriteFailure(t *testing.T) {
+	_, err := AppendRules(filepath.Join(t.TempDir(), "missing"), []string{"a"})
+	require.ErrorContains(t, err, "write ignore rules")
+}
+
+// requireOnly asserts dir holds exactly names: no temp file is left behind.
+func requireOnly(t *testing.T, dir string, names ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	require.ElementsMatch(t, names, got)
+}

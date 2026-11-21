@@ -161,11 +161,20 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 
 	switch {
 	case res.Delete:
-		if err := os.Remove(abs); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := checkRemoveInsideRoot(c.root, p); err != nil {
+			return err
+		}
+		wt := acquireWorkTree(c.root)
+		err := wt.remove(filepath.FromSlash(p))
+		wt.release()
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	case res.Content != nil:
-		if err := c.write(abs, res.Content, !file.Binary && !res.AllowMarkers, p, res.Mode); err != nil {
+		if err := checkWriteInsideRoot(c.root, p); err != nil {
+			return err
+		}
+		if err := c.write(res.Content, !file.Binary && !res.AllowMarkers, p, res.Mode); err != nil {
 			return err
 		}
 	case !file.Binary:
@@ -181,7 +190,9 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 	return c.markResolved(p)
 }
 
-func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p string, mode int) error {
+// write replaces p's working file with content through a temp file in its
+// folder, inside the work tree.
+func (c *Conflicts) write(content io.Reader, checkMarkers bool, p string, mode int) error {
 	if checkMarkers {
 		data, err := io.ReadAll(content)
 		if err != nil {
@@ -192,32 +203,37 @@ func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p st
 		}
 		content = bytes.NewReader(data)
 	}
-	perm := os.FileMode(0o644)
-	if mode != 0 {
-		perm = materializedMode(mode)
-	} else if info, err := os.Stat(abs); err == nil {
-		perm = info.Mode().Perm()
-	}
-	dir := filepath.Dir(abs)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".nipa-resolve-*")
+	wt := acquireWorkTree(c.root)
+	defer wt.release()
+	name := filepath.FromSlash(p)
+	dir, done, err := wt.dirOf("write", name, true)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	if _, err := io.Copy(tmp, content); err != nil {
-		_ = tmp.Close()
+	defer done()
+	leaf := filepath.Base(name)
+	perm := os.FileMode(0o644)
+	if mode != 0 {
+		perm = materializedMode(mode)
+	} else if info, err := dir.Lstat(leaf); err == nil && info.Mode().IsRegular() {
+		perm = info.Mode().Perm()
+	}
+	tmp, tmpName, err := createTempIn(dir, ".nipa-resolve-")
+	if err != nil {
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	defer func() { _ = dir.Remove(tmpName) }()
+	_, err = io.Copy(tmp, content)
+	if err == nil {
+		err = tmp.Chmod(perm)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), perm); err != nil {
-		return err
-	}
-	return replaceFile(tmp.Name(), abs)
+	return replaceIn(dir, tmpName, leaf)
 }
 
 func checkWorkingMarkers(abs, p string) error {

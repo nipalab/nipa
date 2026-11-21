@@ -3,9 +3,11 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -108,15 +110,15 @@ func TestReplaceFile_MissingSourceOverReadOnly(t *testing.T) {
 	requireReadOnly(t, dst, true)
 }
 
-func TestIsReadOnlyFile(t *testing.T) {
+func TestIsReadOnlyIn(t *testing.T) {
 	dir := t.TempDir()
-	require.False(t, isReadOnlyFile(filepath.Join(dir, "absent")))
-	require.False(t, isReadOnlyFile(dir))
+	require.False(t, isReadOnlyIn(pathFS{}, filepath.Join(dir, "absent")))
+	require.False(t, isReadOnlyIn(pathFS{}, dir))
 	fp := filepath.Join(dir, "f")
 	require.NoError(t, os.WriteFile(fp, nil, 0o644))
-	require.False(t, isReadOnlyFile(fp))
+	require.False(t, isReadOnlyIn(pathFS{}, fp))
 	makeReadOnly(t, fp)
-	require.True(t, isReadOnlyFile(fp))
+	require.True(t, isReadOnlyIn(pathFS{}, fp))
 }
 
 func TestMaterializeFile_TrackedModeTransitions(t *testing.T) {
@@ -254,4 +256,93 @@ func TestRestore_TrustsAFreshStatFingerprint(t *testing.T) {
 	}
 
 	require.NoError(t, wc.Restore(context.Background(), []string{"a.txt"}))
+}
+
+// skipIfPermissionsIgnored skips a test that relies on a folder's mode
+// refusing writes, which root and Windows do not honour.
+func skipIfPermissionsIgnored(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("folder permissions do not refuse writes here")
+	}
+}
+
+func TestMaterializeFile_FilesystemFailures(t *testing.T) {
+	data := []byte("payload")
+	open := func(serverDomain.Hash) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(data)), nil }
+	file := func(p string) materializedFile {
+		return materializedFile{Path: p, Mode: 2, SizeBytes: int64(len(data)), ChunkHashes: []serverDomain.Hash{chunker.Sum(data)}}
+	}
+
+	t.Run("parent path is a file", func(t *testing.T) {
+		root := t.TempDir()
+		writeRepoFile(t, root, "dir", "a file")
+		require.Error(t, materializeFile(root, file("dir/x.bin"), 0, open))
+		require.Equal(t, "a file", string(readRepoFile(t, root, "dir")))
+		requireNoTempFiles(t, root)
+	})
+	t.Run("unwritable parent folder", func(t *testing.T) {
+		skipIfPermissionsIgnored(t)
+		root := t.TempDir()
+		dir := filepath.Join(root, "locked")
+		require.NoError(t, os.Mkdir(dir, 0o555))
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+		require.ErrorIs(t, materializeFile(root, file("locked/x.bin"), 0, open), os.ErrPermission)
+		require.NoFileExists(t, filepath.Join(dir, "x.bin"))
+	})
+	t.Run("chunk cannot be opened", func(t *testing.T) {
+		root := t.TempDir()
+		writeRepoFile(t, root, "x.bin", "old")
+		failing := func(serverDomain.Hash) (io.ReadCloser, error) { return nil, errors.New("cache gone") }
+		require.ErrorContains(t, materializeFile(root, file("x.bin"), 0, failing), "cache gone")
+		require.Equal(t, "old", string(readRepoFile(t, root, "x.bin")), "the working file is kept")
+		requireNoTempFiles(t, root)
+	})
+	t.Run("rename fails", func(t *testing.T) {
+		root := t.TempDir()
+		writeRepoFile(t, root, "x.bin/inside", "keep")
+		require.Error(t, materializeFile(root, file("x.bin"), 0, open), "a non-empty folder cannot be replaced by a file")
+		require.Equal(t, "keep", string(readRepoFile(t, root, "x.bin/inside")))
+		requireNoTempFiles(t, root)
+	})
+	t.Run("root cannot be created", func(t *testing.T) {
+		parent := t.TempDir()
+		writeRepoFile(t, parent, "file", "x")
+		require.Error(t, materializeFile(filepath.Join(parent, "file", "clone"), file("x.bin"), 0, open))
+	})
+	t.Run("missing root is created", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "new")
+		require.NoError(t, materializeFile(root, file("d/x.bin"), 0, open))
+		require.Equal(t, data, readRepoFile(t, root, "d/x.bin"))
+	})
+}
+
+func TestPathFS(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "f")
+	require.NoError(t, os.WriteFile(fp, []byte("x"), 0o644))
+	fsys := pathFS{}
+	require.NoError(t, fsys.Chmod(fp, 0o600))
+	info, err := fsys.Stat(fp)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm()&0o600)
+}
+
+func TestCreateSizedTemp_FilesystemFailures(t *testing.T) {
+	root := t.TempDir()
+	wt := testWorkTree(t, root)
+	writeRepoFile(t, root, "dir", "a file")
+	_, err := createSizedTemp(wt, root, materializedFile{Path: "dir/x.bin"})
+	require.Error(t, err, "the parent path is a file")
+
+	_, err = createSizedTemp(wt, root, materializedFile{Path: "x.bin", SizeBytes: -1})
+	require.Error(t, err, "a size the file cannot take")
+	requireNoTempFiles(t, root)
+
+	skipIfPermissionsIgnored(t)
+	dir := filepath.Join(root, "locked")
+	require.NoError(t, os.Mkdir(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	_, err = createSizedTemp(wt, root, materializedFile{Path: "locked/x.bin"})
+	require.ErrorIs(t, err, os.ErrPermission)
 }

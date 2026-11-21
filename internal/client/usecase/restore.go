@@ -140,12 +140,19 @@ func (w *WorkingCopy) restoreSnapshotCached(ctx context.Context, paths []string,
 }
 
 func (w *WorkingCopy) restoreFiles(ctx context.Context, paths []string, tracked map[string]domain.SnapshotFile, cached *bool) error {
-	defer beginWorkingWrite(w.localRepo, w.root)()
+	endWrite, err := beginWorkingWrite(w.localRepo, w.root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	statCache, err := w.restoreStatCache(paths)
 	if err != nil {
 		return err
 	}
 	changed, layouts := w.changedFromSnapshot(paths, tracked, statCache)
+	if err := checkRestoreTargets(w.root, changed); err != nil {
+		return err
+	}
 	statEntries, cachedFiles, err := w.restoreDirect(ctx, changed, layouts)
 	if err != nil {
 		return restoreError(err)
@@ -171,6 +178,16 @@ func (w *WorkingCopy) restoreFiles(ctx context.Context, paths []string, tracked 
 		return nil
 	}
 	return w.localRepo.SaveStatEntries(statEntries)
+}
+
+// checkRestoreTargets refuses a restore before it downloads or writes
+// anything when a file it rewrites sits below a symbolic link or junction.
+func checkRestoreTargets(root string, changed []domain.SnapshotFile) error {
+	paths := make([]string, 0, len(changed))
+	for _, f := range changed {
+		paths = append(paths, f.Path)
+	}
+	return checkTargets(root, "write", paths)
 }
 
 // restoreError names the file a failed materialization stopped at.

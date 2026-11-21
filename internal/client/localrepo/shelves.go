@@ -50,31 +50,48 @@ func shelfObjectPath(dir string, hash serverDomain.Hash) string {
 }
 
 // ShelfWriter fills a shelf in a temporary folder; Commit makes it visible
-// in one rename once every byte is on disk.
+// in one rename once every byte is on disk. It keeps the verified shelves
+// folder open as an os.Root and does every mkdir, write, rename and removal
+// through it, so a link swapped in under the shelves folder (or the temp
+// folder) while the shelf is written is never followed. The root is closed by
+// Commit and Abort.
 type ShelfWriter struct {
-	root  string
+	root  *os.Root
 	tmp   string
 	id    string
 	dirs  map[string]bool
 	bytes int64
 }
 
+var errShelfWriterClosed = errors.New("shelf writer is closed")
+
 func (l *LocalRepo) NewShelfWriter() (*ShelfWriter, error) {
 	if l.db == nil {
 		return nil, errors.New("local repo not initialized")
 	}
-	root := l.shelvesRoot()
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	root, err := ensureRealDir(l.target, filepath.Join(ConfigDir, ShelvesDir))
+	if err != nil {
 		return nil, err
 	}
-	sweepShelfTemps(root)
+	w, err := l.allocateShelf(root)
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return w, nil
+}
+
+func (l *LocalRepo) allocateShelf(root *os.Root) (*ShelfWriter, error) {
+	if err := l.sweepShelfTemps(); err != nil {
+		return nil, err
+	}
 	for attempt := 0; attempt < 8; attempt++ {
 		id := strconv.FormatInt(time.Now().UnixNano()+int64(attempt), 36)
-		if _, err := os.Stat(filepath.Join(root, id)); err == nil {
+		if _, err := root.Lstat(id); err == nil {
 			continue
 		}
-		tmp := filepath.Join(root, shelfTmpPrefix+id)
-		if err := os.Mkdir(tmp, 0o755); err != nil {
+		tmp := shelfTmpPrefix + id
+		if err := root.Mkdir(tmp, 0o755); err != nil {
 			if errors.Is(err, fs.ErrExist) {
 				continue
 			}
@@ -85,10 +102,18 @@ func (l *LocalRepo) NewShelfWriter() (*ShelfWriter, error) {
 	return nil, errors.New("could not allocate a shelf id")
 }
 
-func sweepShelfTemps(root string) {
-	entries, err := os.ReadDir(root)
+// sweepShelfTemps removes the temp folders of shelves that were never
+// committed, through the shelves folder opened as an os.Root; it fails only
+// when that folder cannot be opened as a real one.
+func (l *LocalRepo) sweepShelfTemps() error {
+	root, err := openRealDir(l.target, filepath.Join(ConfigDir, ShelvesDir))
 	if err != nil {
-		return
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return nil
 	}
 	cutoff := time.Now().Add(-staleTempAge)
 	for _, e := range entries {
@@ -96,60 +121,86 @@ func sweepShelfTemps(root string) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
-			_ = os.RemoveAll(filepath.Join(root, e.Name()))
+			_ = root.RemoveAll(e.Name())
 		}
 	}
+	return nil
 }
 
 func (w *ShelfWriter) Bytes() int64 { return w.bytes }
 
 func (w *ShelfWriter) PutChunk(hash serverDomain.Hash, data []byte) error {
+	if w.root == nil {
+		return errShelfWriterClosed
+	}
 	p := shelfObjectPath(w.tmp, hash)
-	if _, err := os.Stat(p); err == nil {
+	if _, err := w.root.Stat(p); err == nil {
 		return nil
 	}
 	dir := filepath.Dir(p)
 	if !w.dirs[dir] {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := w.root.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 		w.dirs[dir] = true
 	}
-	if err := writeSynced(p, data); err != nil {
+	if err := writeSynced(w.root, p, data); err != nil {
 		return err
 	}
 	w.bytes += int64(len(data))
 	return nil
 }
 
+// Commit publishes the shelf with one rename and closes the writer. On any
+// failure the temp folder is removed, as Abort does.
 func (w *ShelfWriter) Commit(shelf *domain.Shelf) error {
+	if w.root == nil {
+		return errShelfWriterClosed
+	}
+	if err := w.commit(shelf); err != nil {
+		w.Abort()
+		return err
+	}
+	_ = w.root.Close()
+	w.root = nil
+	return nil
+}
+
+func (w *ShelfWriter) commit(shelf *domain.Shelf) error {
 	shelf.ID = w.id
 	shelf.SizeBytes = w.bytes
 	data, err := json.MarshalIndent(shelf, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := writeSynced(filepath.Join(w.tmp, shelfManifest), data); err != nil {
+	if err := writeSynced(w.root, filepath.Join(w.tmp, shelfManifest), data); err != nil {
 		return err
 	}
 	for dir := range w.dirs {
-		syncDir(dir)
+		syncDir(w.root, dir)
 	}
-	syncDir(filepath.Join(w.tmp, ObjectsDir))
-	syncDir(w.tmp)
-	if err := os.Rename(w.tmp, filepath.Join(w.root, w.id)); err != nil {
+	syncDir(w.root, filepath.Join(w.tmp, ObjectsDir))
+	syncDir(w.root, w.tmp)
+	if err := w.root.Rename(w.tmp, w.id); err != nil {
 		return err
 	}
-	syncDir(w.root)
+	syncDir(w.root, ".")
 	return nil
 }
 
+// Abort removes the temp folder and closes the writer; it is safe to call
+// more than once and after Commit.
 func (w *ShelfWriter) Abort() {
-	_ = os.RemoveAll(w.tmp)
+	if w.root == nil {
+		return
+	}
+	_ = w.root.RemoveAll(w.tmp)
+	_ = w.root.Close()
+	w.root = nil
 }
 
-func writeSynced(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+func writeSynced(root *os.Root, path string, data []byte) error {
+	f, err := root.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
@@ -164,11 +215,11 @@ func writeSynced(path string, data []byte) error {
 	return f.Close()
 }
 
-func syncDir(dir string) {
+func syncDir(root *os.Root, dir string) {
 	if runtime.GOOS == "windows" {
 		return
 	}
-	f, err := os.Open(dir)
+	f, err := root.Open(dir)
 	if err != nil {
 		return
 	}
@@ -243,11 +294,16 @@ func (l *LocalRepo) DropShelf(id string) error {
 	if _, err := os.Stat(filepath.Join(dir, shelfManifest)); errors.Is(err, fs.ErrNotExist) {
 		return shelfMissing(id)
 	}
-	trash := filepath.Join(l.shelvesRoot(), shelfTmpPrefix+"drop-"+id)
-	if err := os.Rename(dir, trash); err != nil {
+	shelves, err := openRealDir(l.target, filepath.Join(ConfigDir, ShelvesDir))
+	if err != nil {
 		return err
 	}
-	return os.RemoveAll(trash)
+	defer func() { _ = shelves.Close() }()
+	trash := shelfTmpPrefix + "drop-" + id
+	if err := shelves.Rename(id, trash); err != nil {
+		return err
+	}
+	return shelves.RemoveAll(trash)
 }
 
 func (l *LocalRepo) OpenShelfChunk(id string, hash serverDomain.Hash) (io.ReadCloser, error) {

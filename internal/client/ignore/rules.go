@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nipalab/nipa/internal/client/fsperm"
 )
 
 // GitignoreFile is the git ignore file ImportGitignore reads.
@@ -95,8 +97,35 @@ func appendRules(root, header string, patterns []string) (int, error) {
 	for _, p := range add {
 		b.WriteString(p + "\n")
 	}
-	if err := os.WriteFile(file, []byte(b.String()), 0o644); err != nil {
+	if err := replaceRules(file, []byte(b.String())); err != nil {
 		return 0, fmt.Errorf("write ignore rules: %w", err)
 	}
 	return len(add), nil
+}
+
+// replaceRules writes data to a temp file next to file and renames it over
+// file, so a .nipaignore that is a symbolic link is replaced by a real file
+// and whatever it points at is never written. A regular file keeps its mode.
+func replaceRules(file string, data []byte) error {
+	perm := fsperm.Mask(0o644)
+	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() {
+		perm = info.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(file), FileName+"-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer func() { _ = os.Remove(name) }()
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Chmod(perm)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(name, file)
 }

@@ -368,7 +368,7 @@ func TestDirectPlan_SalvageNeedsAnUnchangedFile(t *testing.T) {
 	require.NoError(t, os.Chtimes(filepath.Join(root, "a.bin"), time.Now(), info.ModTime()))
 	require.ErrorContains(t, plan.salvage(root, "a.bin", wrongSize, missing), "content length mismatch")
 
-	require.NoError(t, os.Remove(plan.files[0].tmp))
+	require.NoError(t, os.Remove(filepath.Join(plan.root, plan.files[0].tmp)))
 	require.Error(t, plan.salvage(root, "a.bin", layout, missing), "a missing temp file fails the copy")
 }
 

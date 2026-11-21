@@ -3,7 +3,6 @@ package usecase
 import (
 	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,17 +29,33 @@ type workingWriteMarker interface {
 // beginWorkingWrite marks a working-copy write on repositories that track
 // them and returns the function that ends it. When an earlier write was
 // killed before it could clean up, the temp files it left in the working
-// copy are swept first; a clone that was never interrupted pays nothing.
-func beginWorkingWrite(lr any, root string) func() {
+// copy are swept first; a clone that was never interrupted pays nothing. The
+// write also shares one folder guard (guardWrites) until it ends.
+//
+// A marker that cannot be taken fails the write: the metadata guard refuses a
+// linked .nipa, and writing on regardless would act through the link.
+func beginWorkingWrite(lr any, root string) (func(), error) {
+	endGuard := guardWrites(root)
+	end, err := beginWriteMarker(lr, root)
+	if err != nil {
+		endGuard()
+		return nil, err
+	}
+	return func() {
+		end()
+		endGuard()
+	}, nil
+}
+
+func beginWriteMarker(lr any, root string) (func(), error) {
 	marker, ok := lr.(workingWriteMarker)
 	if !ok {
-		return func() {}
+		return func() {}, nil
 	}
 	started := time.Now()
 	end, interrupted, err := marker.BeginWorkingWrite()
 	if err != nil {
-		slog.Warn("could not mark the working-copy write", "error", err)
-		return func() {}
+		return nil, err
 	}
 	if interrupted {
 		removed, young := sweepMaterializeTemps(root, started.Add(-sweepMargin))
@@ -51,14 +66,21 @@ func beginWorkingWrite(lr any, root string) func() {
 			}
 		}
 	}
-	return end
+	return end, nil
 }
 
 // sweepMaterializeTemps removes the materialize temp files under root last
 // modified before the cutoff and reports how many it removed and how many
-// younger ones it left. It never descends into the .nipa directory.
+// younger ones it left. It walks and removes inside the work tree, never
+// through a link, and never descends into the .nipa directory.
 func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	r, err := wt.open(false)
+	if err != nil {
+		return 0, 0
+	}
+	_ = fs.WalkDir(r.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if d != nil && d.IsDir() {
 				return fs.SkipDir
@@ -66,7 +88,7 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 			return nil
 		}
 		if d.IsDir() {
-			if d.Name() == nipaDir && path != root {
+			if d.Name() == nipaDir && path != "." {
 				return fs.SkipDir
 			}
 			return nil
@@ -82,7 +104,7 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 			young++
 			return nil
 		}
-		if os.Remove(path) == nil {
+		if wt.remove(filepath.FromSlash(path)) == nil {
 			removed++
 		}
 		return nil

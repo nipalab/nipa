@@ -104,7 +104,81 @@ grpc manifest assembler and `GetMergeBase` reject a bad name, `syncWorkingCopy`
 re-checks the whole tree (`validateSyncTree`) before writing anything, and
 `materializeFile`/`createSizedTemp` refuse any unsafe path
 (`checkWorkingPath`), so merge/revert/shelve/restore writes are covered too;
-the root's own name is only a label. A repo that already tracks such a path
+the root's own name is only a label.
+
+Working-copy write guard (`usecase/write_guard.go`): names alone do not stop a
+write through a folder on disk that is a symlink or junction (`assets ->
+~/.ssh`, or `-> .nipa`). Every write or delete of a tracked path goes through
+`checkWriteInsideRoot` / `checkRemoveInsideRoot` (`checkWorkingPath` plus a
+`dirGuard.check`): `materializeFile`, `createSizedTemp` (direct plan),
+`guardedRemoveCached` (`removeLeftFiles`, three-way deletions),
+`removeWorkingFile` (shelve), `Conflicts.Resolve` (write and delete) and
+`RevisionRestore`. The rule: every folder below the root on the way to the path
+must not be a symlink (`ModeSymlink`) or a junction/name-surrogate reparse
+point (Go reports those as `ModeIrregular` without `ModeDir`; a folder with
+`ModeDir|ModeIrregular`, e.g. a OneDrive placeholder, is a real folder),
+wherever it points, even inside the clone; Nipa never tracks or materializes
+symlinks (`nipa import git --symlinks file` stores the target as content), so
+nothing legitimate is lost. The root itself is never Lstat'ed, so a clone
+reached through a symlink works. The final component may be a link: writes
+rename over it (`replaceFile`; the Windows read-only path only chmods a
+regular file, `isReadOnlyFile` uses `Lstat`) and deletes unlink it, never its
+target. Refusals are 400 user errors `refusing to write|remove %q: %q is a
+symbolic link` and are not bypassed by `--force`. Cost: a `dirGuard` caches
+each verified folder (and folders found missing, which the operation creates,
+so nothing below them is Lstat'ed), so a guard costs at most one `Lstat` per
+distinct folder; `beginWorkingWrite` (every sync and restore) and
+`applyThreeWay` open a `guardWrites(root)` scope that shares one guard across
+the planning check and every write-time check of that operation (scopes nest,
+keyed by the cleaned root, dropped when the last closes, so a later operation
+never trusts an earlier one's folders); outside a scope `guardFor` returns a
+fresh guard. Planning checks run before anything is read, downloaded or
+written: `syncWorkingCopyOpts` checks every file it rewrites and every
+removal (`checkSyncTargets`, before `localChangeConflicts`), `restoreFiles`
+the changed files (`checkRestoreTargets`, before `restoreDirect`), and
+`applyThreeWay` (write mode) its writes and deletions before
+`MissingChunks`. The guard is the early, readable refusal; the writes
+themselves go through a `workTree` (`usecase/work_tree.go`): one `os.Root`
+opened lazily on the clone root (created first when missing; the root path
+itself may be a link) and owned by the `guardWrites` scope, so an operation
+opens it once and closes it when the scope and the last holder (a
+`directPlan` until `cleanup`) release it; outside a scope `acquireWorkTree`
+returns a private one for the call. A file's steps resolve its folder once:
+`workTree.dir` opens it as a sub-root through the root (`Root.OpenRoot`,
+`MkdirAll` only when missing) and the temp create, read-only probe, chmod
+and rename then name only the file, then the sub-root is closed (one extra
+handle per file in flight; resolving through the root on every step instead
+cost ~2x path-based syscalls, a per-file sub-root measured ~+8 us per file, ~20%
+on a 5000 x 4 KiB local materialize on tmp, and no extra cost per chunk).
+Through it run `materializeFile`, `createSizedTemp` and the `directPlan`
+(temp handles reopened by `tempHandles.openFile`, chmod in `complete`, rename
+in `finish`, removal in `cleanup`, the latter three resolving through the
+root), `guardedRemoveCached` (Lstat, hash read, removal; a tracked file
+replaced by a link out of the clone is kept, like a local change),
+`removeWorkingFile` (file and emptied parents), `Conflicts.Resolve`/`write`
+(temp, chmod on the handle, rename, delete) and `sweepMaterializeTemps`
+(walks `Root.FS`). `os.Root` has no CreateTemp, so `createTempIn` opens
+`prefix+<random uint32>` with `O_CREATE|O_EXCL` (0600, the name shape
+`isMaterializeTemp` expects).
+`replaceIn` takes a `replaceFS` (`*os.Root`, or `pathFS` for
+`SaveProvenance`'s path-based `replaceFile`); the Windows read-only dance
+(chmod dst, rename, chmod back) runs through it too. A folder swapped for a
+link after the guard verified it makes the runtime refuse the step
+(`path escapes from parent`, unexported, matched by message in
+`isRootEscape`); `refuseEscape` turns it into a 400 `refusing to write|remove
+%q: a folder on the way to it is a link that leads out of the working copy`.
+Limits: `os.Root` still follows a swapped-in link that stays inside the
+root (e.g. `-> .nipa`), only the up-front guard refuses those, so a race can
+redirect a write within the clone but never out of it; an open root or
+sub-root keeps referring to its folder if that folder is *moved* (renamed)
+elsewhere mid-write, which `os.Root` does not prevent; on Unix `Root.Chmod`
+may act on a leaf swapped for a symlink (used only on our own temp in
+`directPlan.complete`). Reads of working files (`salvage`, status hashing,
+`statEntryFor`) stay path-based. Root-level `.nipaignore`
+(`ignore.AppendRules`) and `.nipaprovenance.yml` (`SaveProvenance`) are
+written temp+rename, replacing a link rather than writing its target. A
+linked `.nipa` (or `.nipa/objects|writes|shelves`) is refused when the local
+repo opens (`docs/internals/localrepo.md`). A repo that already tracks such a path
 fails to sync with a 400 "refusing to sync unsafe path" error. `isNipaPath`
 (stage/push/restore/shelve exclusion) uses the same case-insensitive
 `domain.IsMetadataSegment`. Clone,
@@ -254,8 +328,8 @@ the files they cover, not targets × tracked files.
 daemon `RestoreRevision`) writes one file of a commit over the working file
 (an explicit overwrite: local edits to that file are replaced, nothing is
 staged). The path goes through `cleanBlobPath` and `checkWorkingPath` before
-any request, and `checkWriteInsideRoot` refuses a path whose nearest existing
-folder resolves outside the clone or into `.nipa` through a symlink. It holds
+any request, and `checkWriteInsideRoot` refuses a path below a symlinked
+folder (the working-copy write guard below). It holds
 the shared repo lock, refuses a pending merge, revert or shelf apply, a path
 outside the sparse set and a folder, and brackets the write with
 `beginWorkingWrite`. The file's entry comes from the manifest of its folder

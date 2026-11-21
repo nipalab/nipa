@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,7 +104,11 @@ func (r *RevisionRestore) Run(ctx context.Context, root, path, commitID string, 
 	}
 	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(commitID), Paths: []string{p}}
 
-	defer beginWorkingWrite(r.repo, root)()
+	endWrite, err := beginWorkingWrite(r.repo, root)
+	if err != nil {
+		return err
+	}
+	defer endWrite()
 	if directEligible(file, nil) {
 		// The object cache never keeps a past revision, so raw content goes
 		// straight into the working file whether or not the path is pinned.
@@ -192,35 +195,6 @@ func (r *RevisionRestore) writeDirect(ctx context.Context, root string, job mate
 		return err
 	}
 	return plan.finish(ctx)
-}
-
-// checkWriteInsideRoot refuses a path whose nearest existing folder leaves
-// the working copy through a symlink (or lands in its metadata), so the file
-// is never written outside the clone.
-func checkWriteInsideRoot(root, p string) error {
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(p)))
-	for {
-		real, err := filepath.EvalSymlinks(dir)
-		if err == nil {
-			rel, relErr := filepath.Rel(realRoot, real)
-			if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return clientDomain.NewUserError(fmt.Sprintf("%s resolves outside the repository", p))
-			}
-			if isNipaPath(filepath.ToSlash(rel)) {
-				return clientDomain.NewUserError(fmt.Sprintf("cannot operate on path inside %q", nipaDir))
-			}
-			return nil
-		}
-		parent := filepath.Dir(dir)
-		if !errors.Is(err, os.ErrNotExist) || parent == dir {
-			return err
-		}
-		dir = parent
-	}
 }
 
 func (r *RevisionRestore) refusePending() error {
