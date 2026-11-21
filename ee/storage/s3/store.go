@@ -258,6 +258,56 @@ func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) (err error) {
 	return nil
 }
 
+// StoredChunk is one chunk object found by ListChunks.
+type StoredChunk struct {
+	Hash         domain.Hash
+	SizeBytes    int64
+	LastModified time.Time
+}
+
+// ListChunks calls fn for every chunk object under the store's prefix, in key
+// order. Keys that are not chunk keys (another tool's objects under the same
+// prefix) are skipped. It stops at the first error fn returns.
+func (s *Store) ListChunks(ctx context.Context, fn func(StoredChunk) error) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.list_objects",
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	prefix := ""
+	if s.prefix != "" {
+		prefix = s.prefix + "/"
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	for object := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if object.Err != nil {
+			return fmt.Errorf("s3: list chunks: %w", object.Err)
+		}
+		hash, ok := parseChunkKey(strings.TrimPrefix(object.Key, prefix))
+		if !ok {
+			continue
+		}
+		if err := fn(StoredChunk{Hash: hash, SizeBytes: object.Size, LastModified: object.LastModified}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// parseChunkKey reverses key below the prefix: "<hash[:2]>/<hash[2:]>".
+func parseChunkKey(key string) (domain.Hash, bool) {
+	shard, rest, ok := strings.Cut(key, "/")
+	if !ok || len(shard) != 2 || strings.Contains(rest, "/") {
+		return domain.Hash{}, false
+	}
+	hash, err := domain.ParseHashHex(shard + rest)
+	if err != nil {
+		return domain.Hash{}, false
+	}
+	return hash, true
+}
+
 func (s *Store) mapError(err error, hash domain.Hash) error {
 	if isNotFound(err) {
 		return domain.NewErrorNotFound("chunk not found: " + hash.String())

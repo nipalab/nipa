@@ -74,8 +74,19 @@ type Chunk struct {
 	stores    ChunkStores
 	transfer  ChunkTransferConfig
 	ledger    StorageLedger
+	gcGuard   ChunkGCGuard
 	metrics   *obs.Metrics
 	now       func() time.Time
+}
+
+// ChunkGCGuard keeps a chunk garbage collector from deleting content a caller
+// is about to rely on. Protect runs before the content is checked and before
+// any link to it is recorded: it clears the chunks' garbage marks, waiting for
+// a sweep that holds them, so content the sweep removed is seen as missing
+// (and uploaded again) instead of being linked. Nil (the free default) runs no
+// collector.
+type ChunkGCGuard interface {
+	Protect(ctx context.Context, hashes []domain.Hash) error
 }
 
 func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer ChunkTransferConfig) *Chunk {
@@ -148,6 +159,19 @@ func (c *Chunk) WithStorageLedger(ledger StorageLedger) *Chunk {
 	return c
 }
 
+// WithGCGuard attaches the chunk garbage collector's guard.
+func (c *Chunk) WithGCGuard(guard ChunkGCGuard) *Chunk {
+	c.gcGuard = guard
+	return c
+}
+
+func (c *Chunk) protect(ctx context.Context, hashes ...domain.Hash) error {
+	if c.gcGuard == nil || len(hashes) == 0 {
+		return nil
+	}
+	return c.gcGuard.Protect(ctx, hashes)
+}
+
 // WithMetrics attaches observability metrics. Without one (the default), chunk
 // operations are not counted.
 func (c *Chunk) WithMetrics(metrics *obs.Metrics) *Chunk {
@@ -163,6 +187,9 @@ func (c *Chunk) upload(ctx context.Context, store storage.ChunkStore, hash domai
 	if got := chunker.Sum(data); got != hash {
 		c.metrics.ObserveChunkVerifyFailure("store")
 		return false, domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
+	}
+	if err := c.protect(ctx, hash); err != nil {
+		return false, err
 	}
 	exists, err := store.Exists(ctx, hash)
 	if err != nil {
@@ -516,6 +543,9 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		return nil, 0, err
 	}
 	ledger := c.ledgerFor(resolved)
+	if err := c.protect(ctx, hashes...); err != nil {
+		return nil, 0, err
+	}
 	linked, err := c.chunkRepo.LinkedProjectChunkSizes(ctx, project.ID, hashes)
 	if err != nil {
 		return nil, 0, err

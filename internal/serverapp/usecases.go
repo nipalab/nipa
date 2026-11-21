@@ -54,6 +54,9 @@ type UsecaseDeps struct {
 	// ProjectRestoreWindow is how long a deleted project stays restorable
 	// (the purge retention); zero keeps deleted projects restorable.
 	ProjectRestoreWindow time.Duration
+	// ChunkGCGuard protects chunk content from the chunk garbage collector;
+	// nil when no collector runs.
+	ChunkGCGuard usecase.ChunkGCGuard
 }
 
 // BuildUsecases wires the whole usecase graph once for every edition and for
@@ -123,6 +126,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	if deps.StorageLedger != nil {
 		chunkUsecase = chunkUsecase.WithStorageLedger(deps.StorageLedger)
 		projectUsecase.WithStorageLedger(deps.StorageLedger)
+	}
+	if deps.ChunkGCGuard != nil {
+		chunkUsecase = chunkUsecase.WithGCGuard(deps.ChunkGCGuard)
 	}
 	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase).WithStorageGate(chunkUsecase)
 	pushUsecase = pushUsecase.WithStorageGate(chunkUsecase)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/ee/chunkgc"
 	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/projectpurge"
 	"github.com/nipalab/nipa/ee/storageusage"
@@ -163,4 +164,85 @@ func TestEnterpriseRestoreAndPurgeProject(t *testing.T) {
 	require.NoError(t, repo.Clone(ctx, url, host, org.Slug, "keep", "", nil, checkout))
 	require.Equal(t, "kept content "+suffix+"\n", readFile(t, checkout, "asset.txt"))
 	require.Equal(t, afterDelete, used(), "the other project keeps its usage")
+}
+
+// TestEnterpriseChunkGCReclaimsPurgedContent closes the loop: content only a
+// purged project referenced is deleted from the bucket by the collector, and
+// pushing the same content again later uploads it afresh.
+func TestEnterpriseChunkGCReclaimsPurgedContent(t *testing.T) {
+	ctx := context.Background()
+
+	dbConn, err := eedb.Open(testPGDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbConn.Close() })
+	require.NoError(t, eedb.MigrateUp(dbConn))
+
+	store := newS3ChunkStore(t)
+	objects, ok := store.(chunkgc.ObjectStore)
+	require.True(t, ok)
+	ledger := storageusage.NewLedger(dbConn, storageusage.Config{})
+	host, uc := startEnterpriseServerWith(t, dbConn, store, mustSnowNode(t, 0), serverOptions{
+		ledger:  ledger,
+		gcGuard: chunkgc.NewGuard(dbConn),
+	})
+
+	suffix := randomSuffix(t)
+	admin := domain.ContextWithClaim(ctx, domain.Claims{UserID: 1, IsSuperAdmin: true})
+	org, err := uc.Org.Create(admin, "GC "+suffix, "gc-"+suffix)
+	require.NoError(t, err)
+	gone, err := uc.Project.Create(admin, org.ID, "Gone", "", "gone", nil)
+	require.NoError(t, err)
+	_, err = uc.Project.Create(admin, org.ID, "Later", "", "later", nil)
+	require.NoError(t, err)
+
+	repo, pusher := connectClient(t, host)
+	content := "content only the purged project held " + suffix + "\n"
+	push := func(slug string) {
+		url := "http://" + host + "/" + org.Slug + "/" + slug
+		target := filepath.Join(t.TempDir(), slug)
+		require.NoError(t, repo.Clone(ctx, url, host, org.Slug, slug, "", nil, target))
+		writeFile(t, target, "asset.txt", content)
+		stagePath(t, target, "asset.txt")
+		require.NoError(t, pusher.Run(ctx, target, "add asset"))
+	}
+	push("gone")
+
+	var hashes []domain.Hash
+	rows, err := dbConn.QueryContext(ctx, `SELECT hash FROM project_chunk_uploads WHERE project_id = $1`, gone.ID.Int64())
+	require.NoError(t, err)
+	for rows.Next() {
+		var raw []byte
+		require.NoError(t, rows.Scan(&raw))
+		var hash domain.Hash
+		copy(hash[:], raw)
+		hashes = append(hashes, hash)
+	}
+	require.NoError(t, rows.Close())
+	require.NotEmpty(t, hashes)
+
+	require.NoError(t, uc.Project.Delete(admin, gone.ID))
+	purger, err := projectpurge.New(dbConn, projectpurge.Config{Retention: time.Nanosecond})
+	require.NoError(t, err)
+	_, err = purger.WithReleaser(ledger).PurgeProject(ctx, gone.ID, time.Now().Add(time.Second))
+	require.NoError(t, err)
+
+	collector, err := chunkgc.New(dbConn, objects, chunkgc.Config{Mode: chunkgc.ModeOn, Grace: time.Millisecond})
+	require.NoError(t, err)
+	_, err = collector.Run(ctx)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+	report, err := collector.Run(ctx)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, report.Deleted, int64(len(hashes)))
+	for _, hash := range hashes {
+		exists, err := store.Exists(ctx, hash)
+		require.NoError(t, err)
+		require.False(t, exists, "the bucket no longer holds %s", hash)
+	}
+
+	push("later")
+	checkout := filepath.Join(t.TempDir(), "later-checkout")
+	url := "http://" + host + "/" + org.Slug + "/later"
+	require.NoError(t, repo.Clone(ctx, url, host, org.Slug, "later", "", nil, checkout))
+	require.Equal(t, content, readFile(t, checkout, "asset.txt"), "the same content is uploaded again and readable")
 }

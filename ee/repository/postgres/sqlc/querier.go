@@ -14,6 +14,7 @@ import (
 type Querier interface {
 	AddOrgUsage(ctx context.Context, arg AddOrgUsageParams) error
 	AddProjectUsage(ctx context.Context, arg AddProjectUsageParams) error
+	AdoptOrphanChunks(ctx context.Context, arg AdoptOrphanChunksParams) (int64, error)
 	AuditLogInsert(ctx context.Context, arg AuditLogInsertParams) error
 	AuditLogList(ctx context.Context, arg AuditLogListParams) ([]AuditLog, error)
 	BranchCreate(ctx context.Context, arg BranchCreateParams) error
@@ -54,9 +55,11 @@ type Querier interface {
 	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
 	CountOwnerSeats(ctx context.Context, ownerID int64) (int64, error)
 	CountStorageServersByOwner(ctx context.Context, ownerUserID int64) (int64, error)
+	CountSweepableChunks(ctx context.Context, cutoff time.Time) (CountSweepableChunksRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateStorageServer(ctx context.Context, arg CreateStorageServerParams) (StorageServer, error)
+	DeleteChunksByIDs(ctx context.Context, ids []int64) (int64, error)
 	DeleteDeletedOrgStorageDefaults(ctx context.Context, id int64) error
 	DeleteDeletedProjectStorage(ctx context.Context, id int64) error
 	DeleteOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
@@ -81,6 +84,7 @@ type Querier interface {
 	EmailVerificationGetByToken(ctx context.Context, tokenHash string) (EmailVerificationGetByTokenRow, error)
 	EmailVerificationUpsert(ctx context.Context, arg EmailVerificationUpsertParams) error
 	EnsureBillingOwner(ctx context.Context, arg EnsureBillingOwnerParams) (int64, error)
+	ExistingChunkHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
 	FileChunkInsertMany(ctx context.Context, links json.RawMessage) error
 	FileInsertMany(ctx context.Context, fileRows json.RawMessage) ([]FileInsertManyRow, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
@@ -177,6 +181,7 @@ type Querier interface {
 	LockPurgeableProject(ctx context.Context, arg LockPurgeableProjectParams) (LockPurgeableProjectRow, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
 	LockStorageServerOwner(ctx context.Context, lockKey int64) error
+	LockSweepableChunks(ctx context.Context, arg LockSweepableChunksParams) ([]LockSweepableChunksRow, error)
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
 	MFAChallengeCreate(ctx context.Context, arg MFAChallengeCreateParams) error
 	MFAChallengeDelete(ctx context.Context, tokenHash string) (int64, error)
@@ -200,6 +205,8 @@ type Querier interface {
 	MaintenanceUpsertServer(ctx context.Context, arg MaintenanceUpsertServerParams) (MaintenanceWindow, error)
 	MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error
 	MarkBillingEventProcessed(ctx context.Context, eventID string) error
+	MarkUnreferencedChunks(ctx context.Context, arg MarkUnreferencedChunksParams) ([]int64, error)
+	MaxChunkID(ctx context.Context) (int64, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error)
@@ -345,6 +352,7 @@ type Querier interface {
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
+	UnmarkChunks(ctx context.Context, hashes [][]byte) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateStorageServer(ctx context.Context, arg UpdateStorageServerParams) (StorageServer, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error

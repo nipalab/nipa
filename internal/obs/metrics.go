@@ -25,6 +25,8 @@ type Metrics struct {
 	chunkOps            *prometheus.CounterVec
 	chunkBytes          *prometheus.CounterVec
 	chunkVerifyFailures *prometheus.CounterVec
+	chunkGCChunks       *prometheus.CounterVec
+	chunkGCBytes        *prometheus.CounterVec
 	push                *prometheus.CounterVec
 	webhookDeliveries   *prometheus.CounterVec
 	mailDeliveries      *prometheus.CounterVec
@@ -86,6 +88,18 @@ func NewMetrics() *Metrics {
 			Name:      "verify_failures_total",
 			Help:      "Chunk content that failed hash verification, by stage.",
 		}, []string{"stage"}),
+		chunkGCChunks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "chunk_gc",
+			Name:      "chunks_total",
+			Help:      "Chunks the garbage collector marked, adopted (orphan objects), deleted or would delete (dry run), by phase.",
+		}, []string{"phase"}),
+		chunkGCBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "chunk_gc",
+			Name:      "bytes_total",
+			Help:      "Stored chunk bytes the garbage collector marked, adopted, deleted or would delete (dry run), by phase.",
+		}, []string{"phase"}),
 		push: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "push",
@@ -157,6 +171,8 @@ func NewMetrics() *Metrics {
 		m.chunkOps,
 		m.chunkBytes,
 		m.chunkVerifyFailures,
+		m.chunkGCChunks,
+		m.chunkGCBytes,
 		m.push,
 		m.webhookDeliveries,
 		m.mailDeliveries,
@@ -219,6 +235,16 @@ func (m *Metrics) ObserveChunkVerifyFailure(stage string) {
 		return
 	}
 	m.chunkVerifyFailures.WithLabelValues(stage).Inc()
+}
+
+// ObserveChunkGC records chunks and bytes one garbage collector phase
+// handled: marked, adopted, deleted or dry_run.
+func (m *Metrics) ObserveChunkGC(phase string, chunks, bytes int64) {
+	if m == nil {
+		return
+	}
+	m.chunkGCChunks.WithLabelValues(phase).Add(float64(chunks))
+	m.chunkGCBytes.WithLabelValues(phase).Add(float64(bytes))
 }
 
 // ObservePush records one push result.

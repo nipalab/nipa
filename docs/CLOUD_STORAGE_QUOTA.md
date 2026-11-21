@@ -311,8 +311,9 @@ It is exposed as the super-admin REST route.
    current value? (Recommendation: purchase-only; admins can set anything.)
 2. Do soft-deleted projects keep billing? Settled: no, a delete releases the
    project's bytes immediately (see "Releasing a deleted project").
-3. Chunk GC is not built yet; until it exists, rejected/unreferenced content
-   occupies disk but is never billed. Plan: `docs/plans/STORAGE_RECLAIM.md`.
+3. Rejected/unreferenced content is never billed; `nipad-ee`'s chunk GC
+   (`CHUNK_GC_MODE`, see `docs/internals/protocol.md`) deletes it from the
+   bucket once nothing references it.
 
 ## Acceptance criteria
 
