@@ -162,23 +162,6 @@ func TestGuard_TransportHasNoProxy(t *testing.T) {
 	require.Nil(t, New(Config{}).Transport().Proxy)
 }
 
-func TestGuard_CheckURL(t *testing.T) {
-	require.NoError(t, New(Config{}).CheckURL("http://anything.example"))
-
-	hostOnly := New(Config{Allowlist: []string{"example.com"}, Label: "tracker"})
-	require.NoError(t, hostOnly.CheckURL("https://EXAMPLE.com./x"))
-	err := hostOnly.CheckURL("http://127.0.0.1:8080")
-	require.True(t, IsBlocked(err))
-	require.ErrorContains(t, err, `tracker host "127.0.0.1:8080" is not in the egress allowlist`)
-	err = hostOnly.CheckURL("http://%zz")
-	require.Error(t, err)
-	require.False(t, IsBlocked(err))
-
-	ranges := New(Config{Allowlist: []string{"10.0.0.0/8"}})
-	require.NoError(t, ranges.CheckURL("http://10.1.2.3"))
-	require.NoError(t, ranges.CheckURL("http://jira.internal"), "a hostname may resolve into a listed range")
-}
-
 func TestIsPublicIP(t *testing.T) {
 	tests := []struct {
 		ip     string
@@ -203,22 +186,21 @@ func TestIsPublicIP(t *testing.T) {
 }
 
 func TestPolicyAllowsDial(t *testing.T) {
-	empty := ParseAllowlist(nil)
-	require.True(t, empty.Empty())
+	empty := ParseAllowlist([]string{"", "  "})
 	require.True(t, empty.AllowsDial("example.com", net.ParseIP("8.8.8.8")))
 	require.False(t, empty.AllowsDial("localhost", net.ParseIP("127.0.0.1")))
 
-	require.True(t, ParseAllowlist([]string{"", "  "}).Empty())
-
 	hostOnly := ParseAllowlist([]string{" Internal.Example. "})
 	require.True(t, hostOnly.AllowsDial("internal.example", net.ParseIP("127.0.0.1")))
-	require.False(t, hostOnly.AllowsDial("other.example", net.ParseIP("8.8.8.8")))
+	require.True(t, hostOnly.AllowsDial("other.example", net.ParseIP("8.8.8.8")), "public stays allowed with a non-empty list")
+	require.False(t, hostOnly.AllowsDial("other.example", net.ParseIP("127.0.0.1")))
 
 	listed := ParseAllowlist([]string{"10.0.0.0/8", "192.168.1.5", "fd00::1"})
 	require.True(t, listed.AllowsDial("jenkins.internal", net.ParseIP("10.1.2.3")))
 	require.True(t, listed.AllowsDial("jenkins.internal", net.ParseIP("192.168.1.5")))
 	require.False(t, listed.AllowsDial("jenkins.internal", net.ParseIP("192.168.1.6")))
 	require.True(t, listed.AllowsDial("dc.internal", net.ParseIP("fd00::1")))
+	require.True(t, listed.AllowsDial("studio.atlassian.net", net.ParseIP("2606:4700::1111")))
 }
 
 func TestValidateAllowlist(t *testing.T) {
@@ -227,4 +209,19 @@ func TestValidateAllowlist(t *testing.T) {
 	for _, bad := range []string{"https://jira.example.com", "jira:8080", "10.0.0.0/33", "a b", "-bad.example", "bad..example"} {
 		require.Error(t, ValidateAllowlist([]string{bad}), bad)
 	}
+}
+
+func TestGuard_AllowlistIsAdditive(t *testing.T) {
+	guard := New(Config{Allowlist: []string{"jira.internal"}, Resolver: staticResolver("127.0.0.1")})
+	err := get(httpClient(guard), "http://other.internal:1/")
+	require.True(t, IsBlocked(err), "a private address outside the list stays blocked")
+
+	_, hits, port := countingServer(t)
+	require.NoError(t, get(httpClient(guard), "http://jira.internal:"+port+"/"))
+	require.EqualValues(t, 1, hits.Load())
+
+	public := New(Config{Allowlist: []string{"jira.internal"}, DialTimeout: 10 * time.Millisecond, Resolver: staticResolver("192.0.2.1")})
+	_, err = public.DialContext(context.Background(), "tcp", "studio.atlassian.net:443")
+	require.Error(t, err)
+	require.False(t, IsBlocked(err), "a public address is dialed despite the list")
 }

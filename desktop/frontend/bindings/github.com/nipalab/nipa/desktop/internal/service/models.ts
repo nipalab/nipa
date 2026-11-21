@@ -115,6 +115,7 @@ export interface Branch {
     "commitId": string;
     "default": boolean;
     "protected": boolean;
+    "issues"?: IssueKey[] | null;
 }
 
 export interface BrokenReference {

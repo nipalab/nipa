@@ -77,7 +77,7 @@ pre-release step, not a replacement for the automated gates below.
   repository is made public.
 - [ ] **Re-verify hardening defaults.** pprof off by default
   (`PPROF_ENABLED: false`), `CHUNK_PRESIGN_TTL_SECONDS: 3600`,
-  `WEBHOOK_EGRESS_ALLOWLIST` empty (public targets only), daemon
+  `WEBHOOK_EGRESS_ALLOWLIST` empty (public targets only; entries add private ones), daemon
   `daemon.json` 0600 with constant-time token compare — all implemented, but
   re-check on the release commit and state them in the deployment doc.
 

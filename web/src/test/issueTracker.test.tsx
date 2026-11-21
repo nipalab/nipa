@@ -97,9 +97,11 @@ describe('issue chips', () => {
     ).toEqual(['GAME-1', 'GAME-2'])
   })
 
-  it('renders a link with the resolved status, or the plain key', async () => {
+  it('links each key to its issue page and to the tracker', async () => {
     const { container } = await render(
       <IssueChips
+        org="acme"
+        project="game"
         refs={[
           { key: 'GAME-2', url: 'https://j/browse/GAME-2' },
           { key: 'GAME-1', url: 'https://j/browse/GAME-1' },
@@ -113,20 +115,25 @@ describe('issue chips', () => {
         }
       />,
     )
-    const links = Array.from(container.querySelectorAll('a'))
-    expect(links.map((link) => link.textContent)).toEqual(['GAME-1Done', 'GAME-2', 'GAME-3Unknown'])
-    expect(links[0].getAttribute('href')).toBe('https://j/browse/GAME-1')
-    expect(links[0].getAttribute('target')).toBe('_blank')
-    expect(links[0].getAttribute('rel')).toBe('noopener noreferrer')
-    expect(links[0].getAttribute('title')).toBe('Rig · Done · Assignee: Ana')
-    expect(links[1].getAttribute('title')).toBe('Open GAME-2 in the issue tracker')
+    const pages = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.nipa-issue-chip-main'))
+    expect(pages.map((link) => link.textContent)).toEqual(['GAME-1Done', 'GAME-2', 'GAME-3Unknown'])
+    expect(pages[0].getAttribute('href')).toBe('/acme/game/issues/GAME-1')
+    expect(pages[0].getAttribute('title')).toBe('Rig · Done · Assignee: Ana')
+    expect(pages[1].getAttribute('title')).toBe('Work linked to GAME-2')
+    const external = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.nipa-issue-chip-external'))
+    expect(external[0].getAttribute('href')).toBe('https://j/browse/GAME-1')
+    expect(external[0].getAttribute('target')).toBe('_blank')
+    expect(external[0].getAttribute('rel')).toBe('noopener noreferrer')
+    expect(external[1].getAttribute('aria-label')).toBe('Open GAME-2 in the issue tracker')
   })
 
   it('renders nothing without keys and an in-progress label', async () => {
-    const empty = await render(<IssueChips refs={undefined} issues={new Map()} />)
+    const empty = await render(<IssueChips org="acme" project="game" refs={undefined} issues={new Map()} />)
     expect(empty.container.innerHTML).toBe('')
     const chip = await render(
       <IssueChip
+        org="acme"
+        project="game"
         issueRef={{ key: 'GAME-4', url: 'u' }}
         issue={{ key: 'GAME-4', url: 'u', state: 'ok', status: 'In Progress', status_category: 'in_progress' }}
       />,

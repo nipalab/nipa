@@ -436,7 +436,7 @@ describe('CommitsPage and BranchesPage paging', () => {
     await waitFor(() => (container.textContent ?? '').includes('GAME-1Done'))
     expect(api.resolveIssues).toHaveBeenCalledTimes(1)
     expect(api.resolveIssues).toHaveBeenCalledWith('acme', 'game', ['GAME-1'])
-    expect(container.querySelectorAll('a.nipa-issue-chip')).toHaveLength(2)
+    expect(container.querySelectorAll('a.nipa-issue-chip-main')).toHaveLength(2)
   })
 
   it('loads more branches using the last visible branch as the cursor', async () => {

@@ -5,6 +5,7 @@ import { desktop, type Branch, type Tag } from "@/api/desktop";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { IssueChips } from "@/components/issues/IssueChips";
 import { PromptDialog } from "@/components/ui/prompt";
 import type { Notify } from "@/hooks/useLocks";
 import { useMaintenance } from "@/hooks/useMaintenance";
@@ -115,6 +116,7 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                         {t("branchesView.protected")}
                       </Badge>
                     )}
+                    <IssueChips issues={b.issues} link />
                     <span className="ml-auto font-mono text-[11px] text-muted-foreground">{b.commitId ? shortId(b.commitId) : "empty"}</span>
                     {!current && !detached && !gone && b.commitId && (
                       <Button size="sm" disabled={busy || !!writes} onClick={() => setDialog({ kind: "merge", name: b.name })} title={writes ?? t("branchesView.mergeIntoTitle", { name: b.name, branch })}>

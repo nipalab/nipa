@@ -59,11 +59,12 @@ edition.
 | `/:org/:project/blob`, `/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download; binary files get a Lock/Unlock button (holder, branch scope and covering directory locks are shown) |
 | `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir; "Load more" pages 50 commits at a time (`start`/`limit`) |
 | `/:org/:project/compare` | compare | `?base=&head=` take branches, tags or commit ids; renders the diff of `head` against `base` (`GET …/commits/{commit}/diff?base=`) |
-| `/:org/:project/branches` | branches | "Load more" paging (keyset cursor); default/protect/rename/delete for project admins, delete and unprotect ask for confirmation; links to Compare |
+| `/:org/:project/branches` | branches | "Load more" paging (keyset cursor); default/protect/rename/delete for project admins, delete and unprotect ask for confirmation; links to Compare; issue chips from `issue_keys` |
 | `/:org/:project/branches/new` | new branch | name + optional fork point (branch or commit id) |
 | `/:org/:project/tags` | tags | list with "Load more" paging, create (name, target branch/commit, message) and delete (confirmed) for writers |
-| `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox and reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) |
-| `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
+| `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox, reviewer/assignee pickers (org members, sent as `reviewer_ids`/`assignee_ids`) and, when the project uses an issue tracker, a "Reference issue" picker under the description |
+| `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description (the edit dialog has the same "Reference issue" picker) |
+| `/:org/:project/issues/:key` | issue | work linked to one issue of the project's tracker (`listIssueLinks`: merge requests with state, commits, branches; `Closes` marks closing references; "Load more" pages with the `after` cursor), the issue's title/status/type/assignee through `resolveIssues` and an "Open in issue tracker" button; 404 = "does not use an issue tracker", 503 = "integration is off". Reached from the issue chips |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock; "Ask to release" on someone else's lock (optional message) and a release-request count with the requesters on each lock |
 | `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners; read-only Storage card when own storage is enabled), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries, Issue tracker (`?tab=issues`: Jira project keys, link/comment toggles, opened/merged statuses, active, with the visibility notes, and once the project uses the tracker a Jobs table of the outbox with a state filter and Retry; 503 shows an "integration is off" banner), Maintenance (org owners and super admins: the project window form plus the server and org windows that cover it) |
 | `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups, Storage (Default storage card when own storage is enabled; usage, quota, per-project breakdown with own-storage projects marked "External storage"; the tab is hidden when the server has neither), Issue tracker (`?tab=issues`: the Jira connection form with a write-only token, Test, Delete) and Maintenance (org owners and super admins: the org window form and the org's project windows); org owner or global admin |
@@ -262,14 +263,24 @@ when the server has no `INTEGRATIONS_ENCRYPTION_KEY`.
 
 Commit, branch and merge request payloads carry `issue_keys: [{key, url}]`
 when the project has active settings. `components/repo/IssueChips.tsx`
-renders them (key + status label, opens the tracker in a new tab with
-`rel="noopener noreferrer"`) on commit rows, the commit page, merge request
-rows and the merge request header; `useIssues` resolves the statuses of a
-page through `resolveIssues` (`GET .../issues?keys=`, batches of 50, only
-keys it has not asked for yet, failures leave plain key links).
-`searchIssues` (`.../issues/search?q=`, `supported: false` when the tracker
-cannot search) and `listIssueLinks` (`.../issues/{key}/links`, `after`
-cursor) are wrapped for later pickers and issue views.
+renders them (key + status label linking to the issue page
+`/:org/:project/issues/:key`, plus an external-link icon that opens the
+tracker in a new tab with `rel="noopener noreferrer"`) on commit rows, the
+commit page, branch rows, merge request rows and the merge request header;
+`useIssues` resolves the statuses of a page through `resolveIssues` (`GET
+.../issues?keys=`, batches of 50, only keys it has not asked for yet,
+failures leave plain key links). `pages/IssuePage.tsx` pages
+`listIssueLinks` (`.../issues/{key}/links`, `after` = `next_cursor`).
+`components/repo/IssuePicker.tsx` backs the "Reference issue" button under
+the merge request description (create page and edit dialog):
+`useIssueTrackerEnabled` asks `resolveIssues` with no keys (200 without a
+tracker call when the project has active settings, 404/503 otherwise) and
+hides the button unless it answers; the picker calls `searchIssues`
+(`.../issues/search?q=&limit=20`) 250 ms after the last keystroke from two
+characters on, shows "not answering" for `unavailable: true` or a failed
+call, removes itself when `supported: false`, and inserts the chosen key at
+the caret the description had when it lost focus (else at the end), spaced
+from neighbouring words.
 
 ## Billing API
 

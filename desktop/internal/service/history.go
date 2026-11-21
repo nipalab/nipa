@@ -48,10 +48,11 @@ type HistoryPage struct {
 }
 
 type Branch struct {
-	Name      string `json:"name"`
-	CommitID  string `json:"commitId"`
-	Default   bool   `json:"default"`
-	Protected bool   `json:"protected"`
+	Name      string     `json:"name"`
+	CommitID  string     `json:"commitId"`
+	Default   bool       `json:"default"`
+	Protected bool       `json:"protected"`
+	Issues    []IssueKey `json:"issues,omitempty"`
 }
 
 type Tag struct {
@@ -199,7 +200,7 @@ func sortBranches(list []Branch) {
 }
 
 func toBranch(b *pb.Branch) Branch {
-	return Branch{Name: b.GetName(), CommitID: b.GetCommitId(), Default: b.GetIsDefault(), Protected: b.GetIsProtected()}
+	return Branch{Name: b.GetName(), CommitID: b.GetCommitId(), Default: b.GetIsDefault(), Protected: b.GetIsProtected(), Issues: toIssueKeys(b.GetIssueKeys())}
 }
 
 func ptr[T any](v T) *T { return &v }

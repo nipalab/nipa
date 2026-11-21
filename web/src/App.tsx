@@ -26,6 +26,7 @@ const MergeRequestsPage = lazy(() => import('./pages/MergeRequestsPage'))
 const MergeRequestPage = lazy(() => import('./pages/MergeRequestPage'))
 const NewMergeRequestPage = lazy(() => import('./pages/NewMergeRequestPage'))
 const LocksPage = lazy(() => import('./pages/LocksPage'))
+const IssuePage = lazy(() => import('./pages/IssuePage'))
 const ProjectSettingsPage = lazy(() => import('./pages/ProjectSettingsPage'))
 const OrgSettingsPage = lazy(() => import('./pages/OrgSettingsPage'))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage'))
@@ -75,6 +76,7 @@ export default function App() {
                 <Route path="/:org/:project/merges/new" element={<NewMergeRequestPage />} />
                 <Route path="/:org/:project/merges/:id" element={<MergeRequestPage />} />
                 <Route path="/:org/:project/locks" element={<LocksPage />} />
+                <Route path="/:org/:project/issues/:key" element={<IssuePage />} />
                 <Route path="/:org/:project/settings" element={<ProjectSettingsPage />} />
                 <Route path="*" element={<Navigate to={APP_HOME} replace />} />
               </Route>

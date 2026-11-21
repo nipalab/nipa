@@ -56,7 +56,12 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (+ `browser_history.go` for per-file/per-dir last-commit info) under
   `internal/http/api/`. Release tags have REST routes (`/tags`,
   `/tags/{name}`) and `endpoints.ts` helpers; the SPA has a Tags page (list, create,
-  delete, ref-picker tab).
+  delete, ref-picker tab). Issue tracker views: chips on commits, branches
+  and merge requests link to `pages/IssuePage.tsx` (`/:org/:project/issues/:key`,
+  the work linked to one issue via `listIssueLinks`), and
+  `components/repo/IssuePicker.tsx` adds "Reference issue" (search through
+  `searchIssues`, insert the key into the description) to the merge request
+  create page and edit dialog; details in `docs/WEB_UI.md` "Issue tracker API".
 - Billing (`docs/BILLING.md`): `BillingPage` + `components/BillingPlan.tsx`
   show the plan card and editor only when `GET /auth/capabilities` carries
   `billing`, the editor showing the storage each seat/pack adds and the plan

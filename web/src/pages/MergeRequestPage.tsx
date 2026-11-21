@@ -30,6 +30,7 @@ import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
 import { ChangesView } from '../components/repo/ChangesView'
 import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
+import { IssuePicker, useIssueInsertion, useIssueTrackerEnabled } from '../components/repo/IssuePicker'
 import { MergeRequestCommits } from '../components/repo/MergeRequestCommits'
 import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -245,7 +246,7 @@ export default function MergeRequestPage() {
             <Mono style={BRANCH_CHIP}>{request.target_branch}</Mono> from{' '}
             <Mono style={BRANCH_CHIP}>{request.source_branch}</Mono>
           </span>
-          <IssueChips refs={request.issue_keys} issues={issues} />
+          <IssueChips org={org} project={project} refs={request.issue_keys} issues={issues} />
         </div>
       )}
       <ErrorBanner
@@ -368,6 +369,8 @@ function EditMergeRequestDialog({
   const [title, setTitle] = useState(request.title)
   const [description, setDescription] = useState(request.description)
   const [draft, setDraft] = useState(request.draft)
+  const trackerEnabled = useIssueTrackerEnabled(org, project)
+  const issueInsertion = useIssueInsertion(description, setDescription)
 
   return (
     <FormDialog
@@ -387,8 +390,19 @@ function EditMergeRequestDialog({
       </FormControl>
       <FormControl>
         <FormControl.Label>Description</FormControl.Label>
-        <Textarea block rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+        <Textarea
+          block
+          rows={4}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          onBlur={issueInsertion.onBlur}
+        />
       </FormControl>
+      {trackerEnabled && (
+        <div>
+          <IssuePicker org={org} project={project} onPick={issueInsertion.insert} />
+        </div>
+      )}
       <FormControl>
         <Checkbox checked={draft} onChange={(event) => setDraft(event.target.checked)} />
         <FormControl.Label>Draft (cannot be merged until marked ready)</FormControl.Label>

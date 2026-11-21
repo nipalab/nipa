@@ -464,7 +464,7 @@ func readinessHandler(draining *atomic.Bool, check func(context.Context) error) 
 }
 
 // SplitAllowlist turns the comma-separated WEBHOOK_EGRESS_ALLOWLIST into
-// entries. Empty means no egress restriction.
+// entries added to the always-allowed public addresses.
 func SplitAllowlist(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil

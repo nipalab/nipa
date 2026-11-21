@@ -73,7 +73,7 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
               {commit ? commitTitle(commit.message) : <Mono>{shortSha(id, 10)}</Mono>}
             </Text>
             {body && <pre className="nipa-commit-body">{body}</pre>}
-            {commit && <IssueChips refs={commit.issue_keys} issues={issues} />}
+            {commit && <IssueChips org={org} project={project} refs={commit.issue_keys} issues={issues} />}
           </div>
           <Button as={Link} to={treeUrl(org, project, id)} leadingVisual={FileCodeIcon}>
             Browse files
@@ -200,7 +200,7 @@ export default function CommitsPage() {
                         <strong>{authorOf(entry)}</strong> committed{' '}
                         <span title={absoluteTime(entry.created_at)}>{relativeTime(entry.created_at)}</span>
                         <ImportedLabel origin={entry.origin} />
-                        <IssueChips refs={entry.issue_keys} issues={issues} />
+                        <IssueChips org={org} project={project} refs={entry.issue_keys} issues={issues} />
                       </div>
                     </div>
                     <span className="nipa-sha-group">

@@ -185,11 +185,20 @@ func TestClient_EgressAllowlist(t *testing.T) {
 	denied := NewClient(ClientConfig{EgressAllowlist: []string{"example.com"}}).Post(context.Background(), PostRequest{
 		URL: server.URL, Event: "push", Payload: []byte(`{}`),
 	})
-	require.True(t, IsEgressBlocked(denied.Err))
+	require.True(t, IsEgressBlocked(denied.Err), "an unlisted private address stays blocked")
 
 	badURL := NewClient(ClientConfig{EgressAllowlist: []string{"example.com"}}).Post(context.Background(), PostRequest{
 		URL: "http://%zz", Event: "push", Payload: []byte(`{}`),
 	})
 	require.Error(t, badURL.Err)
 	require.False(t, IsEgressBlocked(badURL.Err))
+}
+
+func TestClient_EgressAllowlistKeepsPublicHosts(t *testing.T) {
+	client := NewClient(ClientConfig{Timeout: 20 * time.Millisecond, EgressAllowlist: []string{"10.0.0.0/8"}})
+	res := client.Post(context.Background(), PostRequest{
+		URL: "http://192.0.2.1:9/hook", Event: "push", Payload: []byte(`{}`),
+	})
+	require.Error(t, res.Err, "TEST-NET-1 never answers")
+	require.False(t, IsEgressBlocked(res.Err), "a public address passes the guard despite a non-empty list")
 }

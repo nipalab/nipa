@@ -47,9 +47,9 @@ MFA_ENCRYPTION_KEY: ''
 # links Nipa adds to issues point at PUBLIC_BASE_URL (else EMAIL_BASE_URL);
 # with neither set only comments and transitions are sent.
 INTEGRATIONS_ENCRYPTION_KEY: ''
-# Comma-separated hostnames, IPs or CIDR ranges issue trackers may reach.
-# Empty allows public addresses only; a Data Center on a private network needs
-# an entry.
+# Comma-separated hostnames, IPs or CIDR ranges issue trackers may reach in
+# addition to public addresses (always allowed); a Data Center on a private
+# network needs an entry.
 ISSUE_TRACKER_EGRESS_ALLOWLIST: ''
 # Logging: level is debug|info|warn|error, format is console|json.
 LOG_LEVEL: debug
@@ -136,8 +136,8 @@ STORAGE_LEDGER: ''
 # Quota in bytes for owners without an explicit quota row (default
 # 16106127360 = 15 GiB; set 0 for unlimited).
 STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 16106127360
-# Comma-separated hostnames, IPs or CIDR ranges webhooks may reach. Empty
-# allows public addresses only; loopback/private targets need an entry.
+# Comma-separated hostnames, IPs or CIDR ranges webhooks may reach in addition
+# to public addresses (always allowed); loopback/private targets need an entry.
 WEBHOOK_EGRESS_ALLOWLIST: ''
 WEBHOOK_TIMEOUT_SECONDS: 30
 # Outbound email. EMAIL_SENDER selects the transport: `off` (default), `log`,

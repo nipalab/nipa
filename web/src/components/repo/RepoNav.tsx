@@ -26,7 +26,7 @@ export function RepoNav({
 }: {
   org: string
   project: string
-  active: RepoTab
+  active?: RepoTab
   rev?: string
   canAdmin?: boolean
 }) {

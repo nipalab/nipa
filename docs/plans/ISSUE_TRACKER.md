@@ -247,10 +247,13 @@ update probe first; a failed probe is a 400 with the failed check
 ## Security
 
 - **Egress.** The base URL is user input, so every request goes through the
-  dial guard already written for webhooks (public addresses only, checked on
-  the dialed IP, no redirects). It moves to `internal/egress` and both use it.
+  dial guard already written for webhooks (public addresses plus listed
+  ones, checked on the dialed IP, no redirects). It moves to `internal/egress` and both use it.
   A Jira Data Center on a private network needs an entry in
-  `ISSUE_TRACKER_EGRESS_ALLOWLIST`.
+  `ISSUE_TRACKER_EGRESS_ALLOWLIST`. The guard is additive: public addresses
+  stay allowed, entries only add private hosts, IPs or CIDR ranges, so Jira
+  Cloud keeps working once a private host is listed. `WEBHOOK_EGRESS_ALLOWLIST`
+  follows the same rule.
 - **Visibility leak, Jira to Nipa.** Every Nipa project reader sees titles
   and statuses the service account can read. The per-project key list bounds
   this; the settings page says so.
@@ -269,6 +272,7 @@ update probe first; a failed probe is a 400 with the failed check
 | 3 | `issue_links`, the `HookEmitter` sink, `issue_keys` on DTOs, resolve/links routes, SPA: issue chips on commits and merge requests, org and project settings tabs |
 | 4 | Outbox + dispatcher: remote links, merge comment, transitions; jobs tab; metrics (`nipa_issue_tracker_requests_total{kind,op,result}`, `nipa_issue_tracker_jobs{state}`) |
 | 5 | gRPC (`ResolveIssues`, `SearchIssues`, `issue_keys` fields), `nipa branch -c --issue GAME-123`, `nipa log`/`mr view` keys, desktop chips and "Branch from issue" in the palette, MCP read tool |
+| 5b (shipped) | Follow-up: web issue picker under the merge request description (new and existing MRs, backed by `issues/search`), web issue page `/:org/:project/issues/:key` (issue summary plus its linked commits, branches and merge requests), branch chips on the web branches page and the desktop branch list (desktop chips open the issue in Jira), admin guide `docs/ISSUE_TRACKER.md`, additive `ISSUE_TRACKER_EGRESS_ALLOWLIST` |
 | 6 | Later, each on demand: inbound Jira webhooks (cache invalidation, `issue.updated` events), Jira Development panel, OAuth 3LO, a second tracker (Linear) to prove the abstraction |
 
 Each PR carries its own tests (80% gate): unit tests with the fake Jira and

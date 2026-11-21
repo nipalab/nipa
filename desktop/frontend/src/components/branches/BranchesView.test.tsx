@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.branches.mockResolvedValue([
     { name: "main", commitId: "c3", default: true, protected: true },
-    { name: "art-pass", commitId: "c4", default: false, protected: false },
+    { name: "art-pass", commitId: "c4", default: false, protected: false, issues: [{ key: "GAME-12", url: "https://jira/browse/GAME-12" }] },
     { name: "empty", commitId: "", default: false, protected: false },
   ]);
   api.tags.mockResolvedValue([
@@ -49,6 +49,14 @@ describe("BranchesView", () => {
     expect(within(branches).getByText("empty", { selector: "span.font-mono" })).toBeInTheDocument();
     expect(within(branches).queryByRole("button", { name: "Delete branch main" })).not.toBeInTheDocument();
     expect(within(branches).getAllByRole("button", { name: "Switch" })).toHaveLength(2);
+    expect(within(branches).getByLabelText("Linked issues")).toHaveTextContent("GAME-12");
+    const chip = within(branches).getByRole("link", { name: "GAME-12" });
+    expect(chip).toHaveAttribute("href", "https://jira/browse/GAME-12");
+    expect(chip).toHaveAttribute("target", "_blank");
+    chip.addEventListener("click", (e) => e.preventDefault());
+    await userEvent.click(chip);
+    expect(onSwitch).not.toHaveBeenCalled();
+    expect(onMerge).not.toHaveBeenCalled();
 
     expect(await screen.findByText("First playable")).toBeInTheDocument();
     await userEvent.click(within(section("Tags")).getAllByRole("button", { name: "Check out" })[0]);

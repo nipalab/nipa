@@ -185,12 +185,13 @@ func TestService_Branches(t *testing.T) {
 		full[i] = &pb.Branch{Id: "b", Name: "feature-" + string(rune('a'+i%26)), UpdatedAt: timestamppb.Now()}
 	}
 	full[listPage-1] = &pb.Branch{Id: "last", Name: "Zeta", UpdatedAt: timestamppb.Now()}
-	d.branches = [][]*pb.Branch{full, {{Name: "main", IsDefault: true, IsProtected: true, CommitId: ptr("c3")}}}
+	d.branches = [][]*pb.Branch{full, {{Name: "main", IsDefault: true, IsProtected: true, CommitId: ptr("c3"), IssueKeys: []*pb.IssueKey{{Key: "GAME-7", Url: "https://jira/browse/GAME-7"}}}}}
 
 	list, err := svc.Branches(ctx, "/work/game")
 	require.NoError(t, err)
 	require.Len(t, list, listPage+1)
-	assert.Equal(t, Branch{Name: "main", CommitID: "c3", Default: true, Protected: true}, list[0])
+	assert.Equal(t, Branch{Name: "main", CommitID: "c3", Default: true, Protected: true, Issues: []IssueKey{{Key: "GAME-7", URL: "https://jira/browse/GAME-7"}}}, list[0])
+	assert.Nil(t, list[1].Issues)
 	assert.Equal(t, "Zeta", list[len(list)-1].Name)
 	require.Len(t, d.branchReqs, 2)
 	assert.Equal(t, "last", d.branchReqs[1].GetLastId())

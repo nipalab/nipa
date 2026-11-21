@@ -12,9 +12,11 @@ once, on create and on rotate. Deliveries are queued, retried with backoff and
 can be redelivered; consumers must be idempotent (a redelivery, or the overlap
 of two server colors during a deploy, delivers the same payload again).
 
-Destinations are checked against `WEBHOOK_EGRESS_ALLOWLIST`: without an entry,
-only public addresses are allowed, so a receiver on `127.0.0.1` or a private
-network needs to be listed.
+Destinations are checked on the address actually dialed (no redirects, no
+proxy). Public addresses are always allowed; `WEBHOOK_EGRESS_ALLOWLIST` only
+adds destinations on top, so a receiver on `127.0.0.1` or a private network
+needs its hostname, IP or CIDR range listed. Listing a private host never
+restricts public receivers.
 
 ### Request
 
