@@ -137,11 +137,48 @@ written: `syncWorkingCopyOpts` checks every file it rewrites and every
 removal (`checkSyncTargets`, before `localChangeConflicts`), `restoreFiles`
 the changed files (`checkRestoreTargets`, before `restoreDirect`), and
 `applyThreeWay` (write mode) its writes and deletions before
-`MissingChunks`. Residual risk: check-then-write is not atomic; a local process
-that swaps a verified folder for a link mid-operation is not stopped (no
-`openat`-style walk). `.nipa/` itself and root-level files written by
-`SaveProvenance` (rename over a link) and `ignore.AppendRules` (`os.WriteFile`,
-follows a symlinked `.nipaignore`; user-initiated) are outside the guard. A repo that already tracks such a path
+`MissingChunks`. The guard is the early, readable refusal; the writes
+themselves go through a `workTree` (`usecase/work_tree.go`): one `os.Root`
+opened lazily on the clone root (created first when missing; the root path
+itself may be a link) and owned by the `guardWrites` scope, so an operation
+opens it once and closes it when the scope and the last holder (a
+`directPlan` until `cleanup`) release it; outside a scope `acquireWorkTree`
+returns a private one for the call. A file's steps resolve its folder once:
+`workTree.dir` opens it as a sub-root through the root (`Root.OpenRoot`,
+`MkdirAll` only when missing) and the temp create, read-only probe, chmod
+and rename then name only the file, then the sub-root is closed (one extra
+handle per file in flight; resolving through the root on every step instead
+cost ~2x path-based syscalls, a per-file sub-root measured ~+8 us per file, ~20%
+on a 5000 x 4 KiB local materialize on tmp, and no extra cost per chunk).
+Through it run `materializeFile`, `createSizedTemp` and the `directPlan`
+(temp handles reopened by `tempHandles.openFile`, chmod in `complete`, rename
+in `finish`, removal in `cleanup`, the latter three resolving through the
+root), `guardedRemoveCached` (Lstat, hash read, removal; a tracked file
+replaced by a link out of the clone is kept, like a local change),
+`removeWorkingFile` (file and emptied parents), `Conflicts.Resolve`/`write`
+(temp, chmod on the handle, rename, delete) and `sweepMaterializeTemps`
+(walks `Root.FS`). `os.Root` has no CreateTemp, so `createTempIn` opens
+`prefix+<random uint32>` with `O_CREATE|O_EXCL` (0600, the name shape
+`isMaterializeTemp` expects).
+`replaceIn` takes a `replaceFS` (`*os.Root`, or `pathFS` for
+`SaveProvenance`'s path-based `replaceFile`); the Windows read-only dance
+(chmod dst, rename, chmod back) runs through it too. A folder swapped for a
+link after the guard verified it makes the runtime refuse the step
+(`path escapes from parent`, unexported, matched by message in
+`isRootEscape`); `refuseEscape` turns it into a 400 `refusing to write|remove
+%q: a folder on the way to it is a link that leads out of the working copy`.
+Limits: `os.Root` still follows a swapped-in link that stays inside the
+root (e.g. `-> .nipa`), only the up-front guard refuses those, so a race can
+redirect a write within the clone but never out of it; an open root or
+sub-root keeps referring to its folder if that folder is *moved* (renamed)
+elsewhere mid-write, which `os.Root` does not prevent; on Unix `Root.Chmod`
+may act on a leaf swapped for a symlink (used only on our own temp in
+`directPlan.complete`). Reads of working files (`salvage`, status hashing,
+`statEntryFor`) stay path-based. Root-level `.nipaignore`
+(`ignore.AppendRules`) and `.nipaprovenance.yml` (`SaveProvenance`) are
+written temp+rename, replacing a link rather than writing its target. A
+linked `.nipa` (or `.nipa/objects|writes|shelves`) is refused when the local
+repo opens (`docs/internals/localrepo.md`). A repo that already tracks such a path
 fails to sync with a 400 "refusing to sync unsafe path" error. `isNipaPath`
 (stage/push/restore/shelve exclusion) uses the same case-insensitive
 `domain.IsMetadataSegment`. Clone,

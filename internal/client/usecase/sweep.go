@@ -3,7 +3,6 @@ package usecase
 import (
 	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,9 +65,16 @@ func beginWriteMarker(lr any, root string) func() {
 
 // sweepMaterializeTemps removes the materialize temp files under root last
 // modified before the cutoff and reports how many it removed and how many
-// younger ones it left. It never descends into the .nipa directory.
+// younger ones it left. It walks and removes inside the work tree, never
+// through a link, and never descends into the .nipa directory.
 func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	r, err := wt.open(false)
+	if err != nil {
+		return 0, 0
+	}
+	_ = fs.WalkDir(r.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if d != nil && d.IsDir() {
 				return fs.SkipDir
@@ -76,7 +82,7 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 			return nil
 		}
 		if d.IsDir() {
-			if d.Name() == nipaDir && path != root {
+			if d.Name() == nipaDir && path != "." {
 				return fs.SkipDir
 			}
 			return nil
@@ -92,7 +98,7 @@ func sweepMaterializeTemps(root string, before time.Time) (removed, young int) {
 			young++
 			return nil
 		}
-		if os.Remove(path) == nil {
+		if wt.remove(filepath.FromSlash(path)) == nil {
 			removed++
 		}
 		return nil

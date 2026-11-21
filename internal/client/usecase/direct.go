@@ -49,7 +49,8 @@ func directEligible(f materializedFile, pins []string) bool {
 }
 
 type directFile struct {
-	job       materializeJob
+	job materializeJob
+	// tmp is the temp file's name inside the plan's work tree.
 	tmp       string
 	handles   *tempHandles
 	remaining atomic.Int64
@@ -65,9 +66,12 @@ type directTarget struct {
 
 // directPlan assembles raw files in place: every file gets a preallocated
 // temp file next to its target, chunks are written at their offsets as they
-// arrive, and finish swaps the files in after the whole sync succeeded.
+// arrive, and finish swaps the files in after the whole sync succeeded. Every
+// step goes through the plan's workTree, which cleanup releases.
 type directPlan struct {
 	root    string
+	wt      *workTree
+	release sync.Once
 	files   []*directFile
 	targets map[domain.Hash][]directTarget
 	handles *tempHandles
@@ -77,14 +81,19 @@ type directPlan struct {
 }
 
 func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
+	wt := acquireWorkTree(root)
 	p := &directPlan{
 		root:    root,
+		wt:      wt,
 		targets: make(map[domain.Hash][]directTarget),
-		handles: newTempHandles(),
+		handles: newTempHandles(func(name string) (*os.File, error) {
+			f, err := wt.openFile(name, os.O_RDWR, 0)
+			return f, refuseEscape("write", name, err)
+		}),
 		entries: make(map[string]clientDomain.StatEntry, len(jobs)),
 	}
 	for _, job := range jobs {
-		tmp, err := createSizedTemp(root, job.file)
+		tmp, err := createSizedTemp(wt, root, job.file)
 		if err != nil {
 			p.cleanup()
 			return nil, &materializeError{path: job.file.Path, err: err}
@@ -110,28 +119,31 @@ func newDirectPlan(root string, jobs []materializeJob) (*directPlan, error) {
 	return p, nil
 }
 
-func createSizedTemp(root string, f materializedFile) (string, error) {
+// createSizedTemp creates f's temp file, preallocated to its size, next to its
+// working file in wt and returns its name there.
+func createSizedTemp(wt *workTree, root string, f materializedFile) (string, error) {
 	if err := checkWriteInsideRoot(root, f.Path); err != nil {
 		return "", err
 	}
-	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(f.Path)))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp(dir, materializeTempPrefix+"*")
+	name := filepath.FromSlash(f.Path)
+	d, done, err := wt.dirOf("write", name, true)
 	if err != nil {
 		return "", err
 	}
-	name := tmp.Name()
+	defer done()
+	tmp, tmpName, err := createTempIn(d, materializeTempPrefix)
+	if err != nil {
+		return "", err
+	}
 	err = tmp.Truncate(f.SizeBytes)
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		_ = os.Remove(name)
+		_ = d.Remove(tmpName)
 		return "", err
 	}
-	return name, nil
+	return filepath.Join(filepath.Dir(name), tmpName), nil
 }
 
 func (p *directPlan) wants(h domain.Hash) bool {
@@ -289,10 +301,10 @@ func (p *directPlan) complete(df *directFile) error {
 		return &materializeError{path: f.Path, err: err}
 	}
 	mode := materializedMode(f.Mode)
-	if df.job.prevMode != 1 && isReadOnlyFile(filepath.Join(p.root, filepath.FromSlash(f.Path))) {
+	if df.job.prevMode != 1 && p.wt.isReadOnly(filepath.FromSlash(f.Path)) {
 		mode &^= 0o222
 	}
-	if err := os.Chmod(df.tmp, fsperm.Mask(mode)); err != nil {
+	if err := p.wt.chmod(df.tmp, fsperm.Mask(mode)); err != nil {
 		return &materializeError{path: f.Path, err: err}
 	}
 	df.done.Store(true)
@@ -321,7 +333,7 @@ func (p *directPlan) finish(ctx context.Context) error {
 	}
 	return runPool(ctx, p.files, func(df *directFile) error {
 		f := df.job.file
-		if err := replaceFile(df.tmp, filepath.Join(p.root, filepath.FromSlash(f.Path))); err != nil {
+		if err := p.wt.replace(df.tmp, filepath.FromSlash(f.Path)); err != nil {
 			return &materializeError{path: f.Path, err: err}
 		}
 		df.replaced.Store(true)
@@ -334,13 +346,16 @@ func (p *directPlan) finish(ctx context.Context) error {
 	})
 }
 
+// cleanup removes the temp files that were not swapped in and releases the
+// work tree; it may run more than once.
 func (p *directPlan) cleanup() {
 	p.handles.closeAll()
 	for _, df := range p.files {
 		if !df.replaced.Load() {
-			_ = os.Remove(df.tmp)
+			_ = p.wt.remove(df.tmp)
 		}
 	}
+	p.release.Do(p.wt.release)
 }
 
 // runPool calls fn for every item on a bounded worker pool and stops feeding

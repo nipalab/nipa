@@ -93,16 +93,23 @@ const tempFilePrefix = ".tmp-"
 var staleTempAge = time.Hour
 
 // PruneObjects deletes cached objects whose hash is not in keep, plus temp
-// files left behind by interrupted writes.
+// files left behind by interrupted writes. It lists and deletes through the
+// objects folder opened as an os.Root (openRealDir), so a linked objects or
+// fan-out folder never leads it to delete anything outside the cache.
 func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int64, error) {
 	if l.db == nil {
 		return 0, 0, errors.New("local repo not initialized")
 	}
-	root := filepath.Join(l.target, ConfigDir, ObjectsDir)
-	dirs, err := os.ReadDir(root)
+	root, err := openRealDir(l.target, filepath.Join(ConfigDir, ObjectsDir))
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, 0, nil
 	}
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = root.Close() }()
+	objects := root.FS()
+	dirs, err := fs.ReadDir(objects, ".")
 	if err != nil {
 		return 0, 0, err
 	}
@@ -115,8 +122,7 @@ func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int6
 		if !dir.IsDir() || len(dir.Name()) != 2 {
 			continue
 		}
-		dirPath := filepath.Join(root, dir.Name())
-		entries, err := os.ReadDir(dirPath)
+		entries, err := fs.ReadDir(objects, dir.Name())
 		if err != nil {
 			return files, freed, err
 		}
@@ -138,7 +144,7 @@ func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int6
 			if temp && !info.ModTime().Before(cutoff) {
 				continue
 			}
-			if err := os.Remove(filepath.Join(dirPath, entry.Name())); err != nil {
+			if err := root.Remove(filepath.Join(dir.Name(), entry.Name())); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					continue
 				}

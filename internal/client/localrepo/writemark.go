@@ -2,6 +2,7 @@ package localrepo
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,24 +32,28 @@ func (l *LocalRepo) BeginWorkingWrite() (end func(), interrupted bool, err error
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, false, err
 	}
-	entries, err := os.ReadDir(dir)
+	writes, err := openRealDir(l.target, filepath.Join(ConfigDir, WritesDir))
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = writes.Close() }()
+	entries, err := fs.ReadDir(writes.FS(), ".")
 	if err != nil {
 		return nil, false, err
 	}
 	var stale []string
 	live := false
 	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		switch markerState(path) {
+		switch markerState(writes, entry.Name()) {
 		case markerStale:
-			stale = append(stale, path)
+			stale = append(stale, entry.Name())
 		case markerLive:
 			live = true
 		}
 	}
 	if !live {
-		for _, path := range stale {
-			_ = os.Remove(path)
+		for _, name := range stale {
+			_ = writes.Remove(name)
 		}
 		interrupted = len(stale) > 0
 	}
@@ -84,8 +89,8 @@ const (
 	markerLive
 )
 
-func markerState(path string) markerLock {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+func markerState(dir *os.Root, name string) markerLock {
+	f, err := dir.OpenFile(name, os.O_RDWR, 0)
 	if err != nil {
 		return markerGone
 	}

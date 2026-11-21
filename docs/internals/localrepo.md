@@ -4,6 +4,24 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
 
 ## Client localrepo design (`internal/client/localrepo`)
 
+- Linked metadata is refused: `Init` (`checkMetadataDirs`, `metadir.go`)
+  Lstats `.nipa` and, when present, `.nipa/objects`, `.nipa/writes` and
+  `.nipa/shelves` (O(1), at most four Lstats, nothing per object) and fails
+  with a 400 `refusing to use ".nipa[/x]": it is a symbolic link` (or
+  `junction or reparse point`, `domain.LinkKind`) before creating or opening
+  anything; the clone root itself may be reached through a link. No supported
+  workflow shares or links `.nipa` or its object store (each clone owns its
+  cache). The destructive paths also act only through the real folder:
+  `openRealDir` opens it as an `os.Root`, then checks the path still Lstats
+  as a non-link folder that `os.SameFile`s the opened one, so a link swapped
+  in after `Init` is refused too. `PruneObjects` lists and deletes through
+  the objects root (a symlinked fan-out folder is skipped as a non-directory
+  entry, and a fan-out swapped mid-prune cannot lead out of the objects
+  folder), `BeginWorkingWrite` reads, probes and removes stale markers
+  through the writes root, and `NewShelfWriter`'s temp sweep and
+  `DropShelf` through the shelves root (`NewShelfWriter` fails when it cannot
+  open it). Object and marker *creation* stays path-based below the folders
+  `Init` verified.
 - `.nipa/` inside the clone target: `config` (json `{url, branch, sparse?,
   head?}`; `head` is the detached marker `{"kind":"tag","name":"v1.0.0"}` and
   is absent while on a branch) written

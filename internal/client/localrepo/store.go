@@ -37,6 +37,9 @@ func (l *LocalRepo) Init(target string) error {
 		_ = l.db.Close()
 		l.db = nil
 	}
+	if err := checkMetadataDirs(target); err != nil {
+		return err
+	}
 	dir := filepath.Join(target, ConfigDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

@@ -403,6 +403,7 @@ func (s *Shelve) clearShelved(ctx context.Context, shelf *domain.Shelf, restore 
 			return err
 		}
 	}
+	defer guardWrites(s.root)()
 	for _, p := range added {
 		if err := removeWorkingFile(s.root, p); err != nil {
 			return err
@@ -416,13 +417,14 @@ func removeWorkingFile(root, p string) error {
 	if err := checkRemoveInsideRoot(root, p); err != nil {
 		return err
 	}
-	abs := filepath.Join(root, filepath.FromSlash(p))
-	if err := os.Remove(abs); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	name := filepath.FromSlash(p)
+	if err := wt.remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	cleanRoot := filepath.Clean(root)
-	for dir := filepath.Dir(abs); dir != cleanRoot && strings.HasPrefix(dir, cleanRoot); dir = filepath.Dir(dir) {
-		if os.Remove(dir) != nil {
+	for dir := filepath.Dir(name); dir != "."; dir = filepath.Dir(dir) {
+		if wt.remove(dir) != nil {
 			break
 		}
 	}
@@ -612,6 +614,7 @@ func (s *Shelve) Abort(ctx context.Context) error {
 	if err := s.repo.StageRemove(paths); err != nil {
 		return err
 	}
+	defer guardWrites(s.root)()
 	var restore []string
 	for _, p := range paths {
 		if _, ok := tracked[p]; ok {

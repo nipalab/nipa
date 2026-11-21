@@ -59,7 +59,7 @@ func (g *dirGuard) check(verb, p string) error {
 		if err != nil {
 			return err
 		}
-		if link := linkKind(info.Mode()); link != "" {
+		if link := clientDomain.LinkKind(info.Mode()); link != "" {
 			return refusedLinkError(verb, p, d, link)
 		}
 		if !info.IsDir() {
@@ -89,29 +89,15 @@ func (g *dirGuard) remember(missing bool, dirs ...string) {
 	}
 }
 
-// linkKind names a mode that redirects a path elsewhere. Go reports Windows
-// junctions and other name-surrogate reparse points as ModeIrregular without
-// ModeDir (or as ModeSymlink with GODEBUG=winsymlink=0); a folder that is
-// some other reparse point (a OneDrive placeholder, say) keeps ModeDir and is
-// a real folder.
-func linkKind(mode fs.FileMode) string {
-	switch {
-	case mode&fs.ModeSymlink != 0:
-		return "symbolic link"
-	case mode&fs.ModeIrregular != 0 && !mode.IsDir():
-		return "junction or reparse point"
-	}
-	return ""
-}
-
 func refusedLinkError(verb, p, link, kind string) error {
 	return clientDomain.NewUserError(fmt.Sprintf("refusing to %s %q: %q is a %s", verb, p, link, kind)).
 		WithHint("Nipa never writes or deletes through a symbolic link or junction inside the working copy", fmt.Sprintf("replace %q with a real folder (or move it out of the working copy), then run the command again", link))
 }
 
-// writeGuards shares one dirGuard among the writes to a root while an
-// operation that opened a guardWrites scope runs, so its folders are checked
-// once per operation, never trusted from an earlier one.
+// writeGuards shares one dirGuard and one workTree among the writes to a root
+// while an operation that opened a guardWrites scope runs, so its folders are
+// checked once per operation, never trusted from an earlier one, and the root
+// is opened once per operation.
 var writeGuards = struct {
 	sync.Mutex
 	scopes map[string]*writeGuardScope
@@ -119,17 +105,19 @@ var writeGuards = struct {
 
 type writeGuardScope struct {
 	guard *dirGuard
+	tree  *workTree
 	refs  int
 }
 
 // guardWrites opens a guard scope for root and returns the function that
-// closes it. Scopes nest.
+// closes it. Scopes nest; the scope's root handle is closed with the last one
+// (or with the last write still holding it).
 func guardWrites(root string) func() {
 	key := filepath.Clean(root)
 	writeGuards.Lock()
 	scope, ok := writeGuards.scopes[key]
 	if !ok {
-		scope = &writeGuardScope{guard: newDirGuard(root)}
+		scope = &writeGuardScope{guard: newDirGuard(root), tree: &workTree{path: root, refs: 1}}
 		writeGuards.scopes[key] = scope
 	}
 	scope.refs++
@@ -141,6 +129,7 @@ func guardWrites(root string) func() {
 			defer writeGuards.Unlock()
 			if scope.refs--; scope.refs == 0 {
 				delete(writeGuards.scopes, key)
+				scope.tree.release()
 			}
 		})
 	}

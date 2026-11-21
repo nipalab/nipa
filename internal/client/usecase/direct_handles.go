@@ -20,6 +20,9 @@ var maxOpenTemps = 64
 // before any temp file is renamed or removed (Windows refuses both on an open
 // file).
 type tempHandles struct {
+	// openFile opens a temp file by name for reading and writing.
+	openFile func(name string) (*os.File, error)
+
 	mu     sync.Mutex
 	open   map[*directFile]*tempHandle
 	idle   *list.List
@@ -35,11 +38,12 @@ type tempHandle struct {
 	done bool
 }
 
-func newTempHandles() *tempHandles {
+func newTempHandles(openFile func(name string) (*os.File, error)) *tempHandles {
 	return &tempHandles{
-		open:   make(map[*directFile]*tempHandle),
-		idle:   list.New(),
-		failed: make(map[*directFile]error),
+		openFile: openFile,
+		open:     make(map[*directFile]*tempHandle),
+		idle:     list.New(),
+		failed:   make(map[*directFile]error),
 	}
 }
 
@@ -59,7 +63,7 @@ func (t *tempHandles) acquire(df *directFile) (*os.File, error) {
 	for len(t.open) >= maxOpenTemps && t.idle.Len() > 0 {
 		t.closeLocked(t.idle.Front().Value.(*directFile))
 	}
-	f, err := os.OpenFile(df.tmp, os.O_RDWR, 0)
+	f, err := t.openFile(df.tmp)
 	if err != nil {
 		return nil, err
 	}

@@ -96,5 +96,8 @@ func TestWriteMarkers_Errors(t *testing.T) {
 	require.Error(t, err)
 	require.Error(t, lr.MarkInterruptedWrite())
 
-	require.Equal(t, markerGone, markerState(filepath.Join(t.TempDir(), "missing")))
+	dir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	defer func() { _ = dir.Close() }()
+	require.Equal(t, markerGone, markerState(dir, "missing"))
 }

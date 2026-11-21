@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -310,7 +311,7 @@ func TestMaterializeFile_RefusesALinkedFolderAndReplacesALinkedFile(t *testing.T
 	symlinkOrSkip(t, outside, filepath.Join(root, "out"))
 	file := materializedFile{Path: "out/x.bin", Mode: 2, SizeBytes: int64(len(data)), ChunkHashes: []serverDomain.Hash{{1}}}
 	requireLinkRefusal(t, materializeFile(root, file, 0, open), "write", "out/x.bin", "out")
-	_, err := createSizedTemp(root, file)
+	_, err := createSizedTemp(testWorkTree(t, root), root, file)
 	requireLinkRefusal(t, err, "write", "out/x.bin", "out")
 	require.Empty(t, listing(t, outside))
 
@@ -443,4 +444,40 @@ func TestApplyThreeWay_RefusesALinkedFolderBeforeDownloading(t *testing.T) {
 			require.NoError(t, err, "a dry run writes nothing, so it is not refused")
 		})
 	}
+}
+
+// testWorkTree is a work tree on root released when the test ends.
+func testWorkTree(t *testing.T, root string) *workTree {
+	t.Helper()
+	wt := &workTree{path: root, refs: 1}
+	t.Cleanup(wt.release)
+	return wt
+}
+
+func TestShelve_AbortRefusesToRemoveThroughALinkedFolder(t *testing.T) {
+	fx := newShelfFixture(t, map[string]string{"a.txt": "base\n"})
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "added.txt"), []byte("keep"), 0o644))
+	symlinkOrSkip(t, outside, filepath.Join(fx.root, "new"))
+	require.NoError(t, fx.lr.SaveShelfState(&domain.ShelfState{ShelfID: "s", Applied: []string{"new/added.txt"}}))
+
+	requireLinkRefusal(t, fx.sh.Abort(context.Background()), "remove", "new/added.txt", "new")
+	require.Equal(t, "keep", string(readRepoFile(t, outside, "added.txt")))
+}
+
+func TestGuardedRemove_KeepsAFileReplacedByALink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "target"), []byte("keep"), 0o644))
+	symlinkOrSkip(t, filepath.Join(outside, "target"), filepath.Join(root, "dir", "old.bin"))
+	keepHash := chunker.FileHash([]serverDomain.Hash{chunker.Sum([]byte("keep"))})
+
+	removed, err := guardedRemove(root, domain.SnapshotFile{Path: "dir/old.bin", Hash: keepHash})
+	require.NoError(t, err)
+	require.False(t, removed, "a link is not content the sync wrote")
+	require.Equal(t, "keep", string(readRepoFile(t, outside, "target")))
+
+	removed, err = guardedRemove(root, domain.SnapshotFile{Path: "gone/old.bin"})
+	require.NoError(t, err)
+	require.True(t, removed, "a file whose folder is gone is already removed")
 }

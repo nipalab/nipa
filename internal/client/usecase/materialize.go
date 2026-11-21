@@ -101,39 +101,64 @@ var chunkBufferPool = sync.Pool{New: func() any { return &chunkBuffers{} }}
 
 // materializeFile writes f over its working file. prevMode is the mode the file
 // was tracked with before (0 when unknown): a read-only file that the previous
-// tracked mode does not explain is a local lock, so it stays read-only.
+// tracked mode does not explain is a local lock, so it stays read-only. Every
+// step goes through the operation's workTree, never out of the clone.
 func materializeFile(root string, f materializedFile, prevMode int, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
 	if err := checkWriteInsideRoot(root, f.Path); err != nil {
 		return err
 	}
-	fp := filepath.Join(root, filepath.FromSlash(f.Path))
-	dir := filepath.Dir(fp)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, materializeTempPrefix+"*")
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	name := filepath.FromSlash(f.Path)
+	dir, done, err := wt.dirOf("write", name, true)
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
+	defer done()
+	leaf := filepath.Base(name)
+	tmp, tmpName, err := createTempIn(dir, materializeTempPrefix)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Remove(tmpName) }()
 
-	if err := writeChunks(tmp, f, openChunk); err != nil {
-		_ = tmp.Close()
+	err = writeChunks(tmp, f, openChunk)
+	if err == nil {
+		mode := materializedMode(f.Mode)
+		if prevMode != 1 && isReadOnlyIn(dir, leaf) {
+			mode &^= 0o222
+		}
+		err = tmp.Chmod(fsperm.Mask(mode))
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		return err
 	}
-	mode := materializedMode(f.Mode)
-	if prevMode != 1 && isReadOnlyFile(fp) {
-		mode &^= 0o222
-	}
-	if err := tmp.Chmod(fsperm.Mask(mode)); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return replaceFile(tmpName, fp)
+	return replaceIn(dir, tmpName, leaf)
+}
+
+// replaceFS is what replacing a file needs: os.Root, or pathFS for files
+// written outside a work tree.
+type replaceFS interface {
+	Lstat(name string) (os.FileInfo, error)
+	Stat(name string) (os.FileInfo, error)
+	Chmod(name string, mode os.FileMode) error
+	Rename(oldname, newname string) error
+}
+
+// pathFS is replaceFS on plain paths.
+type pathFS struct{}
+
+func (pathFS) Lstat(name string) (os.FileInfo, error)    { return os.Lstat(name) }
+func (pathFS) Stat(name string) (os.FileInfo, error)     { return os.Stat(name) }
+func (pathFS) Chmod(name string, mode os.FileMode) error { return os.Chmod(name, mode) }
+func (pathFS) Rename(oldname, newname string) error      { return os.Rename(oldname, newname) }
+
+// replaceFile renames src over dst by path (replaceIn).
+func replaceFile(src, dst string) error {
+	return replaceIn(pathFS{}, src, dst)
 }
 
 // writeChunks streams f's chunks into dst. Raw chunks are copied file to file,

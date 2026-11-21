@@ -346,6 +346,10 @@ Ignored files are hidden from `nipa status` and skipped by `nipa add`, except
 for files that are already tracked or staged (tracking always wins).
 `nipa add -f <path>` stages an ignored file explicitly. Sparse checkouts always
 include the root `.nipaignore`.
+`nipa ignore import` (and the desktop app's add-to-ignore action) rewrite
+`.nipaignore` by replacing the file: a `.nipaignore` that is a symbolic link
+becomes a real file holding the rules it pointed at plus the new ones, and the
+link's target is never written.
 
 ## Sparse checkout
 
@@ -600,6 +604,8 @@ subdirectory.
 | `the server sent a cleartext (http) chunk transfer URL on a TLS session` | The server is reached over https but its chunk storage answers with http URLs. Fix the storage endpoint, or set `NIPA_ALLOW_INSECURE_CHUNK_URLS=1` to accept unencrypted transfers. |
 | `chunk transfer stalled` | A download received nothing for 60 seconds and its retries ran out. Check the connection and run the command again. |
 | `refusing to write "<path>": "<folder>" is a symbolic link` (or `refusing to remove`, or `is a junction or reparse point` on Windows) | A folder inside the working copy on the way to a file an update, switch, clone, merge, revert, restore, shelve or conflict resolution would write or delete is a symbolic link or junction. Nipa never writes or deletes through one, wherever it points (even inside the clone), and `--force` does not change that; the operation stops before downloading or changing anything when it can tell up front. Replace the link with a real folder (or move it out of the working copy) and run the command again. The clone's own root may be a symlink, and a tracked *file* that was replaced by a link is simply replaced by the real file. |
+| `refusing to write "<path>": a folder on the way to it is a link that leads out of the working copy` (or `refusing to remove`) | A folder of the working copy was replaced by a symbolic link or junction pointing outside the clone while Nipa was writing to it (after its up-front check passed). Nipa stops at that file without writing or deleting anything outside the clone; files written before it stay in place. Replace the link with a real folder and run the command again. |
+| `refusing to use ".nipa": it is a symbolic link` (or `".nipa/objects"`, `".nipa/writes"`, `".nipa/shelves"`, or `is a junction or reparse point` on Windows) | The clone's metadata folder, or a folder inside it, is a link. Nipa keeps its database, object cache, write markers and shelves in real folders inside the working copy and refuses to open the clone (and never prunes or sweeps through such a link). Replace the link with a real folder holding the same content, or delete the working copy and clone again. |
 | `.nipa-materialize-*` files in the working copy | Left by a clone, update or restore that was killed. The next update, switch or restore removes them; `nipa gc` removes ones older than an hour. |
 | `changes are staged` when switching | Push the staged changes or unstage them (`nipa remove -a`) before `nipa switch`. |
 | `binary file ... requires a lock` | `nipa lock <path>` (or cover it with a directory lock) before pushing. |

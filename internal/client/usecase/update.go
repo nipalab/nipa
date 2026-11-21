@@ -901,8 +901,8 @@ func fileExists(root, path string) bool {
 	return err == nil
 }
 
-func isReadOnlyFile(p string) bool {
-	info, err := os.Lstat(p)
+func isReadOnlyIn(fsys replaceFS, p string) bool {
+	info, err := fsys.Lstat(p)
 	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o200 == 0
 }
 
@@ -927,20 +927,36 @@ func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache 
 	if err := checkRemoveInsideRoot(root, base.Path); err != nil {
 		return false, err
 	}
-	fp := filepath.Join(root, filepath.FromSlash(base.Path))
+	wt := acquireWorkTree(root)
+	defer wt.release()
+	name := filepath.FromSlash(base.Path)
+	dir, done, err := wt.dirOf("remove", name, false)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer done()
+	leaf := filepath.Base(name)
 	if entry, ok := statCache[base.Path]; ok {
-		if info, err := os.Lstat(fp); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
+		if info, err := dir.Lstat(leaf); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
 			if entry.Hash != base.Hash {
 				return false, nil
 			}
-			err := os.Remove(fp)
+			err := dir.Remove(leaf)
 			if os.IsNotExist(err) {
 				err = nil
 			}
 			return true, err
 		}
 	}
-	f, err := os.Open(fp)
+	f, err := dir.Open(leaf)
+	if isRootEscape(err) {
+		// The file was replaced by a link out of the clone: not content
+		// this sync wrote, so it is kept like any local change.
+		return false, nil
+	}
 	if os.IsNotExist(err) {
 		return true, nil
 	}
@@ -960,7 +976,7 @@ func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache 
 		return false, err
 	}
 	if chunker.FileHash(hashes) == base.Hash {
-		return true, os.Remove(fp)
+		return true, dir.Remove(leaf)
 	}
 	return false, nil
 }

@@ -2,8 +2,6 @@
 
 package usecase
 
-import "os"
-
-func replaceFile(src, dst string) error {
-	return os.Rename(src, dst)
+func replaceIn(fsys replaceFS, src, dst string) error {
+	return fsys.Rename(src, dst)
 }

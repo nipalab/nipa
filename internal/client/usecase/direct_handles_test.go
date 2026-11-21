@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -171,7 +172,7 @@ func TestWriteTargets_Errors(t *testing.T) {
 	require.NoError(t, writeTargets(df, targets, []byte("head-00")))
 
 	missing := plan.files[1]
-	require.NoError(t, os.Remove(missing.tmp))
+	require.NoError(t, os.Remove(filepath.Join(plan.root, missing.tmp)))
 	err := writeTargets(missing, plan.targets[chunker.Sum([]byte("head-01"))], []byte("head-01"))
 	require.ErrorIs(t, err, os.ErrNotExist, "a temp file that disappeared cannot be reopened")
 
