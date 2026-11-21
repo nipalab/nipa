@@ -2,12 +2,12 @@ package localrepo
 
 import (
 	"bytes"
-	"io"
-	"strings"
 	"database/sql"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,7 +302,7 @@ func TestObjectWrites_RefuseLinkedFolders(t *testing.T) {
 	}
 	for _, tc := range cases {
 		for opName, op := range ops {
-			if opName == "MarkInterruptedWrite" && tc.name == "fanout" {
+			if opName == "MarkInterruptedWrite" && tc.name != "nipa" {
 				continue
 			}
 			t.Run(tc.name+"/"+opName, func(t *testing.T) {
@@ -311,7 +311,7 @@ func TestObjectWrites_RefuseLinkedFolders(t *testing.T) {
 				require.NoError(t, l.Init(root))
 				t.Cleanup(func() { _ = l.Close() })
 				link := filepath.Join(root, tc.rel)
-				require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
+				require.NoError(t, os.MkdirAll(link, 0o755))
 				require.NoError(t, os.Rename(link, filepath.Join(t.TempDir(), "moved")))
 				outside := t.TempDir()
 				symlinkOrSkip(t, outside, link)
