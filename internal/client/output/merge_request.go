@@ -27,6 +27,7 @@ type MergeRequest struct {
 	UpdatedAt         string                                `json:"updated_at,omitempty"`
 	Assignees         []clientDomain.ReviewActor            `json:"assignees,omitempty"`
 	Review            *clientDomain.MergeRequestReviewState `json:"review,omitempty"`
+	IssueKeys         []serverDomain.IssueKeyRef            `json:"issue_keys,omitempty"`
 }
 
 func NewMergeRequest(mr *clientDomain.MergeRequest) MergeRequest {
@@ -49,6 +50,7 @@ func NewMergeRequest(mr *clientDomain.MergeRequest) MergeRequest {
 		UpdatedAt:         formatTime(mr.UpdatedAt),
 		Assignees:         mr.Assignees,
 		Review:            mr.Review,
+		IssueKeys:         mr.IssueKeys,
 	}
 }
 

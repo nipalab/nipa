@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   members: vi.fn(),
   assignMergeRequest: vi.fn(),
   requestReview: vi.fn(),
+  resolveIssues: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -141,6 +142,18 @@ const pickStrategy = async (box: HTMLElement, name: RegExp) => {
 };
 
 describe("MergeRequestsView list", () => {
+  it("shows the issues linked to requests", async () => {
+    const issues = [{ key: "GAME-7", url: "https://jira.test/browse/GAME-7" }];
+    api.mergeRequests.mockResolvedValue({ items: [mr({ issues })], next: 0 });
+    api.mergeRequest.mockResolvedValue(detail({ issues }));
+    api.resolveIssues.mockResolvedValue([]);
+    view();
+    const rows = await list();
+    expect(within(rows).getByText("GAME-7")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "GAME-7" })).toHaveAttribute("href", "https://jira.test/browse/GAME-7");
+    expect(api.resolveIssues).toHaveBeenCalledWith("/work/game", ["GAME-7"]);
+  });
+
   it("lists requests, filters by status and search, and pages", async () => {
     view();
     const rows = await list();

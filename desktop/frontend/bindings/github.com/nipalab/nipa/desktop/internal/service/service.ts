@@ -406,6 +406,16 @@ export function InstallUpdate(): $CancellablePromise<$models.UpdateState> {
 }
 
 /**
+ * IssueBranch checks an issue key with the project's tracker and names the
+ * branch for it like `nipa branch --issue`: an unknown issue or a key outside
+ * the project's keys is refused, a project without a tracker or a tracker
+ * that is down only skips the check.
+ */
+export function IssueBranch(root: string, rawKey: string, name: string): $CancellablePromise<$models.IssueBranch | null> {
+    return $Call.ByID(1922916115, root, rawKey, name);
+}
+
+/**
  * LLMSettings returns the endpoint and model saved in the shared nipa config
  * and whether a key is saved; Configured also counts NIPA_LLM_* variables.
  */
@@ -688,6 +698,14 @@ export function ResolveConflict(root: string, $in: $models.ResolveInput): $Cance
 }
 
 /**
+ * ResolveIssues looks up the title and status of linked issues for the
+ * detail headers; a project without an issue tracker answers none.
+ */
+export function ResolveIssues(root: string, keys: string[] | null): $CancellablePromise<$models.Issue[] | null> {
+    return $Call.ByID(2199872036, root, keys);
+}
+
+/**
  * ResolveThread resolves a thread, or reopens it with resolved false.
  */
 export function ResolveThread(root: string, $number: number, threadID: string, resolved: boolean): $CancellablePromise<void> {
@@ -779,6 +797,13 @@ export function SceneDiff(root: string, old: $models.ImageRef | null, $new: $mod
  */
 export function SearchFiles(root: string, query: string, limit: number): $CancellablePromise<$models.FileSearch | null> {
     return $Call.ByID(1134649595, root, query, limit);
+}
+
+/**
+ * SearchIssues searches the project's issue tracker for the issue picker.
+ */
+export function SearchIssues(root: string, query: string): $CancellablePromise<$models.IssueSearch | null> {
+    return $Call.ByID(3910902644, root, query);
 }
 
 /**

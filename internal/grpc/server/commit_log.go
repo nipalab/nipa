@@ -7,7 +7,6 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/typ.v4/slices"
 )
 
 func (n *nipaServer) GetCommitLog(ctx context.Context, req *pb.GetCommitLogRequest) (*pb.GetCommitLogResponse, error) {
@@ -34,7 +33,7 @@ func (n *nipaServer) GetCommitLog(ctx context.Context, req *pb.GetCommitLogReque
 	}
 	return &pb.GetCommitLogResponse{
 		Branch:  req.Branch,
-		Commits: slices.Map(entries, commitLogEntryToPB),
+		Commits: n.commitLogToPB(ctx, project.ID, entries),
 	}, nil
 }
 

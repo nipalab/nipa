@@ -23,6 +23,12 @@ export function mrNumber(query: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+// issueKey reads a Jira-style issue key ("game-12" is GAME-12).
+export function issueKey(query: string): string | null {
+  const q = query.trim();
+  return /^[A-Za-z][A-Za-z0-9_]+-[1-9]\d{0,9}$/.test(q) ? q.toUpperCase() : null;
+}
+
 // looksLikeCommitId accepts what a base36 commit id can be.
 export const looksLikeCommitId = (query: string): boolean => /^[0-9a-z]{4,20}$/.test(query.trim());
 

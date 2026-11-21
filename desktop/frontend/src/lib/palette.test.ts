@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Commit, FileHit } from "@/api/desktop";
-import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "./palette";
+import { commitMatches, issueKey, looksLikeCommitId, mergeFileHits, mrNumber } from "./palette";
 
 const hit = (path: string): FileHit => ({ path, name: path.slice(path.lastIndexOf("/") + 1), size: 1, binary: false, kind: "text" });
 const commit = (id: string, message: string, hash = "f".repeat(64)): Commit => ({ id, hash, parents: [], author: "Ann", email: "", message, date: "", origin: "" });
@@ -18,6 +18,14 @@ describe("mergeFileHits", () => {
     expect(merged.map((m) => `${m.root}:${m.hit.path}`)).toEqual(["/b:Art/hero.png", "/a:docs/hero.md", "/b:docs/hero.md", "/a:Assets/Hero/armor.png"]);
     expect(merged[0].match.positions).toEqual([4, 5, 6, 7]);
     expect(mergeFileHits([{ root: "/a", hits: [hit("x/hero.png"), hit("y/hero.png")] }], "hero", 1)).toHaveLength(1);
+  });
+});
+
+describe("issueKey", () => {
+  it("normalizes issue keys and rejects anything else", () => {
+    expect(issueKey(" game-12 ")).toBe("GAME-12");
+    expect(issueKey("ART_2-7")).toBe("ART_2-7");
+    for (const q of ["GAME", "GAME-0", "1A-2", "G-1", "GAME-12 rig", "12"]) expect(issueKey(q)).toBeNull();
   });
 });
 

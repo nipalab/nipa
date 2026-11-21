@@ -114,10 +114,7 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 			return nil, handleError(err)
 		}
 	}
-	resp := &pb.ListMergeRequestsResponse{MergeRequests: make([]*pb.MergeRequestDetail, 0, len(requests))}
-	for _, request := range requests {
-		resp.MergeRequests = append(resp.MergeRequests, domainMergeRequestToPB(request))
-	}
+	resp := &pb.ListMergeRequestsResponse{MergeRequests: n.mergeRequestsToPB(ctx, project.ID, requests)}
 	if hasMore {
 		next := requests[len(requests)-1].Number
 		resp.NextCursor = &next
@@ -144,7 +141,7 @@ func (n *nipaServer) GetMergeRequest(ctx context.Context, req *pb.GetMergeReques
 		}
 	}
 	return &pb.GetMergeRequestResponse{
-		MergeRequest: domainMergeRequestToPB(request),
+		MergeRequest: n.mergeRequestsToPB(ctx, project.ID, []*domain.MergeRequest{request})[0],
 		Mergeability: domainMergeabilityToPB(info),
 	}, nil
 }
@@ -225,11 +222,7 @@ func (n *nipaServer) ListMergeRequestCommits(ctx context.Context, req *pb.ListMe
 	if err != nil {
 		return nil, handleError(err)
 	}
-	resp := &pb.ListMergeRequestCommitsResponse{Commits: make([]*pb.CommitLogEntry, 0, len(commits))}
-	for _, commit := range commits {
-		resp.Commits = append(resp.Commits, commitLogEntryToPB(commit))
-	}
-	return resp, nil
+	return &pb.ListMergeRequestCommitsResponse{Commits: n.commitLogToPB(ctx, project.ID, commits)}, nil
 }
 
 func (n *nipaServer) GetMergeRequestDiff(ctx context.Context, req *pb.GetMergeRequestDiffRequest) (*pb.GetMergeRequestDiffResponse, error) {

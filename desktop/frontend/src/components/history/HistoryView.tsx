@@ -17,6 +17,7 @@ import { repoSetting } from "@/lib/settings";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 import { ImportedBadge } from "@/components/history/ImportedBadge";
+import { IssueChips } from "@/components/issues/IssueChips";
 
 type HistoryViewProps = {
   root: string;
@@ -251,6 +252,7 @@ function CommitRow({ commit, tags, last, selected, onSelect }: { commit: Commit;
         <span className="min-w-0 flex-1 py-1.5">
           <span className="flex items-center gap-1">
             <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{commitTitle(commit.message)}</span>
+            <IssueChips issues={commit.issues} />
             {tags.map((t) => (
               <span key={t.name} className="flex shrink-0 items-center gap-0.5 rounded bg-accent/15 px-1 text-[10px] text-accent">
                 <TagIcon className="size-2.5" />

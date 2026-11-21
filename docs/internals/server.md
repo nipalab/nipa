@@ -118,6 +118,20 @@ entries, 5 s request budget, fan-out 8; states `ok|not_found|unavailable`),
 first, `after` cursor, max 100, missing subjects skipped; 400 for a key
 outside the project's keys) need project read and answer 404 without active
 settings.
+gRPC mirrors the reads (`internal/grpc/server/issue.go`, read-class in
+`maintenance_classes.go`): `ResolveIssues` (`keys`, max 50 =
+InvalidArgument) and `SearchIssues` (`query`, `limit` default 20 max 50;
+`supported`/`unavailable`) answer `IssueDetail` (`key`, `url`, `state`,
+`title`, `type`, `status`, `status_category`, `assignee`), NotFound without
+active settings and FailedPrecondition (503) when the integration is off or
+the container has no `IssueTracker`. `CommitLogEntry`, `Branch` and
+`MergeRequestDetail` gain `issue_keys` (`IssueKey{key, url}`), filled with
+one batched `SubjectIssueKeys` per response on `GetCommitLog`,
+`ListMergeRequestCommits`, `GetListBranch`, `ListMergeRequests` and
+`GetMergeRequest` (the same payloads as REST; create/update/merge answers and
+single-branch lookups leave them empty). The client shows them in `nipa log`
+and `nipa mr view`, `nipa branch --issue` resolves through `ResolveIssues`,
+the daemon proxies both RPCs and `nipa mcp` exposes them as `nipa_issues`.
 Jobs (`issue_jobs.go`, `IssueSync.WithJobs(projects, orgs, users, commits,
 baseURL)`; Jira is only called by the dispatcher): the sink queues
 `issue_tracker_jobs` rows in the transaction that writes the links. Link ids

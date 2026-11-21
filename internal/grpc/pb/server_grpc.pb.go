@@ -29,6 +29,8 @@ const (
 	NipaService_ListMyProjects_FullMethodName                  = "/greet.NipaService/ListMyProjects"
 	NipaService_ListDirectory_FullMethodName                   = "/greet.NipaService/ListDirectory"
 	NipaService_ListProjectMembers_FullMethodName              = "/greet.NipaService/ListProjectMembers"
+	NipaService_ResolveIssues_FullMethodName                   = "/greet.NipaService/ResolveIssues"
+	NipaService_SearchIssues_FullMethodName                    = "/greet.NipaService/SearchIssues"
 	NipaService_GetListBranch_FullMethodName                   = "/greet.NipaService/GetListBranch"
 	NipaService_GetBranch_FullMethodName                       = "/greet.NipaService/GetBranch"
 	NipaService_GetBranchByName_FullMethodName                 = "/greet.NipaService/GetBranchByName"
@@ -118,6 +120,8 @@ type NipaServiceClient interface {
 	ListMyProjects(ctx context.Context, in *ListMyProjectsRequest, opts ...grpc.CallOption) (*ListMyProjectsResponse, error)
 	ListDirectory(ctx context.Context, in *ListDirectoryRequest, opts ...grpc.CallOption) (*ListDirectoryResponse, error)
 	ListProjectMembers(ctx context.Context, in *ListProjectMembersRequest, opts ...grpc.CallOption) (*ListProjectMembersResponse, error)
+	ResolveIssues(ctx context.Context, in *ResolveIssuesRequest, opts ...grpc.CallOption) (*ResolveIssuesResponse, error)
+	SearchIssues(ctx context.Context, in *SearchIssuesRequest, opts ...grpc.CallOption) (*SearchIssuesResponse, error)
 	GetListBranch(ctx context.Context, in *GetListBranchRequest, opts ...grpc.CallOption) (*GetListBranchResponse, error)
 	GetBranch(ctx context.Context, in *GetBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	GetBranchByName(ctx context.Context, in *GetBranchByNameRequest, opts ...grpc.CallOption) (*GetBranchByNameResponse, error)
@@ -295,6 +299,26 @@ func (c *nipaServiceClient) ListProjectMembers(ctx context.Context, in *ListProj
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListProjectMembersResponse)
 	err := c.cc.Invoke(ctx, NipaService_ListProjectMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ResolveIssues(ctx context.Context, in *ResolveIssuesRequest, opts ...grpc.CallOption) (*ResolveIssuesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveIssuesResponse)
+	err := c.cc.Invoke(ctx, NipaService_ResolveIssues_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) SearchIssues(ctx context.Context, in *SearchIssuesRequest, opts ...grpc.CallOption) (*SearchIssuesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchIssuesResponse)
+	err := c.cc.Invoke(ctx, NipaService_SearchIssues_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1069,6 +1093,8 @@ type NipaServiceServer interface {
 	ListMyProjects(context.Context, *ListMyProjectsRequest) (*ListMyProjectsResponse, error)
 	ListDirectory(context.Context, *ListDirectoryRequest) (*ListDirectoryResponse, error)
 	ListProjectMembers(context.Context, *ListProjectMembersRequest) (*ListProjectMembersResponse, error)
+	ResolveIssues(context.Context, *ResolveIssuesRequest) (*ResolveIssuesResponse, error)
+	SearchIssues(context.Context, *SearchIssuesRequest) (*SearchIssuesResponse, error)
 	GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error)
 	GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error)
 	GetBranchByName(context.Context, *GetBranchByNameRequest) (*GetBranchByNameResponse, error)
@@ -1181,6 +1207,12 @@ func (UnimplementedNipaServiceServer) ListDirectory(context.Context, *ListDirect
 }
 func (UnimplementedNipaServiceServer) ListProjectMembers(context.Context, *ListProjectMembersRequest) (*ListProjectMembersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListProjectMembers not implemented")
+}
+func (UnimplementedNipaServiceServer) ResolveIssues(context.Context, *ResolveIssuesRequest) (*ResolveIssuesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveIssues not implemented")
+}
+func (UnimplementedNipaServiceServer) SearchIssues(context.Context, *SearchIssuesRequest) (*SearchIssuesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchIssues not implemented")
 }
 func (UnimplementedNipaServiceServer) GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetListBranch not implemented")
@@ -1598,6 +1630,42 @@ func _NipaService_ListProjectMembers_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).ListProjectMembers(ctx, req.(*ListProjectMembersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ResolveIssues_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveIssuesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ResolveIssues(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ResolveIssues_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ResolveIssues(ctx, req.(*ResolveIssuesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_SearchIssues_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchIssuesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).SearchIssues(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_SearchIssues_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).SearchIssues(ctx, req.(*SearchIssuesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2926,6 +2994,14 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListProjectMembers",
 			Handler:    _NipaService_ListProjectMembers_Handler,
+		},
+		{
+			MethodName: "ResolveIssues",
+			Handler:    _NipaService_ResolveIssues_Handler,
+		},
+		{
+			MethodName: "SearchIssues",
+			Handler:    _NipaService_SearchIssues_Handler,
 		},
 		{
 			MethodName: "GetListBranch",

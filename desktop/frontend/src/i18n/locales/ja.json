@@ -1588,5 +1588,16 @@
   "aISection.testConnection": "接続をテスト",
   "aISection.testConnectionHint": "この設定で短いリクエストを 1 回送信します。",
   "updatesSection.autoDownloadHint": "新しいバージョンはバックグラウンドでダウンロードされ、再起動のタイミングは自分で選べます。",
-  "updatesSection.autoCheckHint": "新しいバージョンが出たら Nipa がお知らせします。"
+  "updatesSection.autoCheckHint": "新しいバージョンが出たら Nipa がお知らせします。",
+  "commandPalette.branchFromIssue": "課題からブランチを作成…",
+  "commandPalette.findAnIssue": "課題を検索するか GAME-123 のようなキーを入力",
+  "commandPalette.createBranchFor": "{{key}} のブランチを作成",
+  "commandPalette.typeAnIssueKey": "GAME-123 のような課題キーを入力",
+  "commandPalette.issueTrackerUnavailable": "課題トラッカーを利用できません。課題キーを入力してください",
+  "commandPalette.section.Issues": "課題",
+  "repoView.createdIssueBranch": "{{key}} のブランチ {{name}} を作成しました",
+  "repoView.createdUncheckedIssueBranch": "ブランチ {{name}} を作成しました。{{key}} は課題トラッカーで確認されていません",
+  "repoView.couldNotCreateIssueBranch": "ブランチを作成できませんでした: {{value}}",
+  "issues.linkedIssues": "関連する課題",
+  "issues.openInTracker": "課題トラッカーで {{key}} を開く"
 }

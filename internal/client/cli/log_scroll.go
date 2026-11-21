@@ -205,8 +205,11 @@ func formatCommitFull(e *serverDomain.CommitLogEntry, color bool) []string {
 		commitLine + importedSuffix(e),
 		fmt.Sprintf("Author: %s", authorLine(e)),
 		fmt.Sprintf("Date:   %s", e.CreatedAt.Format("Mon Jan 2 15:04:05 2006 -0700")),
-		"",
 	}
+	if len(e.IssueKeys) > 0 {
+		lines = append(lines, "Issues: "+issueKeyList(e.IssueKeys))
+	}
+	lines = append(lines, "")
 	if e.Message != "" {
 		for _, m := range strings.Split(e.Message, "\n") {
 			lines = append(lines, "    "+m)
@@ -216,12 +219,24 @@ func formatCommitFull(e *serverDomain.CommitLogEntry, color bool) []string {
 	return lines
 }
 
+func issueKeyList(keys []serverDomain.IssueKeyRef) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = key.Key
+	}
+	return strings.Join(names, ", ")
+}
+
 func formatCommitOneline(e *serverDomain.CommitLogEntry, color bool) string {
 	idStr := commitIDStr(e)
 	if color {
 		idStr = ansiColorYellow + idStr + ansiColorReset
 	}
-	return fmt.Sprintf("%s%s %s", idStr, importedSuffix(e), commitSubject(e))
+	line := fmt.Sprintf("%s%s %s", idStr, importedSuffix(e), commitSubject(e))
+	if len(e.IssueKeys) > 0 {
+		line += " [" + issueKeyList(e.IssueKeys) + "]"
+	}
+	return line
 }
 
 func logLines(entries []*serverDomain.CommitLogEntry, oneline bool, color bool) []string {

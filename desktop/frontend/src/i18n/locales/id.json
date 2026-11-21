@@ -1588,5 +1588,16 @@
   "aISection.testConnection": "Uji koneksi",
   "aISection.testConnectionHint": "Mengirim satu permintaan singkat dengan nilai ini.",
   "updatesSection.autoDownloadHint": "Versi baru diunduh di latar belakang; Anda yang memilih kapan memulai ulang.",
-  "updatesSection.autoCheckHint": "Nipa memberi tahu Anda saat versi baru tersedia."
+  "updatesSection.autoCheckHint": "Nipa memberi tahu Anda saat versi baru tersedia.",
+  "commandPalette.branchFromIssue": "Branch dari issue…",
+  "commandPalette.findAnIssue": "Cari issue atau ketik kunci seperti GAME-123",
+  "commandPalette.createBranchFor": "Buat branch untuk {{key}}",
+  "commandPalette.typeAnIssueKey": "Ketik kunci issue seperti GAME-123",
+  "commandPalette.issueTrackerUnavailable": "Issue tracker tidak tersedia; ketik kunci issue",
+  "commandPalette.section.Issues": "Issue",
+  "repoView.createdIssueBranch": "Branch {{name}} dibuat untuk {{key}}",
+  "repoView.createdUncheckedIssueBranch": "Branch {{name}} dibuat; {{key}} tidak diperiksa di issue tracker",
+  "repoView.couldNotCreateIssueBranch": "Tidak dapat membuat branch: {{value}}",
+  "issues.linkedIssues": "Issue terkait",
+  "issues.openInTracker": "Buka {{key}} di issue tracker"
 }

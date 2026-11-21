@@ -27,8 +27,9 @@ export const visibleTabs = (conflicts: boolean, simple = false) =>
   tabs.filter((t) => (t.id === "conflicts" ? conflicts : !simple || simpleTabIds.includes(t.id)));
 
 // RepoAction is something a palette or shortcut asks the repository view to
-// do; target names the branch or tag for switch and checkout-tag.
-export type RepoAction = "update" | "focus-message" | "switch" | "checkout-tag" | "new-mr" | "lock" | "refresh";
+// do; target names the branch or tag for switch and checkout-tag, and the
+// issue key for issue-branch.
+export type RepoAction = "update" | "focus-message" | "switch" | "checkout-tag" | "new-mr" | "lock" | "refresh" | "issue-branch";
 
 // Intent asks the view to show a tab (and a merge request, commit or file)
 // or to run an action; seq changes for every request so the same target can

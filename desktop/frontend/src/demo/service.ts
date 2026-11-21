@@ -178,6 +178,17 @@ export function createService(scenario: string): typeof Real {
       const request = d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0];
       return ok({ request: clone(request), mergeability: { status: "mergeable", blockedBy: "", sourceCommitId: "c12", targetCommitId: "c11", mergeBaseId: "c8" }, outstanding: [] });
     },
+    SearchIssues: (_root, query) => {
+      const q = String(query ?? "").trim().toLowerCase();
+      return ok({ configured: true, supported: true, unavailable: false, issues: clone(d.issues).filter((i) => !!q && (i.key.toLowerCase().includes(q) || i.title.toLowerCase().includes(q))) });
+    },
+    ResolveIssues: (_root, keys) => ok(clone(d.issues).filter((i) => (keys ?? []).includes(i.key))),
+    IssueBranch: (_root, key, name) => {
+      const issue = d.issues.find((i) => i.key === String(key).trim().toUpperCase()) ?? null;
+      const slug = (issue?.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const k = String(key).trim().toUpperCase();
+      return ok({ key: k, name: name ? `${k}-${name}` : slug ? `${k}-${slug}` : k, issue: clone(issue) });
+    },
     Members: (_root, query) => {
       const q = String(query ?? "").trim().toLowerCase();
       return ok(clone(d.members).filter((m) => !q || m.name.toLowerCase().includes(q)));

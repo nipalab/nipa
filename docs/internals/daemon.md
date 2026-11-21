@@ -42,6 +42,9 @@ org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`
 `RemoteBranches`/`RemoteTree` run on a fresh connection per call
 (`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
 `ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs,
+`ProxyResolveIssues`/`ProxySearchIssues` forward the issue tracker reads
+(`proxy_issue.go`; commit, branch and merge request payloads already carry
+`issue_keys`),
 `ProxyMergeRequestUpdate`/`Commits`/`Checks`/`Timeline`/`AddComment`/`Reply`/
 `Resolve` complete the merge-request surface, `WatchEvents` polls the server per root (branch log vs the pinned commit,
 lock list, open merge requests' review requests) and streams `RepoActivity`

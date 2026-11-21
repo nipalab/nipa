@@ -71,6 +71,7 @@ type UseCases struct {
 	Push      *usecase.Push
 	Diff      *usecase.Diff
 	MR        *usecase.MergeRequest
+	Issue     *usecase.Issue
 	Lock      *usecase.FileLock
 	Tag       *usecase.Tag
 	Update    *usecase.Update
@@ -114,6 +115,7 @@ func newServer(opts Options) (*server, *mcp.Server) {
 	s.keepAlive = newKeepAlive(opts.newTicker, s.renewLock)
 	srv := mcp.NewServer(&mcp.Implementation{Name: "nipa", Version: opts.Version}, nil)
 	addReadTools(srv, s)
+	addIssueTools(srv, s)
 	addMRReadTools(srv, s)
 	addWriteTools(srv, s)
 	addMRWriteTools(srv, s)

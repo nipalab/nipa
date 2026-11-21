@@ -38,11 +38,7 @@ const (
 	issueSearchTimeout   = 10 * time.Second
 )
 
-// IssueKeyRef is an issue key with its link on the tracker.
-type IssueKeyRef struct {
-	Key string
-	URL string
-}
+type IssueKeyRef = domain.IssueKeyRef
 
 // ResolvedIssue is an issue key as far as the tracker could tell: State is
 // ok (Issue set), not_found or unavailable.

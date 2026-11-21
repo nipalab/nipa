@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   modelDiff: vi.fn(),
   audioDiff: vi.fn(),
   tableDiff: vi.fn(),
+  resolveIssues: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
@@ -98,6 +99,18 @@ const view = (props: Partial<Parameters<typeof HistoryView>[0]> = {}) =>
 const commitList = () => screen.findByRole("list", { name: "Commits" });
 
 describe("HistoryView", () => {
+  it("shows the issues linked to commits", async () => {
+    const linked = { ...c3, issues: [{ key: "GAME-7", url: "https://jira.test/browse/GAME-7" }] };
+    api.history.mockResolvedValue({ commits: [linked, c2], next: "" });
+    api.resolveIssues.mockResolvedValue([{ key: "GAME-7", url: "", state: "ok", title: "Hero rig", type: "", status: "To Do", statusCategory: "todo", assignee: "" }]);
+    view();
+    const list = await commitList();
+    expect(within(list).getByText("GAME-7")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "GAME-7" })).toHaveAttribute("href", "https://jira.test/browse/GAME-7");
+    expect(await screen.findByText("Hero rig")).toBeInTheDocument();
+    expect(within(list).queryByText("Hero rig")).toBeNull();
+  });
+
   it("lists commits with tags and pages older ones", async () => {
     view();
     const list = await commitList();

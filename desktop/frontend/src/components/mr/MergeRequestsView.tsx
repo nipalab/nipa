@@ -14,6 +14,7 @@ import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
+import { IssueChips } from "@/components/issues/IssueChips";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
@@ -155,6 +156,7 @@ function Row({ mr, selected, onSelect }: { mr: MergeRequest; selected: boolean; 
       <button type="button" onClick={onSelect} aria-current={selected} className={cn("w-full space-y-1 border-b border-border/60 px-3 py-2 text-left hover:bg-muted", selected && "bg-muted")}>
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{mr.title}</span>
+          <IssueChips issues={mr.issues} />
           <span className="shrink-0 text-[11px] text-muted-foreground">!{mr.number}</span>
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">

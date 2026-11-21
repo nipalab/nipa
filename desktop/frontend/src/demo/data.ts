@@ -18,6 +18,7 @@ import type {
   FontCompare,
   FontSide,
   ImageInfo,
+  Issue,
   LLMSettings,
   LockStatus,
   MergeRequest,
@@ -506,6 +507,7 @@ export const mergeRequests: MergeRequest[] = [
     ...mr(42, "Rework hero armor textures and ring mesh", "feature/hero-rework", "open", people.me.id, 38, 1, 0),
     description: "New dawn palette for the hero, replaces the ring mesh with the high-poly version and adds a dash to the movement controller.\n\nTested on PC and Steam Deck.",
     assignees: [people.mina],
+    issues: [{ key: "GAME-142", url: "https://studio.atlassian.net/browse/GAME-142" }],
   },
   mr(41, "Add dash ability", "feature/dash-ability", "open", people.mina.id, 210, 0, 1),
   mr(40, "Forest level lighting pass", "level/forest-lighting", "open", people.jon.id, 500, 2, 0),
@@ -703,6 +705,23 @@ export const blame = (path: string, revision: string): Blame => {
 };
 
 export const members = [people.me, people.mina, people.jon, people.sam];
+
+const issue = (key: string, title: string, status: string, statusCategory: string): Issue => ({
+  key,
+  url: `https://studio.atlassian.net/browse/${key}`,
+  state: "ok",
+  title,
+  type: "Story",
+  status,
+  statusCategory,
+  assignee: "",
+});
+
+export const issues: Issue[] = [
+  issue("GAME-142", "Hero armor rework", "In Progress", "in_progress"),
+  issue("GAME-150", "Dash ability feels floaty", "To Do", "todo"),
+  issue("GAME-151", "Forest fog is too dense at night", "To Do", "todo"),
+];
 
 export const feed = (): Feed => {
   const lock = locks().locks ?? [];

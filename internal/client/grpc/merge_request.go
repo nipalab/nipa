@@ -327,6 +327,7 @@ func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest 
 		UpdatedAt:         mr.GetUpdatedAt().AsTime(),
 		Review:            toClientReviewState(mr.GetReview()),
 		Assignees:         toClientReviewActors(mr.GetAssignees()),
+		IssueKeys:         toIssueKeys(mr.GetIssueKeys()),
 	}
 }
 

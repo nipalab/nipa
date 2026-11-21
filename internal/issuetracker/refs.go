@@ -165,3 +165,63 @@ func ParseKey(raw string, keys []string) (string, bool) {
 	}
 	return key, true
 }
+
+// ParseAnyKey normalizes a well-formed issue key (`game-12` becomes
+// `GAME-12`) without checking it against configured project keys.
+func ParseAnyKey(raw string) (string, bool) {
+	key := strings.ToUpper(strings.TrimSpace(raw))
+	i := strings.LastIndexByte(key, '-')
+	if i <= 0 {
+		return "", false
+	}
+	return ParseKey(key, []string{key[:i]})
+}
+
+const maxBranchSlug = 48
+
+// BranchName names a branch for an issue so BranchKey reads the key back:
+// name prefixed with the key unless it already leads with it, else the key
+// followed by a slug of title, else the key alone.
+func BranchName(key, name, title string) string {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		if i := strings.LastIndexByte(key, '-'); i > 0 {
+			if got, ok := BranchKey(name, []string{key[:i]}); ok && got == key {
+				return name
+			}
+		}
+		return key + "-" + name
+	}
+	if slug := Slug(title, maxBranchSlug); slug != "" {
+		return key + "-" + slug
+	}
+	return key
+}
+
+// Slug lowercases text to ASCII letters and digits joined by single dashes,
+// cut at a dash so it fits max bytes.
+func Slug(text string, max int) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(text) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			dash = false
+			b.WriteRune(r)
+		default:
+			dash = true
+		}
+	}
+	slug := b.String()
+	if len(slug) <= max {
+		return slug
+	}
+	slug = slug[:max]
+	if i := strings.LastIndexByte(slug, '-'); i > 0 {
+		slug = slug[:i]
+	}
+	return strings.TrimRight(slug, "-")
+}

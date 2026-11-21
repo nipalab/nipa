@@ -1,7 +1,8 @@
 # Issue tracker integration
 
-Status: design, nothing implemented. First tracker: Jira (Cloud and Data
-Center). Nipa does not become a task manager; it links its commits, branches
+Status: PRs 1–5 implemented (see the table below and
+`docs/internals/server.md`); PR 6 is on demand. First tracker: Jira (Cloud
+and Data Center). Nipa does not become a task manager; it links its commits, branches
 and merge requests to issues that live elsewhere.
 
 ## Goals

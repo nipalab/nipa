@@ -424,3 +424,19 @@ func TestFormatCommit_ImportedAuthor(t *testing.T) {
 		t.Fatalf("unexpected author line %q", lines[1])
 	}
 }
+
+func TestFormatCommitFullIssueKeys(t *testing.T) {
+	entry := testEntries()[0]
+	entry.IssueKeys = []serverDomain.IssueKeyRef{{Key: "GAME-1", URL: "u1"}, {Key: "ART-2", URL: "u2"}}
+	lines := formatCommitFull(entry, false)
+	require.Equal(t, "Issues: GAME-1, ART-2", lines[3])
+	require.Equal(t, "", lines[4])
+	require.Equal(t, "    first commit", lines[5])
+}
+
+func TestFormatCommitOnelineIssueKeys(t *testing.T) {
+	entry := testEntries()[0]
+	require.Equal(t, "6y1 first commit", formatCommitOneline(entry, false))
+	entry.IssueKeys = []serverDomain.IssueKeyRef{{Key: "GAME-123"}, {Key: "GAME-7"}}
+	require.Equal(t, "6y1 first commit [GAME-123, GAME-7]", formatCommitOneline(entry, false))
+}

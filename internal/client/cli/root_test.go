@@ -19,6 +19,7 @@ type fakeUsecaseContainer struct {
 	diff       *usecase.Diff
 	permission *usecase.Permission
 	mr         *usecase.MergeRequest
+	issue      *usecase.Issue
 	lock       *usecase.FileLock
 	tag        *usecase.Tag
 	version    *usecase.Version
@@ -37,6 +38,7 @@ func (f *fakeUsecaseContainer) Permission() *usecase.Permission {
 	return f.permission
 }
 func (f *fakeUsecaseContainer) MR() *usecase.MergeRequest { return f.mr }
+func (f *fakeUsecaseContainer) Issue() *usecase.Issue     { return f.issue }
 func (f *fakeUsecaseContainer) Lock() *usecase.FileLock   { return f.lock }
 func (f *fakeUsecaseContainer) Tag() *usecase.Tag         { return f.tag }
 func (f *fakeUsecaseContainer) Version() *usecase.Version { return f.version }

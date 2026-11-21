@@ -9,6 +9,7 @@ import type { DiffLayout } from "@/components/changes/TextDiff";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ImportedBadge } from "@/components/history/ImportedBadge";
+import { IssueChips } from "@/components/issues/IssueChips";
 import { commitBody, commitTitle, shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
@@ -86,6 +87,7 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
             {shortId(commit.id)}
           </span>
           <ImportedBadge origin={commit.origin} copy />
+          <IssueChips issues={commit.issues} root={root} />
           {commit.parents.map((p, i) => (
             <button key={p} type="button" className="font-mono hover:text-foreground hover:underline" onClick={() => onSelectCommit(p)} title={i === 0 ? translate("commitDetail.firstParent") : translate("commitDetail.mergedParent")}>
               {i === 0 ? "parent" : "merged"} {shortId(p)}

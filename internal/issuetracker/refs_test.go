@@ -134,3 +134,37 @@ func TestParseKey(t *testing.T) {
 		t.Error("ParseKey without keys accepted a key")
 	}
 }
+
+func TestParseAnyKey(t *testing.T) {
+	for raw, want := range map[string]string{" game-12 ": "GAME-12", "ART_2-1": "ART_2-1"} {
+		got, ok := ParseAnyKey(raw)
+		require.True(t, ok, raw)
+		require.Equal(t, want, got)
+	}
+	for _, raw := range []string{"", "GAME", "-1", "GAME-0", "GAME-x", "1A-2", "G-1", "GAME-12345678901"} {
+		_, ok := ParseAnyKey(raw)
+		require.False(t, ok, raw)
+	}
+}
+
+func TestBranchName(t *testing.T) {
+	require.Equal(t, "GAME-1-new-rig", BranchName("GAME-1", "", "New rig!"))
+	require.Equal(t, "GAME-1", BranchName("GAME-1", "", " ** "))
+	require.Equal(t, "GAME-1-rig", BranchName("GAME-1", "rig", "ignored"))
+	require.Equal(t, "game-1-rig", BranchName("GAME-1", " game-1-rig ", ""))
+	require.Equal(t, "GAME-1-GAME-12-rig", BranchName("GAME-1", "GAME-12-rig", ""))
+	require.Equal(t, "X-rig", BranchName("X", "rig", ""))
+	name := BranchName("GAME-1", "", strings.Repeat("word ", 30))
+	require.LessOrEqual(t, len(name), len("GAME-1-")+maxBranchSlug)
+	require.False(t, strings.HasSuffix(name, "-"))
+	key, ok := BranchKey(name, []string{"GAME"})
+	require.True(t, ok)
+	require.Equal(t, "GAME-1", key)
+}
+
+func TestSlug(t *testing.T) {
+	require.Equal(t, "fix-the-rig-v2", Slug("  Fix: the RIG (v2) ", 48))
+	require.Equal(t, "abc", Slug("abcdef", 3))
+	require.Equal(t, "ab", Slug("ab cdef", 4))
+	require.Equal(t, "", Slug("ééé", 10))
+}

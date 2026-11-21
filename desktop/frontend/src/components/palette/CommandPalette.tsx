@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   Tag,
+  Ticket,
   type LucideIcon,
 } from "lucide-react";
 import { desktop, type Repo } from "@/api/desktop";
@@ -24,17 +25,17 @@ import { hasOpenConflicts, visibleTabs, type Intent } from "@/components/tabs";
 import { useDebounced } from "@/hooks/useDebounced";
 import { fuzzyMatch, rank, segments } from "@/lib/fuzzy";
 import { commitTitle, shortId } from "@/lib/history";
-import { commitMatches, looksLikeCommitId, mergeFileHits, mrNumber } from "@/lib/palette";
+import { commitMatches, issueKey, looksLikeCommitId, mergeFileHits, mrNumber } from "@/lib/palette";
 import { chordMatches, shortcut, shortcutHint } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 
-export type PaletteMode = "all" | "switch" | "lock";
+export type PaletteMode = "all" | "switch" | "lock" | "issue";
 export type Go = (root: string, intent: Omit<Intent, "seq">) => void;
 
-type Section = "Actions" | "Files" | "Branches and tags" | "Merge requests" | "Commits";
-const sectionOrder: Section[] = ["Actions", "Files", "Branches and tags", "Merge requests", "Commits"];
+type Section = "Actions" | "Issues" | "Files" | "Branches and tags" | "Merge requests" | "Commits";
+const sectionOrder: Section[] = ["Actions", "Issues", "Files", "Branches and tags", "Merge requests", "Commits"];
 
 type Item = {
   key: string;
@@ -106,6 +107,13 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     staleTime: 30_000,
   });
   const loadedCommits = log.data?.commits ?? [];
+  const issueSearch = useQuery({
+    queryKey: ["issues", root, dq],
+    queryFn: () => desktop.searchIssues(root, dq),
+    enabled: mode === "issue" && !!root && dq !== "",
+    staleTime: 10_000,
+    retry: false,
+  });
   const commitLookup = searching && looksLikeCommitId(dq) && !loadedCommits.some((c) => c.id === dq);
   const lookup = useQuery({
     queryKey: ["history", root, "commit", dq],
@@ -146,6 +154,25 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
       }
       return out;
     }
+    if (mode === "issue") {
+      const found = issueSearch.data?.issues ?? [];
+      const typed = issueKey(q);
+      const branchFrom = (key: string) => go(root, { tab: "branches", action: "issue-branch", target: key });
+      if (typed && !found.some((i) => i.key === typed)) {
+        out.push({ key: `issue:${typed}`, section: "Issues", icon: icon(Ticket), title: translate("commandPalette.createBranchFor", { key: typed }), run: () => branchFrom(typed) });
+      }
+      for (const issue of found) {
+        out.push({
+          key: `issue:${issue.key}`,
+          section: "Issues",
+          icon: icon(Ticket),
+          title: `${issue.key} ${issue.title}`,
+          detail: issue.status || undefined,
+          run: () => branchFrom(issue.key),
+        });
+      }
+      return out;
+    }
     if (mode === "lock") {
       const hits = mergeFileHits(fileSearches.map((s, i) => ({ root: searchIn[i]?.root ?? "", hits: s.data?.hits ?? [] })), dq, LOCK_FILE_LIMIT);
       for (const { hit, match } of hits) {
@@ -173,6 +200,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
           : [
               { key: "switch", icon: icon(GitBranch), title: translate("commandPalette.switchBranch"), run: () => enter("switch") },
               { key: "new-mr", icon: icon(GitPullRequestCreate), title: translate("commandPalette.newMergeRequest"), run: () => go(root, { tab: "mrs", action: "new-mr" }) },
+              { key: "issue-branch", icon: icon(Ticket), title: translate("commandPalette.branchFromIssue"), run: () => enter("issue") },
             ]),
         { key: "lock", icon: icon(Lock), title: translate("commandPalette.lockFile"), run: () => enter("lock") },
         { key: "refresh", icon: icon(RefreshCw), title: translate("commandPalette.refresh"), hint: shortcutHint("refresh"), run: () => go(root, { tab: "", action: "refresh" }) },
@@ -273,7 +301,7 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
     document.getElementById(optionId(selected))?.scrollIntoView?.({ block: "nearest" });
   }, [selected]);
 
-  const loading = fileSearches.some((s) => s.isFetching) || (mode === "switch" && branches.isPending) || q !== dq;
+  const loading = fileSearches.some((s) => s.isFetching) || (mode === "switch" && branches.isPending) || (mode === "issue" && issueSearch.isFetching) || q !== dq;
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     e.stopPropagation();
     if (chordMatches(shortcut("palette").chords[0], e.nativeEvent)) {
@@ -309,8 +337,29 @@ export function CommandPalette({ repos, current, initialMode = "all", onClose, o
   };
 
   const placeholder =
-    mode === "switch" ? translate("commandPalette.switchToBranch") : mode === "lock" ? translate("commandPalette.findTheFileToLock") : root ? translate("commandPalette.searchFilesBranchesMergeRequests") : translate("commandPalette.searchFilesAndActions");
-  const empty = mode === "lock" && !q ? translate("commandPalette.typePartOfTheFileS") : loading ? translate("commandPalette.searching2") : translate("commandPalette.noResults");
+    mode === "switch"
+      ? translate("commandPalette.switchToBranch")
+      : mode === "lock"
+        ? translate("commandPalette.findTheFileToLock")
+        : mode === "issue"
+          ? translate("commandPalette.findAnIssue")
+          : root
+            ? translate("commandPalette.searchFilesBranchesMergeRequests")
+            : translate("commandPalette.searchFilesAndActions");
+  const issueEmpty = () => {
+    const s = issueSearch.data;
+    if (!q || (s && (!s.configured || !s.supported))) return translate("commandPalette.typeAnIssueKey");
+    if (s?.unavailable || issueSearch.isError) return translate("commandPalette.issueTrackerUnavailable");
+    return loading ? translate("commandPalette.searching2") : translate("commandPalette.noResults");
+  };
+  const empty =
+    mode === "issue"
+      ? issueEmpty()
+      : mode === "lock" && !q
+        ? translate("commandPalette.typePartOfTheFileS")
+        : loading
+          ? translate("commandPalette.searching2")
+          : translate("commandPalette.noResults");
 
   let lastSection: Section | null = null;
   return (

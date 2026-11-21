@@ -6,23 +6,34 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
+	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
 
 func (c *Cli) setupBranchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "branch",
-		Short:         "Show the current branch",
-		Long:          "Show the current branch of the local working copy, list all branches from the server with -a, create and switch to a new branch with -c, or delete a branch with -d. Searches up to 32 parent directories for a .nipa/config file.",
-		Args:          cobra.NoArgs,
+		Use:   "branch",
+		Short: "Show the current branch",
+		Long:  "Show the current branch of the local working copy, list all branches from the server with -a, create and switch to a new branch with -c, or delete a branch with -d. With --issue KEY the new branch is named after the issue (KEY-<slug of its title>, or the -c name prefixed with KEY) after the project's issue tracker confirmed it; a project without a tracker or a tracker that is down skips the check. Searches up to 32 parent directories for a .nipa/config file.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if create, _ := cmd.Flags().GetString("create"); create == "--issue" && len(args) == 1 {
+				return nil
+			}
+			return cobra.NoArgs(cmd, args)
+		},
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, _ := cmd.Flags().GetBool("all")
 			create, _ := cmd.Flags().GetString("create")
 			remove, _ := cmd.Flags().GetString("delete")
+			issue, _ := cmd.Flags().GetString("issue")
+			if create == "--issue" && len(args) == 1 {
+				create, issue = "", args[0]
+			}
+			creating := create != "" || issue != ""
 			selected := 0
-			for _, active := range []bool{all, create != "", remove != ""} {
+			for _, active := range []bool{all, creating, remove != ""} {
 				if active {
 					selected++
 				}
@@ -31,7 +42,7 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 				return domain.NewUserError("--all, --create and --delete are mutually exclusive")
 			}
 			jsonMode := jsonRequested(cmd)
-			if jsonMode && (create != "" || remove != "") {
+			if jsonMode && (creating || remove != "") {
 				return domain.NewUserError("--json cannot be combined with --create or --delete")
 			}
 			cfg, err := c.loadConfig()
@@ -41,8 +52,8 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 			if all {
 				return c.listAllBranches(cmd, cfg, jsonMode)
 			}
-			if create != "" {
-				return c.createBranch(cmd, cfg, create)
+			if creating {
+				return c.createBranch(cmd, cfg, create, issue)
 			}
 			if remove != "" {
 				return c.deleteBranch(cmd, cfg, remove)
@@ -57,6 +68,7 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 	cmd.Flags().BoolP("all", "a", false, "List all branches from the server")
 	cmd.Flags().StringP("create", "c", "", "Create a new branch on the server and switch the local working copy to it")
 	cmd.Flags().StringP("delete", "d", "", "Delete a branch on the server")
+	cmd.Flags().String("issue", "", "Create a branch for this issue key (e.g. GAME-123); the key leads the branch name so the branch links to the issue")
 	addJSONFlag(cmd)
 	return cmd
 }
@@ -74,7 +86,7 @@ func (c *Cli) loadConfig() (*domain.Config, error) {
 	return cfg, nil
 }
 
-func (c *Cli) createBranch(cmd *cobra.Command, cfg *domain.Config, name string) error {
+func (c *Cli) createBranch(cmd *cobra.Command, cfg *domain.Config, name, issue string) error {
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return err
@@ -86,6 +98,14 @@ func (c *Cli) createBranch(cmd *cobra.Command, cfg *domain.Config, name string) 
 	ctx := context.Background()
 	if err := c.connector.Connect(ctx, nipaUrl.Origin); err != nil {
 		return err
+	}
+	if issue != "" {
+		branch, err := c.useCase.Issue().BranchFor(ctx, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, issue, name)
+		if err != nil {
+			return err
+		}
+		printIssueCheck(cmd, branch)
+		name = branch.Name
 	}
 	created, err := c.useCase.Repo().CreateBranch(ctx, root, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, name)
 	if err != nil {
@@ -139,4 +159,17 @@ func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config, jsonMode b
 		cmd.Println(line)
 	}
 	return nil
+}
+
+func printIssueCheck(cmd *cobra.Command, branch *usecase.IssueBranch) {
+	switch {
+	case branch.Issue == nil:
+		cmd.Printf("This project has no issue tracker; %s was not checked\n", branch.Key)
+	case branch.Issue.State != domain.IssueStateOK:
+		cmd.Printf("The issue tracker is unavailable; %s was not checked\n", branch.Key)
+	case branch.Issue.Status != "":
+		cmd.Printf("%s: %s [%s]\n", branch.Key, branch.Issue.Title, branch.Issue.Status)
+	default:
+		cmd.Printf("%s: %s\n", branch.Key, branch.Issue.Title)
+	}
 }

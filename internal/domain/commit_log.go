@@ -3,8 +3,9 @@ package domain
 // CommitLogEntry extends Commit with author information for log display.
 type CommitLogEntry struct {
 	Commit
-	AuthorName  string `json:"author_name"`
-	AuthorEmail string `json:"author_email"`
+	AuthorName  string        `json:"author_name"`
+	AuthorEmail string        `json:"author_email"`
+	IssueKeys   []IssueKeyRef `json:"issue_keys,omitempty"`
 }
 
 // DisplayAuthor returns the source author of an imported commit, else the
