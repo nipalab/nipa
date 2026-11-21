@@ -191,3 +191,49 @@ func TestNewShelfWriter_ReportsAnUnusableShelvesFolder(t *testing.T) {
 	_, err = lr.NewShelfWriter()
 	require.ErrorIs(t, err, os.ErrPermission)
 }
+
+func TestOpenRealDirRefusesLinkedIntermediate(t *testing.T) {
+	target := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(outside, ObjectsDir), 0o755))
+	marker := filepath.Join(outside, ObjectsDir, "keep")
+	require.NoError(t, os.WriteFile(marker, []byte("x"), 0o644))
+	symlinkOrSkip(t, outside, filepath.Join(target, ConfigDir))
+
+	r, err := openRealDir(target, filepath.Join(ConfigDir, ObjectsDir))
+	require.Error(t, err)
+	require.Nil(t, r)
+	require.Contains(t, err.Error(), ConfigDir)
+	require.FileExists(t, marker)
+	entries, err := os.ReadDir(filepath.Join(outside, ObjectsDir))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+}
+
+func TestOpenRealDirRefusesLinkedLeaf(t *testing.T) {
+	target := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(target, ConfigDir), 0o755))
+	symlinkOrSkip(t, outside, filepath.Join(target, ConfigDir, ObjectsDir))
+
+	r, err := openRealDir(target, filepath.Join(ConfigDir, ObjectsDir))
+	require.Error(t, err)
+	require.Nil(t, r)
+	require.Contains(t, err.Error(), "objects")
+}
+
+func TestOpenRealDirOpensRealTreeAndReportsMissing(t *testing.T) {
+	target := t.TempDir()
+	rel := filepath.Join(ConfigDir, ObjectsDir)
+	_, err := openRealDir(target, rel)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = openRealDir(filepath.Join(target, "nope"), rel)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(target, rel), 0o755))
+	r, err := openRealDir(target, rel)
+	require.NoError(t, err)
+	require.NoError(t, r.WriteFile("f", []byte("x"), 0o644))
+	require.NoError(t, r.Close())
+	require.FileExists(t, filepath.Join(target, rel, "f"))
+}
