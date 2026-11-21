@@ -13,9 +13,11 @@ PG_PORT="${NIPA_TEST_PG_PORT:-55432}"
 S3_PORT="${NIPA_TEST_S3_PORT:-55900}"
 RATELIMIT_PORT="${NIPA_TEST_RATELIMIT_PORT:-6749}"
 MFAOFF_PORT="${NIPA_TEST_MFAOFF_PORT:-6751}"
+INVITEONLY_PORT="${NIPA_TEST_INVITEONLY_PORT:-6753}"
 REDIS_PORT="${NIPA_TEST_REDIS_PORT:-6379}"
 REDIS_ADDR="${NIPA_TEST_REDIS_ADDR:-}"
 S3_BUCKET="${NIPA_TEST_S3_BUCKET:-nipa}"
+BYO_BUCKET="${NIPA_TEST_BYO_S3_BUCKET:-nipa-byo}"
 S3_ACCESS_KEY="${NIPA_TEST_S3_ACCESS_KEY:-minioadmin}"
 S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
 
@@ -24,11 +26,18 @@ EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
 STORAGE_LEDGER="${NIPA_TEST_STORAGE_LEDGER-cloud}"
 SAAS_MODE="${NIPA_TEST_SAAS-1}"
 RATELIMIT_PROFILE="${NIPA_TEST_RATELIMIT:-0}"
+# Deleted projects stay restorable this many days on nipad-ee (its purge
+# retention); the free server never purges and ignores the setting.
+PURGE_RETENTION_DAYS="${NIPA_TEST_PURGE_RETENTION_DAYS:-1}"
+# Seals the secrets of bring-your-own storage servers (ee with SaaS + ledger).
+BYO_KEY="Y2xpZW50LWUyZS1ieW8tc3RvcmFnZS1rZXktMDEyMzQ1Njc="
 SERVER_PID=""
-RATELIMIT_PID=""
+EXTRA_PIDS=()
 RATELIMIT_HOST=""
-MFAOFF_PID=""
 MFAOFF_HOST=""
+INVITEONLY_HOST=""
+BYO_ENABLED=""
+INVITEONLY_TERMS_VERSION="2026-01-01"
 COMPOSE_STARTED=0
 PG_DSN=""
 S3_ENDPOINT=""
@@ -56,18 +65,31 @@ Environment:
                             to disable, so the onboarding spec is skipped).
                             Inert on the free server: no enterprise package is
                             wired, which the spec asserts as 404s
+  NIPA_TEST_GINKGO_ARGS     Extra Ginkgo flags (e.g. "--ginkgo.v")
   NIPA_TEST_PG_PORT=55432   Postgres host port
   NIPA_TEST_S3_PORT=55900   MinIO host port
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
   NIPA_TEST_S3_ENDPOINT     External S3 endpoint (with NIPA_TEST_POSTGRES_DSN)
   NIPA_TEST_USER/PASS       Seeded super admin credentials
-  NIPA_TEST_RATELIMIT=1     Rate-limit profile (free only): also start a free
-                            server with low per-scope limits on
-                            NIPA_TEST_RATELIMIT_PORT (default 6749) and focus
-                            the run on the rate limiting specs unless --filter
-                            is given
-  NIPA_TEST_MFAOFF_PORT=6751 Free run only: a second free server with
-                            MFA_ENABLED=false for the two-factor-off specs
+  NIPA_TEST_RATELIMIT=1     Rate-limit profile (both editions): also start a
+                            server of the edition under test with low
+                            per-scope limits on NIPA_TEST_RATELIMIT_PORT
+                            (default 6749) and focus the run on the rate
+                            limiting specs unless --filter is given
+  NIPA_TEST_MFAOFF_PORT=6751 Every run: a second server of the edition under
+                            test with MFA_ENABLED=false for the two-factor-off
+                            spec
+  NIPA_TEST_INVITEONLY_PORT=6753 Every ee run with NIPA_TEST_SAAS: a nipad-ee
+                            with REGISTRATION_ENABLED=false and a terms
+                            version for the waitlist/invite/terms specs
+  NIPA_TEST_PURGE_RETENTION_DAYS=1 nipad-ee STORAGE_PURGE_RETENTION_DAYS (the
+                            restore window the project lifecycle spec checks)
+  NIPA_TEST_BYO_S3_BUCKET=nipa-byo Second MinIO bucket the ee run registers as
+                            a bring-your-own storage server
+
+The extra nipad-ee instances share the postgres server, MinIO and redis but
+each gets its own database (tests/cmd/pgdatabase), S3 prefix and rate-limit
+redis prefix, so their background jobs never compete with the main server.
 EOF
 }
 
@@ -79,18 +101,18 @@ stop_server() {
 		wait "$SERVER_PID" 2>/dev/null || true
 	fi
 	SERVER_PID=""
-	if [[ -n "$RATELIMIT_PID" ]] && kill -0 "$RATELIMIT_PID" 2>/dev/null; then
-		kill "$RATELIMIT_PID" 2>/dev/null || true
-		wait "$RATELIMIT_PID" 2>/dev/null || true
-	fi
-	RATELIMIT_PID=""
+	local pid
+	for pid in "${EXTRA_PIDS[@]}"; do
+		if kill -0 "$pid" 2>/dev/null; then
+			kill "$pid" 2>/dev/null || true
+			wait "$pid" 2>/dev/null || true
+		fi
+	done
+	EXTRA_PIDS=()
 	RATELIMIT_HOST=""
-	if [[ -n "$MFAOFF_PID" ]] && kill -0 "$MFAOFF_PID" 2>/dev/null; then
-		kill "$MFAOFF_PID" 2>/dev/null || true
-		wait "$MFAOFF_PID" 2>/dev/null || true
-	fi
-	MFAOFF_PID=""
 	MFAOFF_HOST=""
+	INVITEONLY_HOST=""
+	BYO_ENABLED=""
 }
 
 stop_compose() {
@@ -122,11 +144,17 @@ email_port_for() {
 }
 
 write_config() {
-	local edition="$1" port="$2" dir="$3" profile="${4:-}"
+	local edition="$1" port="$2" dir="$3" profile="${4:-}" profile_dsn="${5:-}"
 	mkdir -p "$dir"
 
+	# Extra nipad-ee instances mail through the suite's receiver of the main
+	# server, so the invite-only waitlist/sign-up emails can be asserted.
 	local email_port
-	email_port="$(email_port_for "$port")"
+	if [[ "$edition" == "ee" && -n "$profile" ]]; then
+		email_port="$(email_port_for "$EE_PORT")"
+	else
+		email_port="$(email_port_for "$port")"
+	fi
 
 	local email_lines
 	case "$EMAIL_TRANSPORT" in
@@ -166,21 +194,30 @@ EOF
 
 	local db_dsn chunk_lines
 	if [[ "$edition" == "ee" ]]; then
-		db_dsn="$PG_DSN"
+		db_dsn="${profile_dsn:-$PG_DSN}"
 		chunk_lines=$(cat <<EOF
 CHUNK_STORAGE: s3
 CHUNK_S3_ENDPOINT: '$S3_ENDPOINT'
 CHUNK_S3_REGION: ''
 CHUNK_S3_BUCKET: '$S3_BUCKET'
-CHUNK_S3_PREFIX: 'client-e2e'
+CHUNK_S3_PREFIX: 'client-e2e${profile:+-$profile}'
 CHUNK_S3_ACCESS_KEY_ID: '$S3_ACCESS_KEY'
 CHUNK_S3_SECRET_ACCESS_KEY: '$S3_SECRET_KEY'
+STORAGE_PURGE_RETENTION_DAYS: $PURGE_RETENTION_DAYS
 EOF
 )
 		if [[ -n "$STORAGE_LEDGER" ]]; then
 			chunk_lines="$chunk_lines
 STORAGE_LEDGER: '$STORAGE_LEDGER'
 STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 0"
+			if [[ -n "$SAAS_MODE" && -z "$profile" ]]; then
+				# Bring-your-own storage needs SaaS mode and the ledger; the
+				# loopback MinIO is a private address, hence ALLOW_PRIVATE.
+				chunk_lines="$chunk_lines
+BYO_STORAGE_ENCRYPTION_KEY: '$BYO_KEY'
+BYO_STORAGE_ALLOW_PRIVATE: true"
+				BYO_ENABLED=1
+			fi
 		fi
 	else
 		db_dsn="$dir/nipa.db"
@@ -233,9 +270,12 @@ RATE_LIMIT_GLOBAL_IP_PER_MINUTE: 10
 RATE_LIMIT_GLOBAL_IP_BURST: 10"
 	fi
 	if [[ "$edition" == "ee" && -n "$REDIS_ADDR" ]]; then
+		# Every instance shares the redis server under its own key prefix, so
+		# the low-limit buckets never see the main server's traffic.
 		rate_limit_lines="$rate_limit_lines
 RATE_LIMIT_STORE: redis
-RATE_LIMIT_REDIS_ADDR: '$REDIS_ADDR'"
+RATE_LIMIT_REDIS_ADDR: '$REDIS_ADDR'
+RATE_LIMIT_REDIS_PREFIX: 'nipa:rl:client-e2e:${profile:-main}:'"
 	fi
 
 	local mfa_lines="MFA_ENABLED: true
@@ -254,6 +294,13 @@ MFA_ENCRYPTION_KEY: 'Y2xpZW50LWUyZS1tZmEta2V5LTAxMjM0NTY3ODlhYmM='"
 		saas_lines="SAAS_MODE: true
 SAAS_FREE_QUOTA_BYTES: 16106127360
 OAUTH_BASE_URL: 'http://127.0.0.1:$port'"
+		if [[ "$profile" == "inviteonly" ]]; then
+			# Sign-up limited to invited addresses (others join the waitlist)
+			# and a published terms version every sign-up must accept.
+			saas_lines="$saas_lines
+REGISTRATION_ENABLED: false
+SAAS_TERMS_VERSION: '$INVITEONLY_TERMS_VERSION'"
+		fi
 	fi
 
 	cat > "$dir/config.yaml" <<EOF
@@ -288,10 +335,11 @@ EOF
 }
 
 ensure_bucket() {
-	log "ensuring s3 bucket $S3_BUCKET"
+	local bucket="${1:-$S3_BUCKET}"
+	log "ensuring s3 bucket $bucket"
 	(cd "$ROOT_DIR" && go run ./tests/cmd/s3bucket \
 		-endpoint "$S3_ENDPOINT" \
-		-bucket "$S3_BUCKET" \
+		-bucket "$bucket" \
 		-access-key "$S3_ACCESS_KEY" \
 		-secret-key "$S3_SECRET_KEY")
 }
@@ -306,6 +354,7 @@ start_compose() {
 		S3_ENDPOINT="$NIPA_TEST_S3_ENDPOINT"
 		log "using external postgres and s3"
 		ensure_bucket
+		ensure_bucket "$BYO_BUCKET"
 		return
 	fi
 
@@ -358,6 +407,14 @@ start_compose() {
 	S3_ENDPOINT="http://127.0.0.1:$S3_PORT"
 
 	ensure_bucket
+	ensure_bucket "$BYO_BUCKET"
+}
+
+# profile_database recreates the database of an extra nipad-ee instance on the
+# shared postgres server and prints its DSN.
+profile_database() {
+	local profile="$1"
+	(cd "$ROOT_DIR" && go run ./tests/cmd/pgdatabase -dsn "$PG_DSN" -name "nipa_e2e_$profile")
 }
 
 check_port_free() {
@@ -369,17 +426,22 @@ check_port_free() {
 }
 
 start_server() {
-	local edition="$1" port="$2" profile="${3:-}" binary dir name pid
+	local edition="$1" port="$2" profile="${3:-}" binary dir name pid profile_dsn=""
 	check_port_free "$port"
-	check_port_free "$(email_port_for "$port")"
 	if [[ "$edition" == "ee" ]]; then
 		binary="$ROOT_DIR/bin/nipad-ee"
 	else
 		binary="$ROOT_DIR/bin/nipad"
 	fi
+	if [[ "$edition" == "ee" && -n "$profile" ]]; then
+		log "creating postgres database for the $profile instance"
+		profile_dsn="$(profile_database "$profile")"
+	else
+		check_port_free "$(email_port_for "$port")"
+	fi
 	name="$edition${profile:+-$profile}"
 	dir="$TMP_DIR/server-$name"
-	write_config "$edition" "$port" "$dir" "$profile"
+	write_config "$edition" "$port" "$dir" "$profile" "$profile_dsn"
 
 	log "starting $name server on 127.0.0.1:$port"
 	(
@@ -387,10 +449,8 @@ start_server() {
 		exec "$binary"
 	) >"$LOG_DIR/$name.log" 2>&1 &
 	pid=$!
-	if [[ "$profile" == "ratelimit" ]]; then
-		RATELIMIT_PID=$pid
-	elif [[ "$profile" == "mfaoff" ]]; then
-		MFAOFF_PID=$pid
+	if [[ -n "$profile" ]]; then
+		EXTRA_PIDS+=("$pid")
 	else
 		SERVER_PID=$pid
 	fi
@@ -414,6 +474,8 @@ start_server() {
 		RATELIMIT_HOST="127.0.0.1:$port"
 	elif [[ "$profile" == "mfaoff" ]]; then
 		MFAOFF_HOST="127.0.0.1:$port"
+	elif [[ "$profile" == "inviteonly" ]]; then
+		INVITEONLY_HOST="127.0.0.1:$port"
 	fi
 	log "$name server is ready"
 }
@@ -434,6 +496,22 @@ run_suite() {
 	export NIPA_TEST_RATELIMIT=1
 	export NIPA_TEST_RATELIMIT_HOST="$RATELIMIT_HOST"
 	export NIPA_TEST_MFAOFF_HOST="$MFAOFF_HOST"
+	# Invite-only sign-up with a terms version (ee with SaaS only).
+	export NIPA_TEST_INVITEONLY_HOST="$INVITEONLY_HOST"
+	export NIPA_TEST_INVITEONLY_TERMS_VERSION="$INVITEONLY_TERMS_VERSION"
+	# The restore window of deleted projects: nipad-ee only, the free server
+	# keeps deleted projects restorable.
+	if [[ "$edition" == "ee" ]]; then
+		export NIPA_TEST_PURGE_RETENTION_DAYS="$PURGE_RETENTION_DAYS"
+	else
+		export NIPA_TEST_PURGE_RETENTION_DAYS=""
+	fi
+	# Bring-your-own storage: a second MinIO bucket the suite registers.
+	export NIPA_TEST_BYO="$BYO_ENABLED"
+	export NIPA_TEST_BYO_S3_ENDPOINT="$S3_ENDPOINT"
+	export NIPA_TEST_BYO_S3_BUCKET="$BYO_BUCKET"
+	export NIPA_TEST_BYO_S3_ACCESS_KEY="$S3_ACCESS_KEY"
+	export NIPA_TEST_BYO_S3_SECRET_KEY="$S3_SECRET_KEY"
 	# The maintenance specs put the server in maintenance through its
 	# MAINTENANCE_FILE override (a frozen window cannot be ended over REST).
 	export NIPA_TEST_MAINTENANCE_FILE="$TMP_DIR/server-$edition/maintenance.json"
@@ -443,9 +521,15 @@ run_suite() {
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"
 	rm -f "$NIPA_TOKEN_FILE"
 
-	local args=(./tests/... -count=1 -v -timeout 20m)
+	local args=(./tests/... -count=1 -v -timeout 20m -args)
 	if [[ -n "$focus" ]]; then
-		args+=(-args "--ginkgo.focus=$focus")
+		args+=("--ginkgo.focus=$focus")
+	fi
+	# Extra Ginkgo flags, e.g. NIPA_TEST_GINKGO_ARGS="--ginkgo.v".
+	if [[ -n "${NIPA_TEST_GINKGO_ARGS:-}" ]]; then
+		local extra
+		read -r -a extra <<<"$NIPA_TEST_GINKGO_ARGS"
+		args+=("${extra[@]}")
 	fi
 
 	log "running client e2e suite against $edition"
@@ -488,7 +572,7 @@ main() {
 	}
 
 	mkdir -p "$LOG_DIR"
-	rm -rf "$TMP_DIR/server-free" "$TMP_DIR/server-ee" "$TMP_DIR/server-free-ratelimit" "$TMP_DIR/server-free-mfaoff"
+	rm -rf "$TMP_DIR"/server-free "$TMP_DIR"/server-free-* "$TMP_DIR"/server-ee "$TMP_DIR"/server-ee-*
 
 	local editions=()
 	case "$edition" in
@@ -515,9 +599,18 @@ main() {
 				echo "$DOCKER is required for the ee run" >&2
 				exit 1
 			}
+			local ee_focus="$FOCUS"
 			start_compose
 			start_server ee "$EE_PORT"
-			run_suite ee "$EE_PORT"
+			start_server ee "$MFAOFF_PORT" mfaoff
+			if [[ -n "$SAAS_MODE" ]]; then
+				start_server ee "$INVITEONLY_PORT" inviteonly
+			fi
+			if [[ "$RATELIMIT_PROFILE" == "1" ]]; then
+				start_server ee "$RATELIMIT_PORT" ratelimit
+				[[ -n "$ee_focus" ]] || ee_focus="rate limiting"
+			fi
+			run_suite ee "$EE_PORT" "$ee_focus"
 			stop_server
 			stop_compose
 		else

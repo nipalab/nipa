@@ -1,7 +1,9 @@
 package suite_test
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"hash/crc32"
 	"os"
@@ -40,6 +42,31 @@ type provenanceReportJSON struct {
 			Source       string `json:"source"`
 		} `json:"record"`
 	} `json:"files"`
+}
+
+type provenanceShowJSON struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Record *struct {
+		ContentHash  string  `json:"content_hash"`
+		Tool         string  `json:"tool"`
+		Model        string  `json:"model"`
+		PromptSHA256 string  `json:"prompt_sha256"`
+		Seed         *uint64 `json:"seed"`
+		License      string  `json:"license"`
+		HumanEdited  bool    `json:"human_edited"`
+		Source       string  `json:"source"`
+		C2PAVerified *bool   `json:"c2pa_verified"`
+		RecordedAt   string  `json:"recorded_at"`
+		Note         string  `json:"note"`
+	} `json:"record"`
+}
+
+func provenanceShow(dir, path string) provenanceShowJSON {
+	GinkgoHelper()
+	var out provenanceShowJSON
+	runJSONInto(dir, &out, "provenance", "show", path, "--json")
+	return out
 }
 
 var _ = Describe("nipa provenance", func() {
@@ -135,6 +162,173 @@ var _ = Describe("nipa provenance", func() {
 		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "sparse", "--sparse", "src")
 		_, err := os.Stat(filepath.Join(dir, ".nipaprovenance.yml"))
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("records a manual record with every set flag and round-trips it through show and a clone", func() {
+		project := newProject("provenance-set")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"art/hero.png": testPNG(4),
+			"a.txt":        []byte("a\n"),
+		}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(fileExists(dir, ".nipaprovenance.yml")).To(BeFalse())
+
+		promptFile := filepath.Join(workspace(), "prompt.txt")
+		Expect(os.WriteFile(promptFile, []byte("  a red knight on a hill \n"), 0o644)).To(Succeed())
+		sum := sha256.Sum256([]byte("a red knight on a hill"))
+		promptHash := hex.EncodeToString(sum[:])
+
+		res := runNipa(dir, "provenance", "set", "./art/hero.png",
+			"--tool", " ComfyUI ", "--model", "sdxl", "--seed", "42", "--prompt-file", promptFile,
+			"--license", "CC-BY-4.0", "--note", "first pass")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Stdout).To(ContainSubstring("recorded provenance for art/hero.png"))
+
+		manifest := readText(dir, ".nipaprovenance.yml")
+		Expect(manifest).To(ContainSubstring("art/hero.png:"))
+		Expect(manifest).To(ContainSubstring("source: manual"))
+		Expect(manifest).To(ContainSubstring(promptHash))
+		Expect(manifest).NotTo(ContainSubstring("red knight"), "only the prompt hash is stored")
+		status := runNipa(dir, "status")
+		Expect(status.Output()).To(ContainSubstring("A  .nipaprovenance.yml"), "set creates and stages the file")
+
+		show := provenanceShow(dir, "art/hero.png")
+		Expect(show.Path).To(Equal("art/hero.png"))
+		Expect(show.Status).To(Equal("recorded"))
+		Expect(show.Record).NotTo(BeNil())
+		Expect(show.Record.Tool).To(Equal("ComfyUI"), "values are trimmed")
+		Expect(show.Record.Model).To(Equal("sdxl"))
+		Expect(show.Record.Seed).NotTo(BeNil())
+		Expect(*show.Record.Seed).To(Equal(uint64(42)))
+		Expect(show.Record.PromptSHA256).To(Equal(promptHash))
+		Expect(show.Record.License).To(Equal("CC-BY-4.0"))
+		Expect(show.Record.Note).To(Equal("first pass"))
+		Expect(show.Record.HumanEdited).To(BeFalse())
+		Expect(show.Record.Source).To(Equal("manual"))
+		Expect(show.Record.C2PAVerified).To(BeNil())
+		Expect(show.Record.ContentHash).To(MatchRegexp(`^blake3:[0-9a-f]{64}$`))
+		Expect(show.Record.RecordedAt).NotTo(BeEmpty())
+
+		text := runNipa(dir, "provenance", "show", "art/hero.png")
+		Expect(text.ExitCode).To(Equal(0), text.Output())
+		Expect(text.Stdout).To(ContainSubstring("art/hero.png: recorded"))
+		Expect(text.Stdout).To(MatchRegexp(`(?m)^  tool:\s+ComfyUI$`))
+		Expect(text.Stdout).To(MatchRegexp(`(?m)^  seed:\s+42$`))
+		Expect(text.Stdout).To(MatchRegexp(`(?m)^  source:\s+manual$`))
+		Expect(text.Stdout).To(MatchRegexp(`(?m)^  note:\s+first pass$`))
+
+		// Only the given flags change; the others keep their values.
+		res = runNipa(dir, "provenance", "set", "art/hero.png", "--model", "sdxl-turbo", "--human-edited")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		show = provenanceShow(dir, "art/hero.png")
+		Expect(show.Record.Model).To(Equal("sdxl-turbo"))
+		Expect(show.Record.Tool).To(Equal("ComfyUI"))
+		Expect(*show.Record.Seed).To(Equal(uint64(42)))
+		Expect(show.Record.PromptSHA256).To(Equal(promptHash))
+		Expect(show.Record.Note).To(Equal("first pass"))
+		Expect(show.Record.HumanEdited).To(BeTrue())
+		Expect(show.Status).To(Equal("recorded"))
+
+		// A changed file marked human_edited reads as edited; set refreshes
+		// the content hash, and without the mark a change reads as modified.
+		writeBytes(dir, "art/hero.png", testPNG(6))
+		Expect(provenanceShow(dir, "art/hero.png").Status).To(Equal("edited"))
+		res = runNipa(dir, "provenance", "set", "art/hero.png", "--human-edited=false", "--note", "")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		show = provenanceShow(dir, "art/hero.png")
+		Expect(show.Status).To(Equal("recorded"))
+		Expect(show.Record.HumanEdited).To(BeFalse())
+		Expect(show.Record.Note).To(BeEmpty())
+		writeBytes(dir, "art/hero.png", testPNG(8))
+		Expect(provenanceShow(dir, "art/hero.png").Status).To(Equal("modified"))
+		res = runNipa(dir, "provenance", "set", "art/hero.png")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		final := provenanceShow(dir, "art/hero.png")
+		Expect(final.Status).To(Equal("recorded"))
+
+		missing := provenanceShow(dir, "a.txt")
+		Expect(missing.Status).To(Equal("missing"))
+		Expect(missing.Record).To(BeNil())
+
+		Expect(runNipa(dir, "add", "art/hero.png").ExitCode).To(Equal(0))
+		lock := runNipa(dir, "lock", "art/hero.png")
+		Expect(lock.ExitCode).To(Equal(0), lock.Output())
+		push := pushRepo(dir, "record hero provenance")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+
+		other := cloneRepo(parent, url, "other")
+		cloned := provenanceShow(other, "art/hero.png")
+		Expect(cloned.Status).To(Equal("recorded"), "the record travels with the project")
+		Expect(cloned.Record.ContentHash).To(Equal(final.Record.ContentHash))
+		Expect(cloned.Record.Model).To(Equal("sdxl-turbo"))
+		Expect(cloned.Record.PromptSHA256).To(Equal(promptHash))
+
+		report := runNipa(other, "provenance", "report", "--json")
+		Expect(report.ExitCode).To(Equal(0), report.Output())
+		var out provenanceReportJSON
+		Expect(json.Unmarshal([]byte(report.Stdout), &out)).To(Succeed())
+		Expect(out.Files).To(HaveLen(1))
+		Expect(out.Files[0].Path).To(Equal("art/hero.png"))
+		Expect(out.Files[0].Status).To(Equal("recorded"))
+		Expect(out.Files[0].Record.Source).To(Equal("manual"))
+		Expect(out.Files[0].Record.Seed).To(Equal(uint64(42)))
+	})
+
+	It("adds a record to an existing provenance file without touching the others", func() {
+		project := newProject("provenance-set-existing")
+		seedRepo(orgSlug, project, map[string][]byte{
+			".nipaprovenance.yml": []byte("version: 1\nfiles:\n  art/old.png:\n    tool: Firefly\n    human_edited: false\n"),
+			"art/old.png":         testPNG(4),
+			"art/new.png":         testPNG(5),
+		}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		res := runNipa(dir, "provenance", "set", "art/new.png", "--tool", "ElevenLabs")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		old := provenanceShow(dir, "art/old.png")
+		Expect(old.Record).NotTo(BeNil())
+		Expect(old.Record.Tool).To(Equal("Firefly"))
+		Expect(old.Record.Source).To(BeEmpty(), "other records are left as they were")
+		Expect(provenanceShow(dir, "art/new.png").Record.Tool).To(Equal("ElevenLabs"))
+		Expect(runNipa(dir, "status").Output()).To(ContainSubstring("A  .nipaprovenance.yml"), "set stages the updated file")
+	})
+
+	It("rejects invalid paths, missing inputs and broken provenance files", func() {
+		project := newProject("provenance-set-errors")
+		seedRepo(orgSlug, project, map[string][]byte{"art/hero.png": testPNG(4)}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		expectFailure := func(substr string, args ...string) {
+			GinkgoHelper()
+			res := runNipa(dir, append([]string{"provenance", "set"}, args...)...)
+			Expect(res.ExitCode).To(Equal(1), res.Output())
+			Expect(res.Output()).To(ContainSubstring(substr))
+		}
+		expectFailure("accepts 1 arg(s)")
+		expectFailure("accepts 1 arg(s)", "a.png", "b.png")
+		expectFailure("cannot read art/missing.png", "art/missing.png")
+		expectFailure("cannot record the provenance of .nipaprovenance.yml", ".nipaprovenance.yml")
+		expectFailure("must not contain a .. segment", "../outside.png")
+		expectFailure("invalid path", ".")
+		expectFailure("read prompt file", "art/hero.png", "--prompt-file", filepath.Join(workspace(), "absent.txt"))
+		expectFailure("invalid argument", "art/hero.png", "--seed", "-1")
+		Expect(fileExists(dir, ".nipaprovenance.yml")).To(BeFalse(), "failed sets create no provenance file")
+
+		show := runNipa(dir, "provenance", "show", "art/hero.png")
+		Expect(show.ExitCode).To(Equal(1), show.Output())
+		Expect(show.Output()).To(ContainSubstring("no .nipaprovenance.yml; run nipa provenance init"))
+
+		writeText(dir, ".nipaprovenance.yml", "version: 2\nfiles: {}\n")
+		res := runNipa(dir, "provenance", "set", "art/hero.png", "--tool", "x")
+		Expect(res.ExitCode).NotTo(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("unsupported version 2"))
+		Expect(readText(dir, ".nipaprovenance.yml")).To(Equal("version: 2\nfiles: {}\n"), "a broken file is not overwritten")
+
+		outside := runNipa(workspace(), "provenance", "set", "art/hero.png")
+		Expect(outside.ExitCode).To(Equal(1), outside.Output())
+		Expect(outside.Output()).To(ContainSubstring("not a nipa repository"))
 	})
 })
 

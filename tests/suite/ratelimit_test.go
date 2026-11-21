@@ -76,7 +76,7 @@ var _ = Describe("rate limiting", func() {
 		BeforeEach(func() {
 			host := os.Getenv("NIPA_TEST_RATELIMIT_HOST")
 			if host == "" {
-				Skip("needs the low-limit server from NIPA_TEST_RATELIMIT=1 tests/run.sh free")
+				Skip("needs the low-limit server from NIPA_TEST_RATELIMIT=1 tests/run.sh free|ee")
 			}
 			rl = newRLServer(host, "")
 		})
