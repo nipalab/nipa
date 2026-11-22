@@ -189,7 +189,7 @@ func TestUploadChunks_AutoTunedPushHoldsOnSlowStore(t *testing.T) {
 		latency  = 100 * time.Millisecond
 		capacity = 48
 		uploads  = 4
-		perCall  = 500
+		perCall  = 1500
 	)
 	srv := newChunkTestServer()
 	slots := make(chan struct{}, capacity)
