@@ -285,13 +285,19 @@ func testIssueTrackerJobs(t *testing.T, base, host, superToken string) {
 		_, ok := remoteLink(fake, "GAME-2", mrLink)
 		return ok
 	}, 10*time.Second, 20*time.Millisecond, "the rate-limited link is retried")
-	var retried bool
-	for _, job := range issueJobsPage(t, jobsURL+"?state=delivered", superToken) {
-		if job.IssueKey == "GAME-2" && job.Action == "link" {
-			retried = job.Attempts == 2
+	// The fake records the link while serving the request; the worker marks the
+	// job delivered only after the response returns, so wait for that write.
+	var delivered *model.IssueTrackerJobResponse
+	require.Eventually(t, func() bool {
+		for _, job := range issueJobsPage(t, jobsURL+"?state=delivered", superToken) {
+			if job.IssueKey == "GAME-2" && job.Action == "link" {
+				delivered = &job
+				return true
+			}
 		}
-	}
-	require.True(t, retried, "the 429 cost one attempt")
+		return false
+	}, 10*time.Second, 20*time.Millisecond, "the rate-limited link job is marked delivered")
+	require.Equal(t, int64(2), delivered.Attempts, "the 429 cost one attempt")
 
 	issueTrackerREST(t, http.MethodPost, projectBase+"/merge-requests/"+strconv.FormatInt(mr.Number, 10)+"/merge", `{"strategy":"ff"}`, superToken, http.StatusOK, nil)
 	require.Eventually(t, func() bool {
