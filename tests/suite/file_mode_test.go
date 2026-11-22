@@ -67,10 +67,9 @@ var _ = Describe("nipa push file modes", func() {
 		assertCleanStatus(fresh)
 	})
 
-	// Pending until the server stores mode-only changes: tree hashes ignore
-	// file modes and tree contents are shared by hash, so a chmod-only push
-	// reads back the previous mode (see internal/e2e TestEndToEnd_FileModeOnlyChange).
-	PIt("pushes a mode-only change (0644 -> 0775) with a clean status", func() {
+	// Tree hashes include the file mode class, so a chmod-only push is a real
+	// commit and reads back the new mode (internal/e2e TestEndToEnd_FileModeOnlyChange).
+	It("pushes a mode-only change (0644 -> 0775) with a clean status", func() {
 		project := newProject("push-mode-only")
 		url := repoURLFor(orgSlug, project)
 		seedRepo(orgSlug, project, map[string][]byte{"run.sh": []byte("#!/bin/sh\n")}, "seed")

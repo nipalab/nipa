@@ -74,6 +74,21 @@ type Push struct {
 	metrics    *obs.Metrics
 	maxFiles   int
 	storage    storageWriteGate
+	legacy     legacyTreeHashLookup
+}
+
+// legacyTreeHashLookup returns the hash a root tree had before file modes
+// became part of the tree hash, or nil (TreeHashRepository.LegacyTreeHash).
+type legacyTreeHashLookup interface {
+	LegacyTreeHash(ctx context.Context, treeID int64) (*domain.Hash, error)
+}
+
+// WithLegacyTreeHashes accepts a push whose base tree hash is the head tree's
+// pre-backfill hash, so a client that has not updated since the tree hashes
+// were recomputed is not refused as if the branch had moved.
+func (p *Push) WithLegacyTreeHashes(lookup legacyTreeHashLookup) *Push {
+	p.legacy = lookup
+	return p
 }
 
 // WithStorageGate refuses pushes to projects whose store is read-only.
@@ -302,7 +317,11 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		if baseTreeHash == "" {
 			baseTreeHash = treehash.TreeHash(nil, nil).String()
 		}
-		if !strings.EqualFold(baseTreeHash, headTreeHash.String()) {
+		matches, err := p.baseTreeMatches(ctx, headCommit, headTreeHash, baseTreeHash)
+		if err != nil {
+			return nil, err
+		}
+		if !matches {
 			return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base tree hash %s, current head is %s", branchName, baseTreeHash, headTreeHash))
 		}
 	}
@@ -506,6 +525,22 @@ func (p *Push) headTreeHash(ctx context.Context, headCommit *domain.Commit) (dom
 		return domain.Hash{}, err
 	}
 	return root.Hash, nil
+}
+
+// baseTreeMatches reports whether the client's base tree hash names the head
+// tree: its current hash, or the hash it had before the tree hash backfill.
+func (p *Push) baseTreeMatches(ctx context.Context, headCommit *domain.Commit, headTreeHash domain.Hash, baseTreeHash string) (bool, error) {
+	if strings.EqualFold(baseTreeHash, headTreeHash.String()) {
+		return true, nil
+	}
+	if p.legacy == nil || headCommit == nil {
+		return false, nil
+	}
+	legacy, err := p.legacy.LegacyTreeHash(ctx, headCommit.TreeID)
+	if err != nil {
+		return false, err
+	}
+	return legacy != nil && strings.EqualFold(baseTreeHash, legacy.String()), nil
 }
 
 func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *domain.Branch, headCommit, parent2Commit *domain.Commit, message string, root *pushTreeNode) ApplyPushRequest {

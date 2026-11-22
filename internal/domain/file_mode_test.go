@@ -52,3 +52,22 @@ func TestClassifyPermExplicit(t *testing.T) {
 		assert.Equal(t, tc.want, ClassifyPerm(tc.perm), "perm %v", tc.perm)
 	}
 }
+
+func TestClassifyStoredMode(t *testing.T) {
+	cases := map[int]int{
+		0:     FileModeClassReadWrite,
+		0o644: FileModeClassReadWrite,
+		0o664: FileModeClassReadWrite,
+		644:   FileModeClassReadWrite,
+		0o444: FileModeClassReadOnly,
+		444:   FileModeClassReadOnly,
+		0o400: FileModeClassReadOnly,
+		0o755: FileModeClassExecutable,
+		755:   FileModeClassExecutable,
+		0o775: FileModeClassExecutable,
+		0o744: FileModeClassExecutable,
+	}
+	for mode, want := range cases {
+		assert.Equal(t, want, ClassifyStoredMode(mode), "mode %d (%#o)", mode, mode)
+	}
+}

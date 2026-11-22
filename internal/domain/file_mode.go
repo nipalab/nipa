@@ -27,3 +27,22 @@ func ClassifyPerm(perm fs.FileMode) int {
 		return FileModeClassReadWrite
 	}
 }
+
+// ClassifyStoredMode maps a mode stored on the server (files.mode) to its file
+// mode class. Stored modes are the canonical 0o444/0o755/0o644; decimal 444
+// and 755 are legacy rows (decimal 444 would otherwise classify as the
+// executable 0o674) and zero is the unset read-write default. Anything else is
+// classified by ClassifyPerm. The wire mapping and the tree hash both go
+// through here, so equivalent representations can never diverge.
+func ClassifyStoredMode(mode int) int {
+	switch mode {
+	case 444, 0o444:
+		return FileModeClassReadOnly
+	case 755, 0o755:
+		return FileModeClassExecutable
+	case 0, 0o644:
+		return FileModeClassReadWrite
+	default:
+		return ClassifyPerm(fs.FileMode(uint32(mode)))
+	}
+}

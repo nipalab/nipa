@@ -50,9 +50,33 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `domain.ClassifyPerm` (any exec bit → EXECUTABLE, else no write bit →
   READ_ONLY, else READ_WRITE; only `0o777` counts), shared by client status
   (`serverModeFromPerm`) and the push transport (`intToPBFileMode`); the server
-  stores 0o755/0o444/0o644. Tree hashes do not include modes and tree contents
-  are shared by hash (`FileListByTree`), so a mode-only push is currently an
-  empty commit. `GetBranch` takes
+  stores 0o755/0o444/0o644. Tree hashes include the mode class
+  (`internal/treehash`): a file's serialized kind byte is 0 for read-write
+  (exactly the pre-mode format, so read-write-only trees kept their hashes), 2
+  for executable and 3 for read-only, classified by
+  `domain.ClassifyStoredMode` (canonical values, legacy decimal 444/755, zero as
+  read-write, anything else by `ClassifyPerm`), the same rule
+  `domainFileModeToPB` uses. A mode-only push therefore gets a new tree hash
+  and a real commit, and the hash-shared reads (`FileListByTree`,
+  `TreeNodeListChildren`, `ChunkListByTree`, which resolve a node to the oldest
+  content node with its hash) only ever share rows whose modes match.
+  Hashes stored before this were recomputed by `usecase.BackfillTreeHashes`,
+  which both servers run after migrating and before serving
+  (`serverapp.BackfillTreeHashes`; migration `tree_hash_modes`): seeds are the
+  nodes owning a file whose stored mode is not 0/0o644, changes propagate to
+  parents and to the reference rows that resolved to a changed content node
+  (a reference takes the new hash of the oldest content node with its old hash,
+  so it keeps serving what it served), reads see the original hashes until the
+  pass writes the changed rows in one transaction, and only changed rows are
+  written. The single `tree_hash_backfill` row holds the highest tree node id
+  covered (each start only scans newer rows, e.g. rows an older pod wrote
+  during a rolling deploy) and, on postgres, is locked `FOR UPDATE` for the
+  pass so pods run it one at a time. Commit hashes are not recomputed (they are
+  identifiers fixed at creation). `tree_hash_legacy` keeps the pre-backfill hash
+  of every changed root, and `Push.baseTreeMatches` accepts it as the base tree
+  hash, so a client pushing against its stored `tree_hash` without a
+  `base_commit_id` is not told the branch moved; the next `nipa update`/push
+  stores the new hash. `GetBranch` takes
   `branch_id` (base36) and `GetBranchByName` takes `name`; both return the branch
   with its head `commit_id`. `CreateBranch` takes `from_branch` and/or
   `from_commit_id`/`from_commit_hash` (exact fork point, base36/hex).

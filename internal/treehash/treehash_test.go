@@ -45,7 +45,7 @@ func TestTreeHash_ReflectsContent(t *testing.T) {
 func TestTreeHash_KnownInput(t *testing.T) {
 	bb := domain.Hash{0xbb}
 	got := TreeHash(
-		[]FileEntry{{Name: "f", Mode: 1, Hash: bb}},
+		[]FileEntry{{Name: "f", Mode: 0o644, Hash: bb}},
 		[]TreeEntry{{Name: "d", Hash: bb}},
 	)
 	want := "27cf948d49a0c9e1f6641398f1412e36787ffcdb470d89b3e5e5ec0ab26f2262"
@@ -98,4 +98,69 @@ func TestCommitHashWithOrigin(t *testing.T) {
 	require.NotEqual(t, a, b)
 	require.Equal(t, a, CommitHashWithOrigin(tree, parents, "WIP", "git:"+strings.Repeat("a", 40)))
 	require.NotEqual(t, CommitHashWithOrigin(tree, parents, "WIPg", "it:x"), CommitHashWithOrigin(tree, parents, "WIP", "git:x"))
+}
+
+// legacyTreeHash is the serialization before modes were hashed: every file had
+// kind 0. Read-write files must still hash exactly like this.
+func legacyTreeHash(files []FileEntry, trees []TreeEntry) domain.Hash {
+	plain := make([]FileEntry, len(files))
+	for i, f := range files {
+		plain[i] = FileEntry{Name: f.Name, Hash: f.Hash, Mode: 0o644}
+	}
+	return TreeHash(plain, trees)
+}
+
+func TestTreeHash_ModeChangesHash(t *testing.T) {
+	file := func(mode int) []FileEntry { return []FileEntry{{Name: "lib.so", Hash: domain.Hash{0x01}, Mode: mode}} }
+	rw := TreeHash(file(0o644), nil)
+	exec := TreeHash(file(0o755), nil)
+	ro := TreeHash(file(0o444), nil)
+	require.NotEqual(t, rw, exec)
+	require.NotEqual(t, rw, ro)
+	require.NotEqual(t, exec, ro)
+	// A mode change deep in a tree reaches the root through the child hash.
+	require.NotEqual(t,
+		TreeHash(nil, []TreeEntry{{Name: "bin", Hash: rw}}),
+		TreeHash(nil, []TreeEntry{{Name: "bin", Hash: exec}}))
+}
+
+func TestTreeHash_ModeNormalization(t *testing.T) {
+	hashOf := func(mode int) domain.Hash {
+		return TreeHash([]FileEntry{{Name: "f", Hash: domain.Hash{0x07}, Mode: mode}}, nil)
+	}
+	groups := [][]int{
+		{0, 0o644, 0o664, 0o600, 644},
+		{0o755, 0o775, 0o744, 0o700, 755, 0o111},
+		{0o444, 0o400, 444},
+	}
+	for _, group := range groups {
+		for _, mode := range group[1:] {
+			require.Equal(t, hashOf(group[0]), hashOf(mode), "mode %#o must hash like %#o", mode, group[0])
+		}
+	}
+}
+
+func TestTreeHash_ReadWriteMatchesLegacyFormat(t *testing.T) {
+	files := []FileEntry{
+		{Name: "a.txt", Hash: domain.Hash{0x01}, Mode: 0o644},
+		{Name: "b.txt", Hash: domain.Hash{0x02}, Mode: 0},
+	}
+	trees := []TreeEntry{{Name: "sub", Hash: domain.Hash{0x03}}}
+	require.Equal(t, legacyTreeHash(files, trees), TreeHash(files, trees))
+
+	files[1].Mode = 0o755
+	require.NotEqual(t, legacyTreeHash(files, trees), TreeHash(files, trees))
+}
+
+func TestTreeHash_ModeGolden(t *testing.T) {
+	bb := domain.Hash{0xbb}
+	cases := map[int]string{
+		0o644: "27cf948d49a0c9e1f6641398f1412e36787ffcdb470d89b3e5e5ec0ab26f2262",
+		0o755: "f80331353fd830d303b98834dca6ff6ca6b597914b560aac3d2c1acb99c76a75",
+		0o444: "43d6bb9715a318c3b0a79256faef1c2d84e62e8b6003818da39a2a18d3de3b34",
+	}
+	for mode, want := range cases {
+		got := TreeHash([]FileEntry{{Name: "f", Mode: mode, Hash: bb}}, []TreeEntry{{Name: "d", Hash: bb}})
+		require.Equal(t, want, got.String(), "mode %#o", mode)
+	}
 }

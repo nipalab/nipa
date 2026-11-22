@@ -365,7 +365,10 @@ concurrently during a flip:
 snowflake node ids are leased from postgres (never pin `SNOWFLAKE_NODE_ID`),
 email deliveries are claimed atomically, but webhooks can double-deliver in the
 overlap window (consumers must be idempotent). Migrations must stay forward
-compatible for one release.
+compatible for one release. The startup tree hash backfill
+(`serverapp.BackfillTreeHashes`) covers tree nodes up to the highest id at its
+start; rows the old color writes afterwards are picked up by the next start of
+any new-color pod, so restart one once the old color is gone.
 
 Transport hardening: neither server terminates TLS (one cleartext HTTP/1.1 +
 h2c port), so every deployment, the free `nipad` included, needs a TLS proxy in

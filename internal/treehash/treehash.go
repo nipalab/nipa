@@ -18,17 +18,37 @@ func FileHash(chunkHashes []domain.Hash) domain.Hash {
 }
 
 // childKinds distinguishes file entries from tree entries in the serialized
-// form used by TreeHash.
+// form used by TreeHash. A file's mode class is folded into its kind: a
+// read-write file keeps kind 0, so trees holding only read-write files hash
+// exactly as they did before modes were part of the hash, and executable and
+// read-only files get kinds of their own.
 const (
-	fileKind byte = 0
-	treeKind byte = 1
+	fileKind           byte = 0
+	treeKind           byte = 1
+	executableFileKind byte = 2
+	readOnlyFileKind   byte = 3
 )
 
-// FileEntry is a file child of a directory, used when hashing trees.
+// FileEntry is a file child of a directory, used when hashing trees. Mode is
+// the stored mode; it is classified with domain.ClassifyStoredMode, so any
+// representation of the same class (0o755, 0o775, legacy decimal 755) hashes
+// the same.
 type FileEntry struct {
 	Name string
 	Hash domain.Hash
 	Mode int
+}
+
+// fileKindFor returns the serialized kind of a file with the given stored mode.
+func fileKindFor(mode int) byte {
+	switch domain.ClassifyStoredMode(mode) {
+	case domain.FileModeClassExecutable:
+		return executableFileKind
+	case domain.FileModeClassReadOnly:
+		return readOnlyFileKind
+	default:
+		return fileKind
+	}
 }
 
 // TreeEntry is a subdirectory child of a directory, used when hashing trees.
@@ -40,9 +60,11 @@ type TreeEntry struct {
 // TreeHash returns the hash of a directory given its sorted contents.
 // Serialization, per child sorted by name:
 //
-//	kind (1 byte: 0=file, 1=tree) | name length (4 bytes BE) | name | child hash (32 bytes)
+//	kind (1 byte) | name length (4 bytes BE) | name | child hash (32 bytes)
 //
-// The whole stream is hashed with BLAKE3.
+// where kind is 0 for a read-write file, 1 for a tree, 2 for an executable file
+// and 3 for a read-only file. Files come first, then trees. The whole stream
+// is hashed with BLAKE3.
 func TreeHash(files []FileEntry, trees []TreeEntry) domain.Hash {
 	h := newHasher()
 	hashFiles(h, files)
@@ -108,7 +130,7 @@ func hashFiles(h *hasher, files []FileEntry) {
 
 	var buf [4]byte
 	for _, f := range sorted {
-		h.write([]byte{fileKind})
+		h.write([]byte{fileKindFor(f.Mode)})
 		binary.BigEndian.PutUint32(buf[:], uint32(len(f.Name)))
 		h.write(buf[:])
 		h.write([]byte(f.Name))

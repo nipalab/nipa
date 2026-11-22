@@ -347,10 +347,25 @@ type Querier interface {
 	TagList(ctx context.Context, arg TagListParams) ([]Tag, error)
 	TermsAcceptanceCreate(ctx context.Context, arg TermsAcceptanceCreateParams) error
 	TermsAcceptanceLatest(ctx context.Context, userID int64) (UserTermsAcceptance, error)
+	TreeHashBackfillSetWatermark(ctx context.Context, watermark int64) error
+	// Tree hash backfill (usecase.BackfillTreeHashes) and the legacy root hashes
+	// it records.
+	// TreeHashBackfillWatermark locks the marker row for the whole pass, so concurrent
+	// pods run the backfill one at a time.
+	TreeHashBackfillWatermark(ctx context.Context) (int64, error)
+	TreeHashChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeHashChildrenRow, error)
+	TreeHashFiles(ctx context.Context, treeID sql.NullInt64) ([]TreeHashFilesRow, error)
+	TreeHashLegacyGet(ctx context.Context, treeID int64) ([]byte, error)
+	TreeHashLegacyInsert(ctx context.Context, arg TreeHashLegacyInsertParams) error
+	TreeHashNode(ctx context.Context, id int64) (TreeHashNodeRow, error)
+	TreeHashNodesByHash(ctx context.Context, hash []byte) ([]TreeHashNodesByHashRow, error)
+	TreeHashSeeds(ctx context.Context, arg TreeHashSeedsParams) ([]int64, error)
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
+	TreeNodeMaxID(ctx context.Context) (int64, error)
+	TreeNodeSetHash(ctx context.Context, arg TreeNodeSetHashParams) error
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UnmarkChunks(ctx context.Context, hashes [][]byte) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)

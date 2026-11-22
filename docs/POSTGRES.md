@@ -106,6 +106,12 @@ made the old `MAX(number)+1` race invisible).
 ## Migrations
 
 - `nipad-ee` applies pending migrations at startup (`ee/db.MigrateUp`).
+- After migrating, both servers run the tree hash backfill
+  (`serverapp.BackfillTreeHashes`, see `docs/internals/protocol.md`) before
+  serving. On postgres it holds the `tree_hash_backfill` row `FOR UPDATE`, so
+  pods starting together run it one after another and later ones only scan
+  tree nodes newer than the stored watermark. The migrate CLIs only change the
+  schema; the backfill runs on the next server start.
 - `ee/cmd/migrate` is the standalone CLI; `make migrate-up-postgres DSN=...`
   / `make migrate-down-postgres DSN=...` wrap it. The free
   `make migrate-up`/`migrate-down` remain sqlite-only.

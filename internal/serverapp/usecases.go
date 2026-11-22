@@ -108,6 +108,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		WithFileLocks(fileLockUsecase)
 	pushUsecase := usecase.NewPush(permissionUsecase, repos.Branch, repos.Push, node).
 		WithFileLocks(fileLockUsecase).WithMetrics(deps.Metrics).WithMaxFiles(cfg.PushMaxFiles)
+	if repos.TreeHash != nil {
+		pushUsecase = pushUsecase.WithLegacyTreeHashes(repos.TreeHash)
+	}
 	tagUsecase := usecase.NewTag(permissionUsecase, repos.Tag, repos.Branch, node)
 	reviewUsecase := usecase.NewMergeRequestReview(
 		repos.MergeRequestReview, repos.MergeRequest, repos.Branch, branchUsecase, permissionUsecase, repos.User, node,
