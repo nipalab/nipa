@@ -20,6 +20,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
   pb client for the daemon proxy), `securestorage` (keyring-backed token store), `config`
   (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`,
+  `downloadWorkers`,
   `uploadWindowMiB`, `llm`), `difftool`
   (external diff runner), `ignore` (root `.nipaignore` + local `.nipa/ignore`
   pattern matcher for untracked working files), `domain` (client

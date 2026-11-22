@@ -74,6 +74,8 @@ func TestDownloadChunks_RetriesTransientStatuses(t *testing.T) {
 			require.Equal(t, 3, srv.attemptsFor(h.String()), "two failures and the successful attempt")
 			require.Equal(t, 1, got.seen[h], "a retried chunk is delivered once")
 			require.Equal(t, []byte("payload"), got.data[h])
+			require.Equal(t, defaultDownloadWorkers/2, c.downloads.limiter.currentLimit(), "a retried failure lowers the download concurrency")
+			require.Equal(t, defaultUploadWorkers, c.uploads.limiter.currentLimit(), "uploads are not affected")
 		})
 	}
 }
@@ -275,7 +277,7 @@ func TestRunChunks_FeedErrorStopsWorkers(t *testing.T) {
 
 	var mu sync.Mutex
 	ran := 0
-	err := c.runChunks(context.Background(), func(_ context.Context, emit func(chunkTransfer) bool) error {
+	err := c.runChunks(context.Background(), c.downloads, func(_ context.Context, emit func(chunkTransfer) bool) error {
 		for i := 0; i < 3; i++ {
 			if !emit(chunkTransfer{hash: testChunkHash(byte(i + 1))}) {
 				return nil

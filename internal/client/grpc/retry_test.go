@@ -27,7 +27,7 @@ func TestUploadChunks_RetriesThrottledPut(t *testing.T) {
 	srv.failPutStatus = http.StatusTooManyRequests
 	srv.retryAfter = "1"
 	c := newDownloadClient(t, srv, throttleOnly(5))
-	limit := c.limiter.currentLimit()
+	limit := c.uploads.limiter.currentLimit()
 
 	uploaded, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
 		{Hash: h, Data: []byte("throttled payload")},
@@ -38,7 +38,8 @@ func TestUploadChunks_RetriesThrottledPut(t *testing.T) {
 	data, ok := srv.storedChunk(h.String())
 	require.True(t, ok)
 	require.Equal(t, []byte("throttled payload"), data, "the body is sent again in full")
-	require.Less(t, c.limiter.currentLimit(), limit, "throttling lowers the transfer concurrency")
+	require.Less(t, c.uploads.limiter.currentLimit(), limit, "throttling lowers the upload concurrency")
+	require.Equal(t, defaultDownloadWorkers, c.downloads.limiter.currentLimit(), "downloads keep their own limit")
 }
 
 func TestUploadChunks_RetriesTransientPut(t *testing.T) {
@@ -53,6 +54,8 @@ func TestUploadChunks_RetriesTransientPut(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, srv.putAttemptsFor(h.String()))
+	require.Equal(t, defaultUploadWorkers/2, c.uploads.limiter.currentLimit(),
+		"a 503 lowers the upload concurrency once; the retry within the cooldown does not cut again")
 }
 
 func TestUploadChunks_ThrottleBudgetExhausted(t *testing.T) {
@@ -208,11 +211,12 @@ func TestUnaryInterceptor_ThrottleWaitHonoursCancel(t *testing.T) {
 	require.Less(t, time.Since(start), 5*time.Second)
 }
 
-func TestConcurrencyTuner_ThrottleHalvesLimit(t *testing.T) {
+func TestTransferPool_ErrorHalvesLimit(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	c.limiter.setLimit(32)
-	c.recordTransfer(0, errThrottled)
-	require.Equal(t, 16, c.limiter.currentLimit())
+	c.uploads.limiter.setLimit(32)
+	c.uploads.record(0, errors.New("throttled"))
+	require.Equal(t, 16, c.uploads.limiter.currentLimit())
+	require.Equal(t, defaultDownloadWorkers, c.downloads.limiter.currentLimit())
 }
 
 func (s *chunkTestServer) putAttemptsFor(hash string) int {

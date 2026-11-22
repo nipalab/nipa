@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"errors"
 	"math/rand/v2"
 	"net/http"
 	"regexp"
@@ -32,8 +31,6 @@ var defaultRetryPolicy = retryPolicy{
 	throttleAttempts: 10,
 	maxThrottleWait:  30 * time.Second,
 }
-
-var errThrottled = errors.New("throttled by the server")
 
 // delay is the pause after the given failed attempt: the backoff doubled per
 // attempt plus up to a quarter of jitter so parallel workers do not retry in step.
@@ -74,20 +71,22 @@ func httpRetryHint(res *http.Response) retryHint {
 }
 
 // retryTransfer runs try until it succeeds, fails for good or runs out of
-// attempts. Every throttled attempt also lowers the transfer concurrency.
-func (c *Client) retryTransfer(ctx context.Context, try func() (retryHint, error)) error {
+// attempts. Every retryable failure (network error, stall, 5xx, 408, 429) is
+// a congestion signal and reaches the pool's tuner, which lowers the
+// concurrency of that direction.
+func (c *Client) retryTransfer(ctx context.Context, pool *transferPool, try func() (retryHint, error)) error {
 	failures, throttles := 0, 0
 	for {
 		hint, err := try()
 		if err == nil || !hint.retryable {
 			return err
 		}
+		pool.record(0, err)
 		var wait time.Duration
 		if hint.throttled {
 			if throttles >= c.retry.throttleAttempts {
 				return err
 			}
-			c.recordTransfer(0, errThrottled)
 			wait = c.retry.throttleDelay(throttles, hint.wait)
 			throttles++
 		} else {
