@@ -125,7 +125,8 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithChunkStores(chunkStores).WithMetrics(deps.Metrics).WithVerifyLimit(cfg.ChunkVerifyConcurrency)
+	}).WithChunkStores(chunkStores).WithMetrics(deps.Metrics).WithVerifyLimit(cfg.ChunkVerifyConcurrency).
+		WithUploadMode(usecase.UploadMode(cfg.ChunkUploadMode)).WithProxyBuffer(cfg.ChunkProxyBufferBytes())
 	if deps.StorageLedger != nil {
 		chunkUsecase = chunkUsecase.WithStorageLedger(deps.StorageLedger)
 		projectUsecase.WithStorageLedger(deps.StorageLedger)

@@ -18,6 +18,11 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
   server-wide `CHUNK_VERIFY_CONCURRENCY` limit and writes rows and links with
   one batched statement each (`InsertChunksIfNotExist`, `LinkProjectChunks`).
   Details in `docs/internals/protocol.md`.
+- Later (push throughput, proxy uploads): `CHUNK_UPLOAD_MODE=proxy` sends
+  uploads to the server's own S3/R2 store through the signed PUT path, which
+  hashes the bytes, overwrites the object and returns a signed receipt;
+  confirm accepts the receipt instead of reading the chunk back (one store
+  request per new chunk). Own-storage projects stay direct.
 - Phase 2 is deferred: with presign checks concurrent and confirm batched, the
   remaining saving is the ref payload and the concurrent `Exists` calls.
 

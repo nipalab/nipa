@@ -127,6 +127,19 @@ CHUNK_MAX_PAGE_SIZE: 1000
 # high per-request latency (R2, S3) want it high; lower it for a small
 # self-hosted MinIO or local disk whose I/O suffers.
 CHUNK_VERIFY_CONCURRENCY: 64
+# How clients upload chunk bytes to a direct-transfer store (S3/R2):
+#   direct (default): clients PUT to presigned object store URLs; confirm
+#     reads every new chunk back to verify it.
+#   proxy: clients PUT to the server's signed /api/chunks path; the server
+#     hashes the bytes on the way in, writes the store itself and returns a
+#     signed receipt, so confirm reads nothing back. Costs server bandwidth
+#     and CPU; projects on their own storage (BYO) always upload direct.
+# The free `nipad` (local store) always uploads through the server and returns
+# receipts whatever this says. Invalid values are rejected at startup.
+CHUNK_UPLOAD_MODE: direct
+# Memory budget for proxied upload bodies held at once, server-wide, in MiB
+# (default 128, <= 0 means the default). Uploads past it wait for room.
+CHUNK_PROXY_BUFFER_MIB: 128
 # Most files plus removed paths one push may carry (default 2000000).
 PUSH_MAX_FILES: 2000000
 # Chunk hashes the clone download cache keeps per server (32 bytes each,

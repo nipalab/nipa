@@ -145,7 +145,7 @@ func TestChunk_StoreUploadedAndDownloadUseProjectStore(t *testing.T) {
 	data := []byte("signed put")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, f.uc.StoreUploaded(ctx, testProject.ID, hash, data))
+	require.NoError(t, storeErr(f.uc.StoreUploaded(ctx, testProject.ID, hash, data)))
 	require.Equal(t, data, f.own.data[hash])
 	require.NotContains(t, f.nipa.data, hash)
 
@@ -174,7 +174,7 @@ func TestChunk_ReadOnlyRefusesWrites(t *testing.T) {
 	requireReadOnly(t, err)
 	_, err = f.uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, nil)
 	requireReadOnly(t, err)
-	requireReadOnly(t, f.uc.StoreUploaded(ctx, testProject.ID, hash, data))
+	requireReadOnly(t, storeErr(f.uc.StoreUploaded(ctx, testProject.ID, hash, data)))
 	_, err = f.uc.UploadForProject(ctx, testProject.ID, hash, data)
 	requireReadOnly(t, err)
 	requireReadOnly(t, f.uc.RequireWritable(ctx, testProject.ID))

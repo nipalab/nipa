@@ -463,3 +463,16 @@ func TestConfirmChunkUploadsHandler_InvalidProofHash(t *testing.T) {
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+func TestToChunkProofs_CarriesTheReceipt(t *testing.T) {
+	hash := chunker.Sum([]byte("payload"))
+	proofs, err := toChunkProofs([]*pb.ChunkPossessionProof{
+		{Hash: hash.String(), Challenge: "c", Proof: "p", Receipt: "r"},
+		{Hash: hash.String()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []usecase.ChunkProof{
+		{Hash: hash, Challenge: "c", Proof: "p", Receipt: "r"},
+		{Hash: hash},
+	}, proofs)
+}

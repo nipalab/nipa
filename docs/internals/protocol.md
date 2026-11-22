@@ -183,6 +183,47 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   stored meanwhile and the final confirm reads it back against the proof, and
   garbage at the key is deleted there, reported missing and uploaded again on
   the next attempt.
+  **Upload mode and receipts.** `CHUNK_UPLOAD_MODE` (`direct` default |
+  `proxy`, validated at config load, `Chunk.WithUploadMode`) decides where a
+  client PUTs to a `DirectTransferStore`: `direct` hands out the store's
+  create-only presigned URLs; `proxy` makes `uploadTarget` hand out the signed
+  server path (`chunkurl.UploadPath`) instead. It applies to the server's own
+  store only: an own-storage project (`ProjectStore.External`) always uploads
+  direct, and a store without direct transfers (free `nipad`, local) always
+  uses the server path. Challenges are issued either way and B4 (`existsKnown`)
+  still decides the existence checks. `ChunkHandler.PutChunk` verifies the
+  signed URL and the exact `Content-Length`, reserves the signed size from a
+  server-wide byte budget (`CHUNK_PROXY_BUFFER_MIB`, default 128, `<= 0` =
+  default, `Chunk.WithProxyBuffer`/`ReserveUploadBuffer`, a weighted semaphore;
+  a body larger than the budget takes all of it, a request cancelled while
+  waiting gets 503) before reading the body into one buffer of that size
+  through `MaxBytesReader`, and gives it back once the store write returns or
+  the body is rejected. `Chunk.StoreUploaded` checks BLAKE3 before any write
+  (mismatch = 400, nothing written), clears a GC mark on the hash
+  (`ChunkGCGuard.Protect`, so a sweep cannot remove the object between the
+  write and the confirm that trusts the receipt), then writes: a store
+  implementing `storage.ChunkOverwriter` (S3) gets an unconditional
+  single-part `Overwrite` with no `Exists` first (one request; it replaces
+  garbage an earlier direct upload left at the key), other stores keep the
+  `Exists` skip. minio-go signs that PUT with `UNSIGNED-PAYLOAD` over https
+  (no second SHA-256 pass) and with the streaming payload signature over plain
+  http (`TestStore_PutPayloadSigning`). No row, link or quota is touched at
+  PUT. The 204 carries `X-Nipa-Chunk-Receipt` (`chunkproof.ReceiptHeader`):
+  `chunkproof.NewReceipt` is stateless, base64url(expiry ‖ size) plus an
+  HMAC-SHA256 under `CHUNK_URL_SIGNING_KEY` with its own domain label
+  `nipa-chunk-receipt:v1` (the challenge uses `nipa-chunk-proof:v1`, so
+  neither MAC stands in for the other) over project id, hash, the
+  server-measured size and the expiry (`CHUNK_PRESIGN_TTL_SECONDS`); both
+  blue/green colours share the key. The client (`putChunkOnce`/`keepReceipt`)
+  keeps the header only from a 2xx on a relative server path, never from an
+  absolute store URL, and sends it as `ChunkPossessionProof.receipt` (field 4)
+  next to the proof in the final confirm. `confirmUploads` checks receipts
+  before the read-backs: one `VerifyReceipt` accepts for this project and hash
+  marks the chunk present with the receipt's size and no store read; an
+  invalid, expired or other-project receipt falls back to the proof
+  (read-back), and without a proof the chunk is missing. Rows, `ledger.Attribute`
+  and links follow unchanged, so receipts never skip the quota. Older clients
+  send no receipt (read-back), older servers send none (proof only).
   Unproven hashes are reported missing, `ApplyPush` joins through the link table,
   and server-generated merge content is linked via `AttributeProjectChunks`.
   The client pushes through the client-streaming `PushStream` only (the unary

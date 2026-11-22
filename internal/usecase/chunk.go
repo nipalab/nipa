@@ -40,6 +40,25 @@ type chunkRepository interface {
 // confirm runs at once when CHUNK_VERIFY_CONCURRENCY is unset.
 const DefaultChunkVerifyConcurrency = 64
 
+// DefaultChunkProxyBufferBytes is the server-wide memory budget for proxied
+// upload bodies when none is configured (CHUNK_PROXY_BUFFER_MIB).
+const DefaultChunkProxyBufferBytes = 128 << 20
+
+// UploadMode selects how clients send chunk bytes to a store that supports
+// direct transfers (CHUNK_UPLOAD_MODE).
+type UploadMode string
+
+const (
+	// UploadModeDirect hands out the store's own presigned upload URLs; the
+	// bytes bypass the server and confirm reads every chunk back.
+	UploadModeDirect UploadMode = "direct"
+	// UploadModeProxy hands out signed server paths: the server hashes the
+	// bytes on the way in, writes the store itself and returns a receipt that
+	// lets confirm skip the read-back. Own-storage (External) projects keep
+	// uploading direct so customer bytes never flow through the server.
+	UploadModeProxy UploadMode = "proxy"
+)
+
 // presignExistsLimit is the server-wide number of store existence checks
 // presign runs at once.
 var presignExistsLimit int64 = 64
@@ -66,10 +85,13 @@ type ChunkURL struct {
 
 // ChunkProof is a client's proof of possession for one chunk: Proof answers
 // Challenge (issued by PresignUploadURLs) for the chunk's stored bytes.
+// Receipt, when set, is what StoreUploaded issued for a proxied upload of the
+// chunk; a valid one stands in for the read-back.
 type ChunkProof struct {
 	Hash      domain.Hash
 	Challenge string
 	Proof     string
+	Receipt   string
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -94,6 +116,11 @@ type Chunk struct {
 	// all requests, so store I/O and memory stay bounded however many arrive.
 	verifySlots *semaphore.Weighted
 	existsSlots *semaphore.Weighted
+	uploadMode  UploadMode
+	// proxyBuffer bounds the bytes of every proxied upload body held in
+	// memory at once, across all requests; proxyBufferSize is its capacity.
+	proxyBuffer     *semaphore.Weighted
+	proxyBufferSize int64
 }
 
 // ChunkGCGuard keeps a chunk garbage collector from deleting content a caller
@@ -115,7 +142,45 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 
 		verifySlots: semaphore.NewWeighted(DefaultChunkVerifyConcurrency),
 		existsSlots: semaphore.NewWeighted(presignExistsLimit),
+		uploadMode:  UploadModeDirect,
+
+		proxyBuffer:     semaphore.NewWeighted(DefaultChunkProxyBufferBytes),
+		proxyBufferSize: DefaultChunkProxyBufferBytes,
 	}
+}
+
+// WithUploadMode selects direct or proxied uploads for projects on the
+// server's own store; an unknown mode keeps UploadModeDirect.
+func (c *Chunk) WithUploadMode(mode UploadMode) *Chunk {
+	if mode != UploadModeProxy {
+		mode = UploadModeDirect
+	}
+	c.uploadMode = mode
+	return c
+}
+
+// WithProxyBuffer sets the server-wide byte budget for proxied upload bodies
+// held in memory; n <= 0 keeps DefaultChunkProxyBufferBytes.
+func (c *Chunk) WithProxyBuffer(n int64) *Chunk {
+	if n <= 0 {
+		n = DefaultChunkProxyBufferBytes
+	}
+	c.proxyBuffer = semaphore.NewWeighted(n)
+	c.proxyBufferSize = n
+	return c
+}
+
+// ReserveUploadBuffer takes size bytes of the proxied upload budget before
+// the caller reads an upload body, waiting while other uploads hold it. A body
+// larger than the whole budget takes all of it. It fails when ctx ends first.
+// The caller must call release once the body is stored or dropped.
+func (c *Chunk) ReserveUploadBuffer(ctx context.Context, size int64) (release func(), err error) {
+	n := min(max(size, 1), c.proxyBufferSize)
+	if err := c.proxyBuffer.Acquire(ctx, n); err != nil {
+		return nil, domain.NewErrorServiceUnavailable("chunk upload cancelled while waiting for buffer space")
+	}
+	var once sync.Once
+	return func() { once.Do(func() { c.proxyBuffer.Release(n) }) }, nil
 }
 
 // WithVerifyLimit sets how many chunk read-backs all confirms together run at
@@ -292,12 +357,24 @@ func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash do
 	return isNew, nil
 }
 
-// StoreUploaded verifies and stores chunk content without recording metadata;
-// the metadata row is written by ConfirmUploads once the client reports the
-// transfer done. Linking the project to the chunk also waits for confirm, where
-// the client proves it holds the bytes, so this path never touches the database.
-// Content writes are safe to run concurrently.
-func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (err error) {
+// StoreUploaded verifies and stores chunk content a client sent through a
+// signed server path, without recording metadata; the metadata row is written
+// by ConfirmUploads once the client reports the transfer done. Linking the
+// project to the chunk also waits for confirm (quota is enforced there), so
+// this path records no rows or links. Content writes are safe to run
+// concurrently.
+//
+// It returns a receipt (chunkproof.NewReceipt) for the project, hash and the
+// size the server measured, valid for the presign TTL: the server saw these
+// bytes itself, so confirm accepts the receipt instead of reading them back.
+//
+// A store clients can also write directly (storage.ChunkOverwriter, i.e.
+// S3 in proxy mode) is written unconditionally, which replaces garbage an
+// earlier direct upload left at the key; other stores skip content they
+// already hold. A chunk garbage collector's mark on the hash is cleared
+// before the write, so a sweep cannot remove the content between this write
+// and the confirm that relies on the receipt.
+func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (receipt string, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.store",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(data)))
@@ -305,13 +382,33 @@ func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domai
 
 	if got := chunker.Sum(data); got != hash {
 		c.metrics.ObserveChunkVerifyFailure("store")
-		return domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
+		return "", domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
 	resolved, err := c.writableStore(ctx, projectID)
 	if err != nil {
-		return err
+		return "", err
 	}
-	exists, err := resolved.Store.Exists(ctx, hash)
+	if err := c.protect(ctx, hash); err != nil {
+		return "", err
+	}
+	if err := c.writeUploaded(ctx, resolved.Store, hash, data); err != nil {
+		return "", err
+	}
+	size := int64(len(data))
+	return chunkproof.NewReceipt(c.transfer.SigningKey, projectID, hash, size, c.now().Add(c.transfer.PresignTTL)), nil
+}
+
+func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, hash domain.Hash, data []byte) error {
+	if overwriter, ok := store.(storage.ChunkOverwriter); ok {
+		if err := overwriter.Overwrite(ctx, hash, data); err != nil {
+			c.metrics.ObserveChunkOp("put", "error")
+			return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
+		}
+		c.metrics.ObserveChunkOp("put", "stored")
+		c.metrics.ObserveChunkBytes("put", int64(len(data)))
+		return nil
+	}
+	exists, err := store.Exists(ctx, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
@@ -320,7 +417,7 @@ func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domai
 		c.metrics.ObserveChunkOp("put", "dedup")
 		return nil
 	}
-	if err := resolved.Store.Put(ctx, hash, data); err != nil {
+	if err := store.Put(ctx, hash, data); err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 	}
@@ -418,7 +515,7 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 		}
 		entry := ChunkURL{Hash: ref.Hash, ProofChallenge: challenge}
 		if !exists[i] {
-			target, err := c.uploadTarget(ctx, resolved.Store, org, project, ref, expiry)
+			target, err := c.uploadTarget(ctx, resolved, org, project, ref, expiry)
 			if err != nil {
 				return nil, "", err
 			}
@@ -509,9 +606,13 @@ func (c *Chunk) checkHeadroom(ctx context.Context, ledger StorageLedger, org *do
 	return ledger.Headroom(ctx, org, project, projected)
 }
 
-func (c *Chunk) uploadTarget(ctx context.Context, store storage.ChunkStore, org *domain.Organization, project *domain.Project, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
-	direct, ok := store.(storage.DirectTransferStore)
-	if !ok {
+// uploadTarget picks where a client PUTs one chunk: the store's own presigned
+// URL for a direct-transfer store, or the signed server path (StoreUploaded)
+// for any other store and, in proxy mode, for the server's own store too.
+// Own-storage (External) projects always upload direct.
+func (c *Chunk) uploadTarget(ctx context.Context, resolved ProjectStore, org *domain.Organization, project *domain.Project, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
+	direct, ok := resolved.Store.(storage.DirectTransferStore)
+	if !ok || (c.uploadMode == UploadModeProxy && !resolved.External) {
 		return storage.UploadTarget{
 			URL: chunkurl.UploadPath(c.transfer.SigningKey, org.Slug, project.Slug, ref.Hash.String(), ref.SizeBytes, expiry),
 		}, nil
@@ -577,7 +678,10 @@ func (c *Chunk) downloadPath(ctx context.Context, store storage.ChunkStore, org,
 // not linked to yet, or one the client supplies a proof for, is read back,
 // hashed and checked against the proof, because direct uploads never pass
 // through the server; linked chunks without a proof are trusted once linked.
-// Hashes still missing are returned so the client can retry them. When a
+// A proof carrying a valid receipt from StoreUploaded (proxied upload, same
+// project and hash, not expired) skips the read-back: the server hashed those
+// bytes itself on the way in. Receipts never skip the rows, the ledger or the
+// quota. Hashes still missing are returned so the client can retry them. When a
 // ledger is attached, present chunks are attributed to the project and the
 // organization's quota is enforced.
 func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, error) {
@@ -630,9 +734,29 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		size    int64
 		present bool
 	}
+	// receipted is filled before the read-backs start and only read after;
+	// checks is written by them under checkMu.
+	receipted := make(map[domain.Hash]possession)
 	checks := make(map[domain.Hash]possession)
+	// A valid receipt means the server received and stored these bytes for
+	// this project itself (proxied upload): present with the size it records,
+	// no read-back. An invalid or expired one falls through to the proof.
+	for _, hash := range hashes {
+		proof, supplied := proofByHash[hash]
+		if !supplied || proof.Receipt == "" {
+			continue
+		}
+		size, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, project.ID, hash, proof.Receipt, c.now())
+		if err != nil {
+			continue
+		}
+		receipted[hash] = possession{size: size, present: true}
+	}
 	var checkMu sync.Mutex
 	needsCheck := func(i int) bool {
+		if _, ok := receipted[hashes[i]]; ok {
+			return false
+		}
 		_, isLinked := linked[hashes[i]]
 		_, supplied := proofByHash[hashes[i]]
 		return !isLinked || supplied
@@ -662,7 +786,10 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			}
 			continue
 		}
-		check := checks[hash]
+		check, ok := receipted[hash]
+		if !ok {
+			check = checks[hash]
+		}
 		if check.present && !isLinked {
 			toLink = append(toLink, hash)
 		}

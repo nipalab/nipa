@@ -133,7 +133,7 @@ func toChunkProofs(raw []*pb.ChunkPossessionProof) ([]usecase.ChunkProof, error)
 		if err != nil {
 			return nil, domain.NewErrorUser("invalid chunk hash")
 		}
-		proofs = append(proofs, usecase.ChunkProof{Hash: hash, Challenge: item.GetChallenge(), Proof: item.GetProof()})
+		proofs = append(proofs, usecase.ChunkProof{Hash: hash, Challenge: item.GetChallenge(), Proof: item.GetProof(), Receipt: item.GetReceipt()})
 	}
 	return proofs, nil
 }

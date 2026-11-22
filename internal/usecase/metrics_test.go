@@ -57,8 +57,8 @@ func TestChunkMetrics(t *testing.T) {
 	data := []byte("hello chunk")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
-	require.NoError(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
+	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
+	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
 
 	got, err := uc.Download(ctx, snow.ID(1), hash)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestChunkMetrics(t *testing.T) {
 	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 
-	require.Error(t, uc.StoreUploaded(ctx, snow.ID(1), hash, []byte("tampered")))
+	require.Error(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, []byte("tampered"))))
 
 	body := scrapeUsecaseMetrics(t, metrics)
 	require.Contains(t, body, `nipa_chunk_ops_total{op="put",result="stored"} 1`)

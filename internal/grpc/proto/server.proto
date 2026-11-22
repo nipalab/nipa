@@ -150,6 +150,9 @@ message ChunkPossessionProof {
     string hash = 1; // hex-encoded BLAKE3 hash of the chunk
     string challenge = 2; // proof_challenge issued for this project and hash
     string proof = 3; // hex-encoded BLAKE3(challenge || bytes)
+    // X-Nipa-Chunk-Receipt the server returned for a proxied upload of this
+    // chunk; a valid receipt lets confirm skip the read-back. Optional.
+    string receipt = 4;
 }
 
 message ConfirmChunkUploadsResponse {

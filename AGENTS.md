@@ -231,6 +231,10 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   with the tracked encoding (`storedEncoding`), or file hashes diverge.
 - Chunk transfer is presigned HTTP, not gRPC streaming; the `/api/chunks`
   routes are not behind the bearer filter (the signature is the capability).
+  With `CHUNK_UPLOAD_MODE=proxy` (and always on free `nipad`) uploads go
+  through the signed PUT, which answers with an HMAC receipt that lets
+  confirm skip the read-back; never link, attribute or write rows at PUT
+  (quota is enforced at confirm), and keep own-storage projects direct.
 - Every new REST route needs a maintenance class
   (`testdata/maintenance_routes.golden`, `NIPA_UPDATE_GOLDEN=1`) and every new
   gRPC method an entry in `maintenance_classes.go`.

@@ -182,6 +182,8 @@ type serverOptions struct {
 	// integrations turns the issue tracker integration on, with remote links
 	// pointing at https://nipa.example and trackers allowed on loopback.
 	integrations bool
+	// uploadMode is CHUNK_UPLOAD_MODE; empty is direct.
+	uploadMode string
 }
 
 func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
@@ -204,6 +206,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 			ChunkURLSigningKey:     "ee-e2e-chunk-signing-key",
 			ChunkPresignTTLSeconds: 3600,
 			ChunkMaxPageSize:       1000,
+			ChunkUploadMode:        opts.uploadMode,
 		},
 		DB:                dbConn,
 		Snow:              node,

@@ -221,6 +221,16 @@ Caddy proxy); it is not part of the Netlify deployment.
    page (Caddy 2.8+; gRPC and API callers get a maintenance refusal instead,
    see [MAINTENANCE.md](MAINTENANCE.md#hard-downtime-the-caddy-maintenance-page)).
 
+   Chunk uploads in proxy mode (`CHUNK_UPLOAD_MODE=proxy`, set in
+   `deploy/nipad-ee.env.sample` for the SaaS R2 bucket) flow through Caddy to
+   `nipad-ee`, up to 16 MiB per request: do not add a `request_body
+   max_size` below 16 MiB (the shipped Caddyfile sets none). The server holds
+   at most `CHUNK_PROXY_BUFFER_MIB` (default 128) of upload bodies in memory
+   and writes R2 itself, so server to R2 traffic counts against the VPS
+   outbound transfer; bring-your-own storage projects still upload directly.
+   The SaaS default is provisional until the push-throughput loadtest rerun
+   (MinIO, R2 direct, R2 proxy) picks it.
+
    `upgrade.sh` refuses to run while `MARKETING_UPSTREAM` is empty and passes
    `/etc/caddy/caddy.env` to `caddy validate --envfile`, so the check sees
    the same values as the running Caddy (`NIPA_CADDY_ENV` overrides the path).

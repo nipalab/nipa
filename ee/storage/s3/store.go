@@ -31,6 +31,7 @@ import (
 var _ storage.ChunkStore = (*Store)(nil)
 var _ storage.DirectTransferStore = (*Store)(nil)
 var _ storage.ChunkOpener = (*Store)(nil)
+var _ storage.ChunkOverwriter = (*Store)(nil)
 
 // maxPresignTTL is the longest expiry SigV4 presigned requests support.
 const maxPresignTTL = 7 * 24 * time.Hour
@@ -127,8 +128,32 @@ func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) (err err
 	if exists {
 		return nil
 	}
-	_, err = s.client.PutObject(ctx, s.bucket, s.key(hash), bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
-		ContentType: "application/octet-stream",
+	return s.putObject(ctx, hash, data)
+}
+
+// Overwrite writes chunk content the server verified itself without checking
+// for an existing object first (one request instead of two). It replaces any
+// garbage a direct upload left at the key.
+func (s *Store) Overwrite(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.put_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(data)),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket),
+		attribute.Bool("nipa.storage.overwrite", true))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	return s.putObject(ctx, hash, data)
+}
+
+// putObject is one single-part PUT with the exact size (chunks are at most
+// 16 MiB, minio's multipart threshold). minio-go signs it with
+// UNSIGNED-PAYLOAD over https, so the body is not SHA-256 hashed a second
+// time; over plain http it keeps the streaming SigV4 payload signature.
+func (s *Store) putObject(ctx context.Context, hash domain.Hash, data []byte) error {
+	_, err := s.client.PutObject(ctx, s.bucket, s.key(hash), bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
+		ContentType:      "application/octet-stream",
+		DisableMultipart: true,
 	})
 	if err != nil {
 		return fmt.Errorf("s3: put chunk %s: %w", hash, err)
