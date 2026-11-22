@@ -22,6 +22,17 @@ const EnvDiffExternal = "NIPA_EXTERNAL_DIFF"
 // automatically within the client's bounds.
 const EnvUploadWorkers = "NIPA_UPLOAD_WORKERS"
 
+// EnvUploadWindowMiB names the environment variable overriding the size of a
+// push upload window in MiB: the chunk data buffered before it is handed to
+// the uploaders. When unset the client default applies.
+const EnvUploadWindowMiB = "NIPA_UPLOAD_WINDOW_MIB"
+
+// Bounds an upload window size is clamped to, in MiB.
+const (
+	MinUploadWindowMiB = 4
+	MaxUploadWindowMiB = 256
+)
+
 // EnvTracing enables client tracing (1/true/on or "stdout" for the pretty
 // human-readable exporter). Unset or false leaves the client on the no-op
 // tracer.
@@ -43,10 +54,11 @@ const (
 
 // Config is the user configuration stored in ~/.config/nipa/config.json.
 type Config struct {
-	DiffExternal  string     `json:"diffExternal,omitempty"`
-	UploadWorkers int        `json:"uploadWorkers,omitempty"`
-	SSHKeyPath    string     `json:"sshKeyPath,omitempty"`
-	LLM           *LLMConfig `json:"llm,omitempty"`
+	DiffExternal    string     `json:"diffExternal,omitempty"`
+	UploadWorkers   int        `json:"uploadWorkers,omitempty"`
+	UploadWindowMiB int        `json:"uploadWindowMiB,omitempty"`
+	SSHKeyPath      string     `json:"sshKeyPath,omitempty"`
+	LLM             *LLMConfig `json:"llm,omitempty"`
 }
 
 // LLMConfig points --generate at an OpenAI-compatible endpoint. APIKeyEnv
@@ -185,6 +197,36 @@ func ResolveUploadWorkers() (int, bool, error) {
 		return cfg.UploadWorkers, true, nil
 	}
 	return 0, false, nil
+}
+
+// ResolveUploadWindowMiB returns the configured upload window size in MiB,
+// clamped to [MinUploadWindowMiB, MaxUploadWindowMiB]. The boolean is false
+// when neither the environment nor the config file sets one, in which case the
+// client default applies. The environment takes precedence over the user
+// config.
+func ResolveUploadWindowMiB() (int, bool, error) {
+	if value := strings.TrimSpace(os.Getenv(EnvUploadWindowMiB)); value != "" {
+		mib, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, false, fmt.Errorf("parse %s: %w", EnvUploadWindowMiB, err)
+		}
+		if mib <= 0 {
+			return 0, false, fmt.Errorf("%s must be a positive integer", EnvUploadWindowMiB)
+		}
+		return clampUploadWindowMiB(mib), true, nil
+	}
+	cfg, err := Load()
+	if err != nil {
+		return 0, false, err
+	}
+	if cfg.UploadWindowMiB > 0 {
+		return clampUploadWindowMiB(cfg.UploadWindowMiB), true, nil
+	}
+	return 0, false, nil
+}
+
+func clampUploadWindowMiB(mib int) int {
+	return min(max(mib, MinUploadWindowMiB), MaxUploadWindowMiB)
 }
 
 // SetUploadWorkers pins the upload worker count in the user configuration; 0

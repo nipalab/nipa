@@ -131,9 +131,20 @@ func handleError(err error) {
 }
 
 func uploadOptions() ([]grpc.ClientOption, error) {
+	var opts []grpc.ClientOption
 	workers, pinned, err := config.ResolveUploadWorkers()
-	if err != nil || !pinned {
+	if err != nil {
 		return nil, err
 	}
-	return []grpc.ClientOption{grpc.WithUploadWorkers(workers)}, nil
+	if pinned {
+		opts = append(opts, grpc.WithUploadWorkers(workers))
+	}
+	windowMiB, set, err := config.ResolveUploadWindowMiB()
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		opts = append(opts, grpc.WithUploadWindowMiB(windowMiB))
+	}
+	return opts, nil
 }

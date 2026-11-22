@@ -134,9 +134,12 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   metadata rows, so `Push` can rely on them; linked chunks without a proof take
   their size from the row in one batched `LinkedProjectChunkSizes` lookup
   (presign checks every ref with 16 concurrent `Exists` calls, so a lost
-  object is uploaded again); confirmations are
-  serialized client-side under a mutex so concurrent upload windows never stack
-  SQLite metadata writes. `UploadChunks` presigns, claims and confirms a window
+  object is uploaded again); a client runs at most `maxConcurrentConfirms` (3)
+  confirms at once across its upload windows (`Client.confirmSlots`, a
+  buffered channel; a waiter gives up when its context ends), so one window's
+  read-back overlaps the others' PUTs while the server's verification load per
+  client stays bounded (SQLite servers rely on `_txlock=immediate` +
+  `busy_timeout`). `UploadChunks` presigns, claims and confirms a window
   in batches of `uploadBatch` (1000) chunks, so a window of many small files
   never builds a presign or confirm message near the gRPC size limit. Chunks the project is already linked to come back with `already_stored` so
   clients skip the transfer. A project may reference a chunk only after it proved it
@@ -145,9 +148,15 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `proof_challenge`, the client answers with `BLAKE3(challenge || bytes)` in
   `ConfirmChunkUploads.proofs`, and the server reads the stored object back,
   checks it against its hash and the proof, and links the project in one batch
-  (`project_chunk_uploads`). The client claims with proofs first, so content the
-  server already holds for another project is linked without being sent again;
-  only chunks reported missing are uploaded and then confirmed with their proofs.
+  (`project_chunk_uploads`). The client claims with proofs first only the chunks
+  that came back without an upload URL (`url == ""`: the server holds the object
+  but the project is not linked), so that content is linked without being sent
+  again; a claimed chunk reported missing is presigned again on the next attempt
+  (up to `maxUploadAttempts`, 3). Chunks with a URL are PUT straight away and
+  proved in the final confirm: a 412 on the create-only PUT means the object was
+  stored meanwhile and the final confirm reads it back against the proof, and
+  garbage at the key is deleted there, reported missing and uploaded again on
+  the next attempt.
   Unproven hashes are reported missing, `ApplyPush` joins through the link table,
   and server-generated merge content is linked via `AttributeProjectChunks`.
   The client pushes through the client-streaming `PushStream` only (the unary
@@ -194,8 +203,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Branch.loadTreeManifest` skips nodes with the empty-tree hash without a
   query, since the content-node lookup of an empty hash scans every row
   sharing it.
-  `Push.pushStaged` scans into 16MB windows handed to
-  two uploader goroutines (queue depth 2), so hashing overlaps with the network;
+  `Push.pushStaged` scans into 32MB windows (`uploadWindowBytes`; a client
+  override `NIPA_UPLOAD_WINDOW_MIB` / `uploadWindowMiB`, clamped to 4..256 MiB,
+  reaches the uploader through `Client.UploadWindowBytes`) handed to four
+  uploader goroutines (queue depth 2), so hashing overlaps with the network;
   window chunks are cached locally before upload (text and pinned raw files
   only) and the scanner only blocks
   when the bounded queue is full. Chunk sizes are content-aware

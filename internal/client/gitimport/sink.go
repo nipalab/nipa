@@ -54,6 +54,12 @@ func (t grpcTransport) ImportSetRefs(ctx context.Context, org, project string, r
 	return t.c.ImportSetRefs(ctx, org, project, refs)
 }
 
+// UploadWindowBytes forwards the client's upload window override to the
+// chunk uploader.
+func (t grpcTransport) UploadWindowBytes() int {
+	return t.c.UploadWindowBytes()
+}
+
 func (t grpcTransport) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	return t.c.UploadChunks(ctx, scope, chunks, onChunk...)
 }

@@ -209,3 +209,89 @@ func TestSetUploadWorkers_NullFile(t *testing.T) {
 	require.True(t, pinned)
 	require.Equal(t, 8, workers)
 }
+
+func writeUserConfig(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte(body), 0o644))
+}
+
+func TestResolveUploadWindowMiB_Default(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvUploadWindowMiB, "")
+
+	mib, set, err := ResolveUploadWindowMiB()
+	require.NoError(t, err)
+	require.False(t, set)
+	require.Zero(t, mib)
+}
+
+func TestResolveUploadWindowMiB_FromConfig(t *testing.T) {
+	writeUserConfig(t, `{"uploadWindowMiB":64}`)
+	t.Setenv(EnvUploadWindowMiB, "")
+
+	mib, set, err := ResolveUploadWindowMiB()
+	require.NoError(t, err)
+	require.True(t, set)
+	require.Equal(t, 64, mib)
+}
+
+func TestResolveUploadWindowMiB_EnvWins(t *testing.T) {
+	writeUserConfig(t, `{"uploadWindowMiB":64}`)
+	t.Setenv(EnvUploadWindowMiB, " 128 ")
+
+	mib, set, err := ResolveUploadWindowMiB()
+	require.NoError(t, err)
+	require.True(t, set)
+	require.Equal(t, 128, mib)
+}
+
+func TestResolveUploadWindowMiB_Clamps(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  string
+		file string
+		want int
+	}{
+		{name: "env below", env: "1", want: MinUploadWindowMiB},
+		{name: "env above", env: "4096", want: MaxUploadWindowMiB},
+		{name: "env at min", env: "4", want: 4},
+		{name: "env at max", env: "256", want: 256},
+		{name: "config below", file: `{"uploadWindowMiB":2}`, want: MinUploadWindowMiB},
+		{name: "config above", file: `{"uploadWindowMiB":1000}`, want: MaxUploadWindowMiB},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := tc.file
+			if file == "" {
+				file = `{}`
+			}
+			writeUserConfig(t, file)
+			t.Setenv(EnvUploadWindowMiB, tc.env)
+
+			mib, set, err := ResolveUploadWindowMiB()
+			require.NoError(t, err)
+			require.True(t, set)
+			require.Equal(t, tc.want, mib)
+		})
+	}
+}
+
+func TestResolveUploadWindowMiB_InvalidEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvUploadWindowMiB, "big")
+	_, _, err := ResolveUploadWindowMiB()
+	require.ErrorContains(t, err, EnvUploadWindowMiB)
+
+	t.Setenv(EnvUploadWindowMiB, "-8")
+	_, _, err = ResolveUploadWindowMiB()
+	require.ErrorContains(t, err, EnvUploadWindowMiB)
+}
+
+func TestResolveUploadWindowMiB_BrokenConfig(t *testing.T) {
+	writeUserConfig(t, `{not json`)
+	t.Setenv(EnvUploadWindowMiB, "")
+	_, _, err := ResolveUploadWindowMiB()
+	require.Error(t, err)
+}

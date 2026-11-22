@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -75,6 +76,16 @@ type chunkTestServer struct {
 	failPuts      map[string]int
 	failPutStatus int
 	retryAfter    string
+
+	// confirms logs every ConfirmChunkUploads request in arrival order.
+	confirms []*pb.ConfirmChunkUploadsRequest
+	// urlForStored hands out upload URLs for stored but unconfirmed objects,
+	// like a server that skips the existence check for unknown hashes.
+	urlForStored bool
+	// confirmDelay holds every confirm, so concurrent ones overlap.
+	confirmDelay   time.Duration
+	confirmsActive int
+	confirmsPeak   int
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -138,11 +149,15 @@ func (s *chunkTestServer) GetMaintenanceStatus(ctx context.Context, _ *pb.GetMai
 func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUploadUrlsRequest) (*pb.GetChunkUploadUrlsResponse, error) {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if auth := md.Get("authorization"); len(auth) > 0 {
+			s.mu.Lock()
 			s.uploadAuth = auth[0]
+			s.mu.Unlock()
 		}
 	}
+	s.mu.Lock()
 	s.lastUploadRefs = req.GetChunks()
 	s.maxUploadRefs = max(s.maxUploadRefs, len(req.GetChunks()))
+	s.mu.Unlock()
 	if s.uploadErr != nil {
 		return nil, s.uploadErr
 	}
@@ -153,7 +168,7 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 		entry := &pb.PresignedChunkUrl{Hash: ref.GetHash(), AlreadyStored: linked}
 		if !linked {
 			entry.ProofChallenge = "challenge-" + ref.GetHash()
-			if !stored {
+			if !stored || s.urlForStored {
 				entry.Url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
 					req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
 				entry.Headers = map[string]string{"If-None-Match": "*"}
@@ -217,8 +232,20 @@ func (s *chunkTestServer) takeGarbage(hash string) bool {
 }
 
 func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
+	s.mu.Lock()
 	s.lastConfirm = req
+	s.confirms = append(s.confirms, req)
 	s.maxConfirmed = max(s.maxConfirmed, len(req.GetHashes()), len(req.GetProofs()))
+	s.confirmsActive++
+	s.confirmsPeak = max(s.confirmsPeak, s.confirmsActive)
+	delay := s.confirmDelay
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.confirmsActive--
+		s.mu.Unlock()
+	}()
+	time.Sleep(delay)
 	if s.confirmErr != nil {
 		return nil, s.confirmErr
 	}

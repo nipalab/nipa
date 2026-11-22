@@ -234,6 +234,23 @@ func WithUploadWorkers(workers int) ClientOption {
 	}
 }
 
+// WithUploadWindowMiB sets the push upload window size reported by
+// UploadWindowBytes; zero or less keeps the caller's default. The caller
+// clamps the value (config.ResolveUploadWindowMiB).
+func WithUploadWindowMiB(mib int) ClientOption {
+	return func(c *Client) {
+		if mib > 0 {
+			c.uploadWindowBytes = mib << 20
+		}
+	}
+}
+
+// UploadWindowBytes is the configured push upload window size in bytes, or 0
+// when none was set and the uploader's default applies.
+func (c *Client) UploadWindowBytes() int {
+	return c.uploadWindowBytes
+}
+
 // WithHTTPClient replaces the HTTP client used for signed chunk transfers.
 func WithHTTPClient(httpClient *http.Client) ClientOption {
 	return func(c *Client) {
@@ -250,8 +267,11 @@ type Client struct {
 	limiter       *transferLimiter
 	tuner         *concurrencyTuner
 	uploadWorkers int
-	retry         retryPolicy
-	confirmMu     sync.Mutex
+	// uploadWindowBytes overrides the push upload window size when > 0.
+	uploadWindowBytes int
+	retry             retryPolicy
+	// confirmSlots holds one token per ConfirmChunkUploads call in flight.
+	confirmSlots chan struct{}
 	// stallTimeout is how long a chunk transfer may make no progress.
 	stallTimeout time.Duration
 }
@@ -266,6 +286,7 @@ func NewClient(transport *Transport, session tokenSession, opts ...ClientOption)
 		uploadWorkers: defaultUploadWorkers,
 		retry:         defaultRetryPolicy,
 		stallTimeout:  defaultStallTimeout,
+		confirmSlots:  make(chan struct{}, maxConcurrentConfirms),
 	}
 	for _, opt := range opts {
 		opt(c)
