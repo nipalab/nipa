@@ -227,6 +227,67 @@ func TestLedger_Attribute_ConcurrentQuota(t *testing.T) {
 	require.Equal(t, int64(100), used)
 }
 
+// TestLedger_Attribute_ManyConcurrentConfirms runs many confirms for one
+// owner at once (clients confirm several windows concurrently): the owner
+// lock keeps the total within the quota and counts every accepted byte once.
+func TestLedger_Attribute_ManyConcurrentConfirms(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	db.SetMaxOpenConns(16)
+	ledger := NewLedger(db, Config{})
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), 1000))
+
+	projectB := snow.ID(testIDCounter.Add(1) + 60000)
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO projects (id, org_id, slug, name) VALUES ($1, 1, 'many-confirms', 'many')`,
+		projectB.Int64(),
+	)
+	require.NoError(t, err)
+	org := &domain.Organization{ID: 1}
+
+	const confirms = 12
+	const perConfirm = 3
+	const chunkSize = 50
+	batches := make([][]usecase.LedgerChunk, confirms)
+	for i := range batches {
+		for j := 0; j < perConfirm; j++ {
+			batches[i] = append(batches[i], usecase.LedgerChunk{Hash: seedAPIChunk(t, db, chunkSize), SizeBytes: chunkSize})
+		}
+	}
+
+	results := make(chan error, confirms)
+	start := make(chan struct{})
+	for i, batch := range batches {
+		project := snow.ID(1)
+		if i%2 == 1 {
+			project = projectB
+		}
+		go func() {
+			<-start
+			results <- ledger.Attribute(ctx, org, &domain.Project{ID: project}, batch)
+		}()
+	}
+	close(start)
+
+	accepted := 0
+	for i := 0; i < confirms; i++ {
+		err := <-results
+		if isQuotaExceeded(err) {
+			continue
+		}
+		require.NoError(t, err)
+		accepted++
+	}
+	require.Equal(t, 6, accepted, "1000 bytes of quota fit six confirms of 150")
+	var used int64
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COALESCE((SELECT used_bytes FROM org_usage WHERE org_id = 1), 0)`).Scan(&used))
+	require.Equal(t, int64(accepted*perConfirm*chunkSize), used)
+	var links int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM project_chunks`).Scan(&links))
+	require.Equal(t, accepted*perConfirm, links, "a rejected confirm links nothing")
+}
+
 func TestLedger_Audit_ErrorPaths(t *testing.T) {
 	ctx := context.Background()
 	db, ledger := newErrorLedger(t)

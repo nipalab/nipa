@@ -91,6 +91,7 @@ func TestChunk_PresignExistsIsPerStore(t *testing.T) {
 	f.nipa.data[hash] = data
 	f.repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).
 		Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
+	f.repo.EXPECT().KnownChunks(gomock.Any(), []domain.Hash{hash}).Return(map[domain.Hash]struct{}{hash: {}}, nil)
 
 	urls, _, err := f.uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 
@@ -107,7 +108,7 @@ func TestChunk_ExternalConfirmSkipsLedger(t *testing.T) {
 	hash := chunker.Sum(data)
 	f.own.data[hash] = data
 	f.repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(map[domain.Hash]int64{}, nil)
-	f.repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	f.repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}).Return(nil)
 	f.repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
 
 	missing, err := f.uc.ConfirmUploads(context.Background(), testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, f.uc, hash, data)})

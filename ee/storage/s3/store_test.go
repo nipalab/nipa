@@ -41,7 +41,11 @@ type fakeS3 struct {
 	failDelete        atomic.Bool
 	corruptGet        atomic.Bool
 	failList          atomic.Bool
-	listTime          time.Time
+	// truncateGet announces the full Content-Length but sends half the body.
+	truncateGet atomic.Bool
+	gets        atomic.Int64
+	heads       atomic.Int64
+	listTime    time.Time
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *httptest.Server) {
@@ -110,6 +114,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", `"fake-etag"`)
 		w.WriteHeader(http.StatusOK)
 	case http.MethodHead:
+		f.heads.Add(1)
 		if f.failHead.Load() {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
@@ -123,6 +128,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		w.WriteHeader(http.StatusOK)
 	case http.MethodGet:
+		f.gets.Add(1)
 		if f.failGet.Load() {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
@@ -136,6 +142,9 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		if f.corruptGet.Load() {
 			data = bytes.Repeat([]byte{'x'}, len(data))
+		}
+		if f.truncateGet.Load() {
+			data = data[:len(data)/2]
 		}
 		_, _ = w.Write(data)
 	case http.MethodDelete:

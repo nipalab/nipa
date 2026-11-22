@@ -63,6 +63,7 @@ type Config struct {
 	AllowInsecureDevSecrets         bool    `mapstructure:"ALLOW_INSECURE_DEV_SECRETS"`
 	ChunkPresignTTLSeconds          int     `mapstructure:"CHUNK_PRESIGN_TTL_SECONDS"`
 	ChunkMaxPageSize                int     `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
+	ChunkVerifyConcurrency          int     `mapstructure:"CHUNK_VERIFY_CONCURRENCY"`
 	PushMaxFiles                    int     `mapstructure:"PUSH_MAX_FILES"`
 	ChunkVisibilityCacheHashes      int     `mapstructure:"CHUNK_VISIBILITY_CACHE_HASHES"`
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
@@ -162,6 +163,7 @@ func LoadConfig() (*Config, error) {
 
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
+	v.SetDefault("CHUNK_VERIFY_CONCURRENCY", 64)
 	v.SetDefault("PUSH_MAX_FILES", 2_000_000)
 	v.SetDefault("CHUNK_VISIBILITY_CACHE_HASHES", 2_000_000)
 	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)

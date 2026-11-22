@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 type LocalStore struct {
 	root string
 }
+
+var _ ChunkOpener = (*LocalStore)(nil)
 
 func NewLocalStore(root string) (*LocalStore, error) {
 	if root == "" {
@@ -87,6 +90,23 @@ func (s *LocalStore) Get(ctx context.Context, hash domain.Hash) (data []byte, er
 		return nil, err
 	}
 	return b, nil
+}
+
+// Open streams the chunk file. It implements ChunkOpener.
+func (s *LocalStore) Open(ctx context.Context, hash domain.Hash) (_ io.ReadCloser, err error) {
+	_, span := obs.StartSpan(ctx, "storage.local.open",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "local"))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	f, err := os.Open(s.path(hash))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, domain.NewErrorNotFound("chunk not found: " + hash.String())
+	}
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 func (s *LocalStore) Size(ctx context.Context, hash domain.Hash) (size int64, err error) {

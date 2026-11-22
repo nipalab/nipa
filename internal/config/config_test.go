@@ -46,6 +46,7 @@ CHUNK_S3_SECRET_ACCESS_KEY: minio-secret
 CHUNK_URL_SIGNING_KEY: yaml-chunk-secret
 CHUNK_PRESIGN_TTL_SECONDS: 120
 CHUNK_MAX_PAGE_SIZE: 50
+CHUNK_VERIFY_CONCURRENCY: 16
 PUSH_MAX_FILES: 300
 CHUNK_VISIBILITY_CACHE_HASHES: 400
 EMAIL_SENDER: smtp
@@ -101,6 +102,7 @@ func TestLoadConfig_FromYAML(t *testing.T) {
 	require.Equal(t, "yaml-chunk-secret", cfg.ChunkURLSigningKey)
 	require.Equal(t, 120, cfg.ChunkPresignTTLSeconds)
 	require.Equal(t, 50, cfg.ChunkMaxPageSize)
+	require.Equal(t, 16, cfg.ChunkVerifyConcurrency)
 	require.Equal(t, 300, cfg.PushMaxFiles)
 	require.Equal(t, 400, cfg.ChunkVisibilityCacheHashes)
 	require.Equal(t, "smtp", cfg.EmailSender)
@@ -140,6 +142,7 @@ func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
 	require.Empty(t, cfg.ChunkStorage)
 	require.Equal(t, 3600, cfg.ChunkPresignTTLSeconds)
 	require.Equal(t, 1000, cfg.ChunkMaxPageSize)
+	require.Equal(t, 64, cfg.ChunkVerifyConcurrency)
 	require.Equal(t, 2_000_000, cfg.PushMaxFiles)
 	require.Equal(t, 2_000_000, cfg.ChunkVisibilityCacheHashes)
 	require.Empty(t, cfg.ChunkURLSigningKey)
