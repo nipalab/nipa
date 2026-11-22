@@ -132,9 +132,35 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (pinned disables tuning). `ConfirmChunkUploads` measures the stored content
   size server-side (never a client-supplied value) and writes the chunk
   metadata rows, so `Push` can rely on them; linked chunks without a proof take
-  their size from the row in one batched `LinkedProjectChunkSizes` lookup
-  (presign checks every ref with 16 concurrent `Exists` calls, so a lost
-  object is uploaded again); a client runs at most `maxConcurrentConfirms` (3)
+  their size from the row in one batched `LinkedProjectChunkSizes` lookup.
+  Confirm streams each object it verifies (`storage.ChunkOpener.Open`, which
+  `LocalStore` and the S3 store implement; other stores fall back to `Get`)
+  through `io.LimitReader(MaxChunkSize+1)` into `chunkproof.Verifier`, which
+  computes the plain BLAKE3 hash and the challenge-seeded proof in one pass
+  (the proof format has one owner, `internal/chunkproof`); an object larger
+  than `chunker.MaxChunkSize()` counts as a hash mismatch (deleted, missing).
+  The challenge is checked first, so a forged, expired or misbound challenge
+  costs no store read. All confirms share one server-wide semaphore of
+  `CHUNK_VERIFY_CONCURRENCY` read-backs (default 64, `<= 0` = default,
+  `Chunk.WithVerifyLimit` via `UsecaseDeps.Config`): one confirm may use the
+  whole budget, and read-back I/O and memory stay bounded however many
+  confirms arrive. Rows are then written in one batched
+  `InsertChunksIfNotExist`, then `ledger.Attribute` (quota, S5), then one
+  `LinkProjectChunks` statement per batch; both are `pushbatch` JSON
+  statements (`InsertChunkRows`/`InsertHashes`: deduplicated, sorted by hash
+  so concurrent postgres confirms take index locks in the same order, 1000
+  rows per statement, `ON CONFLICT DO NOTHING`) and join a context
+  transaction (`dbtx`). Presign (`existsKnown`) checks the store only for refs
+  that have a `chunks` row (one batched `KnownChunks` lookup): a hash the
+  server never confirmed gets an upload target and a challenge with no
+  `Exists`/HEAD, so a fresh push makes no existence checks; refs with a row
+  are still checked (a lost object is uploaded again, present content is
+  claimed), through a server-wide limit of 64 concurrent checks
+  (`presignExistsLimit`). An object that sits at a key without a row (an
+  upload whose confirm never ran, or garbage) makes the create-only PUT answer
+  412 (the free server's signed PUT dedupes instead), and confirm reads it
+  back: valid content is linked through the proof, garbage is deleted and
+  uploaded on the next attempt. A client runs at most `maxConcurrentConfirms` (3)
   confirms at once across its upload windows (`Client.confirmSlots`, a
   buffered channel; a waiter gives up when its context ends), so one window's
   read-back overlaps the others' PUTs while the server's verification load per
@@ -334,15 +360,18 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   the backend refuses (412) a write when the object exists, even when a target is
   replayed, so a stored chunk can never be overwritten and one project cannot
   corrupt content another relies on. The client sends the target's `headers`
-  and treats a 412 as "stored meanwhile". A chunk that already exists gets no
-  upload target at all (`url` empty, only a `proof_challenge`): the project
-  claims it with the possession proof, which costs no write. Because direct
+  and treats a 412 as "stored meanwhile". A chunk that already exists and has
+  a `chunks` row gets no upload target at all (`url` empty, only a
+  `proof_challenge`): the project claims it with the possession proof, which
+  costs no write. Content without a row is not looked up (see presign above),
+  so its target may meet an existing object and answer 412. Because direct
   writes bypass the server, `ConfirmChunkUploads` hashes whatever it reads from
   the shared key (for chunks the project is not linked to yet and for linked
   ones the client supplies a proof for): an object that does not match its hash is deleted and
   reported missing, and the client presigns and uploads that chunk again (up to
   three attempts). The side effect is that a project writer who knows a hash
-  learns that its content exists (no target is issued). Backends must support
+  learns that its content exists (no target is issued for confirmed content; a
+  412 reveals at most an unconfirmed object). Backends must support
   conditional create on presigned PUT (AWS S3, MinIO, R2);
   `TestIntegration_S3CreateOnlyUploads` verifies it against a real backend when
   the `NIPA_S3_TEST_*` variables are set (R2: endpoint

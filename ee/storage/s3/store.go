@@ -30,6 +30,7 @@ import (
 
 var _ storage.ChunkStore = (*Store)(nil)
 var _ storage.DirectTransferStore = (*Store)(nil)
+var _ storage.ChunkOpener = (*Store)(nil)
 
 // maxPresignTTL is the longest expiry SigV4 presigned requests support.
 const maxPresignTTL = 7 * 24 * time.Hour
@@ -153,6 +154,57 @@ func (s *Store) Get(ctx context.Context, hash domain.Hash) (data []byte, err err
 		return nil, s.mapError(err, hash)
 	}
 	return data, nil
+}
+
+// Open streams the chunk object. It issues the GET right away (minio's
+// Core.GetObject, not the lazy Client.GetObject whose Stat would add a HEAD), so
+// a missing object is reported here as a domain NotFound error. The
+// storage.s3.get_object span lasts until the reader is closed and records a
+// failed read.
+func (s *Store) Open(ctx context.Context, hash domain.Hash) (io.ReadCloser, error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.get_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+
+	body, _, _, err := minio.Core{Client: s.client}.GetObject(ctx, s.bucket, s.key(hash), minio.GetObjectOptions{})
+	if err != nil {
+		err = s.mapError(err, hash)
+		obs.FinishSpan(span, err)
+		return nil, err
+	}
+	return &objectReader{body: body, finish: func(err error) { obs.FinishSpan(span, err) }, store: s, hash: hash}, nil
+}
+
+// objectReader ends the get_object span when the body is closed, with the
+// first read error it saw.
+type objectReader struct {
+	body    io.ReadCloser
+	finish  func(error)
+	store   *Store
+	hash    domain.Hash
+	readErr error
+	closed  bool
+}
+
+func (r *objectReader) Read(p []byte) (int, error) {
+	n, err := r.body.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		err = r.store.mapError(err, r.hash)
+		if r.readErr == nil {
+			r.readErr = err
+		}
+	}
+	return n, err
+}
+
+func (r *objectReader) Close() error {
+	err := r.body.Close()
+	if !r.closed {
+		r.closed = true
+		r.finish(r.readErr)
+	}
+	return err
 }
 
 func (s *Store) Size(ctx context.Context, hash domain.Hash) (size int64, err error) {

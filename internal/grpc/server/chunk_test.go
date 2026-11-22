@@ -75,6 +75,24 @@ func (stubChunkRepo) InsertChunkIfNotExists(_ context.Context, _ domain.Hash, _ 
 	return nil
 }
 
+func (stubChunkRepo) InsertChunksIfNotExist(_ context.Context, _ []usecase.ChunkRef) error {
+	return nil
+}
+
+// KnownChunks treats every hash whose content is stored as having a row.
+func (r stubChunkRepo) KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error) {
+	known := make(map[domain.Hash]struct{}, len(hashes))
+	if r.store == nil {
+		return known, nil
+	}
+	for _, hash := range hashes {
+		if ok, err := r.store.Exists(ctx, hash); err == nil && ok {
+			known[hash] = struct{}{}
+		}
+	}
+	return known, nil
+}
+
 func (stubChunkRepo) HasChunk(_ context.Context, _ domain.Hash) (bool, error) {
 	return false, nil
 }

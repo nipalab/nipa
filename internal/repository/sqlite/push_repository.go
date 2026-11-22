@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/pushbatch"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
@@ -48,26 +49,52 @@ func (p *PushRepository) LinkProjectChunk(ctx context.Context, projectID snow.ID
 	}))
 }
 
-func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
-	if len(hashes) == 0 {
-		return nil
-	}
-	tx, err := p.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
+// InsertChunksIfNotExist records the metadata rows of chunks confirm verified,
+// in one statement per batch; existing rows and duplicates are left alone. It
+// joins the transaction the context carries, if any.
+func (p *PushRepository) InsertChunksIfNotExist(ctx context.Context, chunks []usecase.ChunkRef) error {
+	q := sqlcSqlite.New(dbtx.New(p.db))
+	return pushbatch.InsertChunkRows(ctx, chunks, func(ctx context.Context, payload []byte) error {
+		return handleError(q.ChunkInsertManyOrIgnore(ctx, string(payload)))
+	})
+}
 
-	q := sqlcSqlite.New(tx)
-	for _, hash := range hashes {
-		if err := q.ProjectChunkUploadInsert(ctx, sqlcSqlite.ProjectChunkUploadInsertParams{
+// LinkProjectChunks links the project to the chunks in one statement per
+// batch; links that already exist are left alone. It joins the transaction
+// the context carries, if any.
+func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
+	q := sqlcSqlite.New(dbtx.New(p.db))
+	return pushbatch.InsertHashes(ctx, hashes, func(ctx context.Context, payload []byte) error {
+		return handleError(q.ProjectChunkUploadInsertMany(ctx, sqlcSqlite.ProjectChunkUploadInsertManyParams{
 			ProjectID: projectID.Int64(),
-			Hash:      hash.Bytes(),
-		}); err != nil {
+			Hashes:    string(payload),
+		}))
+	})
+}
+
+// KnownChunks reports which hashes have a chunk metadata row, whatever project
+// they are linked to.
+func (p *PushRepository) KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error) {
+	q := sqlcSqlite.New(dbtx.New(p.db))
+	known := make(map[domain.Hash]struct{}, len(hashes))
+	err := pushbatch.LookupBatches(hashes, func(batch [][]byte) error {
+		rows, err := q.ChunkKnownHashes(ctx, batch)
+		if err != nil {
 			return handleError(err)
 		}
+		for _, row := range rows {
+			hash, err := domain.HashFromBytes(row)
+			if err != nil {
+				return domain.NewErrorDatabase(err.Error())
+			}
+			known[hash] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return handleError(tx.Commit())
+	return known, nil
 }
 
 const linkedChunkBatch = 500

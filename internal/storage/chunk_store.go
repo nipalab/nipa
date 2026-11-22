@@ -8,6 +8,7 @@ package storage
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
@@ -31,6 +32,16 @@ type ChunkStore interface {
 
 	// Close releases any resources held by the store.
 	Close() error
+}
+
+// ChunkOpener is implemented by stores that can stream chunk content instead of
+// loading it whole, so a reader such as the confirm verification holds only a
+// small buffer per chunk. Callers fall back to ChunkStore.Get for stores
+// without it.
+type ChunkOpener interface {
+	// Open returns a reader over the chunk content, or a domain NotFound
+	// error when absent. The caller must close it.
+	Open(ctx context.Context, hash domain.Hash) (io.ReadCloser, error)
 }
 
 // DirectTransferStore is implemented by backends that hand out their own

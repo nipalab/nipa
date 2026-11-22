@@ -46,6 +46,19 @@ func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error
 	return i, err
 }
 
+const chunkInsertManyOrIgnore = `-- name: ChunkInsertManyOrIgnore :exec
+INSERT INTO chunks (hash, size_bytes)
+SELECT unhex(json_extract(value, '$[0]')), json_extract(value, '$[1]')
+FROM json_each(?1)
+WHERE true
+ON CONFLICT(hash) DO NOTHING
+`
+
+func (q *Queries) ChunkInsertManyOrIgnore(ctx context.Context, chunkRows interface{}) error {
+	_, err := q.db.ExecContext(ctx, chunkInsertManyOrIgnore, chunkRows)
+	return err
+}
+
 const chunkInsertOrIgnore = `-- name: ChunkInsertOrIgnore :exec
 INSERT INTO chunks (hash, size_bytes) VALUES (?, ?) ON CONFLICT(hash) DO NOTHING
 `
@@ -58,6 +71,45 @@ type ChunkInsertOrIgnoreParams struct {
 func (q *Queries) ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error {
 	_, err := q.db.ExecContext(ctx, chunkInsertOrIgnore, arg.Hash, arg.SizeBytes)
 	return err
+}
+
+const chunkKnownHashes = `-- name: ChunkKnownHashes :many
+SELECT hash
+FROM chunks
+WHERE hash IN (/*SLICE:hashes*/?)
+`
+
+func (q *Queries) ChunkKnownHashes(ctx context.Context, hashes [][]byte) ([][]byte, error) {
+	query := chunkKnownHashes
+	var queryParams []interface{}
+	if len(hashes) > 0 {
+		for _, v := range hashes {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:hashes*/?", strings.Repeat(",?", len(hashes))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:hashes*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var hash []byte
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		items = append(items, hash)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const chunkListByHashesForProject = `-- name: ChunkListByHashesForProject :many
@@ -281,6 +333,24 @@ type ProjectChunkUploadInsertParams struct {
 
 func (q *Queries) ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error {
 	_, err := q.db.ExecContext(ctx, projectChunkUploadInsert, arg.ProjectID, arg.Hash)
+	return err
+}
+
+const projectChunkUploadInsertMany = `-- name: ProjectChunkUploadInsertMany :exec
+INSERT INTO project_chunk_uploads (project_id, hash)
+SELECT ?1, unhex(value)
+FROM json_each(?2)
+WHERE true
+ON CONFLICT(project_id, hash) DO NOTHING
+`
+
+type ProjectChunkUploadInsertManyParams struct {
+	ProjectID int64       `json:"project_id"`
+	Hashes    interface{} `json:"hashes"`
+}
+
+func (q *Queries) ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error {
+	_, err := q.db.ExecContext(ctx, projectChunkUploadInsertMany, arg.ProjectID, arg.Hashes)
 	return err
 }
 

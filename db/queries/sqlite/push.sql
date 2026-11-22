@@ -61,3 +61,22 @@ SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(va
 FROM json_each(sqlc.arg(links))
 WHERE true
 ON CONFLICT(file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
+
+-- name: ChunkInsertManyOrIgnore :exec
+INSERT INTO chunks (hash, size_bytes)
+SELECT unhex(json_extract(value, '$[0]')), json_extract(value, '$[1]')
+FROM json_each(sqlc.arg(chunk_rows))
+WHERE true
+ON CONFLICT(hash) DO NOTHING;
+
+-- name: ProjectChunkUploadInsertMany :exec
+INSERT INTO project_chunk_uploads (project_id, hash)
+SELECT sqlc.arg(project_id), unhex(value)
+FROM json_each(sqlc.arg(hashes))
+WHERE true
+ON CONFLICT(project_id, hash) DO NOTHING;
+
+-- name: ChunkKnownHashes :many
+SELECT hash
+FROM chunks
+WHERE hash IN (sqlc.slice('hashes'));

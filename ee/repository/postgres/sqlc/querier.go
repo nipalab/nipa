@@ -37,7 +37,9 @@ type Querier interface {
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
+	ChunkInsertManyOrIgnore(ctx context.Context, chunkRows json.RawMessage) error
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
+	ChunkKnownHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	ClearOwnerQuotaOverride(ctx context.Context, userID int64) error
@@ -287,6 +289,7 @@ type Querier interface {
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
 	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
 	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error
 	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
 	ProjectIssueTrackerGet(ctx context.Context, projectID int64) (ProjectIssueTracker, error)
 	ProjectIssueTrackerUpsert(ctx context.Context, arg ProjectIssueTrackerUpsertParams) (ProjectIssueTracker, error)

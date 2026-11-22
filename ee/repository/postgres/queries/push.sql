@@ -59,3 +59,20 @@ INSERT INTO file_chunks (file_id, chunk_id, chunk_index)
 SELECT (r->>0)::bigint, (r->>1)::bigint, (r->>2)::bigint
 FROM jsonb_array_elements(sqlc.arg(links)::jsonb) AS r
 ON CONFLICT (file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
+
+-- name: ChunkInsertManyOrIgnore :exec
+INSERT INTO chunks (hash, size_bytes)
+SELECT decode(r->>0, 'hex'), (r->>1)::bigint
+FROM jsonb_array_elements(sqlc.arg(chunk_rows)::jsonb) AS r
+ON CONFLICT (hash) DO NOTHING;
+
+-- name: ProjectChunkUploadInsertMany :exec
+INSERT INTO project_chunk_uploads (project_id, hash)
+SELECT sqlc.arg(project_id)::bigint, decode(h, 'hex')
+FROM jsonb_array_elements_text(sqlc.arg(hashes)::jsonb) AS h
+ON CONFLICT (project_id, hash) DO NOTHING;
+
+-- name: ChunkKnownHashes :many
+SELECT hash
+FROM chunks
+WHERE hash = ANY(sqlc.arg(hashes)::bytea[]);

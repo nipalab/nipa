@@ -121,6 +121,12 @@ CHUNK_S3_SECRET_ACCESS_KEY: ''
 CHUNK_URL_SIGNING_KEY: ''
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
+# Chunk read-backs all ConfirmChunkUploads calls together run at once
+# (server-wide; default 64, <= 0 means the default). Confirm streams each
+# chunk it verifies, so the limit also bounds that memory. Object stores with
+# high per-request latency (R2, S3) want it high; lower it for a small
+# self-hosted MinIO or local disk whose I/O suffers.
+CHUNK_VERIFY_CONCURRENCY: 64
 # Most files plus removed paths one push may carry (default 2000000).
 PUSH_MAX_FILES: 2000000
 # Chunk hashes the clone download cache keeps per server (32 bytes each,

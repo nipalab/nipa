@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
@@ -22,15 +24,25 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=chunk_mock_test.go -package=usecase
 type chunkRepository interface {
 	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
+	// InsertChunksIfNotExist records many metadata rows in batched
+	// statements; existing rows are left alone.
+	InsertChunksIfNotExist(ctx context.Context, chunks []ChunkRef) error
 	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
+	// KnownChunks returns the hashes that have a metadata row, whatever
+	// project they are linked to.
+	KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error)
 	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
 	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
 	LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error)
 }
 
-var presignExistsConcurrency = 16
+// DefaultChunkVerifyConcurrency is the server-wide number of chunk read-backs
+// confirm runs at once when CHUNK_VERIFY_CONCURRENCY is unset.
+const DefaultChunkVerifyConcurrency = 64
 
-var confirmVerifyConcurrency = 4
+// presignExistsLimit is the server-wide number of store existence checks
+// presign runs at once.
+var presignExistsLimit int64 = 64
 
 // ChunkRef identifies a chunk and the exact size of its content.
 type ChunkRef struct {
@@ -77,6 +89,11 @@ type Chunk struct {
 	gcGuard   ChunkGCGuard
 	metrics   *obs.Metrics
 	now       func() time.Time
+	// verifySlots bounds the chunk read-backs of every confirm in flight and
+	// existsSlots the existence checks of every presign: both are shared by
+	// all requests, so store I/O and memory stay bounded however many arrive.
+	verifySlots *semaphore.Weighted
+	existsSlots *semaphore.Weighted
 }
 
 // ChunkGCGuard keeps a chunk garbage collector from deleting content a caller
@@ -95,7 +112,20 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		stores:    StaticStores(chunkStore),
 		transfer:  transfer,
 		now:       time.Now,
+
+		verifySlots: semaphore.NewWeighted(DefaultChunkVerifyConcurrency),
+		existsSlots: semaphore.NewWeighted(presignExistsLimit),
 	}
+}
+
+// WithVerifyLimit sets how many chunk read-backs all confirms together run at
+// once; n <= 0 keeps DefaultChunkVerifyConcurrency.
+func (c *Chunk) WithVerifyLimit(n int) *Chunk {
+	if n <= 0 {
+		n = DefaultChunkVerifyConcurrency
+	}
+	c.verifySlots = semaphore.NewWeighted(int64(n))
+	return c
 }
 
 // WithChunkStores serves each project from the store the resolver picks
@@ -325,8 +355,10 @@ func (c *Chunk) Download(ctx context.Context, projectID snow.ID, hash domain.Has
 // clients can skip the transfer. Every other chunk gets a proof challenge. Only
 // content that does not exist yet gets an upload target: a stored chunk is never
 // written again, and a project that holds the bytes claims it with the proof
-// instead, which links it without any transfer. When a ledger is attached, refs that would add new bytes
-// are checked against the organization's remaining quota first.
+// instead, which links it without any transfer. Existence is checked in the
+// store only for hashes with a chunk metadata row (see existsKnown). When a
+// ledger is attached, refs that would add new bytes are checked against the
+// organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
 		attribute.String(obs.AttrOrg, org.Slug),
@@ -366,7 +398,11 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	if err != nil {
 		return nil, "", err
 	}
-	exists, err := c.existsAll(ctx, resolved.Store, page)
+	known, err := c.chunkRepo.KnownChunks(ctx, pageHashes)
+	if err != nil {
+		return nil, "", err
+	}
+	exists, err := c.existsKnown(ctx, resolved.Store, page, known)
 	if err != nil {
 		return nil, "", err
 	}
@@ -393,24 +429,57 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	return urls, next, nil
 }
 
-func (c *Chunk) existsAll(ctx context.Context, store storage.ChunkStore, page []ChunkRef) ([]bool, error) {
+// existsKnown checks the store only for refs that have a chunk metadata row:
+// content the server never confirmed is treated as absent and gets an upload
+// target without a HEAD. An object that does sit at such a key (an upload
+// whose confirm never ran, or garbage) makes the create-only PUT answer 412,
+// and confirm then reads it back: valid content is linked through the proof,
+// garbage is deleted and uploaded again. A row only hints "maybe present";
+// refs with one are still checked, which finds lost objects. The checks of all
+// presigns share existsSlots.
+func (c *Chunk) existsKnown(ctx context.Context, store storage.ChunkStore, page []ChunkRef, known map[domain.Hash]struct{}) ([]bool, error) {
 	exists := make([]bool, len(page))
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(presignExistsConcurrency)
-	for i, ref := range page {
-		g.Go(func() error {
-			ok, err := store.Exists(gctx, ref.Hash)
-			if err != nil {
-				return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
-			}
-			exists[i] = ok
-			return nil
-		})
+	isKnown := func(i int) bool {
+		_, ok := known[page[i].Hash]
+		return ok
 	}
-	if err := g.Wait(); err != nil {
+	err := fanOut(ctx, c.existsSlots, len(page), isKnown, func(ctx context.Context, i int) error {
+		ok, err := store.Exists(ctx, page[i].Hash)
+		if err != nil {
+			return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", page[i].Hash, err))
+		}
+		exists[i] = ok
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return exists, nil
+}
+
+// fanOut runs fn for every index in [0, n) that wants it, each call holding
+// one slot of the shared semaphore, and returns the first error. It stops
+// starting calls once one failed or ctx ended.
+func fanOut(ctx context.Context, slots *semaphore.Weighted, n int, wants func(i int) bool, fn func(ctx context.Context, i int) error) error {
+	group, groupCtx := errgroup.WithContext(ctx)
+	var acquireErr error
+	for i := 0; i < n; i++ {
+		if !wants(i) {
+			continue
+		}
+		if err := slots.Acquire(groupCtx, 1); err != nil {
+			acquireErr = err
+			break
+		}
+		group.Go(func() error {
+			defer slots.Release(1)
+			return fn(groupCtx, i)
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return err
+	}
+	return acquireErr
 }
 
 // checkHeadroom projects the bytes the unlinked refs would add and asks the
@@ -501,7 +570,9 @@ func (c *Chunk) downloadPath(ctx context.Context, store storage.ChunkStore, org,
 }
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
-// records metadata rows for the present chunks. The recorded size is measured
+// records metadata rows for the present chunks (one batched insert, before the
+// ledger and the links). Read-backs stream the content and share one
+// server-wide limit (WithVerifyLimit). The recorded size is measured
 // from the stored content, never taken from the client. A hash the project is
 // not linked to yet, or one the client supplies a proof for, is read back,
 // hashed and checked against the proof, because direct uploads never pass
@@ -561,28 +632,26 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	}
 	checks := make(map[domain.Hash]possession)
 	var checkMu sync.Mutex
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(confirmVerifyConcurrency)
-	for _, hash := range hashes {
-		_, isLinked := linked[hash]
-		proof, supplied := proofByHash[hash]
-		if isLinked && !supplied {
-			continue
-		}
-		group.Go(func() error {
-			size, present, err := c.verifyPossession(groupCtx, resolved.Store, project, hash, proof)
-			if err != nil {
-				return err
-			}
-			checkMu.Lock()
-			checks[hash] = possession{size: size, present: present}
-			checkMu.Unlock()
-			return nil
-		})
+	needsCheck := func(i int) bool {
+		_, isLinked := linked[hashes[i]]
+		_, supplied := proofByHash[hashes[i]]
+		return !isLinked || supplied
 	}
-	if err := group.Wait(); err != nil {
+	err = fanOut(ctx, c.verifySlots, len(hashes), needsCheck, func(ctx context.Context, i int) error {
+		hash := hashes[i]
+		size, present, err := c.verifyPossession(ctx, resolved.Store, project, hash, proofByHash[hash])
+		if err != nil {
+			return err
+		}
+		checkMu.Lock()
+		checks[hash] = possession{size: size, present: present}
+		checkMu.Unlock()
+		return nil
+	})
+	if err != nil {
 		return nil, 0, err
 	}
+	var rows []ChunkRef
 	for _, hash := range hashes {
 		linkedSize, isLinked := linked[hash]
 		_, supplied := proofByHash[hash]
@@ -601,12 +670,18 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			missing = append(missing, hash)
 			continue
 		}
-		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, check.size); err != nil {
-			return nil, 0, err
-		}
+		rows = append(rows, ChunkRef{Hash: hash, SizeBytes: check.size})
 		confirmedBytes += check.size
 		if ledger != nil {
 			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: check.size})
+		}
+	}
+	// Rows first: the ledger and the links resolve chunks through them. A
+	// quota failure below still leaves the project unlinked; rows without a
+	// link are harmless.
+	if len(rows) > 0 {
+		if err := c.chunkRepo.InsertChunksIfNotExist(ctx, rows); err != nil {
+			return nil, 0, err
 		}
 	}
 	if len(attributed) > 0 {
@@ -636,18 +711,45 @@ func (c *Chunk) verifyPossession(ctx context.Context, store storage.ChunkStore, 
 	if err := chunkproof.VerifyChallenge(c.transfer.SigningKey, project.ID, hash, proof.Challenge, c.now()); err != nil {
 		return 0, false, nil
 	}
-	data, err := store.Get(ctx, hash)
+	verifier := chunkproof.NewVerifier(proof.Challenge)
+	err := readChunk(ctx, store, hash, verifier)
 	if domain.IsErrorNotFound(err) {
 		return 0, false, nil
 	}
 	if err != nil {
 		return 0, false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
 	}
-	if chunker.Sum(data) != hash {
+	// A legitimate chunk is never larger than the maximum: presign rejects
+	// larger refs and direct uploads pin the signed length. readChunk stops
+	// one byte past it, so a larger object fails here without being read whole.
+	if verifier.Size() > chunker.MaxChunkSize() || verifier.Sum() != hash {
 		c.metrics.ObserveChunkVerifyFailure("confirm")
 		return 0, false, c.dropInvalidChunk(ctx, store, hash)
 	}
-	return int64(len(data)), chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
+	return verifier.Size(), chunkproof.Equal(verifier.Proof(), proof.Proof), nil
+}
+
+// readChunk streams the stored chunk into w, at most one byte more than the
+// largest legal chunk. Stores implementing storage.ChunkOpener are streamed;
+// others are read whole with Get. A missing chunk is a domain NotFound error.
+func readChunk(ctx context.Context, store storage.ChunkStore, hash domain.Hash, w io.Writer) error {
+	limit := chunker.MaxChunkSize() + 1
+	opener, ok := store.(storage.ChunkOpener)
+	if !ok {
+		data, err := store.Get(ctx, hash)
+		if err != nil {
+			return err
+		}
+		_, _ = w.Write(data[:min(int64(len(data)), limit)])
+		return nil
+	}
+	r, err := opener.Open(ctx, hash)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
+	_, err = io.Copy(w, io.LimitReader(r, limit))
+	return err
 }
 
 func (c *Chunk) dropInvalidChunk(ctx context.Context, store storage.ChunkStore, hash domain.Hash) error {

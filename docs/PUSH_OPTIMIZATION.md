@@ -12,6 +12,12 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
   chunks sent without a proof (presign just saw them). Proven or unlinked
   chunks still go through `verifyPossession`.
 - Phase 1.3 landed earlier through `internal/repository/pushbatch`.
+- Later (push throughput, server read-back): presign checks `Exists` only for
+  hashes with a `chunks` row (`KnownChunks`), through a server-wide limit of
+  64 instead of 16 per request; confirm streams its read-backs under the
+  server-wide `CHUNK_VERIFY_CONCURRENCY` limit and writes rows and links with
+  one batched statement each (`InsertChunksIfNotExist`, `LinkProjectChunks`).
+  Details in `docs/internals/protocol.md`.
 - Phase 2 is deferred: with presign checks concurrent and confirm batched, the
   remaining saving is the ref payload and the concurrent `Exists` calls.
 
