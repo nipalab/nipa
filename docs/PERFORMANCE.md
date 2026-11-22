@@ -32,7 +32,7 @@ release run.
 | Fuzzing | `make fuzz FUZZTIME=1m` — chunker encode/decode round trip, Myers edit script, text merge identities, ignore matcher, `ParseNipaUrl`; seeds run in every `go test` |
 | Micro-benchmarks | `internal/chunker`, `internal/diff`, `internal/treehash` — `make bench-unit` (encode, Myers diff, tree hashing) |
 | Load scenarios | `tests/load` — `make load-test args='-scenario push|clone|mixed ...'`, see `tests/load/README.md` |
-| Transfer tuning | Client adaptive limiter, concurrency 16 → range [4, 64], pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` (`internal/client/grpc/transfer.go`) |
+| Transfer tuning | Client adaptive limiters per direction: uploads 16 → range [4, 64], downloads 64 → range [4, 256]; hold on flat throughput, cut on errors or a drop below 70% of the recent best; pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` and `NIPA_DOWNLOAD_WORKERS` / `downloadWorkers` (`internal/client/grpc/transfer.go`) |
 | Big-repo hygiene | `SaveTree` diffs against the stored rows and writes only the difference (~20 ms for 10k files and 5 changes, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
 | Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
@@ -154,7 +154,7 @@ is the pod-sizing input.
   few. A CDN in front of downloads is a post-beta optimization only if GET
   latency demands it.
 - **Memory.** Both transfer directions are bounded (32 MiB push windows x 4
-  uploaders, queue depth 2, limiter ≤ 64 concurrent chunks). `bench-scale` asserts heap does
+  uploaders, queue depth 2, ≤ 64 concurrent uploads and ≤ 256 concurrent downloads). `bench-scale` asserts heap does
   not scale with file size; pod limits should still be set from the `mixed`
   scenario peak, not guessed.
 - **Quota enforcement under load.** `StorageLedger` headroom checks are

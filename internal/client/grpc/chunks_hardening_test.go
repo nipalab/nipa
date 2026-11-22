@@ -63,6 +63,7 @@ func TestDownloadChunk_RetriesAStalledTransfer(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, []byte("a complete chunk body"), got.data[h])
 			require.Equal(t, int32(2), requests.Load(), "the stalled attempt is cancelled and repeated")
+			require.Equal(t, defaultDownloadWorkers/2, c.downloads.limiter.currentLimit(), "a stall lowers the download concurrency")
 		})
 	}
 }

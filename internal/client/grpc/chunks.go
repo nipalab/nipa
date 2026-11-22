@@ -262,7 +262,7 @@ func (c *Client) DownloadChunksStream(ctx context.Context, scope domain.ChunkSco
 		err  error
 	}
 	sink := &chunkSink{fn: onChunk}
-	return c.runChunks(authedCtx, func(ctx context.Context, emit func(chunkTransfer) bool) error {
+	return c.runChunks(authedCtx, c.downloads, func(ctx context.Context, emit func(chunkTransfer) bool) error {
 		fetch := func(start int) <-chan urlWindow {
 			out := make(chan urlWindow, 1)
 			end := min(start+downloadWindow, len(hashes))
@@ -353,7 +353,7 @@ type chunkTransfer struct {
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
-	return c.forEachChunk(ctx, jobs, c.putChunk)
+	return c.forEachChunk(ctx, c.uploads, jobs, c.putChunk)
 }
 
 // putChunk sends one chunk with a PUT, retrying transient failures and
@@ -361,7 +361,7 @@ func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
 // content was stored in the meantime; that is not a failure, the confirmation
 // that follows decides whether the bytes match.
 func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (int64, error) {
-	err := c.retryTransfer(ctx, func() (retryHint, error) {
+	err := c.retryTransfer(ctx, c.uploads, func() (retryHint, error) {
 		return c.putChunkOnce(ctx, job)
 	})
 	return int64(len(job.data)), err
@@ -443,7 +443,7 @@ func (s *chunkSink) deliver(hash serverDomain.Hash, data []byte) error {
 
 func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	sink := &chunkSink{fn: onChunk}
-	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
+	return c.forEachChunk(ctx, c.downloads, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
 		return c.downloadChunk(ctx, sink, job)
 	})
 }
@@ -455,7 +455,7 @@ func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk fu
 // deliver one twice.
 func (c *Client) downloadChunk(ctx context.Context, sink *chunkSink, job chunkTransfer) (int64, error) {
 	var data []byte
-	err := c.retryTransfer(ctx, func() (retryHint, error) {
+	err := c.retryTransfer(ctx, c.downloads, func() (retryHint, error) {
 		var (
 			hint retryHint
 			err  error
@@ -475,7 +475,7 @@ func (c *Client) downloadChunk(ctx context.Context, sink *chunkSink, job chunkTr
 // final.
 func (c *Client) streamChunk(ctx context.Context, stream *domain.ChunkStream, job chunkTransfer) (int64, error) {
 	var n int64
-	err := c.retryTransfer(ctx, func() (retryHint, error) {
+	err := c.retryTransfer(ctx, c.downloads, func() (retryHint, error) {
 		var (
 			hint retryHint
 			err  error
@@ -641,13 +641,13 @@ func injectTraceContext(ctx context.Context, header http.Header) {
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(header))
 }
 
-// forEachChunk runs fn for every job with the client's adaptive transfer limit
-// and feeds the observed throughput back into the concurrency tuner.
-func (c *Client) forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
+// forEachChunk runs fn for every job under the pool's adaptive transfer limit
+// and feeds the observed throughput back into its concurrency tuner.
+func (c *Client) forEachChunk(ctx context.Context, pool *transferPool, jobs []chunkTransfer, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
 	if len(jobs) == 0 {
 		return nil
 	}
-	return c.runChunks(ctx, func(_ context.Context, emit func(chunkTransfer) bool) error {
+	return c.runChunks(ctx, pool, func(_ context.Context, emit func(chunkTransfer) bool) error {
 		for _, job := range jobs {
 			if !emit(job) {
 				return nil
@@ -660,7 +660,10 @@ func (c *Client) forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func
 // runChunks runs fn for every job the feed emits on a pool of workers. The feed
 // returns when it has no more jobs or when emit reports false because the
 // transfer was cancelled; a feed error stops the transfer like a failed job.
-func (c *Client) runChunks(ctx context.Context, feed func(ctx context.Context, emit func(chunkTransfer) bool) error, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
+// Completed jobs feed the pool's tuner; failed attempts reach it through
+// retryTransfer, so a cancellation or a final, non-retryable failure (which
+// ends the transfer anyway) does not lower the limit.
+func (c *Client) runChunks(ctx context.Context, pool *transferPool, feed func(ctx context.Context, emit func(chunkTransfer) bool) error, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -676,22 +679,22 @@ func (c *Client) runChunks(ctx context.Context, feed func(ctx context.Context, e
 			cancel()
 		})
 	}
-	for i := 0; i < maxUploadWorkers; i++ {
+	for i := 0; i < pool.max; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for job := range work {
-				if err := c.limiter.acquire(workCtx); err != nil {
+				if err := pool.limiter.acquire(workCtx); err != nil {
 					fail(err)
 					return
 				}
 				bytes, err := fn(workCtx, job)
-				c.limiter.release()
-				c.recordTransfer(bytes, err)
+				pool.limiter.release()
 				if err != nil {
 					fail(err)
 					return
 				}
+				pool.record(bytes, nil)
 			}
 		}()
 	}
