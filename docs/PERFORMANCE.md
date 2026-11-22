@@ -153,8 +153,8 @@ is the pod-sizing input.
   set the object-count factor, and text single-blob zstd keeps text objects
   few. A CDN in front of downloads is a post-beta optimization only if GET
   latency demands it.
-- **Memory.** Both transfer directions are bounded (16 MiB windows, queue
-  depth 2, limiter ≤ 64 concurrent chunks). `bench-scale` asserts heap does
+- **Memory.** Both transfer directions are bounded (32 MiB push windows x 4
+  uploaders, queue depth 2, limiter ≤ 64 concurrent chunks). `bench-scale` asserts heap does
   not scale with file size; pod limits should still be set from the `mixed`
   scenario peak, not guessed.
 - **Quota enforcement under load.** `StorageLedger` headroom checks are

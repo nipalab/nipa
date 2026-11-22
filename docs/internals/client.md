@@ -19,7 +19,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
   pb client for the daemon proxy), `securestorage` (keyring-backed token store), `config`
-  (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`, `llm`), `difftool`
+  (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`,
+  `uploadWindowMiB`, `llm`), `difftool`
   (external diff runner), `ignore` (root `.nipaignore` + local `.nipa/ignore`
   pattern matcher for untracked working files), `domain` (client
   config/url/errors/commit/pending state), `localrepo` (`.nipa/` local metadata

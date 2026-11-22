@@ -379,15 +379,35 @@ func landedPins(pins []string, files []*serverDomain.PushFile, removed []string)
 	return out
 }
 
-// uploadWindowBytes is the chunk data buffered before a window is handed to
-// the uploaders. The scanner keeps chunking while earlier windows transfer, so
-// local hashing overlaps with network I/O.
-var uploadWindowBytes = 16 << 20
+// uploadWindowBytes is the default chunk data buffered before a window is
+// handed to the uploaders. The scanner keeps chunking while earlier windows
+// transfer, so local hashing overlaps with network I/O. With 4 windows in
+// flight and 2 queued, at most ~224 MiB is buffered; the client's transfer
+// limiter still caps the PUTs across all windows, and one window's presign and
+// confirm overlap the others' PUTs. A client may override the size
+// (NIPA_UPLOAD_WINDOW_MIB / uploadWindowMiB) through uploadWindowSizer.
+var uploadWindowBytes = 32 << 20
 
 const (
-	uploadWindowWorkers = 2
+	uploadWindowWorkers = 4
 	uploadWindowQueue   = 2
 )
+
+// uploadWindowSizer is implemented by upload clients configured with their
+// own window size; 0 keeps the default.
+type uploadWindowSizer interface {
+	UploadWindowBytes() int
+}
+
+// windowBytesFor returns the upload window size for client.
+func windowBytesFor(client ChunkUploadClient) int {
+	if sizer, ok := client.(uploadWindowSizer); ok {
+		if size := sizer.UploadWindowBytes(); size > 0 {
+			return size
+		}
+	}
+	return uploadWindowBytes
+}
 
 type chunkUploader struct {
 	ctx       context.Context
@@ -397,9 +417,10 @@ type chunkUploader struct {
 	scope     domain.ChunkScope
 	onChunk   func(ch *serverDomain.ChunkData)
 
-	seen  map[serverDomain.Hash]bool
-	batch []*serverDomain.ChunkData
-	bytes int
+	seen        map[serverDomain.Hash]bool
+	batch       []*serverDomain.ChunkData
+	bytes       int
+	windowBytes int
 
 	batchMu sync.Mutex
 
@@ -416,15 +437,16 @@ type chunkUploader struct {
 func newChunkUploader(ctx context.Context, client ChunkUploadClient, localRepo pushLocalRepo, scope domain.ChunkScope, onChunk func(*serverDomain.ChunkData)) *chunkUploader {
 	uploadCtx, cancel := context.WithCancel(ctx)
 	u := &chunkUploader{
-		ctx:       uploadCtx,
-		cancel:    cancel,
-		client:    client,
-		localRepo: localRepo,
-		scope:     scope,
-		onChunk:   onChunk,
-		seen:      make(map[serverDomain.Hash]bool),
-		cache:     make(map[serverDomain.Hash]bool),
-		windows:   make(chan []*serverDomain.ChunkData, uploadWindowQueue),
+		ctx:         uploadCtx,
+		cancel:      cancel,
+		client:      client,
+		localRepo:   localRepo,
+		scope:       scope,
+		onChunk:     onChunk,
+		windowBytes: windowBytesFor(client),
+		seen:        make(map[serverDomain.Hash]bool),
+		cache:       make(map[serverDomain.Hash]bool),
+		windows:     make(chan []*serverDomain.ChunkData, uploadWindowQueue),
 	}
 	for i := 0; i < uploadWindowWorkers; i++ {
 		u.wg.Add(1)
@@ -484,7 +506,7 @@ func (u *chunkUploader) add(ch *serverDomain.ChunkData, cache bool) error {
 	u.seen[ch.Hash] = true
 	u.batch = append(u.batch, ch)
 	u.bytes += len(ch.Data)
-	if u.bytes < uploadWindowBytes {
+	if u.bytes < u.windowBytes {
 		return nil
 	}
 	return u.flushLocked()
