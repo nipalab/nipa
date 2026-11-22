@@ -607,14 +607,10 @@ func pathMatches(path string, filters []string) bool {
 	return false
 }
 
+// serverModeFromPerm classifies a working-copy permission with the shared bit
+// rule the push transport also uses, so status and push cannot drift apart.
 func serverModeFromPerm(perm os.FileMode) int {
-	if perm&0o111 != 0 {
-		return 3
-	}
-	if perm&0o222 == 0 {
-		return 1
-	}
-	return 2
+	return serverDomain.ClassifyPerm(perm)
 }
 
 // trackedModeFromPerm ignores a removed write bit on a file tracked as

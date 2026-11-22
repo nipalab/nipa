@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -575,15 +576,13 @@ func withBearerToken(ctx context.Context, token string) context.Context {
 	return metadata.NewOutgoingContext(ctx, outgoing)
 }
 
+// intToPBFileMode classifies a Unix permission (PushFile.Mode, as produced by
+// the push scan and git import) with the same bit rule the status path uses
+// (serverDomain.ClassifyPerm); only the 0o777 bits count. There are no decimal
+// "444"/"755" producers, and matching them would misclassify real permissions
+// (decimal 444 is 0o674, which is executable).
 func intToPBFileMode(mode int) pb.FileMode {
-	switch mode {
-	case 0o444, 444:
-		return pb.FileMode_FILE_MODE_READ_ONLY
-	case 0o755, 755:
-		return pb.FileMode_FILE_MODE_EXECUTABLE
-	default:
-		return pb.FileMode_FILE_MODE_READ_WRITE
-	}
+	return pb.FileMode(serverDomain.ClassifyPerm(fs.FileMode(uint32(mode))))
 }
 
 func toServerBranch(pbBranch *pb.Branch) *serverDomain.Branch {
