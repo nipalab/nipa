@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
@@ -354,20 +353,10 @@ func domainFileToPB(file *domain.File) *pb.FileNode {
 	return node
 }
 
-// domainFileModeToPB maps a stored file mode to the wire enum. Stored modes
-// are the canonical 0o444/0o755/0o644 (pbFileModeToInt, git import); decimal
-// 444/755 are kept for legacy rows (decimal 444 would otherwise classify as
-// the executable 0o674). Anything else, including the zero value, is classified
-// by the shared permission bit rule.
+// domainFileModeToPB maps a stored file mode to the wire enum through
+// domain.ClassifyStoredMode (canonical 0o444/0o755/0o644, legacy decimal
+// 444/755, zero as read-write, anything else by the permission bit rule), the
+// same classification the tree hash uses.
 func domainFileModeToPB(mode int) pb.FileMode {
-	switch mode {
-	case 444, 0o444:
-		return pb.FileMode_FILE_MODE_READ_ONLY
-	case 755, 0o755:
-		return pb.FileMode_FILE_MODE_EXECUTABLE
-	case 0, 0o644:
-		return pb.FileMode_FILE_MODE_READ_WRITE
-	default:
-		return pb.FileMode(domain.ClassifyPerm(fs.FileMode(uint32(mode))))
-	}
+	return pb.FileMode(domain.ClassifyStoredMode(mode))
 }

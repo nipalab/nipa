@@ -67,4 +67,7 @@ type Repositories struct {
 	ServiceToken serviceTokenRepository
 	Maintenance  maintenanceRepository
 	IssueTracker issueTrackerStore
+	// TreeHash is optional: with it, a push against a root tree's
+	// pre-backfill hash is accepted (Push.WithLegacyTreeHashes).
+	TreeHash TreeHashRepository
 }

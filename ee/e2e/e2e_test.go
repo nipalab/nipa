@@ -248,6 +248,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepo,
 		IssueTracker:       postgres.NewIssueTrackerRepository(dbConn),
+		TreeHash:           postgres.NewTreeHashRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	for _, d := range reg.Dispatchers() {

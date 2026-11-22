@@ -133,6 +133,11 @@ func main() {
 	}
 	slog.Info("database migration completed")
 
+	treeHashRepository := sqlite.NewTreeHashRepository(dbConn)
+	if err := serverapp.BackfillTreeHashes(context.Background(), treeHashRepository); err != nil {
+		panic(err)
+	}
+
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
 	snowUser, err := snow.NewServerNode(cfg.SnowflakeNodeID)
@@ -197,6 +202,7 @@ func main() {
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepository,
 		IssueTracker:       sqlite.NewIssueTrackerRepository(dbConn),
+		TreeHash:           treeHashRepository,
 	}, serverapp.UsecaseDeps{
 		Config:              cfg,
 		DB:                  dbConn,

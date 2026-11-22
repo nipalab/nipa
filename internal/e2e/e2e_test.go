@@ -172,6 +172,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepo,
 		IssueTracker:       sqlite.NewIssueTrackerRepository(dbConn),
+		TreeHash:           sqlite.NewTreeHashRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk

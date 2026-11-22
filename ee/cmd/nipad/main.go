@@ -137,6 +137,11 @@ func main() {
 	}
 	slog.Info("database migration completed")
 
+	treeHashRepository := postgres.NewTreeHashRepository(dbConn)
+	if err := serverapp.BackfillTreeHashes(context.Background(), treeHashRepository); err != nil {
+		panic(err)
+	}
+
 	userRepo := postgres.NewUserRepository(dbConn)
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
@@ -249,6 +254,7 @@ func main() {
 		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
 		Maintenance:        maintenanceRepository,
 		IssueTracker:       postgres.NewIssueTrackerRepository(dbConn),
+		TreeHash:           treeHashRepository,
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	if storageLedger != nil {
