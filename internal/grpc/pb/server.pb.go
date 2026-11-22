@@ -1336,10 +1336,13 @@ func (x *ConfirmChunkUploadsRequest) GetProofs() []*ChunkPossessionProof {
 // ChunkPossessionProof shows that the caller holds a chunk's bytes: proof is the
 // hex BLAKE3 of the challenge string followed by the stored chunk bytes.
 type ChunkPossessionProof struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`           // hex-encoded BLAKE3 hash of the chunk
-	Challenge     string                 `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"` // proof_challenge issued for this project and hash
-	Proof         string                 `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`         // hex-encoded BLAKE3(challenge || bytes)
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Hash      string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`           // hex-encoded BLAKE3 hash of the chunk
+	Challenge string                 `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"` // proof_challenge issued for this project and hash
+	Proof     string                 `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`         // hex-encoded BLAKE3(challenge || bytes)
+	// X-Nipa-Chunk-Receipt the server returned for a proxied upload of this
+	// chunk; a valid receipt lets confirm skip the read-back. Optional.
+	Receipt       string `protobuf:"bytes,4,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1391,6 +1394,13 @@ func (x *ChunkPossessionProof) GetChallenge() string {
 func (x *ChunkPossessionProof) GetProof() string {
 	if x != nil {
 		return x.Proof
+	}
+	return ""
+}
+
+func (x *ChunkPossessionProof) GetReceipt() string {
+	if x != nil {
+		return x.Receipt
 	}
 	return ""
 }
@@ -13437,11 +13447,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x1aConfirmChunkUploadsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06hashes\x18\x02 \x03(\tR\x06hashes\x123\n" +
-	"\x06proofs\x18\x03 \x03(\v2\x1b.greet.ChunkPossessionProofR\x06proofs\"^\n" +
+	"\x06proofs\x18\x03 \x03(\v2\x1b.greet.ChunkPossessionProofR\x06proofs\"x\n" +
 	"\x14ChunkPossessionProof\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1c\n" +
 	"\tchallenge\x18\x02 \x01(\tR\tchallenge\x12\x14\n" +
-	"\x05proof\x18\x03 \x01(\tR\x05proof\"D\n" +
+	"\x05proof\x18\x03 \x01(\tR\x05proof\x12\x18\n" +
+	"\areceipt\x18\x04 \x01(\tR\areceipt\"D\n" +
 	"\x1bConfirmChunkUploadsResponse\x12%\n" +
 	"\x0emissing_hashes\x18\x01 \x03(\tR\rmissingHashes\"\xef\x02\n" +
 	"\vPushRequest\x12/\n" +

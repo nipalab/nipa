@@ -120,15 +120,17 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 				skipped[hash] = struct{}{}
 				continue
 			}
-			job := chunkTransfer{hash: hash, url: u.GetUrl(), headers: u.GetHeaders(), data: chunk.Data}
 			proof := &pb.ChunkPossessionProof{
 				Hash:      hash.String(),
 				Challenge: u.GetProofChallenge(),
 				Proof:     chunkproof.Proof(u.GetProofChallenge(), chunk.Data),
 			}
+			job := chunkTransfer{hash: hash, url: u.GetUrl(), headers: u.GetHeaders(), data: chunk.Data, proof: proof}
 			// A URL means the server does not hold the object, so a claim
 			// could only fail: send it, and prove it in the final confirm.
-			// A 412 on the PUT (stored meanwhile) is settled there too.
+			// A 412 on the PUT (stored meanwhile) is settled there too. A
+			// proxied PUT fills in the server's receipt on this proof, which
+			// spares the server the read-back; the proof stays as fallback.
 			if job.url != "" {
 				jobs = append(jobs, job)
 				uploadedProofs = append(uploadedProofs, proof)
@@ -344,6 +346,10 @@ type chunkTransfer struct {
 	url     string
 	headers map[string]string
 	data    []byte
+	// proof is the upload's entry in the final confirm; putChunkOnce sets
+	// its receipt. Each job owns its proof, and the confirm reads it only
+	// after every PUT has returned.
+	proof *pb.ChunkPossessionProof
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
@@ -394,10 +400,24 @@ func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retr
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	switch res.StatusCode {
-	case http.StatusNoContent, http.StatusOK, http.StatusPreconditionFailed:
+	case http.StatusNoContent, http.StatusOK:
+		keepReceipt(job, res.Header.Get(chunkproof.ReceiptHeader))
+		return retryHint{}, nil
+	case http.StatusPreconditionFailed:
 		return retryHint{}, nil
 	}
 	return httpRetryHint(res), chunkHTTPError(res)
+}
+
+// keepReceipt attaches the receipt of a proxied upload to the chunk's proof.
+// Only a server path (relative URL) can answer with one: an absolute URL is
+// the object store's own, whose headers say nothing about what the server
+// verified, so a receipt-like header from it is ignored.
+func keepReceipt(job chunkTransfer, receipt string) {
+	if receipt == "" || job.proof == nil || !strings.HasPrefix(job.url, "/") {
+		return
+	}
+	job.proof.Receipt = receipt
 }
 
 // chunkSink serializes chunk delivery to the caller's callback and remembers

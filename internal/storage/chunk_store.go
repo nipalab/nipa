@@ -44,6 +44,15 @@ type ChunkOpener interface {
 	Open(ctx context.Context, hash domain.Hash) (io.ReadCloser, error)
 }
 
+// ChunkOverwriter is implemented by stores that clients can also write
+// directly (DirectTransferStore), where an untrusted upload may have left
+// garbage at a key. Overwrite writes content the server verified itself
+// unconditionally, with no existence check first: rewriting identical content
+// is harmless and replaces whatever sat at the key. Proxied uploads use it.
+type ChunkOverwriter interface {
+	Overwrite(ctx context.Context, hash domain.Hash, data []byte) error
+}
+
 // DirectTransferStore is implemented by backends that hand out their own
 // presigned transfer URLs so clients can move chunk bytes directly to and from
 // the backend instead of proxying them through the server. Returned URLs are

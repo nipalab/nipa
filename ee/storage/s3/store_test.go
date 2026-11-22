@@ -46,6 +46,8 @@ type fakeS3 struct {
 	gets        atomic.Int64
 	heads       atomic.Int64
 	listTime    time.Time
+	// payloadSHA is the X-Amz-Content-Sha256 header of the last PUT.
+	payloadSHA atomic.Value
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *httptest.Server) {
@@ -95,6 +97,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeS3Error(w, http.StatusPreconditionFailed, "PreconditionFailed")
 			return
 		}
+		f.payloadSHA.Store(r.Header.Get("X-Amz-Content-Sha256"))
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")

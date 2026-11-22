@@ -86,6 +86,11 @@ type chunkTestServer struct {
 	confirmDelay   time.Duration
 	confirmsActive int
 	confirmsPeak   int
+	// receipts answers every accepted PUT with a receipt header, like a
+	// server proxying uploads; absoluteBase hands out absolute upload URLs
+	// (base + path), like a direct object store.
+	receipts     bool
+	absoluteBase string
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -169,7 +174,7 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 		if !linked {
 			entry.ProofChallenge = "challenge-" + ref.GetHash()
 			if !stored || s.urlForStored {
-				entry.Url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
+				entry.Url = s.absoluteBase + fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
 					req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
 				entry.Headers = map[string]string{"If-None-Match": "*"}
 			}
@@ -324,6 +329,9 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		s.put(hash, data)
+		if s.receipts {
+			w.Header().Set(chunkproof.ReceiptHeader, "receipt-"+hash)
+		}
 		w.WriteHeader(http.StatusNoContent)
 	case "get":
 		if s.hookBeforeGet != nil {

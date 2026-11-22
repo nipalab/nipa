@@ -522,14 +522,14 @@ func TestChunk_StoreUploaded(t *testing.T) {
 	data := []byte("payload")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
+	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
 	require.Equal(t, data, store.data[hash])
 	require.Equal(t, 1, store.puts)
 
-	require.NoError(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
+	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
 	require.Equal(t, 1, store.puts, "stored content must not be written twice")
 
-	err := uc.StoreUploaded(ctx, snow.ID(1), hash, []byte("other bytes"))
+	_, err := uc.StoreUploaded(ctx, snow.ID(1), hash, []byte("other bytes"))
 	require400(t, err, "chunk hash mismatch")
 }
 
@@ -541,13 +541,13 @@ func TestChunk_StoreUploadedErrors(t *testing.T) {
 	t.Run("exists", func(t *testing.T) {
 		store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("boom")}
 		uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), store, ChunkTransferConfig{})
-		require.Error(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
+		require.Error(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
 	})
 
 	t.Run("put", func(t *testing.T) {
 		store := &stubChunkStore{data: map[domain.Hash][]byte{}, putErr: errors.New("boom")}
 		uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), store, ChunkTransferConfig{})
-		require.Error(t, uc.StoreUploaded(ctx, snow.ID(1), hash, data))
+		require.Error(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
 	})
 }
 
@@ -891,4 +891,9 @@ func TestChunk_ConfirmUploads_BoundsConcurrentVerificationReads(t *testing.T) {
 	require.Empty(t, missing)
 	require.LessOrEqual(t, store.maxInFlight.Load(), int64(3))
 	require.Greater(t, store.maxInFlight.Load(), int64(1))
+}
+
+// storeErr drops StoreUploaded's receipt for tests that only check the error.
+func storeErr(_ string, err error) error {
+	return err
 }
