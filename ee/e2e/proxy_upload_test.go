@@ -88,7 +88,7 @@ func TestEnterpriseProxyUploads(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chunks, 1)
 	poisonedHash, poisonedData := chunks[0].Hash, chunks[0].Data
-	require.NoError(t, store.Store.Put(ctx, poisonedHash, []byte("garbage left by a direct upload")))
+	require.NoError(t, store.Put(ctx, poisonedHash, []byte("garbage left by a direct upload")))
 
 	writeFile(t, target, "fresh.txt", fresh)
 	writeFile(t, target, "poisoned.txt", poisoned)
