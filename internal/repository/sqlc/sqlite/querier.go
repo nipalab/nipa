@@ -253,16 +253,27 @@ type Querier interface {
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)
 	TagList(ctx context.Context, arg TagListParams) ([]Tag, error)
+	// TreeHashBackfillRescanFrom returns the id of the newest tree node at or below
+	// the watermark created before the previous pass started minus the overlap:
+	// rows above it may have committed after that pass. It walks the primary key
+	// backwards from the watermark, so it only reads the rows of the window.
+	TreeHashBackfillRescanFrom(ctx context.Context, overlapSeconds int64) (int64, error)
 	TreeHashBackfillSetWatermark(ctx context.Context, watermark int64) error
 	// Tree hash backfill (usecase.BackfillTreeHashes) and the legacy root hashes
 	// it records.
 	TreeHashBackfillWatermark(ctx context.Context) (int64, error)
 	TreeHashChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeHashChildrenRow, error)
+	// TreeHashDanglingReferences lists the reference rows (no files, no child
+	// rows) in (after_id, up_to_id] whose hash no content node carries any more
+	// but the backfill rewrote, with the new hash of the content node they
+	// resolved to.
+	TreeHashDanglingReferences(ctx context.Context, arg TreeHashDanglingReferencesParams) ([]TreeHashDanglingReferencesRow, error)
 	TreeHashFiles(ctx context.Context, treeID sql.NullInt64) ([]TreeHashFilesRow, error)
 	TreeHashLegacyGet(ctx context.Context, treeID int64) ([]byte, error)
 	TreeHashLegacyInsert(ctx context.Context, arg TreeHashLegacyInsertParams) error
 	TreeHashNode(ctx context.Context, id int64) (TreeHashNodeRow, error)
 	TreeHashNodesByHash(ctx context.Context, hash []byte) ([]TreeHashNodesByHashRow, error)
+	TreeHashRewriteInsert(ctx context.Context, arg TreeHashRewriteInsertParams) error
 	TreeHashSeeds(ctx context.Context, arg TreeHashSeedsParams) ([]int64, error)
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)

@@ -10,9 +10,36 @@ import (
 	"database/sql"
 )
 
+const treeHashBackfillRescanFrom = `-- name: TreeHashBackfillRescanFrom :one
+SELECT COALESCE((
+    SELECT t.id
+    FROM tree_nodes t
+    WHERE b.started_at IS NOT NULL
+      AND t.id <= b.watermark
+      AND (t.created_at IS NULL
+           OR t.created_at < b.started_at - make_interval(secs => $1::bigint))
+    ORDER BY t.id DESC
+    LIMIT 1
+), 0)::bigint AS rescan_from
+FROM tree_hash_backfill b
+WHERE b.id = 1
+`
+
+// TreeHashBackfillRescanFrom returns the id of the newest tree node at or below
+// the watermark created before the previous pass started minus the overlap:
+// rows above it may have committed after that pass (identity ids are taken at
+// insert, not at commit). It walks the primary key backwards from the
+// watermark, so it only reads the rows of the window.
+func (q *Queries) TreeHashBackfillRescanFrom(ctx context.Context, overlapSeconds int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, treeHashBackfillRescanFrom, overlapSeconds)
+	var rescan_from int64
+	err := row.Scan(&rescan_from)
+	return rescan_from, err
+}
+
 const treeHashBackfillSetWatermark = `-- name: TreeHashBackfillSetWatermark :exec
 UPDATE tree_hash_backfill
-SET watermark = $1::bigint, updated_at = now()
+SET watermark = $1::bigint, started_at = now()
 WHERE id = 1
 `
 
@@ -67,6 +94,70 @@ func (q *Queries) TreeHashChildren(ctx context.Context, parentTreeID sql.NullInt
 			&i.ParentTreeID,
 			&i.Name,
 			&i.Hash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const treeHashDanglingReferences = `-- name: TreeHashDanglingReferences :many
+SELECT t.id, t.parent_tree_id, t.name, t.hash, r.new_hash
+FROM tree_nodes t
+JOIN tree_hash_rewrites r ON r.old_hash = t.hash
+WHERE t.id > $1::bigint
+  AND t.id <= $2::bigint
+  AND NOT EXISTS (SELECT 1 FROM files f WHERE f.tree_id = t.id)
+  AND NOT EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = t.id)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM tree_nodes content
+      WHERE content.hash = t.hash
+        AND (EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+             OR EXISTS (SELECT 1 FROM tree_nodes cc WHERE cc.parent_tree_id = content.id))
+  )
+ORDER BY t.id
+`
+
+type TreeHashDanglingReferencesParams struct {
+	AfterID int64 `json:"after_id"`
+	UpToID  int64 `json:"up_to_id"`
+}
+
+type TreeHashDanglingReferencesRow struct {
+	ID           int64         `json:"id"`
+	ParentTreeID sql.NullInt64 `json:"parent_tree_id"`
+	Name         string        `json:"name"`
+	Hash         []byte        `json:"hash"`
+	NewHash      []byte        `json:"new_hash"`
+}
+
+// TreeHashDanglingReferences lists the reference rows (no files, no child
+// rows) in (after_id, up_to_id] whose hash no content node carries any more
+// but the backfill rewrote, with the new hash of the content node they
+// resolved to.
+func (q *Queries) TreeHashDanglingReferences(ctx context.Context, arg TreeHashDanglingReferencesParams) ([]TreeHashDanglingReferencesRow, error) {
+	rows, err := q.db.QueryContext(ctx, treeHashDanglingReferences, arg.AfterID, arg.UpToID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TreeHashDanglingReferencesRow
+	for rows.Next() {
+		var i TreeHashDanglingReferencesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentTreeID,
+			&i.Name,
+			&i.Hash,
+			&i.NewHash,
 		); err != nil {
 			return nil, err
 		}
@@ -218,6 +309,22 @@ func (q *Queries) TreeHashNodesByHash(ctx context.Context, hash []byte) ([]TreeH
 		return nil, err
 	}
 	return items, nil
+}
+
+const treeHashRewriteInsert = `-- name: TreeHashRewriteInsert :exec
+INSERT INTO tree_hash_rewrites (old_hash, new_hash)
+VALUES ($1, $2)
+ON CONFLICT (old_hash) DO NOTHING
+`
+
+type TreeHashRewriteInsertParams struct {
+	OldHash []byte `json:"old_hash"`
+	NewHash []byte `json:"new_hash"`
+}
+
+func (q *Queries) TreeHashRewriteInsert(ctx context.Context, arg TreeHashRewriteInsertParams) error {
+	_, err := q.db.ExecContext(ctx, treeHashRewriteInsert, arg.OldHash, arg.NewHash)
+	return err
 }
 
 const treeHashSeeds = `-- name: TreeHashSeeds :many

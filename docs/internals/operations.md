@@ -367,8 +367,11 @@ email deliveries are claimed atomically, but webhooks can double-deliver in the
 overlap window (consumers must be idempotent). Migrations must stay forward
 compatible for one release. The startup tree hash backfill
 (`serverapp.BackfillTreeHashes`) covers tree nodes up to the highest id at its
-start; rows the old color writes afterwards are picked up by the next start of
-any new-color pod, so restart one once the old color is gone.
+start; rows the old color writes afterwards (including pushes that took their
+ids before the pass and committed after it, rescanned through a 2h overlap
+window, and kept-directory references carrying a hash the pass rewrote, which
+read empty until repaired from `tree_hash_rewrites`) are fixed by the next
+start of any new-color pod, so restart one once the old color is gone.
 
 Transport hardening: neither server terminates TLS (one cleartext HTTP/1.1 +
 h2c port), so every deployment, the free `nipad` included, needs a TLS proxy in

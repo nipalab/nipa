@@ -15,6 +15,7 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/merge"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 	serverusecase "github.com/nipalab/nipa/internal/usecase"
 )
@@ -329,4 +330,80 @@ func requireMaterializedClass(t *testing.T, root, path string, want int) {
 		require.Zero(t, perm&0o111, "%s must not be executable, got %v", path, perm)
 		require.NotZero(t, perm&0o200, "%s must be writable, got %v", path, perm)
 	}
+}
+
+// TestEndToEnd_TreeHashBackfillRollingDeploy simulates a push applied by a
+// server that predates mode-aware hashes, committed after the backfill: it
+// keeps bin/ by reference under the hash bin/ had before the pass rewrote it,
+// so no content node resolves the reference and the head manifest loses
+// bin/tool.sh. The next backfill pass repoints the reference and a fresh
+// clone gets the executable back.
+func TestEndToEnd_TreeHashBackfillRollingDeploy(t *testing.T) {
+	skipWithoutUnixPerms(t)
+	t.Parallel()
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+	grpcClient, auth := newLoggedInClient(t, host)
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+
+	work := cloneWorktree(t, grpcClient, auth, host, "main")
+	wc := openWorkingCopy(t, work)
+	writeFile(t, work, "bin/tool.sh", "#!/bin/sh\n")
+	chmodFile(t, work, "bin/tool.sh", 0o755)
+	writeFile(t, work, "a.txt", "a\n")
+	require.NoError(t, wc.Add(ctx, []string{"bin/tool.sh", "a.txt"}))
+	require.NoError(t, pusher.Run(ctx, work, "add tool"))
+
+	tree, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
+	require.NoError(t, err)
+	flat := merge.Flatten(tree)
+	oldBin := treehash.TreeHash([]treehash.FileEntry{{Name: "tool.sh", Hash: flat["bin/tool.sh"].Hash, Mode: 0o644}}, nil)
+	oldRoot := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Hash: flat["a.txt"].Hash, Mode: 0o644}}, []treehash.TreeEntry{{Name: "bin", Hash: oldBin}})
+
+	// Rewind to the old format and backfill, as the upgrade does.
+	head := branchHeadCommit(t, dbConn, "main")
+	_, err = dbConn.ExecContext(ctx, "UPDATE tree_nodes SET hash = ? WHERE id = ?", oldRoot.Bytes(), head.TreeID)
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(ctx, "UPDATE tree_nodes SET hash = ? WHERE parent_tree_id = ? AND name = 'bin'", oldBin.Bytes(), head.TreeID)
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(ctx, "UPDATE tree_hash_backfill SET watermark = 0 WHERE id = 1")
+	require.NoError(t, err)
+	trees := sqlite.NewTreeHashRepository(dbConn)
+	_, err = serverusecase.BackfillTreeHashes(ctx, trees)
+	require.NoError(t, err)
+
+	// The old server removes a.txt and keeps bin/ under its old hash.
+	org, err := sqlite.NewOrgRepository(dbConn).GetBySlug(ctx, e2eOrgSlug)
+	require.NoError(t, err)
+	project, err := sqlite.NewProjectRepository(dbConn).GetByOrgIDAndSlug(ctx, org.ID, e2eProjectSlug)
+	require.NoError(t, err)
+	branch, err := sqlite.NewBranchRepository(dbConn).GetBranchByName(ctx, project.ID, "main")
+	require.NoError(t, err)
+	oldPodRoot := treehash.TreeHash(nil, []treehash.TreeEntry{{Name: "bin", Hash: oldBin}})
+	commitID := snow.ID(987654321)
+	require.NoError(t, sqlite.NewPushRepository(dbConn).ApplyPush(ctx, serverusecase.ApplyPushRequest{
+		ProjectID: project.ID, BranchID: branch.ID, CommitID: commitID, ParentID: &head.ID,
+		CommitHash: treehash.CommitHash(oldPodRoot, []serverDomain.Hash{head.Hash}, "remove a.txt"),
+		UserID:     head.UserID, Message: "remove a.txt",
+		Nodes: []serverusecase.PushNodeRow{
+			{ID: 1, Hash: oldPodRoot, Name: "root", Mode: 0o444},
+			{ID: 2, Hash: oldBin, Name: "bin", Mode: 0o444, ParentID: &[]int64{1}[0]},
+		},
+	}))
+	broken, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
+	require.NoError(t, err)
+	require.NotContains(t, merge.Flatten(broken), "bin/tool.sh", "the dangling reference hides bin/")
+
+	res, err := serverusecase.BackfillTreeHashes(ctx, trees)
+	require.NoError(t, err)
+	require.Equal(t, 1, res.Repaired)
+	fixed, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
+	require.NoError(t, err)
+	fixedFlat := merge.Flatten(fixed)
+	require.NotContains(t, fixedFlat, "a.txt")
+	require.Equal(t, e2eModeExecutable, fixedFlat["bin/tool.sh"].Mode)
+	fresh := cloneWorktree(t, grpcClient, auth, host, "main")
+	requireMaterializedClass(t, fresh, "bin/tool.sh", e2eModeExecutable)
+	requireCleanStatus(t, openWorkingCopy(t, fresh))
 }

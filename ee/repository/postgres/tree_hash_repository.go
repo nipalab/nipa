@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
@@ -27,19 +28,23 @@ func NewTreeHashRepository(db *sql.DB) *TreeHashRepository {
 
 // WithTreeHashBackfillLock runs fn in one transaction holding the marker row
 // FOR UPDATE, so a second pod starting meanwhile waits for the pass and then
-// only looks at the rows added after it.
-func (r *TreeHashRepository) WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, watermark int64) (int64, error)) error {
+// only looks at the rows added after it plus the overlap window. The marker is
+// always written: started_at (now(), this transaction's start, so earlier than
+// any MAX(id) the pass reads) moves the window forward even when nothing was
+// scanned.
+func (r *TreeHashRepository) WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, state usecase.TreeHashBackfillState) (int64, error)) error {
 	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		watermark, err := r.queries.TreeHashBackfillWatermark(ctx)
 		if err != nil {
 			return handleError(err)
 		}
-		next, err := fn(ctx, watermark)
+		rescanFrom, err := r.queries.TreeHashBackfillRescanFrom(ctx, int64(usecase.TreeHashBackfillOverlap/time.Second))
+		if err != nil {
+			return handleError(err)
+		}
+		next, err := fn(ctx, usecase.TreeHashBackfillState{Watermark: watermark, RescanFrom: rescanFrom})
 		if err != nil {
 			return err
-		}
-		if next == watermark {
-			return nil
 		}
 		return handleError(r.queries.TreeHashBackfillSetWatermark(ctx, next))
 	})
@@ -117,6 +122,30 @@ func (r *TreeHashRepository) TreeHashNodesByHash(ctx context.Context, hash domai
 		})
 	}
 	return nodes, nil
+}
+
+func (r *TreeHashRepository) TreeHashDanglingReferences(ctx context.Context, afterID, upToID int64) ([]usecase.TreeHashDanglingReference, error) {
+	rows, err := r.queries.TreeHashDanglingReferences(ctx, sqlcPostgres.TreeHashDanglingReferencesParams{AfterID: afterID, UpToID: upToID})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	refs := make([]usecase.TreeHashDanglingReference, 0, len(rows))
+	for _, row := range rows {
+		refs = append(refs, usecase.TreeHashDanglingReference{
+			Node: usecase.TreeHashNode{
+				ID:       row.ID,
+				ParentID: nullInt64Ptr(row.ParentTreeID),
+				Name:     row.Name,
+				Hash:     bytesToHash(row.Hash),
+			},
+			NewHash: bytesToHash(row.NewHash),
+		})
+	}
+	return refs, nil
+}
+
+func (r *TreeHashRepository) SaveTreeHashRewrite(ctx context.Context, oldHash, newHash domain.Hash) error {
+	return handleError(r.queries.TreeHashRewriteInsert(ctx, sqlcPostgres.TreeHashRewriteInsertParams{OldHash: oldHash.Bytes(), NewHash: newHash.Bytes()}))
 }
 
 func (r *TreeHashRepository) SetTreeNodeHash(ctx context.Context, id int64, hash domain.Hash) error {

@@ -69,9 +69,24 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   so it keeps serving what it served), reads see the original hashes until the
   pass writes the changed rows in one transaction, and only changed rows are
   written. The single `tree_hash_backfill` row holds the highest tree node id
-  covered (each start only scans newer rows, e.g. rows an older pod wrote
-  during a rolling deploy) and, on postgres, is locked `FOR UPDATE` for the
-  pass so pods run it one at a time. Commit hashes are not recomputed (they are
+  covered and the start of the last pass, and, on postgres, is locked
+  `FOR UPDATE` for the pass so pods run it one at a time. Each start scans the
+  ids above the newest node created before the previous pass start minus
+  `usecase.TreeHashBackfillOverlap` (2h; `TreeHashBackfillRescanFrom` walks the
+  primary key back from the watermark): identity ids are taken at insert, not
+  at commit, so a push that was running when the previous pass read MAX(id)
+  can commit below its watermark, and is rescanned (idempotently) as long as
+  it ran for less than the overlap. Rows an older pod writes during a rolling
+  deploy are covered the same way: its old-format content rows are seeds or
+  parents of seeds, and a reference it wrote with the hash a kept directory had
+  before a pass rewrote it (so no content node resolves it and the directory
+  would read empty) is repaired from `tree_hash_rewrites`, which maps the old
+  hash of every rewritten content node that references resolved to (the oldest
+  one with that hash) to its new hash; `TreeHashDanglingReferences` finds
+  such references in the scan window, the pass gives them the new hash and
+  propagates to their parents (recording legacy root hashes as usual). Until
+  the next pass those directories read empty, so restart a new-version pod
+  once the old version is gone. Commit hashes are not recomputed (they are
   identifiers fixed at creation). `tree_hash_legacy` keeps the pre-backfill hash
   of every changed root, and `Push.baseTreeMatches` accepts it as the base tree
   hash, so a client pushing against its stored `tree_hash` without a

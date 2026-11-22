@@ -458,12 +458,17 @@ type Tag struct {
 type TreeHashBackfill struct {
 	ID        int64        `json:"id"`
 	Watermark int64        `json:"watermark"`
-	UpdatedAt sql.NullTime `json:"updated_at"`
+	StartedAt sql.NullTime `json:"started_at"`
 }
 
 type TreeHashLegacy struct {
 	TreeID int64  `json:"tree_id"`
 	Hash   []byte `json:"hash"`
+}
+
+type TreeHashRewrite struct {
+	OldHash []byte `json:"old_hash"`
+	NewHash []byte `json:"new_hash"`
 }
 
 type TreeNode struct {

@@ -20,13 +20,22 @@ type fakeTreeHashRepo struct {
 	nodes     map[int64]*TreeHashNode
 	files     map[int64][]treehash.FileEntry
 	watermark int64
-	legacy    map[int64]domain.Hash
-	writes    int
-	failOn    string
+	// overlap is how many ids below the watermark the next pass rescans
+	// (the rows the SQL repositories find created within the overlap window).
+	overlap  int64
+	legacy   map[int64]domain.Hash
+	rewrites map[domain.Hash]domain.Hash
+	writes   int
+	failOn   string
 }
 
 func newFakeTreeHashRepo() *fakeTreeHashRepo {
-	return &fakeTreeHashRepo{nodes: map[int64]*TreeHashNode{}, files: map[int64][]treehash.FileEntry{}, legacy: map[int64]domain.Hash{}}
+	return &fakeTreeHashRepo{
+		nodes:    map[int64]*TreeHashNode{},
+		files:    map[int64][]treehash.FileEntry{},
+		legacy:   map[int64]domain.Hash{},
+		rewrites: map[domain.Hash]domain.Hash{},
+	}
 }
 
 func (f *fakeTreeHashRepo) fail(op string) error {
@@ -55,8 +64,8 @@ func (f *fakeTreeHashRepo) hasContent(id int64) bool {
 	return false
 }
 
-func (f *fakeTreeHashRepo) WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, watermark int64) (int64, error)) error {
-	next, err := fn(ctx, f.watermark)
+func (f *fakeTreeHashRepo) WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, state TreeHashBackfillState) (int64, error)) error {
+	next, err := fn(ctx, TreeHashBackfillState{Watermark: f.watermark, RescanFrom: max(f.watermark-f.overlap, 0)})
 	if err != nil {
 		return err
 	}
@@ -126,6 +135,38 @@ func (f *fakeTreeHashRepo) TreeHashNodesByHash(_ context.Context, hash domain.Ha
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, f.fail("byhash")
+}
+
+func (f *fakeTreeHashRepo) TreeHashDanglingReferences(_ context.Context, after, upTo int64) ([]TreeHashDanglingReference, error) {
+	var out []TreeHashDanglingReference
+	for id, n := range f.nodes {
+		newHash, ok := f.rewrites[n.Hash]
+		if id <= after || id > upTo || !ok || f.hasContent(id) {
+			continue
+		}
+		resolves := false
+		for otherID, other := range f.nodes {
+			if other.Hash == n.Hash && f.hasContent(otherID) {
+				resolves = true
+				break
+			}
+		}
+		if !resolves {
+			out = append(out, TreeHashDanglingReference{Node: *n, NewHash: newHash})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Node.ID < out[j].Node.ID })
+	return out, f.fail("dangling")
+}
+
+func (f *fakeTreeHashRepo) SaveTreeHashRewrite(_ context.Context, oldHash, newHash domain.Hash) error {
+	if err := f.fail("rewrite"); err != nil {
+		return err
+	}
+	if _, ok := f.rewrites[oldHash]; !ok {
+		f.rewrites[oldHash] = newHash
+	}
+	return nil
 }
 
 func (f *fakeTreeHashRepo) SetTreeNodeHash(_ context.Context, id int64, hash domain.Hash) error {
@@ -206,6 +247,7 @@ func TestBackfillTreeHashes_RecomputesStaleTrees(t *testing.T) {
 	require.Equal(t, newRoot2, repo.nodes[4].Hash)
 	require.Equal(t, plainHash, repo.nodes[6].Hash)
 	require.Equal(t, map[int64]domain.Hash{1: oldRoot1, 4: oldRoot2}, repo.legacy)
+	require.Equal(t, map[domain.Hash]domain.Hash{oldBin: newBin, oldTools: newTools, oldRoot1: newRoot1, oldRoot2: newRoot2}, repo.rewrites)
 	require.Equal(t, int64(6), repo.watermark)
 
 	// Nothing new: the pass is a no-op.
@@ -278,7 +320,7 @@ func TestBackfillTreeHashes_IncrementalAfterWatermark(t *testing.T) {
 
 func TestBackfillTreeHashes_Errors(t *testing.T) {
 	ctx := context.Background()
-	for _, op := range []string{"max", "seeds", "node", "files", "children", "byhash", "set", "legacy"} {
+	for _, op := range []string{"max", "seeds", "dangling", "node", "files", "children", "byhash", "set", "legacy", "rewrite"} {
 		repo := newFakeTreeHashRepo()
 		tool := treehash.FileEntry{Name: "tool.sh", Hash: domain.Hash{0x01}, Mode: 0o755}
 		repo.add(1, nil, "root", oldTreeHash(nil, []treehash.TreeEntry{{Name: "bin", Hash: oldTreeHash([]treehash.FileEntry{tool}, nil)}}))
@@ -343,4 +385,115 @@ type failingLegacyLookup struct{}
 
 func (failingLegacyLookup) LegacyTreeHash(context.Context, int64) (*domain.Hash, error) {
 	return nil, errors.New("lookup failed")
+}
+
+// rollingDeployFixture is a backfilled store (tools/bin holds an executable)
+// plus the hashes an older server still has in mind for it.
+type rollingDeployFixture struct {
+	repo                       *fakeTreeHashRepo
+	tool, a2                   treehash.FileEntry
+	oldBin, oldRoot2           domain.Hash
+	newBin, newRoot1, newRoot2 domain.Hash
+}
+
+func newRollingDeployFixture(t *testing.T) rollingDeployFixture {
+	t.Helper()
+	repo := newFakeTreeHashRepo()
+	tool := treehash.FileEntry{Name: "tool.sh", Hash: domain.Hash{0x01}, Mode: 0o755}
+	a1 := treehash.FileEntry{Name: "a.txt", Hash: domain.Hash{0x03}, Mode: 0o644}
+	a2 := treehash.FileEntry{Name: "a.txt", Hash: domain.Hash{0x04}, Mode: 0o644}
+	oldBin := oldTreeHash([]treehash.FileEntry{tool}, nil)
+	repo.add(1, nil, "root", oldTreeHash([]treehash.FileEntry{a1}, []treehash.TreeEntry{{Name: "bin", Hash: oldBin}}), a1)
+	repo.add(2, i64(1), "bin", oldBin, tool)
+	_, err := BackfillTreeHashes(context.Background(), repo)
+	require.NoError(t, err)
+	newBin := treehash.TreeHash([]treehash.FileEntry{tool}, nil)
+	require.Equal(t, newBin, repo.nodes[2].Hash)
+	return rollingDeployFixture{
+		repo: repo, tool: tool, a2: a2,
+		oldBin:   oldBin,
+		oldRoot2: oldTreeHash([]treehash.FileEntry{a2}, []treehash.TreeEntry{{Name: "bin", Hash: oldBin}}),
+		newBin:   newBin,
+		newRoot1: treehash.TreeHash([]treehash.FileEntry{a1}, []treehash.TreeEntry{{Name: "bin", Hash: newBin}}),
+		newRoot2: treehash.TreeHash([]treehash.FileEntry{a2}, []treehash.TreeEntry{{Name: "bin", Hash: newBin}}),
+	}
+}
+
+// An older server that read bin/'s hash before the pass rewrote it keeps bin/
+// by reference under the old hash, which no content node carries any more. The
+// next pass repoints it through tree_hash_rewrites and fixes its root.
+func TestBackfillTreeHashes_RepairsDanglingReference(t *testing.T) {
+	ctx := context.Background()
+	f := newRollingDeployFixture(t)
+	repo := f.repo
+	require.Equal(t, f.newBin, repo.rewrites[f.oldBin])
+
+	repo.add(3, nil, "root", f.oldRoot2, f.a2)
+	repo.add(4, i64(3), "bin", f.oldBin) // reference with the pre-backfill hash
+	res, err := BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, TreeHashBackfillResult{FromID: 2, UpToID: 4, Repaired: 1, Recomputed: 1, Updated: 2}, res)
+	require.Equal(t, f.newBin, repo.nodes[4].Hash, "the reference resolves to bin/'s content again")
+	require.Equal(t, f.newRoot2, repo.nodes[3].Hash)
+	require.Equal(t, f.oldRoot2, repo.legacy[3], "an old client can still push against the root it got")
+
+	// Idempotent: rerunning everything changes nothing.
+	writes := repo.writes
+	repo.watermark = 0
+	res, err = BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Zero(t, res.Repaired)
+	require.Zero(t, res.Updated)
+	require.Equal(t, writes, repo.writes)
+}
+
+// A push that took its ids before the previous pass read MAX(id) but committed
+// after it lands at or below the watermark. The overlap window rescans it.
+func TestBackfillTreeHashes_RescansOverlapWindow(t *testing.T) {
+	ctx := context.Background()
+	f := newRollingDeployFixture(t)
+	repo := f.repo
+	// Ids 3 and 4 were taken by the push before the pass that stored
+	// watermark 6 (ids 5 and 6 committed in time).
+	repo.add(5, nil, "root", treehash.TreeHash(nil, nil))
+	repo.add(6, nil, "root", treehash.TreeHash(nil, nil))
+	res, err := BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, int64(6), repo.watermark)
+	require.Zero(t, res.Updated)
+
+	staleBin := oldTreeHash([]treehash.FileEntry{f.tool}, nil)
+	repo.add(3, nil, "root", oldTreeHash([]treehash.FileEntry{f.a2}, []treehash.TreeEntry{{Name: "bin", Hash: staleBin}}), f.a2)
+	repo.add(4, i64(3), "bin", staleBin, f.tool)
+
+	// Without the overlap the late rows are never looked at.
+	res, err = BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, TreeHashBackfillResult{FromID: 6, UpToID: 6}, res)
+	require.Equal(t, staleBin, repo.nodes[4].Hash)
+
+	repo.overlap = 4
+	res, err = BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, TreeHashBackfillResult{FromID: 2, UpToID: 6, Seeds: 1, Recomputed: 2, Updated: 2}, res)
+	require.Equal(t, f.newBin, repo.nodes[4].Hash)
+	require.Equal(t, f.newRoot2, repo.nodes[3].Hash)
+	require.Equal(t, int64(6), repo.watermark, "the watermark never moves back")
+
+	// Idempotent: the window is rescanned on the next pass but nothing changes.
+	writes := repo.writes
+	res, err = BackfillTreeHashes(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, 1, res.Seeds)
+	require.Zero(t, res.Updated)
+	require.Equal(t, writes, repo.writes)
+}
+
+// A dangling reference whose rewrite target equals its hash is left alone.
+func TestBackfillTreeHashes_RepairSkipsUnchanged(t *testing.T) {
+	b := newTreeHashBackfill(newFakeTreeHashRepo())
+	h := domain.Hash{0x05}
+	require.Zero(t, b.repair([]TreeHashDanglingReference{{Node: TreeHashNode{ID: 1, Hash: h}, NewHash: h}}))
+	require.Equal(t, 1, b.repair([]TreeHashDanglingReference{{Node: TreeHashNode{ID: 2, Hash: h}, NewHash: domain.Hash{0x06}}}))
+	require.Equal(t, 0, b.queue.Len(), "a reference without parent queues nothing")
 }

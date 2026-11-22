@@ -3,6 +3,7 @@ package usecase
 import (
 	"container/heap"
 	"context"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/treehash"
@@ -21,13 +22,38 @@ type TreeHashNode struct {
 	HasContent bool
 }
 
+// TreeHashBackfillOverlap is how far before the start of the previous pass a
+// backfill pass looks again. Tree node ids are taken when a push inserts its
+// rows, not when it commits, so a push that was still running when the
+// previous pass read MAX(id) can commit rows at or below that pass's
+// watermark; a push running for less than this is rescanned by the next pass.
+const TreeHashBackfillOverlap = 2 * time.Hour
+
+// TreeHashBackfillState is what the backfill marker row holds for a pass.
+type TreeHashBackfillState struct {
+	// Watermark is the highest tree node id the previous pass covered.
+	Watermark int64
+	// RescanFrom (at most Watermark) is the highest tree node id created
+	// before the previous pass started minus TreeHashBackfillOverlap; rows
+	// above it may have committed after that pass and are scanned again.
+	RescanFrom int64
+}
+
+// TreeHashDanglingReference is a reference row whose hash no content node
+// carries any more because the backfill rewrote it, with NewHash, the new hash
+// of the content node it resolved to (tree_hash_rewrites).
+type TreeHashDanglingReference struct {
+	Node    TreeHashNode
+	NewHash domain.Hash
+}
+
 // TreeHashRepository stores what the tree hash backfill reads and writes. All
 // methods called from inside WithTreeHashBackfillLock run in its transaction.
 type TreeHashRepository interface {
 	// WithTreeHashBackfillLock runs fn in one transaction holding the
-	// backfill marker row locked, passing the stored watermark (the highest
-	// tree node id already covered) and storing the one fn returns.
-	WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, watermark int64) (int64, error)) error
+	// backfill marker row locked, passing the stored state and storing the
+	// watermark fn returns together with the start of this pass.
+	WithTreeHashBackfillLock(ctx context.Context, fn func(ctx context.Context, state TreeHashBackfillState) (int64, error)) error
 	MaxTreeNodeID(ctx context.Context) (int64, error)
 	// TreeHashSeeds lists the ids in (afterID, upToID] of tree nodes that own
 	// a file whose stored mode is not plain read-write (0 or 0o644).
@@ -40,7 +66,13 @@ type TreeHashRepository interface {
 	TreeHashChildren(ctx context.Context, treeID int64) ([]TreeHashNode, error)
 	// TreeHashNodesByHash lists every node stored with hash, by id.
 	TreeHashNodesByHash(ctx context.Context, hash domain.Hash) ([]TreeHashNode, error)
+	// TreeHashDanglingReferences lists the reference rows in (afterID,
+	// upToID] whose hash no content node carries but the backfill rewrote.
+	TreeHashDanglingReferences(ctx context.Context, afterID, upToID int64) ([]TreeHashDanglingReference, error)
 	SetTreeNodeHash(ctx context.Context, id int64, hash domain.Hash) error
+	// SaveTreeHashRewrite records the new hash of the content node that
+	// references with oldHash resolved to; an existing record is kept.
+	SaveTreeHashRewrite(ctx context.Context, oldHash, newHash domain.Hash) error
 	// SaveLegacyTreeHash records the hash a root tree had before the backfill
 	// changed it; an existing record is kept.
 	SaveLegacyTreeHash(ctx context.Context, treeID int64, hash domain.Hash) error
@@ -49,11 +81,13 @@ type TreeHashRepository interface {
 	LegacyTreeHash(ctx context.Context, treeID int64) (*domain.Hash, error)
 }
 
-// TreeHashBackfillResult reports one backfill pass.
+// TreeHashBackfillResult reports one backfill pass, which scanned the tree
+// node ids in (FromID, UpToID].
 type TreeHashBackfillResult struct {
 	FromID     int64
 	UpToID     int64
 	Seeds      int
+	Repaired   int
 	Recomputed int
 	Updated    int
 }
@@ -69,26 +103,39 @@ type TreeHashBackfillResult struct {
 // hash. Only rows whose hash changes are written, plus the old hash of every
 // changed root for clients that still push against it.
 //
-// The pass covers the nodes added since the stored watermark, so it is a full
-// scan once and cheap afterwards, and rerunning it changes nothing.
+// The pass covers the nodes added since the stored watermark plus the overlap
+// window before the previous pass (TreeHashBackfillState.RescanFrom), so it is
+// a full scan once and cheap afterwards, and rerunning it changes nothing.
+// During a rolling deploy an older server keeps writing old-format rows: its
+// content rows are picked up as seeds, and a reference it wrote with the hash
+// a kept directory had before a pass rewrote it would resolve to nothing, so
+// the pass repoints such references in its window to the recorded new hash
+// (tree_hash_rewrites) and propagates the change to their parents.
 func BackfillTreeHashes(ctx context.Context, repo TreeHashRepository) (TreeHashBackfillResult, error) {
 	var result TreeHashBackfillResult
-	err := repo.WithTreeHashBackfillLock(ctx, func(ctx context.Context, watermark int64) (int64, error) {
-		result = TreeHashBackfillResult{FromID: watermark, UpToID: watermark}
+	err := repo.WithTreeHashBackfillLock(ctx, func(ctx context.Context, state TreeHashBackfillState) (int64, error) {
+		from := min(state.RescanFrom, state.Watermark)
+		result = TreeHashBackfillResult{FromID: from, UpToID: from}
 		upTo, err := repo.MaxTreeNodeID(ctx)
 		if err != nil {
 			return 0, err
 		}
-		if upTo <= watermark {
-			return watermark, nil
+		next := max(upTo, state.Watermark)
+		if upTo <= from {
+			return next, nil
 		}
 		result.UpToID = upTo
-		seeds, err := repo.TreeHashSeeds(ctx, watermark, upTo)
+		seeds, err := repo.TreeHashSeeds(ctx, from, upTo)
+		if err != nil {
+			return 0, err
+		}
+		dangling, err := repo.TreeHashDanglingReferences(ctx, from, upTo)
 		if err != nil {
 			return 0, err
 		}
 		result.Seeds = len(seeds)
 		b := newTreeHashBackfill(repo)
+		result.Repaired = b.repair(dangling)
 		if err := b.run(ctx, seeds); err != nil {
 			return 0, err
 		}
@@ -98,7 +145,7 @@ func BackfillTreeHashes(ctx context.Context, repo TreeHashRepository) (TreeHashB
 			return 0, err
 		}
 		result.Updated = updated
-		return upTo, nil
+		return next, nil
 	})
 	return result, err
 }
@@ -110,7 +157,11 @@ type treeHashBackfill struct {
 	// next holds the new hash of every node the pass changed.
 	next map[int64]domain.Hash
 	// byHash caches TreeHashNodesByHash by original hash.
-	byHash     map[domain.Hash][]TreeHashNode
+	byHash map[domain.Hash][]TreeHashNode
+	// rewrites maps the original hash of every changed content node that
+	// references resolved to (the oldest content node with it) to its new
+	// hash.
+	rewrites   map[domain.Hash]domain.Hash
 	queue      idHeap
 	queued     map[int64]bool
 	recomputed int
@@ -118,11 +169,12 @@ type treeHashBackfill struct {
 
 func newTreeHashBackfill(repo TreeHashRepository) *treeHashBackfill {
 	return &treeHashBackfill{
-		repo:   repo,
-		nodes:  map[int64]*TreeHashNode{},
-		next:   map[int64]domain.Hash{},
-		byHash: map[domain.Hash][]TreeHashNode{},
-		queued: map[int64]bool{},
+		repo:     repo,
+		nodes:    map[int64]*TreeHashNode{},
+		next:     map[int64]domain.Hash{},
+		byHash:   map[domain.Hash][]TreeHashNode{},
+		rewrites: map[domain.Hash]domain.Hash{},
+		queued:   map[int64]bool{},
 	}
 }
 
@@ -151,6 +203,25 @@ func (b *treeHashBackfill) node(ctx context.Context, id int64) (*TreeHashNode, e
 	}
 	b.nodes[id] = n
 	return n, nil
+}
+
+// repair gives every dangling reference the new hash of the content node it
+// resolved to and queues its parent, returning how many it changed.
+func (b *treeHashBackfill) repair(dangling []TreeHashDanglingReference) int {
+	repaired := 0
+	for _, d := range dangling {
+		if d.NewHash == d.Node.Hash {
+			continue
+		}
+		ref := d.Node
+		b.nodes[ref.ID] = &ref
+		b.next[ref.ID] = d.NewHash
+		if ref.ParentID != nil {
+			b.push(*ref.ParentID)
+		}
+		repaired++
+	}
+	return repaired
 }
 
 // run recomputes queued content nodes until no hash changes any more. Nodes
@@ -225,6 +296,7 @@ func (b *treeHashBackfill) moveReferences(ctx context.Context, node *TreeHashNod
 	if !resolved {
 		return nil
 	}
+	b.rewrites[node.Hash] = hash
 	for _, ref := range group {
 		if ref.HasContent {
 			continue
@@ -244,8 +316,14 @@ func (b *treeHashBackfill) moveReferences(ctx context.Context, node *TreeHashNod
 	return nil
 }
 
-// write stores every changed hash and the old hash of every changed root.
+// write stores every changed hash, the old hash of every changed root and the
+// new hash of every rewritten content node references resolved to.
 func (b *treeHashBackfill) write(ctx context.Context) (int, error) {
+	for oldHash, newHash := range b.rewrites {
+		if err := b.repo.SaveTreeHashRewrite(ctx, oldHash, newHash); err != nil {
+			return 0, err
+		}
+	}
 	updated := 0
 	for id, hash := range b.next {
 		node := b.nodes[id]

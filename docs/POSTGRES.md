@@ -110,7 +110,10 @@ made the old `MAX(number)+1` race invisible).
   (`serverapp.BackfillTreeHashes`, see `docs/internals/protocol.md`) before
   serving. On postgres it holds the `tree_hash_backfill` row `FOR UPDATE`, so
   pods starting together run it one after another and later ones only scan
-  tree nodes newer than the stored watermark. The migrate CLIs only change the
+  tree nodes newer than the stored watermark plus a 2h overlap window before
+  the previous pass (identity ids are allocated before commit, so a push
+  running during a pass can commit below its watermark), repairing references
+  an old-version pod wrote with a rewritten hash (`tree_hash_rewrites`). The migrate CLIs only change the
   schema; the backfill runs on the next server start.
 - `ee/cmd/migrate` is the standalone CLI; `make migrate-up-postgres DSN=...`
   / `make migrate-down-postgres DSN=...` wrap it. The free
