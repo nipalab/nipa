@@ -125,11 +125,25 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s) — or
   absolute backend presigned URLs when the store implements
   `storage.DirectTransferStore` (S3). The
-  client then PUTs/GETs bytes directly over HTTP through an adaptive transfer
-  limiter (`internal/client/grpc/transfer.go`): concurrency starts at 16, is
-  auto-tuned within [4, 64] from observed throughput, and can be pinned with
-  `NIPA_UPLOAD_WORKERS` or `uploadWorkers` in `~/.config/nipa/config.json`
-  (pinned disables tuning).
+  client then PUTs/GETs bytes directly over HTTP through adaptive transfer
+  limiters (`internal/client/grpc/transfer.go`), one per direction
+  (`Client.uploads` / `Client.downloads`, each a `transferPool` of limiter +
+  tuner): uploads start at 16 within [4, 64], downloads at 64 within
+  [4, 256]. Pin them with `NIPA_UPLOAD_WORKERS` / `uploadWorkers` and
+  `NIPA_DOWNLOAD_WORKERS` / `downloadWorkers` in `~/.config/nipa/config.json`
+  (env > config > default; pinning disables that direction's tuner only).
+  The tuner hill-climbs on throughput measured over windows of >= 64 MiB and
+  >= 2 s (or 30 s on a slow link): a window > 5% above the best recent one
+  adds an eighth of the limit; a flat window holds it (every 8 flat windows
+  it probes one step up and undoes the step if nothing improves); a window
+  below 70% of the best cuts a quarter; every retryable failed attempt
+  (network error, stall, 5xx, 408, 429, reported from `retryTransfer`)
+  halves it, at most once per 2 s. A cut clears the reference so the next
+  window is the new baseline, followed by a probe up; the best decays by 10%
+  per flat window so an old burst cannot hold the limit down. Completed jobs
+  feed the tuner from `runChunks`; cancellations and final non-retryable
+  failures do not. `defaultHTTPClient` pools 256 connections per host (the
+  larger maximum), so the transport never caps a limit the tuner chose.
   **Chunk protocol and per-project scope.** Dedup is per project: a chunk
   belongs to exactly one project (`chunks.project_id`, `UNIQUE (project_id,
   hash)`), two projects holding the same bytes store them twice, and the

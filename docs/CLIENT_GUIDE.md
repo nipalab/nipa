@@ -566,6 +566,7 @@ User configuration lives in `~/.config/nipa/config.json` (respects
 {
   "diffExternal": "meld",
   "uploadWorkers": 16,
+  "downloadWorkers": 64,
   "uploadWindowMiB": 32,
   "sshKeyPath": "~/.ssh/id_ed25519"
 }
@@ -575,6 +576,7 @@ User configuration lives in `~/.config/nipa/config.json` (respects
 | --- | --- | --- |
 | `diffExternal` | `NIPA_EXTERNAL_DIFF` | Command used by `nipa diff --ext-diff`. |
 | `uploadWorkers` | `NIPA_UPLOAD_WORKERS` | Pin concurrent chunk uploads; when unset the client tunes concurrency automatically between 4 and 64 (starting at 16). |
+| `downloadWorkers` | `NIPA_DOWNLOAD_WORKERS` | Pin concurrent chunk downloads (clone, update); when unset the client tunes them automatically between 4 and 256 (starting at 64), independently of uploads. |
 | `uploadWindowMiB` | `NIPA_UPLOAD_WINDOW_MIB` | Size of a push upload window in MiB (default 32, clamped to 4..256). Four windows upload at once with two more queued, so the push buffers up to about six windows of chunk data. |
 | `sshKeyPath` | `NIPA_SSH_KEY` | Default private key for SSH login. |
 

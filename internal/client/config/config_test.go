@@ -113,6 +113,52 @@ func TestResolveUploadWorkers_InvalidEnv(t *testing.T) {
 	require.ErrorContains(t, err, EnvUploadWorkers)
 }
 
+func TestResolveDownloadWorkers(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvDownloadWorkers, "")
+	t.Setenv(EnvUploadWorkers, "")
+
+	workers, pinned, err := ResolveDownloadWorkers()
+	require.NoError(t, err)
+	require.False(t, pinned, "nothing set keeps downloads auto-tuned")
+	require.Zero(t, workers)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"),
+		[]byte(`{"uploadWorkers":12,"downloadWorkers":128}`), 0o644))
+	workers, pinned, err = ResolveDownloadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 128, workers, "the config key is read on its own, not uploadWorkers")
+
+	t.Setenv(EnvDownloadWorkers, " 300 ")
+	workers, pinned, err = ResolveDownloadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 300, workers, "the environment wins; the client clamps")
+
+	upload, _, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.Equal(t, 12, upload, "the download override leaves uploads alone")
+}
+
+func TestResolveDownloadWorkers_Invalid(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	for _, value := range []string{"many", "0", "-4"} {
+		t.Setenv(EnvDownloadWorkers, value)
+		_, _, err := ResolveDownloadWorkers()
+		require.ErrorContains(t, err, EnvDownloadWorkers)
+	}
+
+	t.Setenv(EnvDownloadWorkers, "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte("{"), 0o644))
+	_, _, err := ResolveDownloadWorkers()
+	require.ErrorContains(t, err, "parse")
+}
+
 func TestResolveTracing_DisabledByDefault(t *testing.T) {
 	t.Setenv(EnvTracing, "")
 	t.Setenv(EnvTracingOTLPEndpoint, "")

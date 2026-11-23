@@ -309,7 +309,8 @@ polling RPC is correct and fast without it.
   `grpc.toDomainError` mapping (400/401/403/404/409) is reused in reverse —
   the daemon maps `domain.Error` back to gRPC codes, and clients re-map on
   receipt. Message strings pass through untouched.
-- `~/.config/nipa/config.json` (`diffExternal`, `uploadWorkers`) is read once
+- `~/.config/nipa/config.json` (`diffExternal`, `uploadWorkers`,
+  `downloadWorkers`) is read once
   at daemon startup; per-op overrides are not supported in v1.
 - New packages: `internal/client/daemon` (service, registry, coordinator,
   watcher, token/`daemon.json` plumbing) + `internal/client/grpc/daemonpb`

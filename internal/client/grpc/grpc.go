@@ -224,13 +224,19 @@ type tokenSession interface {
 // ClientOption customizes a Client at construction time.
 type ClientOption func(*Client)
 
-// WithUploadWorkers pins the number of concurrent chunk uploads, disabling
-// automatic tuning.
+// WithUploadWorkers pins the number of concurrent chunk uploads (clamped to
+// 64), disabling automatic tuning of uploads.
 func WithUploadWorkers(workers int) ClientOption {
 	return func(c *Client) {
-		c.uploadWorkers = clampUploadWorkers(workers)
-		c.tuner = nil
-		c.limiter.setLimit(c.uploadWorkers)
+		c.uploads.pin(workers)
+	}
+}
+
+// WithDownloadWorkers pins the number of concurrent chunk downloads (clamped
+// to 256), disabling automatic tuning of downloads.
+func WithDownloadWorkers(workers int) ClientOption {
+	return func(c *Client) {
+		c.downloads.pin(workers)
 	}
 }
 
@@ -261,12 +267,13 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 }
 
 type Client struct {
-	transport     *Transport
-	session       tokenSession
-	http          *http.Client
-	limiter       *transferLimiter
-	tuner         *concurrencyTuner
-	uploadWorkers int
+	transport *Transport
+	session   tokenSession
+	http      *http.Client
+	// uploads and downloads limit and tune each transfer direction on its
+	// own.
+	uploads   *transferPool
+	downloads *transferPool
 	// uploadWindowBytes overrides the push upload window size when > 0.
 	uploadWindowBytes int
 	retry             retryPolicy
@@ -278,15 +285,14 @@ type Client struct {
 
 func NewClient(transport *Transport, session tokenSession, opts ...ClientOption) *Client {
 	c := &Client{
-		transport:     transport,
-		session:       session,
-		http:          defaultHTTPClient(),
-		limiter:       newTransferLimiter(defaultUploadWorkers),
-		tuner:         newConcurrencyTuner(minUploadWorkers, maxUploadWorkers, defaultUploadWorkers),
-		uploadWorkers: defaultUploadWorkers,
-		retry:         defaultRetryPolicy,
-		stallTimeout:  defaultStallTimeout,
-		confirmSlots:  make(chan struct{}, maxConcurrentConfirms),
+		transport:    transport,
+		session:      session,
+		http:         defaultHTTPClient(),
+		uploads:      newTransferPool(defaultUploadWorkers, minUploadWorkers, maxUploadWorkers),
+		downloads:    newTransferPool(defaultDownloadWorkers, minDownloadWorkers, maxDownloadWorkers),
+		retry:        defaultRetryPolicy,
+		stallTimeout: defaultStallTimeout,
+		confirmSlots: make(chan struct{}, maxConcurrentConfirms),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -294,23 +300,16 @@ func NewClient(transport *Transport, session tokenSession, opts ...ClientOption)
 	return c
 }
 
-// SetUploadWorkers adjusts the concurrent chunk transfer limit at runtime and
-// disables automatic tuning.
+// SetUploadWorkers pins the concurrent chunk upload limit at runtime and
+// disables automatic tuning of uploads.
 func (c *Client) SetUploadWorkers(workers int) {
-	c.uploadWorkers = clampUploadWorkers(workers)
-	c.tuner = nil
-	c.limiter.setLimit(c.uploadWorkers)
+	c.uploads.pin(workers)
 }
 
-func (c *Client) recordTransfer(bytes int64, transferErr error) {
-	if c.tuner == nil {
-		return
-	}
-	limit := c.limiter.currentLimit()
-	next := c.tuner.observe(limit, bytes, time.Now(), transferErr)
-	if next != limit {
-		c.limiter.setLimit(next)
-	}
+// SetDownloadWorkers pins the concurrent chunk download limit at runtime and
+// disables automatic tuning of downloads.
+func (c *Client) SetDownloadWorkers(workers int) {
+	c.downloads.pin(workers)
 }
 
 func (c *Client) Connect(ctx context.Context, host string) error {

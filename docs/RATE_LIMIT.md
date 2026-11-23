@@ -74,9 +74,10 @@ The `nipa` client treats throttling as backpressure instead of a failure:
 
 - Chunk PUTs and GETs that answer 429 wait for `Retry-After` (capped at 30 s,
   plus jitter) and retry up to 10 times. That budget is separate from the 3
-  attempts allowed for network errors, 5xx and 408. Each throttled transfer also
-  halves the adaptive transfer concurrency (minimum 4). A pinned
-  `NIPA_UPLOAD_WORKERS` is not tuned.
+  attempts allowed for network errors, 5xx and 408. Each throttled or failed
+  attempt also halves the adaptive concurrency of its direction (at most once
+  per 2 s, minimum 4). A pinned `NIPA_UPLOAD_WORKERS` /
+  `NIPA_DOWNLOAD_WORKERS` is not tuned.
 - Unary gRPC calls rejected with `rate limit exceeded, retry in Ns` are repeated
   after the requested wait under the same budget. The server interceptor rejects
   before any handler runs, so this is safe for every method, `Push` included.

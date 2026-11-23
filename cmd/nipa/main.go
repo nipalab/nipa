@@ -34,7 +34,7 @@ func main() {
 	transport := grpc.NewTransport()
 	session := usecase.NewSession(secureStorage, transport, prompter).
 		WithSSHLogin(resolveSigners(prompter.PromptPassphrase))
-	clientOpts, err := uploadOptions()
+	clientOpts, err := transferOptions()
 	if err != nil {
 		handleError(err)
 	}
@@ -76,7 +76,7 @@ func main() {
 		transport := grpc.NewTransport()
 		session := usecase.NewSession(secureStorage, transport).
 			WithSSHLogin(resolveSigners(nil))
-		opts, err := uploadOptions()
+		opts, err := transferOptions()
 		if err != nil {
 			opts = clientOpts
 		}
@@ -130,7 +130,10 @@ func handleError(err error) {
 	os.Exit(cli.ExitCode(err))
 }
 
-func uploadOptions() ([]grpc.ClientOption, error) {
+// transferOptions turns the user's transfer settings (environment, then
+// ~/.config/nipa/config.json) into client options; unset values keep the
+// client defaults and leave that direction auto-tuned.
+func transferOptions() ([]grpc.ClientOption, error) {
 	var opts []grpc.ClientOption
 	workers, pinned, err := config.ResolveUploadWorkers()
 	if err != nil {
@@ -138,6 +141,13 @@ func uploadOptions() ([]grpc.ClientOption, error) {
 	}
 	if pinned {
 		opts = append(opts, grpc.WithUploadWorkers(workers))
+	}
+	workers, pinned, err = config.ResolveDownloadWorkers()
+	if err != nil {
+		return nil, err
+	}
+	if pinned {
+		opts = append(opts, grpc.WithDownloadWorkers(workers))
 	}
 	windowMiB, set, err := config.ResolveUploadWindowMiB()
 	if err != nil {

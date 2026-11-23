@@ -22,6 +22,11 @@ const EnvDiffExternal = "NIPA_EXTERNAL_DIFF"
 // automatically within the client's bounds.
 const EnvUploadWorkers = "NIPA_UPLOAD_WORKERS"
 
+// EnvDownloadWorkers names the environment variable pinning the number of
+// concurrent chunk downloads. When unset, download concurrency is tuned
+// automatically within the client's bounds, independently of uploads.
+const EnvDownloadWorkers = "NIPA_DOWNLOAD_WORKERS"
+
 // EnvUploadWindowMiB names the environment variable overriding the size of a
 // push upload window in MiB: the chunk data buffered before it is handed to
 // the uploaders. When unset the client default applies.
@@ -56,6 +61,7 @@ const (
 type Config struct {
 	DiffExternal    string     `json:"diffExternal,omitempty"`
 	UploadWorkers   int        `json:"uploadWorkers,omitempty"`
+	DownloadWorkers int        `json:"downloadWorkers,omitempty"`
 	UploadWindowMiB int        `json:"uploadWindowMiB,omitempty"`
 	SSHKeyPath      string     `json:"sshKeyPath,omitempty"`
 	LLM             *LLMConfig `json:"llm,omitempty"`
@@ -179,13 +185,25 @@ func ResolveDiffExternal() (string, error) {
 // which case the client tunes concurrency automatically. The environment takes
 // precedence over the user config.
 func ResolveUploadWorkers() (int, bool, error) {
-	if value := strings.TrimSpace(os.Getenv(EnvUploadWorkers)); value != "" {
+	return resolveWorkers(EnvUploadWorkers, func(cfg Config) int { return cfg.UploadWorkers })
+}
+
+// ResolveDownloadWorkers returns the pinned download worker count, resolved
+// like ResolveUploadWorkers from NIPA_DOWNLOAD_WORKERS and downloadWorkers.
+func ResolveDownloadWorkers() (int, bool, error) {
+	return resolveWorkers(EnvDownloadWorkers, func(cfg Config) int { return cfg.DownloadWorkers })
+}
+
+// resolveWorkers reads a positive worker count from env, else from the user
+// config; the client clamps it to its own bounds.
+func resolveWorkers(env string, fromConfig func(Config) int) (int, bool, error) {
+	if value := strings.TrimSpace(os.Getenv(env)); value != "" {
 		workers, err := strconv.Atoi(value)
 		if err != nil {
-			return 0, false, fmt.Errorf("parse %s: %w", EnvUploadWorkers, err)
+			return 0, false, fmt.Errorf("parse %s: %w", env, err)
 		}
 		if workers <= 0 {
-			return 0, false, fmt.Errorf("%s must be a positive integer", EnvUploadWorkers)
+			return 0, false, fmt.Errorf("%s must be a positive integer", env)
 		}
 		return workers, true, nil
 	}
@@ -193,8 +211,8 @@ func ResolveUploadWorkers() (int, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	if cfg.UploadWorkers > 0 {
-		return cfg.UploadWorkers, true, nil
+	if workers := fromConfig(cfg); workers > 0 {
+		return workers, true, nil
 	}
 	return 0, false, nil
 }
