@@ -3,17 +3,36 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sort"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
+// checkChunkProtocol refuses a client that speaks an older chunk transfer
+// protocol (chunkproof.Protocol): it would send possession proofs this server
+// no longer reads and expect global dedup.
+func checkChunkProtocol(version uint32) error {
+	if version >= chunkproof.Protocol {
+		return nil
+	}
+	return status.Error(codes.FailedPrecondition, fmt.Sprintf(
+		"this server speaks chunk protocol %d and the client %d; upgrade nipa to push and clone", chunkproof.Protocol, version))
+}
+
 // GetChunkUploadUrls returns signed upload paths for one page of chunk refs.
-// The caller needs project write access; chunks already stored come back with
-// AlreadyStored set so clients skip the transfer.
+// The caller needs project write access; chunks the project already holds
+// come back with AlreadyStored set so clients skip the transfer.
 func (n *nipaServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUploadUrlsRequest) (*pb.GetChunkUploadUrlsResponse, error) {
+	if err := checkChunkProtocol(req.GetChunkProtocol()); err != nil {
+		return nil, err
+	}
 	org, project, err := n.resolveChunkProject(ctx, req.GetContext())
 	if err != nil {
 		return nil, err
@@ -29,12 +48,15 @@ func (n *nipaServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUpl
 	if err != nil {
 		return nil, handleError(err)
 	}
-	return &pb.GetChunkUploadUrlsResponse{Urls: toPBChunkURLs(urls), NextPageToken: next}, nil
+	return &pb.GetChunkUploadUrlsResponse{Urls: toPBChunkURLs(urls), NextPageToken: next, ChunkProtocol: chunkproof.Protocol}, nil
 }
 
 // GetChunkDownloadUrls returns signed download paths for one page of chunk
 // hashes the caller may read. Hashes outside the visible trees are omitted.
 func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkDownloadUrlsRequest) (*pb.GetChunkDownloadUrlsResponse, error) {
+	if err := checkChunkProtocol(req.GetChunkProtocol()); err != nil {
+		return nil, err
+	}
 	org, project, err := n.resolveChunkProject(ctx, req.GetContext())
 	if err != nil {
 		return nil, err
@@ -57,14 +79,18 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 	if err != nil {
 		return nil, handleError(err)
 	}
-	return &pb.GetChunkDownloadUrlsResponse{Urls: toPBChunkURLs(urls), NextPageToken: next}, nil
+	return &pb.GetChunkDownloadUrlsResponse{Urls: toPBChunkURLs(urls), NextPageToken: next, ChunkProtocol: chunkproof.Protocol}, nil
 }
 
-// ConfirmChunkUploads verifies uploaded content landed in the store and
-// records chunk metadata. Hashes the project is not linked to yet need a
-// possession proof; the ones that fail it come back as missing. The metadata size is measured server-side from the
-// stored content; hashes still missing are returned for retry.
+// ConfirmChunkUploads verifies uploaded content landed in the project's store
+// and records the project's chunk rows. A valid receipt (proxied upload)
+// stands in for the read-back; other chunks are read back and hashed. The
+// recorded size is measured server-side; hashes still missing are returned
+// for retry.
 func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
+	if err := checkChunkProtocol(req.GetChunkProtocol()); err != nil {
+		return nil, err
+	}
 	org, project, err := n.resolveChunkProject(ctx, req.GetContext())
 	if err != nil {
 		return nil, err
@@ -76,11 +102,11 @@ func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChu
 	if err != nil {
 		return nil, handleError(err)
 	}
-	proofs, err := toChunkProofs(req.GetProofs())
+	receipts, err := toChunkReceipts(req.GetReceipts())
 	if err != nil {
 		return nil, handleError(err)
 	}
-	missing, err := n.uc.Chunk().ConfirmUploads(ctx, org, project, hashes, proofs)
+	missing, err := n.uc.Chunk().ConfirmUploads(ctx, org, project, hashes, receipts)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -88,7 +114,7 @@ func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChu
 	for _, hash := range missing {
 		missingHashes = append(missingHashes, hash.String())
 	}
-	return &pb.ConfirmChunkUploadsResponse{MissingHashes: missingHashes}, nil
+	return &pb.ConfirmChunkUploadsResponse{MissingHashes: missingHashes, ChunkProtocol: chunkproof.Protocol}, nil
 }
 
 func (n *nipaServer) resolveChunkProject(ctx context.Context, projectCtx *pb.ProjectContext) (*domain.Organization, *domain.Project, error) {
@@ -126,27 +152,26 @@ func toChunkHashes(raw []string) ([]domain.Hash, error) {
 	return hashes, nil
 }
 
-func toChunkProofs(raw []*pb.ChunkPossessionProof) ([]usecase.ChunkProof, error) {
-	proofs := make([]usecase.ChunkProof, 0, len(raw))
+func toChunkReceipts(raw []*pb.ChunkReceipt) ([]usecase.ChunkReceipt, error) {
+	receipts := make([]usecase.ChunkReceipt, 0, len(raw))
 	for _, item := range raw {
 		hash, err := domain.ParseHashHex(item.GetHash())
 		if err != nil {
 			return nil, domain.NewErrorUser("invalid chunk hash")
 		}
-		proofs = append(proofs, usecase.ChunkProof{Hash: hash, Challenge: item.GetChallenge(), Proof: item.GetProof(), Receipt: item.GetReceipt()})
+		receipts = append(receipts, usecase.ChunkReceipt{Hash: hash, Receipt: item.GetReceipt()})
 	}
-	return proofs, nil
+	return receipts, nil
 }
 
 func toPBChunkURLs(urls []usecase.ChunkURL) []*pb.PresignedChunkUrl {
 	out := make([]*pb.PresignedChunkUrl, 0, len(urls))
 	for _, u := range urls {
 		out = append(out, &pb.PresignedChunkUrl{
-			Hash:           u.Hash.String(),
-			Url:            u.URL,
-			AlreadyStored:  u.AlreadyStored,
-			Headers:        u.Headers,
-			ProofChallenge: u.ProofChallenge,
+			Hash:          u.Hash.String(),
+			Url:           u.URL,
+			AlreadyStored: u.AlreadyStored,
+			Headers:       u.Headers,
 		})
 	}
 	return out

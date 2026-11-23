@@ -36,12 +36,11 @@ const maxUploadAttempts = 3
 // window of many small chunks stays far below the gRPC message size limit.
 const uploadBatch = 1000
 
-// UploadChunks stores chunk content on the server. Chunks the project is
-// already linked to are skipped. Chunks the server holds without a link to the
-// project (no upload URL) are claimed with a possession proof, so they are
-// linked with no transfer; the rest go straight to the signed upload URLs.
-// Every upload is confirmed with a fresh proof so the server records chunk
-// metadata and links the project.
+// UploadChunks stores chunk content on the server. Dedup is per project:
+// chunks the project already holds are skipped, every other chunk goes to its
+// signed upload URL, and each attempt ends with one confirm that makes the
+// server record the project's chunk rows (with the receipts of proxied
+// uploads, so the server need not read those back).
 func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	if len(chunks) == 0 {
 		return 0, 0, nil
@@ -78,9 +77,9 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 	return len(uploaded), len(skipped), nil
 }
 
-// uploadAttempt presigns the given chunks once, claims those the server
-// already holds, uploads the rest and confirms them.
-// It returns the chunks that still need another attempt.
+// uploadAttempt presigns the given chunks once, uploads those the project
+// does not hold yet and confirms them all in one call. It returns the chunks
+// that still need another attempt.
 func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, uploaded, skipped map[serverDomain.Hash]struct{}) ([]*serverDomain.ChunkData, error) {
 	refs := make([]*pb.ChunkRef, 0, len(chunks))
 	dataByHash := make(map[serverDomain.Hash]*serverDomain.ChunkData, len(chunks))
@@ -89,23 +88,25 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 		dataByHash[chunk.Hash] = chunk
 	}
 
-	retry := map[serverDomain.Hash]struct{}{}
-	var uploadedProofs []*pb.ChunkPossessionProof
+	var receipts []*pb.ChunkReceipt
 	confirmHashes := make([]string, 0, len(chunks))
 	pageToken := ""
 	for {
 		res, err := client.GetChunkUploadUrls(ctx, &pb.GetChunkUploadUrlsRequest{
-			Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-			Chunks:    refs,
-			PageSize:  int32(len(refs)),
-			PageToken: pageToken,
+			Context:       &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+			Chunks:        refs,
+			PageSize:      int32(len(refs)),
+			PageToken:     pageToken,
+			ChunkProtocol: chunkproof.Protocol,
 		})
 		if err != nil {
 			return nil, toDomainError(err)
 		}
+		if err := checkServerChunkProtocol(res.GetChunkProtocol()); err != nil {
+			return nil, err
+		}
 
-		var claims, jobs []chunkTransfer
-		var claimProofs []*pb.ChunkPossessionProof
+		var jobs []chunkTransfer
 		for _, u := range res.GetUrls() {
 			hash, err := decodeHash(u.GetHash())
 			if err != nil {
@@ -115,51 +116,30 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 			if !ok {
 				return nil, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
 			}
+			// Already stored chunks are confirmed too: that clears a garbage
+			// mark on them before the push that references them lands.
 			confirmHashes = append(confirmHashes, hash.String())
 			if u.GetAlreadyStored() {
 				skipped[hash] = struct{}{}
 				continue
 			}
-			proof := &pb.ChunkPossessionProof{
-				Hash:      hash.String(),
-				Challenge: u.GetProofChallenge(),
-				Proof:     chunkproof.Proof(u.GetProofChallenge(), chunk.Data),
+			if u.GetUrl() == "" {
+				return nil, domain.NewUserError(fmt.Sprintf("server sent no upload URL for chunk %s", hash))
 			}
-			job := chunkTransfer{hash: hash, url: u.GetUrl(), headers: u.GetHeaders(), data: chunk.Data, proof: proof}
-			// A URL means the server does not hold the object, so a claim
-			// could only fail: send it, and prove it in the final confirm.
-			// A 412 on the PUT (stored meanwhile) is settled there too. A
-			// proxied PUT fills in the server's receipt on this proof, which
-			// spares the server the read-back; the proof stays as fallback.
-			if job.url != "" {
-				jobs = append(jobs, job)
-				uploadedProofs = append(uploadedProofs, proof)
-				continue
-			}
-			claims = append(claims, job)
-			claimProofs = append(claimProofs, proof)
+			jobs = append(jobs, chunkTransfer{hash: hash, url: u.GetUrl(), headers: u.GetHeaders(), data: chunk.Data, receipt: new(string)})
 		}
 
-		notProven, err := c.confirmChunks(ctx, client, scope, hashStrings(claims), claimProofs)
-		if err != nil {
-			return nil, err
-		}
-		for _, job := range claims {
-			if _, absent := notProven[job.hash.String()]; absent {
-				// Not linked: garbage removed or the object vanished. The
-				// next attempt presigns it again and gets an upload URL.
-				retry[job.hash] = struct{}{}
-				continue
-			}
-			skipped[job.hash] = struct{}{}
-		}
-
+		// A 412 on a direct create-only PUT means the object was stored
+		// meanwhile; the confirm reads it back and reports garbage missing.
 		if err := c.putChunks(ctx, jobs); err != nil {
 			return nil, err
 		}
 		for _, job := range jobs {
 			uploaded[job.hash] = struct{}{}
 			delete(skipped, job.hash)
+			if *job.receipt != "" {
+				receipts = append(receipts, &pb.ChunkReceipt{Hash: job.hash.String(), Receipt: *job.receipt})
+			}
 		}
 
 		pageToken = res.GetNextPageToken()
@@ -168,15 +148,13 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 		}
 	}
 
-	notConfirmed, err := c.confirmChunks(ctx, client, scope, confirmHashes, uploadedProofs)
+	notConfirmed, err := c.confirmChunks(ctx, client, scope, confirmHashes, receipts)
 	if err != nil {
 		return nil, err
 	}
 	var remaining []*serverDomain.ChunkData
 	for _, chunk := range chunks {
-		_, deferred := retry[chunk.Hash]
-		_, failed := notConfirmed[chunk.Hash.String()]
-		if deferred || failed {
+		if _, failed := notConfirmed[chunk.Hash.String()]; failed {
 			delete(uploaded, chunk.Hash)
 			delete(skipped, chunk.Hash)
 			remaining = append(remaining, chunk)
@@ -185,16 +163,31 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 	return remaining, nil
 }
 
+// checkServerChunkProtocol refuses a server that speaks an older chunk
+// transfer protocol (chunkproof.Protocol): it would expect possession proofs
+// and global dedup. Such a server leaves the response field unset.
+func checkServerChunkProtocol(version uint32) error {
+	if version >= chunkproof.Protocol {
+		return nil
+	}
+	return &domain.Error{
+		Code:    409,
+		Message: fmt.Sprintf("the server speaks chunk protocol %d and this client %d", version, chunkproof.Protocol),
+		Hint:    "upgrade the nipa server to use this client",
+	}
+}
+
 // maxConcurrentConfirms bounds the ConfirmChunkUploads calls one client runs
-// at a time across all upload windows. A confirm makes the server read every
-// chunk back, so several in flight overlap that latency, while the bound keeps
+// at a time across all upload windows. A confirm can make the server read
+// chunks back, so several in flight overlap that latency, while the bound keeps
 // one client from flooding the server's verification and metadata writes.
 const maxConcurrentConfirms = 3
 
-// confirmChunks sends hashes with their possession proofs and returns the set
-// of hashes the server could not confirm. At most maxConcurrentConfirms run at
-// once per client; a caller waiting for a slot gives up when ctx ends.
-func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, hashes []string, proofs []*pb.ChunkPossessionProof) (map[string]struct{}, error) {
+// confirmChunks sends hashes with the receipts of proxied uploads and returns
+// the set of hashes the server could not confirm. At most
+// maxConcurrentConfirms run at once per client; a caller waiting for a slot
+// gives up when ctx ends.
+func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, hashes []string, receipts []*pb.ChunkReceipt) (map[string]struct{}, error) {
 	if len(hashes) == 0 {
 		return nil, nil
 	}
@@ -205,27 +198,23 @@ func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient,
 		return nil, ctx.Err()
 	}
 	res, err := client.ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
-		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-		Hashes:  hashes,
-		Proofs:  proofs,
+		Context:       &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+		Hashes:        hashes,
+		Receipts:      receipts,
+		ChunkProtocol: chunkproof.Protocol,
 	})
 	<-c.confirmSlots
 	if err != nil {
 		return nil, toDomainError(err)
+	}
+	if err := checkServerChunkProtocol(res.GetChunkProtocol()); err != nil {
+		return nil, err
 	}
 	missing := make(map[string]struct{}, len(res.GetMissingHashes()))
 	for _, hash := range res.GetMissingHashes() {
 		missing[hash] = struct{}{}
 	}
 	return missing, nil
-}
-
-func hashStrings(jobs []chunkTransfer) []string {
-	hashes := make([]string, 0, len(jobs))
-	for _, job := range jobs {
-		hashes = append(hashes, job.hash.String())
-	}
-	return hashes
 }
 
 // downloadWindow is how many chunks are presigned per round of download URLs.
@@ -309,15 +298,19 @@ func (c *Client) downloadURLs(ctx context.Context, client pb.NipaServiceClient, 
 	pageToken := ""
 	for {
 		res, err := client.GetChunkDownloadUrls(ctx, &pb.GetChunkDownloadUrlsRequest{
-			Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-			CommitIds: scope.CommitIDs,
-			Paths:     scope.Paths,
-			Hashes:    rawHashes,
-			PageSize:  int32(len(rawHashes)),
-			PageToken: pageToken,
+			Context:       &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+			CommitIds:     scope.CommitIDs,
+			Paths:         scope.Paths,
+			Hashes:        rawHashes,
+			PageSize:      int32(len(rawHashes)),
+			PageToken:     pageToken,
+			ChunkProtocol: chunkproof.Protocol,
 		})
 		if err != nil {
 			return nil, toDomainError(err)
+		}
+		if err := checkServerChunkProtocol(res.GetChunkProtocol()); err != nil {
+			return nil, err
 		}
 		for _, u := range res.GetUrls() {
 			hash, err := decodeHash(u.GetHash())
@@ -346,10 +339,10 @@ type chunkTransfer struct {
 	url     string
 	headers map[string]string
 	data    []byte
-	// proof is the upload's entry in the final confirm; putChunkOnce sets
-	// its receipt. Each job owns its proof, and the confirm reads it only
-	// after every PUT has returned.
-	proof *pb.ChunkPossessionProof
+	// receipt is where putChunkOnce keeps the receipt of a proxied upload
+	// for the confirm. Each job owns its receipt, and the confirm reads it
+	// only after every PUT has returned.
+	receipt *string
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
@@ -409,15 +402,15 @@ func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retr
 	return httpRetryHint(res), chunkHTTPError(res)
 }
 
-// keepReceipt attaches the receipt of a proxied upload to the chunk's proof.
+// keepReceipt keeps the receipt of a proxied upload for the chunk's confirm.
 // Only a server path (relative URL) can answer with one: an absolute URL is
 // the object store's own, whose headers say nothing about what the server
 // verified, so a receipt-like header from it is ignored.
 func keepReceipt(job chunkTransfer, receipt string) {
-	if receipt == "" || job.proof == nil || !strings.HasPrefix(job.url, "/") {
+	if receipt == "" || job.receipt == nil || !strings.HasPrefix(job.url, "/") {
 		return
 	}
-	job.proof.Receipt = receipt
+	*job.receipt = receipt
 }
 
 // chunkSink serializes chunk delivery to the caller's callback and remembers

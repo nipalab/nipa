@@ -11,7 +11,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
-	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -25,9 +25,9 @@ func confirmRows(n int, prefix string) []usecase.ChunkRef {
 	return rows
 }
 
-func chunkSizes(t *testing.T, db *sql.DB) map[domain.Hash]int64 {
+func chunkSizes(t *testing.T, db *sql.DB, projectID snow.ID) map[domain.Hash]int64 {
 	t.Helper()
-	rows, err := db.Query(`SELECT hash, size_bytes FROM chunks`)
+	rows, err := db.Query(`SELECT hash, size_bytes FROM chunks WHERE project_id = ?`, projectID.Int64())
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
 	out := map[domain.Hash]int64{}
@@ -45,73 +45,30 @@ func chunkSizes(t *testing.T, db *sql.DB) map[domain.Hash]int64 {
 
 func TestPushRepositorySQLite_InsertChunksIfNotExist(t *testing.T) {
 	ctx := context.Background()
-	repo, _, db, _, _ := newPushTestEnv(t)
+	repo, _, db, projectID, _ := newPushTestEnv(t)
 
-	require.NoError(t, repo.InsertChunksIfNotExist(ctx, nil), "an empty batch is a no-op")
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, nil), "an empty batch is a no-op")
 
 	existing, existingSize, _ := chunkRow(t, "already recorded")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, existing, existingSize))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: existing, SizeBytes: existingSize}}))
 
 	rows := confirmRows(2500, "confirm")
 	batch := append([]usecase.ChunkRef{}, rows...)
 	batch = append(batch, rows[0], rows[1])                                               // duplicates within the call
 	batch = append(batch, usecase.ChunkRef{Hash: existing, SizeBytes: existingSize + 99}) // an existing row keeps its size
-	require.NoError(t, repo.InsertChunksIfNotExist(ctx, batch))
-	require.NoError(t, repo.InsertChunksIfNotExist(ctx, rows[:10]), "inserting again is a no-op")
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, batch))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, rows[:10]), "inserting again is a no-op")
 
-	got := chunkSizes(t, db)
+	got := chunkSizes(t, db, projectID)
 	require.Len(t, got, len(rows)+1)
 	require.Equal(t, existingSize, got[existing])
 	for _, row := range rows {
 		require.Equal(t, row.SizeBytes, got[row.Hash])
 	}
-}
 
-func TestPushRepositorySQLite_LinkProjectChunksManyBatches(t *testing.T) {
-	ctx := context.Background()
-	repo, _, db, projectID, _ := newPushTestEnv(t)
-
-	rows := confirmRows(2300, "link")
-	require.NoError(t, repo.InsertChunksIfNotExist(ctx, rows))
-	hashes := make([]domain.Hash, 0, len(rows)+2)
-	for _, row := range rows {
-		hashes = append(hashes, row.Hash)
-	}
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hashes[5]))
-	hashes = append(hashes, hashes[0], hashes[1])
-	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, hashes), "duplicates and existing links are skipped")
-
-	var links int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM project_chunk_uploads WHERE project_id = ?`, projectID.Int64()).Scan(&links))
-	require.Equal(t, len(rows), links)
-
-	sizes, err := repo.LinkedProjectChunkSizes(ctx, projectID, hashes[:len(rows)])
-	require.NoError(t, err)
-	require.Len(t, sizes, len(rows))
-}
-
-func TestPushRepositorySQLite_KnownChunks(t *testing.T) {
-	ctx := context.Background()
-	repo, _, _, projectID, _ := newPushTestEnv(t)
-
-	rows := confirmRows(1200, "known")
-	require.NoError(t, repo.InsertChunksIfNotExist(ctx, rows[:700]))
-	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{rows[0].Hash}))
-
-	hashes := make([]domain.Hash, 0, len(rows))
-	for _, row := range rows {
-		hashes = append(hashes, row.Hash)
-	}
-	known, err := repo.KnownChunks(ctx, hashes)
-	require.NoError(t, err)
-	require.Len(t, known, 700, "rows count whatever project they are linked to")
-	for _, row := range rows[:700] {
-		require.Contains(t, known, row.Hash)
-	}
-
-	empty, err := repo.KnownChunks(ctx, nil)
-	require.NoError(t, err)
-	require.Empty(t, empty)
+	var markers int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM project_chunk_uploads WHERE project_id = ?`, projectID.Int64()).Scan(&markers))
+	require.Equal(t, len(rows)+1, markers, "one upload marker per row")
 }
 
 func TestPushRepositorySQLite_ConfirmWritesJoinTheContextTransaction(t *testing.T) {
@@ -122,20 +79,19 @@ func TestPushRepositorySQLite_ConfirmWritesJoinTheContextTransaction(t *testing.
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	txCtx := dbtx.WithTx(ctx, tx)
-	require.NoError(t, repo.InsertChunksIfNotExist(txCtx, rows))
-	require.NoError(t, repo.LinkProjectChunks(txCtx, projectID, []domain.Hash{rows[0].Hash}))
-	known, err := repo.KnownChunks(txCtx, []domain.Hash{rows[0].Hash})
+	require.NoError(t, repo.InsertChunksIfNotExist(txCtx, projectID, rows))
+	sizes, err := repo.ProjectChunkSizes(txCtx, projectID, []domain.Hash{rows[0].Hash})
 	require.NoError(t, err)
-	require.Len(t, known, 1, "the transaction sees its own rows")
+	require.Len(t, sizes, 1, "the transaction sees its own rows")
 	require.NoError(t, tx.Rollback())
 
-	require.Empty(t, chunkSizes(t, db), "rolled back with the caller's transaction")
-	links, err := sqlcSqlite.New(db).ProjectChunkLinkedSizes(ctx, sqlcSqlite.ProjectChunkLinkedSizesParams{
-		ProjectID: projectID.Int64(),
-		Hashes:    [][]byte{rows[0].Hash.Bytes()},
-	})
+	require.Empty(t, chunkSizes(t, db, projectID), "rolled back with the caller's transaction")
+	sizes, err = repo.ProjectChunkSizes(ctx, projectID, []domain.Hash{rows[0].Hash})
 	require.NoError(t, err)
-	require.Empty(t, links)
+	require.Empty(t, sizes)
+	var markers int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM project_chunk_uploads`).Scan(&markers))
+	require.Zero(t, markers)
 }
 
 func TestPushRepositorySQLite_ConfirmWritesReportErrors(t *testing.T) {
@@ -143,8 +99,7 @@ func TestPushRepositorySQLite_ConfirmWritesReportErrors(t *testing.T) {
 	repo, _, db, projectID, _ := newPushTestEnv(t)
 	require.NoError(t, db.Close())
 
-	require.Error(t, repo.InsertChunksIfNotExist(ctx, confirmRows(1, "closed")))
-	require.Error(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{chunker.Sum([]byte("closed"))}))
-	_, err := repo.KnownChunks(ctx, []domain.Hash{chunker.Sum([]byte("closed"))})
+	require.Error(t, repo.InsertChunksIfNotExist(ctx, projectID, confirmRows(1, "closed")))
+	_, err := repo.ProjectChunkSizes(ctx, projectID, []domain.Hash{chunker.Sum([]byte("closed"))})
 	require.Error(t, err)
 }

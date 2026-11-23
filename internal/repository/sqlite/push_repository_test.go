@@ -33,24 +33,6 @@ func chunkRow(t *testing.T, data string) (domain.Hash, int64, domain.Hash) {
 	return sum, int64(len(data)), fileHash
 }
 
-func TestPushRepositorySQLite_HasChunk(t *testing.T) {
-	ctx := context.Background()
-	repo, _, _, _, _ := newPushTestEnv(t)
-
-	present, size, _ := chunkRow(t, "present")
-	absent, _, _ := chunkRow(t, "absent")
-
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, present, size))
-
-	ok, err := repo.HasChunk(ctx, present)
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	ok, err = repo.HasChunk(ctx, absent)
-	require.NoError(t, err)
-	require.False(t, ok)
-}
-
 func TestPushRepositorySQLite_FirstPush(t *testing.T) {
 	ctx := context.Background()
 	repo, branchRepo, _, projectID, branchID := newPushTestEnv(t)
@@ -58,8 +40,7 @@ func TestPushRepositorySQLite_FirstPush(t *testing.T) {
 	chunkHash, size, fileHash := chunkRow(t, "hello world")
 	commitID := snow.ID(12345)
 
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, chunkHash, size))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, chunkHash))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: chunkHash, SizeBytes: size}}))
 	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
@@ -117,10 +98,8 @@ func TestPushRepositorySQLite_IncrementalPushKeepsOldCommitReadable(t *testing.T
 
 	ch1, sz1, fh1 := chunkRow(t, "alpha")
 	ch2, sz2, fh2 := chunkRow(t, "beta")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch1, sz1))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch1))
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch2, sz2))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch2))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch1, SizeBytes: sz1}}))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch2, SizeBytes: sz2}}))
 
 	d1Hash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh1}}, nil)
 	d1Hash2 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh2}}, nil)
@@ -192,8 +171,7 @@ func TestPushRepositorySQLite_RemoveAllFiles(t *testing.T) {
 	repo, branchRepo, _, projectID, branchID := newPushTestEnv(t)
 
 	ch, sz, fh := chunkRow(t, "gone")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	rootHash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "gone.txt", Mode: 0o644, Hash: fh}}, nil)
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
@@ -246,8 +224,7 @@ func TestPushRepositorySQLite_MergeCommitWithParent2(t *testing.T) {
 	repo, branchRepo, _, projectID, branchID := newPushTestEnv(t)
 
 	ch, sz, fh := chunkRow(t, "data")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	rootHashA := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
 	rootHashB := treehash.TreeHash([]treehash.FileEntry{{Name: "b.txt", Mode: 0o644, Hash: fh}}, nil)
 
@@ -334,64 +311,74 @@ func getTreeChildByName(t *testing.T, repo *BranchRepository, parentID int64, na
 	return n
 }
 
-func TestPushRepositorySQLite_ChunkLinks(t *testing.T) {
+func TestPushRepositorySQLite_ChunkRowsArePerProject(t *testing.T) {
 	ctx := context.Background()
-	repo, _, _, projectID, _ := newPushTestEnv(t)
+	repo, _, db, projectID, _ := newPushTestEnv(t)
+	otherProject := seedProject(t, sqlcSqlite.New(db), 1, "second")
 
-	linked, linkedSize, _ := chunkRow(t, "linked")
+	recorded, recordedSize, _ := chunkRow(t, "recorded")
 	other, otherSize, _ := chunkRow(t, "other")
-	rowless, _, _ := chunkRow(t, "rowless")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, linked, linkedSize))
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, other, otherSize))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked), "linking twice is idempotent")
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, rowless))
+	missing, _, _ := chunkRow(t, "missing")
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: recorded, SizeBytes: recordedSize}}))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: recorded, SizeBytes: recordedSize}}), "recording twice is idempotent")
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, otherProject, []usecase.ChunkRef{{Hash: other, SizeBytes: otherSize}, {Hash: recorded, SizeBytes: recordedSize}}))
 
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{linked, other, rowless})
+	got, err := repo.ProjectChunkSizes(ctx, projectID, []domain.Hash{recorded, other, missing})
 	require.NoError(t, err)
-	require.Equal(t, map[domain.Hash]int64{linked: linkedSize}, got)
+	require.Equal(t, map[domain.Hash]int64{recorded: recordedSize}, got)
 
-	got, err = repo.LinkedProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{linked})
+	got, err = repo.ProjectChunkSizes(ctx, otherProject, []domain.Hash{recorded, other})
 	require.NoError(t, err)
-	require.Empty(t, got, "links are scoped to their project")
+	require.Equal(t, map[domain.Hash]int64{recorded: recordedSize, other: otherSize}, got, "the same hash in another project is its own row")
 
-	got, err = repo.LinkedProjectChunkSizes(ctx, projectID, nil)
+	var rows, markers int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE hash = ?`, recorded.Bytes()).Scan(&rows))
+	require.Equal(t, 2, rows)
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM project_chunk_uploads WHERE hash = ?`, recorded.Bytes()).Scan(&markers))
+	require.Equal(t, 2, markers, "every row gets its project's upload marker")
+
+	got, err = repo.ProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{recorded})
+	require.NoError(t, err)
+	require.Empty(t, got, "rows are scoped to their project")
+
+	got, err = repo.ProjectChunkSizes(ctx, projectID, nil)
 	require.NoError(t, err)
 	require.Empty(t, got)
 }
 
-func TestPushRepositorySQLite_LinkedProjectChunkSizesBatches(t *testing.T) {
+func TestPushRepositorySQLite_ProjectChunkSizesBatches(t *testing.T) {
 	ctx := context.Background()
 	repo, _, _, projectID, _ := newPushTestEnv(t)
 
-	total := 2*linkedChunkBatch + 10
+	total := 2*1000 + 10
 	hashes := make([]domain.Hash, 0, total+1)
 	want := make(map[domain.Hash]int64, total)
+	var rows []usecase.ChunkRef
 	for i := 0; i < total; i++ {
 		hash, size, _ := chunkRow(t, fmt.Sprintf("chunk-%d-%s", i, strings.Repeat("x", i%7)))
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
+		hashes = append(hashes, hash)
 		if i%5 == 0 {
-			hashes = append(hashes, hash)
 			continue
 		}
-		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
-		hashes = append(hashes, hash)
+		rows = append(rows, usecase.ChunkRef{Hash: hash, SizeBytes: size})
 		want[hash] = size
 	}
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, rows))
 	unknown, _, _ := chunkRow(t, "unknown")
 	hashes = append(hashes, unknown)
 
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, hashes)
+	got, err := repo.ProjectChunkSizes(ctx, projectID, hashes)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
 }
 
 func TestPushRepositorySQLite_ApplyPushRejectsUnlinkedChunk(t *testing.T) {
 	ctx := context.Background()
-	repo, _, _, projectID, branchID := newPushTestEnv(t)
+	repo, _, db, projectID, branchID := newPushTestEnv(t)
 
 	chunkHash, size, fileHash := chunkRow(t, "someone else's content")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, chunkHash, size))
+	other := seedProject(t, sqlcSqlite.New(db), 1, "owner-of-the-chunk")
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, other, []usecase.ChunkRef{{Hash: chunkHash, SizeBytes: size}}))
 
 	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
@@ -408,23 +395,6 @@ func TestPushRepositorySQLite_ApplyPushRejectsUnlinkedChunk(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing chunk data")
-}
-
-func TestPushRepositorySQLite_LinkProjectChunksBatch(t *testing.T) {
-	ctx := context.Background()
-	repo, _, _, projectID, _ := newPushTestEnv(t)
-
-	first, firstSize, _ := chunkRow(t, "first")
-	second, secondSize, _ := chunkRow(t, "second")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, first, firstSize))
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, second, secondSize))
-	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, nil), "an empty batch is a no-op")
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, first))
-	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}), "already linked hashes are skipped")
-
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{first, second})
-	require.NoError(t, err)
-	require.Equal(t, map[domain.Hash]int64{first: firstSize, second: secondSize}, got)
 }
 
 func TestPushRepositorySQLite_IdenticalRootCommitInTwoProjects(t *testing.T) {

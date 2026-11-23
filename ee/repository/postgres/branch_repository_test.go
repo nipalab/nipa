@@ -390,7 +390,8 @@ func seedChunk(t *testing.T, db *sql.DB, fileID int64, index int) int64 {
 
 	var chunkID int64
 	err := db.QueryRowContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2) RETURNING id`,
+		// The tree readers join chunks by id only; any project owns it.
+		`INSERT INTO chunks (project_id, hash, size_bytes) VALUES (1, $1, $2) RETURNING id`,
 		testHashBytes(), 100,
 	).Scan(&chunkID)
 	require.NoError(t, err)

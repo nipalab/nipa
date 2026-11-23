@@ -942,14 +942,13 @@ func (x *ChunkRef) GetSizeBytes() int64 {
 }
 
 type PresignedChunkUrl struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Hash           string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                                                                                 // hex-encoded BLAKE3 hash of data
-	Url            string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty for an upload when the content already exists and only a proof is needed
-	AlreadyStored  bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                         // the project is already linked to the chunk; skip the transfer
-	Headers        map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // upload URLs only: request headers the PUT must carry (they are part of the signature)
-	ProofChallenge string                 `protobuf:"bytes,5,opt,name=proof_challenge,json=proofChallenge,proto3" json:"proof_challenge,omitempty"`                                       // answer it in ConfirmChunkUploads to link the chunk to the project; unset when already_stored
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                                                                                 // hex-encoded BLAKE3 hash of data
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty only when already_stored
+	AlreadyStored bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                         // the project already holds the chunk; skip the transfer
+	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // upload URLs only: request headers the PUT must carry (they are part of the signature)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PresignedChunkUrl) Reset() {
@@ -1010,19 +1009,13 @@ func (x *PresignedChunkUrl) GetHeaders() map[string]string {
 	return nil
 }
 
-func (x *PresignedChunkUrl) GetProofChallenge() string {
-	if x != nil {
-		return x.ProofChallenge
-	}
-	return ""
-}
-
 type GetChunkUploadUrlsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	Chunks        []*ChunkRef            `protobuf:"bytes,2,rep,name=chunks,proto3" json:"chunks,omitempty"`
 	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	ChunkProtocol uint32                 `protobuf:"varint,5,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1085,10 +1078,18 @@ func (x *GetChunkUploadUrlsRequest) GetPageToken() string {
 	return ""
 }
 
+func (x *GetChunkUploadUrlsRequest) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
+}
+
 type GetChunkUploadUrlsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Urls          []*PresignedChunkUrl   `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	ChunkProtocol uint32                 `protobuf:"varint,3,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1137,6 +1138,13 @@ func (x *GetChunkUploadUrlsResponse) GetNextPageToken() string {
 	return ""
 }
 
+func (x *GetChunkUploadUrlsResponse) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
+}
+
 type GetChunkDownloadUrlsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
@@ -1145,6 +1153,7 @@ type GetChunkDownloadUrlsRequest struct {
 	Hashes        []string               `protobuf:"bytes,4,rep,name=hashes,proto3" json:"hashes,omitempty"`                        // hex-encoded BLAKE3 hashes
 	PageSize      int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	ChunkProtocol uint32                 `protobuf:"varint,7,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1221,10 +1230,18 @@ func (x *GetChunkDownloadUrlsRequest) GetPageToken() string {
 	return ""
 }
 
+func (x *GetChunkDownloadUrlsRequest) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
+}
+
 type GetChunkDownloadUrlsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Urls          []*PresignedChunkUrl   `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	ChunkProtocol uint32                 `protobuf:"varint,3,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1273,11 +1290,19 @@ func (x *GetChunkDownloadUrlsResponse) GetNextPageToken() string {
 	return ""
 }
 
+func (x *GetChunkDownloadUrlsResponse) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
+}
+
 type ConfirmChunkUploadsRequest struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Context       *ProjectContext         `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Hashes        []string                `protobuf:"bytes,2,rep,name=hashes,proto3" json:"hashes,omitempty"` // hex-encoded BLAKE3 hashes
-	Proofs        []*ChunkPossessionProof `protobuf:"bytes,3,rep,name=proofs,proto3" json:"proofs,omitempty"` // required for every hash the project has not been linked to yet
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Hashes        []string               `protobuf:"bytes,2,rep,name=hashes,proto3" json:"hashes,omitempty"`     // hex-encoded BLAKE3 hashes of every chunk the client uploaded
+	Receipts      []*ChunkReceipt        `protobuf:"bytes,4,rep,name=receipts,proto3" json:"receipts,omitempty"` // receipts of proxied uploads; a valid one spares the server the read-back
+	ChunkProtocol uint32                 `protobuf:"varint,5,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1326,41 +1351,44 @@ func (x *ConfirmChunkUploadsRequest) GetHashes() []string {
 	return nil
 }
 
-func (x *ConfirmChunkUploadsRequest) GetProofs() []*ChunkPossessionProof {
+func (x *ConfirmChunkUploadsRequest) GetReceipts() []*ChunkReceipt {
 	if x != nil {
-		return x.Proofs
+		return x.Receipts
 	}
 	return nil
 }
 
-// ChunkPossessionProof shows that the caller holds a chunk's bytes: proof is the
-// hex BLAKE3 of the challenge string followed by the stored chunk bytes.
-type ChunkPossessionProof struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	Hash      string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`           // hex-encoded BLAKE3 hash of the chunk
-	Challenge string                 `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"` // proof_challenge issued for this project and hash
-	Proof     string                 `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`         // hex-encoded BLAKE3(challenge || bytes)
-	// X-Nipa-Chunk-Receipt the server returned for a proxied upload of this
-	// chunk; a valid receipt lets confirm skip the read-back. Optional.
-	Receipt       string `protobuf:"bytes,4,opt,name=receipt,proto3" json:"receipt,omitempty"`
+func (x *ConfirmChunkUploadsRequest) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
+}
+
+// ChunkReceipt is the X-Nipa-Chunk-Receipt a proxied upload of one chunk
+// returned: a signed record of the size the server stored for this project.
+type ChunkReceipt struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"` // hex-encoded BLAKE3 hash of the chunk
+	Receipt       string                 `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ChunkPossessionProof) Reset() {
-	*x = ChunkPossessionProof{}
+func (x *ChunkReceipt) Reset() {
+	*x = ChunkReceipt{}
 	mi := &file_internal_grpc_proto_server_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ChunkPossessionProof) String() string {
+func (x *ChunkReceipt) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ChunkPossessionProof) ProtoMessage() {}
+func (*ChunkReceipt) ProtoMessage() {}
 
-func (x *ChunkPossessionProof) ProtoReflect() protoreflect.Message {
+func (x *ChunkReceipt) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_grpc_proto_server_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1372,33 +1400,19 @@ func (x *ChunkPossessionProof) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ChunkPossessionProof.ProtoReflect.Descriptor instead.
-func (*ChunkPossessionProof) Descriptor() ([]byte, []int) {
+// Deprecated: Use ChunkReceipt.ProtoReflect.Descriptor instead.
+func (*ChunkReceipt) Descriptor() ([]byte, []int) {
 	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *ChunkPossessionProof) GetHash() string {
+func (x *ChunkReceipt) GetHash() string {
 	if x != nil {
 		return x.Hash
 	}
 	return ""
 }
 
-func (x *ChunkPossessionProof) GetChallenge() string {
-	if x != nil {
-		return x.Challenge
-	}
-	return ""
-}
-
-func (x *ChunkPossessionProof) GetProof() string {
-	if x != nil {
-		return x.Proof
-	}
-	return ""
-}
-
-func (x *ChunkPossessionProof) GetReceipt() string {
+func (x *ChunkReceipt) GetReceipt() string {
 	if x != nil {
 		return x.Receipt
 	}
@@ -1408,6 +1422,7 @@ func (x *ChunkPossessionProof) GetReceipt() string {
 type ConfirmChunkUploadsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MissingHashes []string               `protobuf:"bytes,1,rep,name=missing_hashes,json=missingHashes,proto3" json:"missing_hashes,omitempty"`
+	ChunkProtocol uint32                 `protobuf:"varint,2,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1447,6 +1462,13 @@ func (x *ConfirmChunkUploadsResponse) GetMissingHashes() []string {
 		return x.MissingHashes
 	}
 	return nil
+}
+
+func (x *ConfirmChunkUploadsResponse) GetChunkProtocol() uint32 {
+	if x != nil {
+		return x.ChunkProtocol
+	}
+	return 0
 }
 
 type PushRequest struct {
@@ -13413,25 +13435,26 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\bChunkRef\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\x86\x02\n" +
+	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\xf4\x01\n" +
 	"\x11PresignedChunkUrl\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12%\n" +
 	"\x0ealready_stored\x18\x03 \x01(\bR\ralreadyStored\x12?\n" +
-	"\aheaders\x18\x04 \x03(\v2%.greet.PresignedChunkUrl.HeadersEntryR\aheaders\x12'\n" +
-	"\x0fproof_challenge\x18\x05 \x01(\tR\x0eproofChallenge\x1a:\n" +
+	"\aheaders\x18\x04 \x03(\v2%.greet.PresignedChunkUrl.HeadersEntryR\aheaders\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x0fproof_challenge\"\xd8\x01\n" +
 	"\x19GetChunkUploadUrlsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12'\n" +
 	"\x06chunks\x18\x02 \x03(\v2\x0f.greet.ChunkRefR\x06chunks\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageToken\"r\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12%\n" +
+	"\x0echunk_protocol\x18\x05 \x01(\rR\rchunkProtocol\"\x99\x01\n" +
 	"\x1aGetChunkUploadUrlsResponse\x12,\n" +
 	"\x04urls\x18\x01 \x03(\v2\x18.greet.PresignedChunkUrlR\x04urls\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xd7\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12%\n" +
+	"\x0echunk_protocol\x18\x03 \x01(\rR\rchunkProtocol\"\xfe\x01\n" +
 	"\x1bGetChunkDownloadUrlsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x1d\n" +
 	"\n" +
@@ -13440,21 +13463,23 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x06hashes\x18\x04 \x03(\tR\x06hashes\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x06 \x01(\tR\tpageToken\"t\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\x12%\n" +
+	"\x0echunk_protocol\x18\a \x01(\rR\rchunkProtocol\"\x9b\x01\n" +
 	"\x1cGetChunkDownloadUrlsResponse\x12,\n" +
 	"\x04urls\x18\x01 \x03(\v2\x18.greet.PresignedChunkUrlR\x04urls\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9a\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12%\n" +
+	"\x0echunk_protocol\x18\x03 \x01(\rR\rchunkProtocol\"\xcb\x01\n" +
 	"\x1aConfirmChunkUploadsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
-	"\x06hashes\x18\x02 \x03(\tR\x06hashes\x123\n" +
-	"\x06proofs\x18\x03 \x03(\v2\x1b.greet.ChunkPossessionProofR\x06proofs\"x\n" +
-	"\x14ChunkPossessionProof\x12\x12\n" +
-	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1c\n" +
-	"\tchallenge\x18\x02 \x01(\tR\tchallenge\x12\x14\n" +
-	"\x05proof\x18\x03 \x01(\tR\x05proof\x12\x18\n" +
-	"\areceipt\x18\x04 \x01(\tR\areceipt\"D\n" +
+	"\x06hashes\x18\x02 \x03(\tR\x06hashes\x12/\n" +
+	"\breceipts\x18\x04 \x03(\v2\x13.greet.ChunkReceiptR\breceipts\x12%\n" +
+	"\x0echunk_protocol\x18\x05 \x01(\rR\rchunkProtocolJ\x04\b\x03\x10\x04R\x06proofs\"<\n" +
+	"\fChunkReceipt\x12\x12\n" +
+	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x18\n" +
+	"\areceipt\x18\x02 \x01(\tR\areceipt\"k\n" +
 	"\x1bConfirmChunkUploadsResponse\x12%\n" +
-	"\x0emissing_hashes\x18\x01 \x03(\tR\rmissingHashes\"\xef\x02\n" +
+	"\x0emissing_hashes\x18\x01 \x03(\tR\rmissingHashes\x12%\n" +
+	"\x0echunk_protocol\x18\x02 \x01(\rR\rchunkProtocol\"\xef\x02\n" +
 	"\vPushRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12$\n" +
@@ -14517,7 +14542,7 @@ var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(*GetChunkDownloadUrlsRequest)(nil),             // 16: greet.GetChunkDownloadUrlsRequest
 	(*GetChunkDownloadUrlsResponse)(nil),            // 17: greet.GetChunkDownloadUrlsResponse
 	(*ConfirmChunkUploadsRequest)(nil),              // 18: greet.ConfirmChunkUploadsRequest
-	(*ChunkPossessionProof)(nil),                    // 19: greet.ChunkPossessionProof
+	(*ChunkReceipt)(nil),                            // 19: greet.ChunkReceipt
 	(*ConfirmChunkUploadsResponse)(nil),             // 20: greet.ConfirmChunkUploadsResponse
 	(*PushRequest)(nil),                             // 21: greet.PushRequest
 	(*PushStreamHeader)(nil),                        // 22: greet.PushStreamHeader
@@ -14736,7 +14761,7 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,   // 16: greet.GetChunkDownloadUrlsRequest.context:type_name -> greet.ProjectContext
 	13,  // 17: greet.GetChunkDownloadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
 	1,   // 18: greet.ConfirmChunkUploadsRequest.context:type_name -> greet.ProjectContext
-	19,  // 19: greet.ConfirmChunkUploadsRequest.proofs:type_name -> greet.ChunkPossessionProof
+	19,  // 19: greet.ConfirmChunkUploadsRequest.receipts:type_name -> greet.ChunkReceipt
 	1,   // 20: greet.PushRequest.context:type_name -> greet.ProjectContext
 	11,  // 21: greet.PushRequest.files:type_name -> greet.PushFile
 	1,   // 22: greet.PushStreamHeader.context:type_name -> greet.ProjectContext

@@ -11,6 +11,7 @@ import (
 	"github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -38,7 +39,7 @@ func TestChunkGCSetup(t *testing.T) {
 
 type gcObjects struct{ storage.ChunkStore }
 
-func (gcObjects) DeleteChunk(context.Context, domain.Hash) error { return nil }
+func (gcObjects) DeleteChunk(context.Context, snow.ID, domain.Hash) error { return nil }
 func (gcObjects) ListChunks(context.Context, func(s3.StoredChunk) error) error {
 	return nil
 }

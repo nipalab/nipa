@@ -36,6 +36,17 @@ func (q *Queries) DetachProjectCommitParents(ctx context.Context, arg DetachProj
 	return result.RowsAffected()
 }
 
+const isProjectOnOwnStorage = `-- name: IsProjectOnOwnStorage :one
+SELECT EXISTS (SELECT 1 FROM project_storage WHERE project_id = $1)::BOOLEAN AS external
+`
+
+func (q *Queries) IsProjectOnOwnStorage(ctx context.Context, projectID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isProjectOnOwnStorage, projectID)
+	var external bool
+	err := row.Scan(&external)
+	return external, err
+}
+
 const listPurgeableProjects = `-- name: ListPurgeableProjects :many
 SELECT id FROM projects
 WHERE deleted = true AND deleted_at < $1::timestamptz
@@ -115,23 +126,24 @@ func (q *Queries) PurgeProjectBranches(ctx context.Context, projectID int64) (in
 	return result.RowsAffected()
 }
 
-const purgeProjectChunkLinks = `-- name: PurgeProjectChunkLinks :execrows
-DELETE FROM project_chunks d
-WHERE d.project_id = $1
-  AND d.chunk_id IN (
-      SELECT pc.chunk_id FROM project_chunks pc
-      WHERE pc.project_id = $1
-      LIMIT $2::bigint
-  )
+const purgeProjectChunkRows = `-- name: PurgeProjectChunkRows :execrows
+DELETE FROM chunks d
+WHERE d.id IN (
+    SELECT c.id FROM chunks c
+    WHERE c.project_id = $1
+      AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
+    ORDER BY c.id
+    LIMIT $2::bigint
+)
 `
 
-type PurgeProjectChunkLinksParams struct {
+type PurgeProjectChunkRowsParams struct {
 	ProjectID int64 `json:"project_id"`
 	Limit     int64 `json:"limit"`
 }
 
-func (q *Queries) PurgeProjectChunkLinks(ctx context.Context, arg PurgeProjectChunkLinksParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, purgeProjectChunkLinks, arg.ProjectID, arg.Limit)
+func (q *Queries) PurgeProjectChunkRows(ctx context.Context, arg PurgeProjectChunkRowsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeProjectChunkRows, arg.ProjectID, arg.Limit)
 	if err != nil {
 		return 0, err
 	}

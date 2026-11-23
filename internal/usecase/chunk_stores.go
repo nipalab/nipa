@@ -61,5 +61,5 @@ func (r *ProjectChunkReader) Get(ctx context.Context, projectID snow.ID, hash do
 	if err != nil {
 		return nil, err
 	}
-	return resolved.Store.Get(ctx, hash)
+	return resolved.Store.Get(ctx, projectID, hash)
 }

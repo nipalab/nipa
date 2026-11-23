@@ -28,6 +28,7 @@ import (
 	"github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 var (
@@ -95,12 +96,18 @@ func newTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// objectKey is one object in the bucket: chunks are keyed per project.
+type objectKey struct {
+	project snow.ID
+	hash    domain.Hash
+}
+
 // memStore is an in-memory bucket. DeleteChunk can be held on a channel to
 // keep a sweep inside its transaction.
 type memStore struct {
 	mu       sync.Mutex
-	objects  map[domain.Hash]s3.StoredChunk
-	deleted  []domain.Hash
+	objects  map[objectKey]s3.StoredChunk
+	deleted  []objectKey
 	hold     chan struct{}
 	entered  chan struct{}
 	failDel  error
@@ -108,23 +115,23 @@ type memStore struct {
 }
 
 func newMemStore() *memStore {
-	return &memStore{objects: map[domain.Hash]s3.StoredChunk{}}
+	return &memStore{objects: map[objectKey]s3.StoredChunk{}}
 }
 
-func (m *memStore) put(hash domain.Hash, size int64, modified time.Time) {
+func (m *memStore) put(project snow.ID, hash domain.Hash, size int64, modified time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.objects[hash] = s3.StoredChunk{Hash: hash, SizeBytes: size, LastModified: modified}
+	m.objects[objectKey{project, hash}] = s3.StoredChunk{ProjectID: project, Hash: hash, SizeBytes: size, LastModified: modified}
 }
 
-func (m *memStore) has(hash domain.Hash) bool {
+func (m *memStore) has(project snow.ID, hash domain.Hash) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.objects[hash]
+	_, ok := m.objects[objectKey{project, hash}]
 	return ok
 }
 
-func (m *memStore) DeleteChunk(_ context.Context, hash domain.Hash) error {
+func (m *memStore) DeleteChunk(_ context.Context, project snow.ID, hash domain.Hash) error {
 	if m.entered != nil {
 		m.entered <- struct{}{}
 	}
@@ -136,8 +143,8 @@ func (m *memStore) DeleteChunk(_ context.Context, hash domain.Hash) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.objects, hash)
-	m.deleted = append(m.deleted, hash)
+	delete(m.objects, objectKey{project, hash})
+	m.deleted = append(m.deleted, objectKey{project, hash})
 	return nil
 }
 
@@ -159,6 +166,13 @@ func (m *memStore) ListChunks(_ context.Context, fn func(s3.StoredChunk) error) 
 	return nil
 }
 
+// defaultProject is the project the initial migration seeds; secondProject
+// is created per test.
+const (
+	defaultProject snow.ID = 1
+	secondProject  snow.ID = 2
+)
+
 type gcSuite struct {
 	suite.Suite
 	db    *sql.DB
@@ -174,6 +188,7 @@ func (s *gcSuite) SetupTest() {
 	s.db = newTestDB(s.T())
 	s.store = newMemStore()
 	s.now = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	s.exec(`INSERT INTO projects (id, org_id, slug, name) VALUES ($1, 1, 'second', 'Second')`, secondProject.Int64())
 }
 
 func (s *gcSuite) exec(query string, args ...any) {
@@ -195,19 +210,40 @@ func newHash() domain.Hash {
 	return hash
 }
 
-// chunk records a chunk row and its object; it returns the hash and row id.
+// chunk records a chunk row of the default project and its object; it
+// returns the hash and row id.
 func (s *gcSuite) chunk(size int64) (domain.Hash, int64) {
 	s.T().Helper()
 	hash := newHash()
+	return hash, s.chunkIn(defaultProject, hash, size)
+}
+
+// chunkIn records a chunk row of project with its object.
+func (s *gcSuite) chunkIn(project snow.ID, hash domain.Hash, size int64) int64 {
+	s.T().Helper()
 	var id int64
 	s.Require().NoError(s.db.QueryRowContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2) RETURNING id`, hash[:], size).Scan(&id))
-	s.store.put(hash, size, s.now.Add(-48*time.Hour))
-	return hash, id
+		`INSERT INTO chunks (project_id, hash, size_bytes) VALUES ($1, $2, $3) RETURNING id`, project.Int64(), hash[:], size).Scan(&id))
+	s.store.put(project, hash, size, s.now.Add(-48*time.Hour))
+	return id
+}
+
+// reference makes a file of a tree reference the chunk row.
+func (s *gcSuite) reference(chunkID int64) {
+	s.T().Helper()
+	ctx := context.Background()
+	var root, fileID int64
+	s.Require().NoError(s.db.QueryRowContext(ctx, `INSERT INTO tree_nodes (hash, name) VALUES ($1, '') RETURNING id`, newHash().Bytes()).Scan(&root))
+	s.Require().NoError(s.db.QueryRowContext(ctx, `INSERT INTO files (name, tree_id, hash, size_bytes) VALUES ('f', $1, $2, 10) RETURNING id`, root, newHash().Bytes()).Scan(&fileID))
+	s.exec(`INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES ($1, $2, 0)`, fileID, chunkID)
 }
 
 func (s *gcSuite) hasRow(hash domain.Hash) bool {
-	return s.count(`SELECT count(*) FROM chunks WHERE hash = $1`, hash[:]) == 1
+	return s.hasRowIn(defaultProject, hash)
+}
+
+func (s *gcSuite) hasRowIn(project snow.ID, hash domain.Hash) bool {
+	return s.count(`SELECT count(*) FROM chunks WHERE project_id = $1 AND hash = $2`, project.Int64(), hash[:]) == 1
 }
 
 func (s *gcSuite) collector(mode Mode, at time.Time) *Collector {
@@ -221,15 +257,9 @@ func (s *gcSuite) collector(mode Mode, at time.Time) *Collector {
 func (s *gcSuite) TestMarksOnlyUnreferencedChunksAndSweepsAfterTheGrace() {
 	ctx := context.Background()
 	inFile, inFileID := s.chunk(10)
-	root := int64(0)
-	s.Require().NoError(s.db.QueryRowContext(ctx, `INSERT INTO tree_nodes (hash, name) VALUES ($1, '') RETURNING id`, newHash().Bytes()).Scan(&root))
-	var fileID int64
-	s.Require().NoError(s.db.QueryRowContext(ctx, `INSERT INTO files (name, tree_id, hash, size_bytes) VALUES ('f', $1, $2, 10) RETURNING id`, root, newHash().Bytes()).Scan(&fileID))
-	s.exec(`INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES ($1, $2, 0)`, fileID, inFileID)
+	s.reference(inFileID)
 	uploaded, _ := s.chunk(20)
 	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) VALUES (1, $1)`, uploaded[:])
-	billed, billedID := s.chunk(30)
-	s.exec(`INSERT INTO project_chunks (project_id, chunk_id, size_bytes) VALUES (1, $1, 30)`, billedID)
 	garbage, _ := s.chunk(40)
 	metrics := obs.NewMetrics()
 
@@ -250,11 +280,44 @@ func (s *gcSuite) TestMarksOnlyUnreferencedChunksAndSweepsAfterTheGrace() {
 	s.Equal(int64(1), report.Deleted)
 	s.Equal(int64(40), report.DeletedBytes)
 	s.False(s.hasRow(garbage))
-	s.False(s.store.has(garbage))
-	for _, kept := range []domain.Hash{inFile, uploaded, billed} {
+	s.False(s.store.has(defaultProject, garbage))
+	for _, kept := range []domain.Hash{inFile, uploaded} {
 		s.True(s.hasRow(kept))
-		s.True(s.store.has(kept))
+		s.True(s.store.has(defaultProject, kept))
 	}
+}
+
+// TestReferencesAreCheckedWithinTheProject stores the same hash in two
+// projects: a file of one project and an upload marker of one project only
+// keep that project's row; the other project's copy is garbage and goes,
+// object included, while the first copy stays.
+func (s *gcSuite) TestReferencesAreCheckedWithinTheProject() {
+	ctx := context.Background()
+	referenced := newHash()
+	referencedID := s.chunkIn(defaultProject, referenced, 10)
+	s.reference(referencedID)
+	s.chunkIn(secondProject, referenced, 10)
+	marked := newHash()
+	s.chunkIn(defaultProject, marked, 20)
+	s.chunkIn(secondProject, marked, 20)
+	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) VALUES ($1, $2)`, secondProject.Int64(), marked[:])
+
+	report, err := s.collector(ModeOn, s.now).Run(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(2), report.Marked, "the second project's referenced hash and the first project's marker hash")
+
+	report, err = s.collector(ModeOn, s.now.Add(25*time.Hour)).Run(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(2), report.Deleted)
+	s.True(s.hasRowIn(defaultProject, referenced))
+	s.True(s.store.has(defaultProject, referenced))
+	s.False(s.hasRowIn(secondProject, referenced))
+	s.False(s.store.has(secondProject, referenced), "only the unreferenced project's object is deleted")
+	s.True(s.hasRowIn(secondProject, marked))
+	s.True(s.store.has(secondProject, marked))
+	s.False(s.hasRowIn(defaultProject, marked))
+	s.False(s.store.has(defaultProject, marked))
+	s.ElementsMatch([]objectKey{{secondProject, referenced}, {defaultProject, marked}}, s.store.deleted)
 }
 
 func (s *gcSuite) TestReferencedAgainIsNotSwept() {
@@ -264,19 +327,29 @@ func (s *gcSuite) TestReferencedAgainIsNotSwept() {
 	s.Require().NoError(err)
 	s.Equal(1, s.count(`SELECT count(*) FROM chunks WHERE gc_marked_at IS NOT NULL`))
 
-	// A project links the chunk without the guard (the mark stays stale).
+	// The project records the chunk without the guard (the mark stays stale).
 	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) VALUES (1, $1)`, hash[:])
 	report, err := s.collector(ModeOn, s.now.Add(48*time.Hour)).Run(ctx)
 	s.Require().NoError(err)
 	s.Zero(report.Deleted, "the sweep re-checks references")
-	s.True(s.store.has(hash))
+	s.True(s.store.has(defaultProject, hash))
+}
+
+func (s *gcSuite) TestAnotherProjectsMarkerDoesNotProtect() {
+	ctx := context.Background()
+	hash, _ := s.chunk(10)
+	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) VALUES ($1, $2)`, secondProject.Int64(), hash[:])
+
+	report, err := s.collector(ModeOn, s.now).Run(ctx)
+	s.Require().NoError(err)
+	s.Equal(int64(1), report.Marked)
 }
 
 func (s *gcSuite) TestDryRunDeletesNothing() {
 	ctx := context.Background()
 	hash, _ := s.chunk(10)
 	orphan := newHash()
-	s.store.put(orphan, 5, s.now.Add(-48*time.Hour))
+	s.store.put(defaultProject, orphan, 5, s.now.Add(-48*time.Hour))
 
 	_, err := s.collector(ModeDryRun, s.now).Run(ctx)
 	s.Require().NoError(err)
@@ -287,53 +360,67 @@ func (s *gcSuite) TestDryRunDeletesNothing() {
 	s.Equal(int64(1), report.Adopted, "orphans are counted")
 	s.Zero(report.Deleted)
 	s.True(s.hasRow(hash))
-	s.True(s.store.has(hash))
+	s.True(s.store.has(defaultProject, hash))
 	s.False(s.hasRow(orphan), "dry run adopts nothing")
 }
 
 func (s *gcSuite) TestAdoptsOldOrphanObjectsAndSweepsThem() {
 	ctx := context.Background()
 	old := newHash()
-	s.store.put(old, 7, s.now.Add(-48*time.Hour))
+	s.store.put(defaultProject, old, 7, s.now.Add(-48*time.Hour))
 	recent := newHash()
-	s.store.put(recent, 9, s.now.Add(-time.Hour))
+	s.store.put(defaultProject, recent, 9, s.now.Add(-time.Hour))
 	recorded, _ := s.chunk(11)
 	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) VALUES (1, $1)`, recorded[:])
+	// The same hash as a recorded chunk, but in another project's prefix:
+	// a row in one project does not cover another project's object.
+	s.store.put(secondProject, recorded, 11, s.now.Add(-48*time.Hour))
+	// A prefix of a project that no longer exists is left to the purge.
+	gone := newHash()
+	s.store.put(snow.ID(999), gone, 3, s.now.Add(-48*time.Hour))
 
 	report, err := s.collector(ModeOn, s.now).Run(ctx)
 	s.Require().NoError(err)
-	s.Equal(int64(1), report.Adopted)
-	s.Equal(int64(7), report.AdoptedBytes)
+	s.Equal(int64(2), report.Adopted)
 	s.True(s.hasRow(old))
+	s.True(s.hasRowIn(secondProject, recorded))
 	s.False(s.hasRow(recent), "an upload younger than the grace may still be confirmed")
+	s.False(s.hasRowIn(snow.ID(999), gone))
 
 	report, err = s.collector(ModeOn, s.now.Add(25*time.Hour)).Run(ctx)
 	s.Require().NoError(err)
-	s.Equal(int64(1), report.Deleted)
-	s.False(s.store.has(old))
-	s.True(s.store.has(recorded))
+	s.Equal(int64(2), report.Deleted)
+	s.False(s.store.has(defaultProject, old))
+	s.False(s.store.has(secondProject, recorded))
+	s.True(s.store.has(defaultProject, recorded))
+	s.True(s.store.has(snow.ID(999), gone))
 }
 
 func (s *gcSuite) TestGuardClearsTheMark() {
 	ctx := context.Background()
 	hash, _ := s.chunk(10)
+	other := s.chunkIn(secondProject, hash, 10)
 	_, err := s.collector(ModeOn, s.now).Run(ctx)
 	s.Require().NoError(err)
+	s.Equal(2, s.count(`SELECT count(*) FROM chunks WHERE gc_marked_at IS NOT NULL`))
 
-	s.Require().NoError(NewGuard(s.db).Protect(ctx, []domain.Hash{hash, newHash()}))
-	s.Require().NoError(NewGuard(s.db).Protect(ctx, nil))
-	s.Zero(s.count(`SELECT count(*) FROM chunks WHERE gc_marked_at IS NOT NULL`))
+	s.Require().NoError(NewGuard(s.db).Protect(ctx, defaultProject, []domain.Hash{hash, newHash()}))
+	s.Require().NoError(NewGuard(s.db).Protect(ctx, defaultProject, nil))
+	s.Equal(1, s.count(`SELECT count(*) FROM chunks WHERE gc_marked_at IS NOT NULL`))
+	s.Equal(1, s.count(`SELECT count(*) FROM chunks WHERE gc_marked_at IS NOT NULL AND id = $1`, other),
+		"the guard clears the protecting project's mark only")
 
 	report, err := s.collector(ModeOn, s.now.Add(25*time.Hour)).Run(ctx)
 	s.Require().NoError(err)
-	s.Zero(report.Deleted, "re-marked by this run, so the grace starts again")
-	s.True(s.store.has(hash))
+	s.Equal(int64(1), report.Deleted, "the other project's copy is swept; ours was re-marked by this run")
+	s.True(s.store.has(defaultProject, hash))
+	s.False(s.store.has(secondProject, hash))
 }
 
 // TestGuardWaitsForAnInFlightSweep is the race the guard exists for: a sweep
 // has locked the row and is deleting the object when a confirm protects the
 // hash. Protect must not return before the sweep committed, and afterwards the
-// chunk is gone, so the confirm reads it as missing instead of linking it.
+// chunk is gone, so the confirm reads it as missing instead of recording it.
 func (s *gcSuite) TestGuardWaitsForAnInFlightSweep() {
 	ctx := context.Background()
 	hash, _ := s.chunk(10)
@@ -350,7 +437,7 @@ func (s *gcSuite) TestGuardWaitsForAnInFlightSweep() {
 	<-s.store.entered
 
 	protected := make(chan error, 1)
-	go func() { protected <- NewGuard(s.db).Protect(ctx, []domain.Hash{hash}) }()
+	go func() { protected <- NewGuard(s.db).Protect(ctx, defaultProject, []domain.Hash{hash}) }()
 	select {
 	case err := <-protected:
 		s.FailNow("Protect returned while the sweep held the row", "err: %v", err)
@@ -361,7 +448,7 @@ func (s *gcSuite) TestGuardWaitsForAnInFlightSweep() {
 	s.Require().NoError(<-sweepDone)
 	s.Require().NoError(<-protected)
 	s.False(s.hasRow(hash))
-	s.False(s.store.has(hash), "the content is gone: a confirm reports it missing and the client uploads it again")
+	s.False(s.store.has(defaultProject, hash), "the content is gone: a confirm reports it missing and the client uploads it again")
 }
 
 func (s *gcSuite) TestFailedObjectDeleteKeepsTheRows() {
@@ -453,7 +540,7 @@ func TestRun_DatabaseErrors(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.Exec(`DROP TABLE file_chunks CASCADE`)
 	require.NoError(t, err)
-	_, err = db.Exec(`INSERT INTO chunks (hash, size_bytes) VALUES ('\x01', 1)`)
+	_, err = db.Exec(`INSERT INTO chunks (project_id, hash, size_bytes) VALUES (1, '\x01', 1)`)
 	require.NoError(t, err)
 	_, err = collector.Run(context.Background())
 	require.ErrorContains(t, err, "mark")
@@ -461,5 +548,5 @@ func TestRun_DatabaseErrors(t *testing.T) {
 	_ = db.Close()
 	_, err = collector.Run(context.Background())
 	require.Error(t, err)
-	require.Error(t, NewGuard(db).Protect(context.Background(), []domain.Hash{{1}}), "guard on a closed database")
+	require.Error(t, NewGuard(db).Protect(context.Background(), defaultProject, []domain.Hash{{1}}), "guard on a closed database")
 }

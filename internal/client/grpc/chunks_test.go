@@ -79,9 +79,14 @@ type chunkTestServer struct {
 
 	// confirms logs every ConfirmChunkUploads request in arrival order.
 	confirms []*pb.ConfirmChunkUploadsRequest
-	// urlForStored hands out upload URLs for stored but unconfirmed objects,
-	// like a server that skips the existence check for unknown hashes.
-	urlForStored bool
+	// oldProtocol answers like a server before per-project chunks: no
+	// chunk_protocol in its responses.
+	oldProtocol bool
+	// requestProtocols logs the chunk_protocol of every chunk RPC request.
+	requestProtocols []uint32
+	// emptyURLs answers presign with neither a URL nor already_stored, which
+	// no per-project server does.
+	emptyURLs bool
 	// confirmDelay holds every confirm, so concurrent ones overlap.
 	confirmDelay   time.Duration
 	confirmsActive int
@@ -162,22 +167,22 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 	s.mu.Lock()
 	s.lastUploadRefs = req.GetChunks()
 	s.maxUploadRefs = max(s.maxUploadRefs, len(req.GetChunks()))
+	s.requestProtocols = append(s.requestProtocols, req.GetChunkProtocol())
 	s.mu.Unlock()
 	if s.uploadErr != nil {
 		return nil, s.uploadErr
 	}
-	resp := &pb.GetChunkUploadUrlsResponse{}
+	resp := &pb.GetChunkUploadUrlsResponse{ChunkProtocol: s.protocol()}
 	for _, ref := range req.GetChunks() {
+		// Per-project presign: a row (linked) with its object is already
+		// stored; anything else, a lost object included, gets a target.
 		linked := s.isLinked(ref.GetHash())
 		_, stored := s.storedChunk(ref.GetHash())
-		entry := &pb.PresignedChunkUrl{Hash: ref.GetHash(), AlreadyStored: linked}
-		if !linked {
-			entry.ProofChallenge = "challenge-" + ref.GetHash()
-			if !stored || s.urlForStored {
-				entry.Url = s.absoluteBase + fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
-					req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
-				entry.Headers = map[string]string{"If-None-Match": "*"}
-			}
+		entry := &pb.PresignedChunkUrl{Hash: ref.GetHash(), AlreadyStored: linked && stored}
+		if !entry.AlreadyStored && !s.emptyURLs {
+			entry.Url = s.absoluteBase + fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
+				req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
+			entry.Headers = map[string]string{"If-None-Match": "*"}
 		}
 		resp.Urls = append(resp.Urls, entry)
 	}
@@ -198,6 +203,7 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	}
 	s.mu.Lock()
 	s.lastDownload = req
+	s.requestProtocols = append(s.requestProtocols, req.GetChunkProtocol())
 	s.downloadSizes = append(s.downloadSizes, len(req.GetHashes()))
 	calls := len(s.downloadSizes)
 	afterLimit := s.downloadErrAfter
@@ -208,7 +214,7 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	if afterLimit > 0 && calls > afterLimit {
 		return nil, status.Error(codes.Unavailable, "presign failed")
 	}
-	resp := &pb.GetChunkDownloadUrlsResponse{}
+	resp := &pb.GetChunkDownloadUrlsResponse{ChunkProtocol: s.protocol()}
 	for _, hash := range req.GetHashes() {
 		if _, exists := s.storedChunk(hash); !exists {
 			continue
@@ -240,7 +246,8 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 	s.mu.Lock()
 	s.lastConfirm = req
 	s.confirms = append(s.confirms, req)
-	s.maxConfirmed = max(s.maxConfirmed, len(req.GetHashes()), len(req.GetProofs()))
+	s.maxConfirmed = max(s.maxConfirmed, len(req.GetHashes()), len(req.GetReceipts()))
+	s.requestProtocols = append(s.requestProtocols, req.GetChunkProtocol())
 	s.confirmsActive++
 	s.confirmsPeak = max(s.confirmsPeak, s.confirmsActive)
 	delay := s.confirmDelay
@@ -255,30 +262,42 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 		return nil, s.confirmErr
 	}
 	if s.confirmMissing != nil {
-		return &pb.ConfirmChunkUploadsResponse{MissingHashes: s.confirmMissing}, nil
+		return &pb.ConfirmChunkUploadsResponse{MissingHashes: s.confirmMissing, ChunkProtocol: s.protocol()}, nil
 	}
-	proofs := map[string]*pb.ChunkPossessionProof{}
-	for _, proof := range req.GetProofs() {
-		proofs[proof.GetHash()] = proof
+	// Per-project confirm: recorded chunks are trusted, a valid receipt
+	// confirms without a read-back, anything else is "read back": present
+	// unless it is garbage (dropped) or absent.
+	receipts := map[string]string{}
+	for _, receipt := range req.GetReceipts() {
+		receipts[receipt.GetHash()] = receipt.GetReceipt()
 	}
 	var missing []string
 	for _, hash := range req.GetHashes() {
 		if s.isLinked(hash) {
 			continue
 		}
+		if receipts[hash] == "receipt-"+hash {
+			s.link(hash)
+			continue
+		}
 		if s.takeGarbage(hash) {
 			missing = append(missing, hash)
 			continue
 		}
-		data, stored := s.storedChunk(hash)
-		proof, proved := proofs[hash]
-		if !stored || !proved || proof.GetChallenge() != "challenge-"+hash || proof.GetProof() != chunkproof.Proof(proof.GetChallenge(), data) {
+		if _, stored := s.storedChunk(hash); !stored {
 			missing = append(missing, hash)
 			continue
 		}
 		s.link(hash)
 	}
-	return &pb.ConfirmChunkUploadsResponse{MissingHashes: missing}, nil
+	return &pb.ConfirmChunkUploadsResponse{MissingHashes: missing, ChunkProtocol: s.protocol()}, nil
+}
+
+func (s *chunkTestServer) protocol() uint32 {
+	if s.oldProtocol {
+		return 0
+	}
+	return chunkproof.Protocol
 }
 
 func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +479,8 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 
 	require.NotNil(t, srv.lastConfirm)
 	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes())
-	require.Len(t, srv.lastConfirm.GetProofs(), 2, "every uploaded chunk is confirmed with a proof")
+	require.Empty(t, srv.lastConfirm.GetReceipts(), "no receipts without a proxying server")
+	require.Equal(t, chunkproof.Protocol, srv.lastConfirm.GetChunkProtocol())
 	require.True(t, srv.isLinked(h1.String()))
 }
 
@@ -509,10 +529,13 @@ func TestClient_UploadChunks_SkipsStored(t *testing.T) {
 	require.Equal(t, 1, skipped)
 }
 
-func TestClient_UploadChunks_ProvesPossessionInsteadOfUploadingSharedContent(t *testing.T) {
+func TestClient_UploadChunks_UploadsContentTheProjectDoesNotHold(t *testing.T) {
 	h1 := testChunkHash(0x01)
 
 	srv := newChunkTestServer()
+	// An object without a row (another push never confirmed it): the server
+	// hands out a target anyway, the create-only PUT answers 412 and the
+	// confirm reads the object back.
 	srv.put(h1.String(), []byte("aaaa"))
 	addr := startChunkTestServer(t, srv)
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
@@ -522,9 +545,10 @@ func TestClient_UploadChunks_ProvesPossessionInsteadOfUploadingSharedContent(t *
 		{Hash: h1, Data: []byte("aaaa")},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 0, uploaded, "content another project stored is not sent again")
-	require.Equal(t, 1, skipped)
-	require.True(t, srv.isLinked(h1.String()), "the proof links the project")
+	require.Equal(t, 1, uploaded)
+	require.Zero(t, skipped)
+	require.Equal(t, 1, srv.rejectedPuts)
+	require.True(t, srv.isLinked(h1.String()))
 }
 
 func TestClient_UploadChunks_ReportsEachChunk(t *testing.T) {
@@ -996,7 +1020,7 @@ func TestClient_UploadChunks_ToleratesTheChunkAppearingFirst(t *testing.T) {
 	uploaded, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
 		{Hash: h1, Data: []byte("aaaa")},
 	})
-	require.NoError(t, err, "a 412 means someone stored the same chunk meanwhile; the proof decides")
+	require.NoError(t, err, "a 412 means the chunk was stored meanwhile; the confirm decides")
 	require.Equal(t, 1, uploaded)
 	require.Equal(t, 1, srv.rejectedPuts)
 	require.True(t, srv.isLinked(h1.String()))

@@ -42,105 +42,71 @@ func (m *MockchunkRepository) EXPECT() *MockchunkRepositoryMockRecorder {
 	return m.recorder
 }
 
-// HasChunk mocks base method.
-func (m *MockchunkRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasChunk", ctx, hash)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// HasChunk indicates an expected call of HasChunk.
-func (mr *MockchunkRepositoryMockRecorder) HasChunk(ctx, hash any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasChunk", reflect.TypeOf((*MockchunkRepository)(nil).HasChunk), ctx, hash)
-}
-
-// InsertChunkIfNotExists mocks base method.
-func (m *MockchunkRepository) InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertChunkIfNotExists", ctx, hash, sizeBytes)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InsertChunkIfNotExists indicates an expected call of InsertChunkIfNotExists.
-func (mr *MockchunkRepositoryMockRecorder) InsertChunkIfNotExists(ctx, hash, sizeBytes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunkIfNotExists", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunkIfNotExists), ctx, hash, sizeBytes)
-}
-
 // InsertChunksIfNotExist mocks base method.
-func (m *MockchunkRepository) InsertChunksIfNotExist(ctx context.Context, chunks []ChunkRef) error {
+func (m *MockchunkRepository) InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []ChunkRef) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertChunksIfNotExist", ctx, chunks)
+	ret := m.ctrl.Call(m, "InsertChunksIfNotExist", ctx, projectID, chunks)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InsertChunksIfNotExist indicates an expected call of InsertChunksIfNotExist.
-func (mr *MockchunkRepositoryMockRecorder) InsertChunksIfNotExist(ctx, chunks any) *gomock.Call {
+func (mr *MockchunkRepositoryMockRecorder) InsertChunksIfNotExist(ctx, projectID, chunks any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunksIfNotExist", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunksIfNotExist), ctx, chunks)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunksIfNotExist", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunksIfNotExist), ctx, projectID, chunks)
 }
 
-// KnownChunks mocks base method.
-func (m *MockchunkRepository) KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error) {
+// ProjectChunkSizes mocks base method.
+func (m *MockchunkRepository) ProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "KnownChunks", ctx, hashes)
-	ret0, _ := ret[0].(map[domain.Hash]struct{})
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// KnownChunks indicates an expected call of KnownChunks.
-func (mr *MockchunkRepositoryMockRecorder) KnownChunks(ctx, hashes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "KnownChunks", reflect.TypeOf((*MockchunkRepository)(nil).KnownChunks), ctx, hashes)
-}
-
-// LinkProjectChunk mocks base method.
-func (m *MockchunkRepository) LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LinkProjectChunk", ctx, projectID, hash)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LinkProjectChunk indicates an expected call of LinkProjectChunk.
-func (mr *MockchunkRepositoryMockRecorder) LinkProjectChunk(ctx, projectID, hash any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkProjectChunk", reflect.TypeOf((*MockchunkRepository)(nil).LinkProjectChunk), ctx, projectID, hash)
-}
-
-// LinkProjectChunks mocks base method.
-func (m *MockchunkRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LinkProjectChunks", ctx, projectID, hashes)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LinkProjectChunks indicates an expected call of LinkProjectChunks.
-func (mr *MockchunkRepositoryMockRecorder) LinkProjectChunks(ctx, projectID, hashes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkProjectChunks", reflect.TypeOf((*MockchunkRepository)(nil).LinkProjectChunks), ctx, projectID, hashes)
-}
-
-// LinkedProjectChunkSizes mocks base method.
-func (m *MockchunkRepository) LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LinkedProjectChunkSizes", ctx, projectID, hashes)
+	ret := m.ctrl.Call(m, "ProjectChunkSizes", ctx, projectID, hashes)
 	ret0, _ := ret[0].(map[domain.Hash]int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// LinkedProjectChunkSizes indicates an expected call of LinkedProjectChunkSizes.
-func (mr *MockchunkRepositoryMockRecorder) LinkedProjectChunkSizes(ctx, projectID, hashes any) *gomock.Call {
+// ProjectChunkSizes indicates an expected call of ProjectChunkSizes.
+func (mr *MockchunkRepositoryMockRecorder) ProjectChunkSizes(ctx, projectID, hashes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkedProjectChunkSizes", reflect.TypeOf((*MockchunkRepository)(nil).LinkedProjectChunkSizes), ctx, projectID, hashes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectChunkSizes", reflect.TypeOf((*MockchunkRepository)(nil).ProjectChunkSizes), ctx, projectID, hashes)
+}
+
+// MockchunkTransactor is a mock of chunkTransactor interface.
+type MockchunkTransactor struct {
+	ctrl     *gomock.Controller
+	recorder *MockchunkTransactorMockRecorder
+	isgomock struct{}
+}
+
+// MockchunkTransactorMockRecorder is the mock recorder for MockchunkTransactor.
+type MockchunkTransactorMockRecorder struct {
+	mock *MockchunkTransactor
+}
+
+// NewMockchunkTransactor creates a new mock instance.
+func NewMockchunkTransactor(ctrl *gomock.Controller) *MockchunkTransactor {
+	mock := &MockchunkTransactor{ctrl: ctrl}
+	mock.recorder = &MockchunkTransactorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockchunkTransactor) EXPECT() *MockchunkTransactorMockRecorder {
+	return m.recorder
+}
+
+// WithinTx mocks base method.
+func (m *MockchunkTransactor) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithinTx", ctx, fn)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WithinTx indicates an expected call of WithinTx.
+func (mr *MockchunkTransactorMockRecorder) WithinTx(ctx, fn any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithinTx", reflect.TypeOf((*MockchunkTransactor)(nil).WithinTx), ctx, fn)
 }
 
 // MockChunkGCGuard is a mock of ChunkGCGuard interface.
@@ -168,15 +134,15 @@ func (m *MockChunkGCGuard) EXPECT() *MockChunkGCGuardMockRecorder {
 }
 
 // Protect mocks base method.
-func (m *MockChunkGCGuard) Protect(ctx context.Context, hashes []domain.Hash) error {
+func (m *MockChunkGCGuard) Protect(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Protect", ctx, hashes)
+	ret := m.ctrl.Call(m, "Protect", ctx, projectID, hashes)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Protect indicates an expected call of Protect.
-func (mr *MockChunkGCGuardMockRecorder) Protect(ctx, hashes any) *gomock.Call {
+func (mr *MockChunkGCGuardMockRecorder) Protect(ctx, projectID, hashes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Protect", reflect.TypeOf((*MockChunkGCGuard)(nil).Protect), ctx, hashes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Protect", reflect.TypeOf((*MockChunkGCGuard)(nil).Protect), ctx, projectID, hashes)
 }

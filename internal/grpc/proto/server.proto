@@ -105,23 +105,32 @@ message ChunkRef {
 }
 
 message PresignedChunkUrl {
+    reserved 5;
+    reserved "proof_challenge";
     string hash = 1; // hex-encoded BLAKE3 hash of data
-    string url = 2; // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty for an upload when the content already exists and only a proof is needed
-    bool already_stored = 3; // the project is already linked to the chunk; skip the transfer
+    string url = 2; // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty only when already_stored
+    bool already_stored = 3; // the project already holds the chunk; skip the transfer
     map<string, string> headers = 4; // upload URLs only: request headers the PUT must carry (they are part of the signature)
-    string proof_challenge = 5; // answer it in ConfirmChunkUploads to link the chunk to the project; unset when already_stored
 }
+
+// chunk_protocol on the chunk RPCs is the chunk transfer protocol version
+// (internal/chunkproof.Protocol, 2 = per-project scope without possession
+// proofs). A server refuses a request with an older (or missing) version with
+// FAILED_PRECONDITION and an upgrade hint; a client refuses a response with an
+// older one the same way, so client and server always speak the same version.
 
 message GetChunkUploadUrlsRequest {
     ProjectContext context = 1;
     repeated ChunkRef chunks = 2;
     int32 page_size = 3;
     string page_token = 4;
+    uint32 chunk_protocol = 5;
 }
 
 message GetChunkUploadUrlsResponse {
     repeated PresignedChunkUrl urls = 1;
     string next_page_token = 2;
+    uint32 chunk_protocol = 3;
 }
 
 message GetChunkDownloadUrlsRequest {
@@ -131,32 +140,34 @@ message GetChunkDownloadUrlsRequest {
     repeated string hashes = 4; // hex-encoded BLAKE3 hashes
     int32 page_size = 5;
     string page_token = 6;
+    uint32 chunk_protocol = 7;
 }
 
 message GetChunkDownloadUrlsResponse {
     repeated PresignedChunkUrl urls = 1;
     string next_page_token = 2;
+    uint32 chunk_protocol = 3;
 }
 
 message ConfirmChunkUploadsRequest {
+    reserved 3;
+    reserved "proofs";
     ProjectContext context = 1;
-    repeated string hashes = 2; // hex-encoded BLAKE3 hashes
-    repeated ChunkPossessionProof proofs = 3; // required for every hash the project has not been linked to yet
+    repeated string hashes = 2; // hex-encoded BLAKE3 hashes of every chunk the client uploaded
+    repeated ChunkReceipt receipts = 4; // receipts of proxied uploads; a valid one spares the server the read-back
+    uint32 chunk_protocol = 5;
 }
 
-// ChunkPossessionProof shows that the caller holds a chunk's bytes: proof is the
-// hex BLAKE3 of the challenge string followed by the stored chunk bytes.
-message ChunkPossessionProof {
+// ChunkReceipt is the X-Nipa-Chunk-Receipt a proxied upload of one chunk
+// returned: a signed record of the size the server stored for this project.
+message ChunkReceipt {
     string hash = 1; // hex-encoded BLAKE3 hash of the chunk
-    string challenge = 2; // proof_challenge issued for this project and hash
-    string proof = 3; // hex-encoded BLAKE3(challenge || bytes)
-    // X-Nipa-Chunk-Receipt the server returned for a proxied upload of this
-    // chunk; a valid receipt lets confirm skip the read-back. Optional.
-    string receipt = 4;
+    string receipt = 2;
 }
 
 message ConfirmChunkUploadsResponse {
     repeated string missing_hashes = 1;
+    uint32 chunk_protocol = 2;
 }
 
 message PushRequest {

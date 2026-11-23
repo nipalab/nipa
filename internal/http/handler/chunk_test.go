@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkurl"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 const testChunkSigningKey = "test-chunk-signing-key"
@@ -45,7 +47,7 @@ func TestChunkHandler_PutChunk(t *testing.T) {
 	h.PutChunk(appCtx)
 
 	require.Equal(t, http.StatusNoContent, recorder.Code)
-	stored, err := env.chunkStore.Get(appCtx.Context(), hash)
+	stored, err := env.chunkStore.Get(appCtx.Context(), defaultProjectID(t, env), hash)
 	require.NoError(t, err)
 	require.Equal(t, data, stored)
 }
@@ -215,7 +217,7 @@ func TestChunkHandler_GetChunk(t *testing.T) {
 
 	data := []byte("download payload")
 	hash := chunker.Sum(data)
-	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
+	require.NoError(t, env.chunkStore.Put(t.Context(), defaultProjectID(t, env), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
 	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp)
 
@@ -247,7 +249,7 @@ func TestChunkHandler_GetChunkRejectsTamperedURL(t *testing.T) {
 
 	data := []byte("download payload")
 	hash := chunker.Sum(data)
-	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
+	require.NoError(t, env.chunkStore.Put(t.Context(), defaultProjectID(t, env), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
 	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp) + "0"
 
@@ -263,7 +265,7 @@ func TestChunkHandler_GetChunkRejectsWrongOperation(t *testing.T) {
 
 	data := []byte("download payload")
 	hash := chunker.Sum(data)
-	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
+	require.NoError(t, env.chunkStore.Put(t.Context(), defaultProjectID(t, env), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
 	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
@@ -290,4 +292,13 @@ func TestChunkHandler_UnknownProject(t *testing.T) {
 	get.pathParameters["project"] = "missing"
 	h.GetChunk(get)
 	require.Equal(t, http.StatusNotFound, get.statusCode)
+}
+
+// defaultProjectID is the id of the default/default project the signed chunk
+// paths of these tests name.
+func defaultProjectID(t *testing.T, env *handlerTestEnv) snow.ID {
+	t.Helper()
+	_, project, err := env.registry.common.ResolveBySlug(context.Background(), "default", "default")
+	require.NoError(t, err)
+	return project.ID
 }

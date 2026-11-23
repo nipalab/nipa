@@ -23,17 +23,20 @@ import (
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=chunk_mock_test.go -package=usecase
 type chunkRepository interface {
-	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
-	// InsertChunksIfNotExist records many metadata rows in batched
-	// statements; existing rows are left alone.
-	InsertChunksIfNotExist(ctx context.Context, chunks []ChunkRef) error
-	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
-	// KnownChunks returns the hashes that have a metadata row, whatever
-	// project they are linked to.
-	KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error)
-	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
-	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
-	LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error)
+	// InsertChunksIfNotExist records the project's chunk rows (with their
+	// upload markers) in batched statements; existing rows are left alone. A
+	// chunk row is the project's link to the content: a push may reference
+	// exactly the hashes the project has a row for.
+	InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []ChunkRef) error
+	// ProjectChunkSizes returns the stored size of every hash the project has
+	// a chunk row for; other hashes are absent.
+	ProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error)
+}
+
+// chunkTransactor runs a function inside one database transaction; the chunk
+// repository and the storage ledger join it through the context.
+type chunkTransactor interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 // DefaultChunkVerifyConcurrency is the server-wide number of chunk read-backs
@@ -70,28 +73,20 @@ type ChunkRef struct {
 }
 
 // ChunkURL pairs a chunk hash with its signed transfer path. For uploads, URL
-// is empty when the content already exists and the project only has to prove it
-// holds it; Headers are request headers the PUT must carry because they are
-// part of a direct backend's signature.
+// is empty only when AlreadyStored is set; Headers are request headers the PUT
+// must carry because they are part of a direct backend's signature.
 type ChunkURL struct {
 	Hash          domain.Hash
 	URL           string
 	AlreadyStored bool
 	Headers       map[string]string
-	// ProofChallenge is set for every chunk the project is not linked to yet;
-	// ConfirmUploads must be given the matching proof.
-	ProofChallenge string
 }
 
-// ChunkProof is a client's proof of possession for one chunk: Proof answers
-// Challenge (issued by PresignUploadURLs) for the chunk's stored bytes.
-// Receipt, when set, is what StoreUploaded issued for a proxied upload of the
-// chunk; a valid one stands in for the read-back.
-type ChunkProof struct {
-	Hash      domain.Hash
-	Challenge string
-	Proof     string
-	Receipt   string
+// ChunkReceipt is what StoreUploaded issued for a proxied upload of one chunk;
+// a valid one stands in for the read-back at confirm.
+type ChunkReceipt struct {
+	Hash    domain.Hash
+	Receipt string
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -109,6 +104,7 @@ type Chunk struct {
 	transfer  ChunkTransferConfig
 	ledger    StorageLedger
 	gcGuard   ChunkGCGuard
+	tx        chunkTransactor
 	metrics   *obs.Metrics
 	now       func() time.Time
 	// verifySlots bounds the chunk read-backs of every confirm in flight and
@@ -125,12 +121,12 @@ type Chunk struct {
 
 // ChunkGCGuard keeps a chunk garbage collector from deleting content a caller
 // is about to rely on. Protect runs before the content is checked and before
-// any link to it is recorded: it clears the chunks' garbage marks, waiting for
-// a sweep that holds them, so content the sweep removed is seen as missing
-// (and uploaded again) instead of being linked. Nil (the free default) runs no
-// collector.
+// any row for it is recorded: it clears the garbage marks of the project's
+// chunks, waiting for a sweep that holds them, so content the sweep removed is
+// seen as missing (and uploaded again) instead of being recorded. Nil (the
+// free default) runs no collector.
 type ChunkGCGuard interface {
-	Protect(ctx context.Context, hashes []domain.Hash) error
+	Protect(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
 }
 
 func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer ChunkTransferConfig) *Chunk {
@@ -260,11 +256,27 @@ func (c *Chunk) WithGCGuard(guard ChunkGCGuard) *Chunk {
 	return c
 }
 
-func (c *Chunk) protect(ctx context.Context, hashes ...domain.Hash) error {
+// WithTransactor runs the ledger attribution and the chunk row inserts of one
+// confirm (or server-side write) in one transaction, so rows are never
+// visible before the ledger accepted them. Without one (tests) they run
+// back to back.
+func (c *Chunk) WithTransactor(tx chunkTransactor) *Chunk {
+	c.tx = tx
+	return c
+}
+
+func (c *Chunk) withinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if c.tx == nil {
+		return fn(ctx)
+	}
+	return c.tx.WithinTx(ctx, fn)
+}
+
+func (c *Chunk) protect(ctx context.Context, projectID snow.ID, hashes ...domain.Hash) error {
 	if c.gcGuard == nil || len(hashes) == 0 {
 		return nil
 	}
-	return c.gcGuard.Protect(ctx, hashes)
+	return c.gcGuard.Protect(ctx, projectID, hashes)
 }
 
 // WithMetrics attaches observability metrics. Without one (the default), chunk
@@ -274,95 +286,107 @@ func (c *Chunk) WithMetrics(metrics *obs.Metrics) *Chunk {
 	return c
 }
 
-// upload stores one chunk. It returns true when the content was newly stored,
-// false when an identical chunk was already present. The chunk metadata row is
-// recorded only after content exists, so a Push that references this hash can
-// rely on it.
-func (c *Chunk) upload(ctx context.Context, store storage.ChunkStore, hash domain.Hash, data []byte) (bool, error) {
+// upload stores one chunk in the project's store. It returns true when the
+// content was newly stored, false when an identical chunk was already
+// present. It records no row: recordChunks does, once the ledger accepted it.
+func (c *Chunk) upload(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
 	if got := chunker.Sum(data); got != hash {
 		c.metrics.ObserveChunkVerifyFailure("store")
 		return false, domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
-	if err := c.protect(ctx, hash); err != nil {
+	if err := c.protect(ctx, projectID, hash); err != nil {
 		return false, err
 	}
-	exists, err := store.Exists(ctx, hash)
+	exists, err := store.Exists(ctx, projectID, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("upload", "error")
 		return false, domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
 	}
 	if exists {
 		c.metrics.ObserveChunkOp("upload", "dedup")
-		// The content may be present without a metadata row (a direct upload
-		// whose confirm never ran); record it so callers that need the row
-		// (merge attribution) do not fail on dedup.
-		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, int64(len(data))); err != nil {
-			return false, err
-		}
 		return false, nil
 	}
-	if err := store.Put(ctx, hash, data); err != nil {
+	if err := store.Put(ctx, projectID, hash, data); err != nil {
 		c.metrics.ObserveChunkOp("upload", "error")
 		return false, domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 	}
 	c.metrics.ObserveChunkOp("upload", "stored")
 	c.metrics.ObserveChunkBytes("upload", int64(len(data)))
-	if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, int64(len(data))); err != nil {
-		return false, err
-	}
 	return true, nil
 }
 
-// AttributeProjectChunks links chunks the server produced itself (merge output)
-// to the project. The ledger attributes first so a quota failure leaves no link.
+// AttributeProjectChunks records the project's rows for chunks the server
+// produced itself (merge output) and stored with StoreForProject. The ledger
+// attributes them first, in the same transaction, so a quota failure leaves
+// no row.
 func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
 	resolved, err := c.stores.ForProject(ctx, projectID)
 	if err != nil {
 		return err
 	}
-	if ledger := c.ledgerFor(resolved); ledger != nil && len(chunks) > 0 {
-		if err := ledger.AttributeProjectChunks(ctx, projectID, chunks); err != nil {
-			return err
-		}
-	}
+	rows := make([]ChunkRef, 0, len(chunks))
 	for _, chunk := range chunks {
-		if err := c.chunkRepo.LinkProjectChunk(ctx, projectID, chunk.Hash); err != nil {
-			return err
+		rows = append(rows, ChunkRef(chunk))
+	}
+	var attribute func(ctx context.Context) error
+	if ledger := c.ledgerFor(resolved); ledger != nil {
+		attribute = func(ctx context.Context) error {
+			return ledger.AttributeProjectChunks(ctx, projectID, chunks)
 		}
 	}
-	return nil
+	return c.recordChunks(ctx, projectID, rows, attribute)
 }
 
-// StoreForProject stores server-held content in the project's store and
-// records its metadata row without linking it; AttributeProjectChunks links it
-// once the caller is ready to land it.
+// recordChunks runs the ledger attribution (when given) and then inserts the
+// project's chunk rows, in one transaction: a row is the project's link to
+// the content, so it must not be visible before the quota accepted it.
+func (c *Chunk) recordChunks(ctx context.Context, projectID snow.ID, rows []ChunkRef, attribute func(ctx context.Context) error) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return c.withinTx(ctx, func(ctx context.Context) error {
+		if attribute != nil {
+			if err := attribute(ctx); err != nil {
+				return err
+			}
+		}
+		return c.chunkRepo.InsertChunksIfNotExist(ctx, projectID, rows)
+	})
+}
+
+// StoreForProject stores server-held content in the project's store without
+// recording its row; AttributeProjectChunks records it once the caller is
+// ready to land it.
 func (c *Chunk) StoreForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
 	resolved, err := c.writableStore(ctx, projectID)
 	if err != nil {
 		return false, err
 	}
-	return c.upload(ctx, resolved.Store, hash, data)
+	return c.upload(ctx, resolved.Store, projectID, hash, data)
 }
 
-// UploadForProject stores server-held content in the project's store and links
-// it to the project so a push of that project may reference it.
+// UploadForProject stores server-held content in the project's store and
+// records its row (through the ledger) so a push of that project may
+// reference it.
 func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
 	isNew, err := c.StoreForProject(ctx, projectID, hash, data)
 	if err != nil {
 		return false, err
 	}
-	if err := c.chunkRepo.LinkProjectChunk(ctx, projectID, hash); err != nil {
+	if err := c.AttributeProjectChunks(ctx, projectID, []LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}); err != nil {
 		return false, err
 	}
 	return isNew, nil
 }
 
 // StoreUploaded verifies and stores chunk content a client sent through a
-// signed server path, without recording metadata; the metadata row is written
-// by ConfirmUploads once the client reports the transfer done. Linking the
-// project to the chunk also waits for confirm (quota is enforced there), so
-// this path records no rows or links. Content writes are safe to run
-// concurrently.
+// signed server path, without recording metadata; the project's chunk row is
+// written by ConfirmUploads once the client reports the transfer done (quota
+// is enforced there), so this path records no rows. Content writes are safe
+// to run concurrently.
 //
 // It returns a receipt (chunkproof.NewReceipt) for the project, hash and the
 // size the server measured, valid for the presign TTL: the server saw these
@@ -371,9 +395,9 @@ func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash do
 // A store clients can also write directly (storage.ChunkOverwriter, i.e.
 // S3 in proxy mode) is written unconditionally, which replaces garbage an
 // earlier direct upload left at the key; other stores skip content they
-// already hold. A chunk garbage collector's mark on the hash is cleared
-// before the write, so a sweep cannot remove the content between this write
-// and the confirm that relies on the receipt.
+// already hold. A chunk garbage collector's mark on the project's chunk is
+// cleared before the write, so a sweep cannot remove the content between this
+// write and the confirm that relies on the receipt.
 func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (receipt string, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.store",
 		attribute.String(obs.AttrChunkHash, hash.String()),
@@ -388,19 +412,19 @@ func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domai
 	if err != nil {
 		return "", err
 	}
-	if err := c.protect(ctx, hash); err != nil {
+	if err := c.protect(ctx, projectID, hash); err != nil {
 		return "", err
 	}
-	if err := c.writeUploaded(ctx, resolved.Store, hash, data); err != nil {
+	if err := c.writeUploaded(ctx, resolved.Store, projectID, hash, data); err != nil {
 		return "", err
 	}
 	size := int64(len(data))
 	return chunkproof.NewReceipt(c.transfer.SigningKey, projectID, hash, size, c.now().Add(c.transfer.PresignTTL)), nil
 }
 
-func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, hash domain.Hash, data []byte) error {
+func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash, data []byte) error {
 	if overwriter, ok := store.(storage.ChunkOverwriter); ok {
-		if err := overwriter.Overwrite(ctx, hash, data); err != nil {
+		if err := overwriter.Overwrite(ctx, projectID, hash, data); err != nil {
 			c.metrics.ObserveChunkOp("put", "error")
 			return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 		}
@@ -408,7 +432,7 @@ func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, has
 		c.metrics.ObserveChunkBytes("put", int64(len(data)))
 		return nil
 	}
-	exists, err := store.Exists(ctx, hash)
+	exists, err := store.Exists(ctx, projectID, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
@@ -417,7 +441,7 @@ func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, has
 		c.metrics.ObserveChunkOp("put", "dedup")
 		return nil
 	}
-	if err := store.Put(ctx, hash, data); err != nil {
+	if err := store.Put(ctx, projectID, hash, data); err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 	}
@@ -437,7 +461,7 @@ func (c *Chunk) Download(ctx context.Context, projectID snow.ID, hash domain.Has
 		c.metrics.ObserveChunkOp("get", "error")
 		return nil, err
 	}
-	data, err = resolved.Store.Get(ctx, hash)
+	data, err = resolved.Store.Get(ctx, projectID, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("get", "error")
 		return nil, err
@@ -447,15 +471,16 @@ func (c *Chunk) Download(ctx context.Context, projectID snow.ID, hash domain.Has
 	return data, nil
 }
 
-// PresignUploadURLs signs one page of upload paths for refs. Chunks the
-// project is already linked to get an empty URL with AlreadyStored set so
-// clients can skip the transfer. Every other chunk gets a proof challenge. Only
-// content that does not exist yet gets an upload target: a stored chunk is never
-// written again, and a project that holds the bytes claims it with the proof
-// instead, which links it without any transfer. Existence is checked in the
-// store only for hashes with a chunk metadata row (see existsKnown). When a
-// ledger is attached, refs that would add new bytes are checked against the
-// organization's remaining quota first.
+// PresignUploadURLs signs one page of upload paths for refs. Dedup is per
+// project, so the decision only looks at the project's own chunk rows:
+//
+//   - no row: needs upload (the store is not asked, so a fresh push makes no
+//     existence checks);
+//   - a row and the object present: AlreadyStored, no URL, skip the transfer;
+//   - a row but the object lost: needs upload again.
+//
+// When a ledger is attached, refs that would add new bytes are checked against
+// the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
 		attribute.String(obs.AttrOrg, org.Slug),
@@ -491,57 +516,44 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	for _, ref := range page {
 		pageHashes = append(pageHashes, ref.Hash)
 	}
-	linked, err := c.chunkRepo.LinkedProjectChunkSizes(ctx, project.ID, pageHashes)
+	recorded, err := c.chunkRepo.ProjectChunkSizes(ctx, project.ID, pageHashes)
 	if err != nil {
 		return nil, "", err
 	}
-	known, err := c.chunkRepo.KnownChunks(ctx, pageHashes)
-	if err != nil {
-		return nil, "", err
-	}
-	exists, err := c.existsKnown(ctx, resolved.Store, page, known)
+	exists, err := c.existsRecorded(ctx, resolved.Store, project.ID, page, recorded)
 	if err != nil {
 		return nil, "", err
 	}
 	urls := make([]ChunkURL, 0, len(page))
 	for i, ref := range page {
-		if _, ok := linked[ref.Hash]; ok && exists[i] {
+		if exists[i] {
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
 		}
-		challenge, err := chunkproof.NewChallenge(c.transfer.SigningKey, project.ID, ref.Hash, c.now().Add(c.transfer.PresignTTL))
+		target, err := c.uploadTarget(ctx, resolved, org, project, ref, expiry)
 		if err != nil {
-			return nil, "", domain.NewErrorInternalServer(err.Error())
+			return nil, "", err
 		}
-		entry := ChunkURL{Hash: ref.Hash, ProofChallenge: challenge}
-		if !exists[i] {
-			target, err := c.uploadTarget(ctx, resolved, org, project, ref, expiry)
-			if err != nil {
-				return nil, "", err
-			}
-			entry.URL, entry.Headers = target.URL, target.Headers
-		}
-		urls = append(urls, entry)
+		urls = append(urls, ChunkURL{Hash: ref.Hash, URL: target.URL, Headers: target.Headers})
 	}
 	return urls, next, nil
 }
 
-// existsKnown checks the store only for refs that have a chunk metadata row:
-// content the server never confirmed is treated as absent and gets an upload
-// target without a HEAD. An object that does sit at such a key (an upload
-// whose confirm never ran, or garbage) makes the create-only PUT answer 412,
-// and confirm then reads it back: valid content is linked through the proof,
-// garbage is deleted and uploaded again. A row only hints "maybe present";
-// refs with one are still checked, which finds lost objects. The checks of all
-// presigns share existsSlots.
-func (c *Chunk) existsKnown(ctx context.Context, store storage.ChunkStore, page []ChunkRef, known map[domain.Hash]struct{}) ([]bool, error) {
+// existsRecorded checks the store only for refs the project has a chunk row
+// for: content the project never confirmed is treated as absent and gets an
+// upload target without a HEAD (an object that does sit at such a key, an
+// upload whose confirm never ran, makes the create-only PUT answer 412 and
+// confirm then reads it back). A row only hints "present"; refs with one are
+// still checked, which finds lost objects. The checks of all presigns share
+// existsSlots.
+func (c *Chunk) existsRecorded(ctx context.Context, store storage.ChunkStore, projectID snow.ID, page []ChunkRef, recorded map[domain.Hash]int64) ([]bool, error) {
 	exists := make([]bool, len(page))
-	isKnown := func(i int) bool {
-		_, ok := known[page[i].Hash]
+	isRecorded := func(i int) bool {
+		_, ok := recorded[page[i].Hash]
 		return ok
 	}
-	err := fanOut(ctx, c.existsSlots, len(page), isKnown, func(ctx context.Context, i int) error {
-		ok, err := store.Exists(ctx, page[i].Hash)
+	err := fanOut(ctx, c.existsSlots, len(page), isRecorded, func(ctx context.Context, i int) error {
+		ok, err := store.Exists(ctx, projectID, page[i].Hash)
 		if err != nil {
 			return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", page[i].Hash, err))
 		}
@@ -579,8 +591,9 @@ func fanOut(ctx context.Context, slots *semaphore.Weighted, n int, wants func(i 
 	return acquireErr
 }
 
-// checkHeadroom projects the bytes the unlinked refs would add and asks the
-// ledger whether the organization still has room for them.
+// checkHeadroom projects the bytes the refs without a chunk row in the project
+// would add and asks the ledger whether the organization still has room for
+// them.
 func (c *Chunk) checkHeadroom(ctx context.Context, ledger StorageLedger, org *domain.Organization, project *domain.Project, refs []ChunkRef) error {
 	if ledger == nil {
 		return nil
@@ -617,7 +630,7 @@ func (c *Chunk) uploadTarget(ctx context.Context, resolved ProjectStore, org *do
 			URL: chunkurl.UploadPath(c.transfer.SigningKey, org.Slug, project.Slug, ref.Hash.String(), ref.SizeBytes, expiry),
 		}, nil
 	}
-	target, err := direct.PresignUpload(ctx, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+	target, err := direct.PresignUpload(ctx, project.ID, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
 	if err != nil {
 		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
 	}
@@ -649,7 +662,7 @@ func (c *Chunk) presignDownloadURLs(ctx context.Context, org *domain.Organizatio
 	expiry := chunkurl.Expiry(c.now(), c.transfer.PresignTTL)
 	urls := make([]ChunkURL, 0, len(page))
 	for _, hash := range page {
-		path, err := c.downloadPath(ctx, resolved.Store, org.Slug, project.Slug, hash, expiry)
+		path, err := c.downloadPath(ctx, resolved.Store, org.Slug, project, hash, expiry)
 		if err != nil {
 			return nil, "", err
 		}
@@ -658,38 +671,38 @@ func (c *Chunk) presignDownloadURLs(ctx context.Context, org *domain.Organizatio
 	return urls, next, nil
 }
 
-func (c *Chunk) downloadPath(ctx context.Context, store storage.ChunkStore, org, project string, hash domain.Hash, expiry int64) (string, error) {
+func (c *Chunk) downloadPath(ctx context.Context, store storage.ChunkStore, org string, project *domain.Project, hash domain.Hash, expiry int64) (string, error) {
 	direct, ok := store.(storage.DirectTransferStore)
 	if !ok {
-		return chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry), nil
+		return chunkurl.DownloadPath(c.transfer.SigningKey, org, project.Slug, hash.String(), expiry), nil
 	}
-	url, err := direct.PresignDownload(ctx, hash, c.transfer.PresignTTL)
+	url, err := direct.PresignDownload(ctx, project.ID, hash, c.transfer.PresignTTL)
 	if err != nil {
 		return "", domain.NewErrorInternalServer(fmt.Sprintf("presign download for chunk %s: %v", hash, err))
 	}
 	return url, nil
 }
 
-// ConfirmUploads verifies that uploaded chunk content landed in the store and
-// records metadata rows for the present chunks (one batched insert, before the
-// ledger and the links). Read-backs stream the content and share one
-// server-wide limit (WithVerifyLimit). The recorded size is measured
-// from the stored content, never taken from the client. A hash the project is
-// not linked to yet, or one the client supplies a proof for, is read back,
-// hashed and checked against the proof, because direct uploads never pass
-// through the server; linked chunks without a proof are trusted once linked.
-// A proof carrying a valid receipt from StoreUploaded (proxied upload, same
-// project and hash, not expired) skips the read-back: the server hashed those
-// bytes itself on the way in. Receipts never skip the rows, the ledger or the
-// quota. Hashes still missing are returned so the client can retry them. When a
-// ledger is attached, present chunks are attributed to the project and the
-// organization's quota is enforced.
-func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, error) {
+// ConfirmUploads verifies that uploaded chunk content landed in the project's
+// store and records the project's chunk rows for the present chunks. Hashes
+// the project already has a row for are trusted (the content was verified
+// when the row was written). For the others the verification depends on the
+// upload path: a valid receipt from StoreUploaded (proxied upload, same
+// project and hash, not expired) means the server hashed the bytes on the way
+// in, so its size is used with no store read; anything else (direct uploads,
+// an invalid or expired receipt) is read back from the store, streamed and
+// hashed with plain BLAKE3. Read-backs share one server-wide limit
+// (WithVerifyLimit). The recorded size is measured by the server, never taken
+// from the client. Then, in one transaction, the ledger attributes the new
+// rows (quota) and the rows are inserted, so no row is visible before the
+// quota accepted it. Hashes still missing are returned so the client can
+// retry them.
+func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, receipts []ChunkReceipt) ([]domain.Hash, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.confirm",
 		attribute.String(obs.AttrOrg, org.Slug),
 		attribute.String(obs.AttrProject, project.Slug),
 		attribute.Int(obs.AttrChunkCount, len(hashes)))
-	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes, proofs)
+	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes, receipts)
 	if err == nil {
 		span.SetAttributes(
 			attribute.Int(obs.AttrChunkMissing, len(missing)),
@@ -709,89 +722,60 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, pr
 	return missing, err
 }
 
-func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, int64, error) {
-	var missing []domain.Hash
-	var attributed []LedgerChunk
-	var confirmedBytes int64
+// chunkCheck is what confirm learned about one chunk without a row.
+type chunkCheck struct {
+	size    int64
+	present bool
+}
+
+func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, receipts []ChunkReceipt) ([]domain.Hash, int64, error) {
+	hashes = uniqueHashes(hashes)
 	resolved, err := c.writableStore(ctx, project.ID)
 	if err != nil {
 		return nil, 0, err
 	}
-	ledger := c.ledgerFor(resolved)
-	if err := c.protect(ctx, hashes...); err != nil {
+	if err := c.protect(ctx, project.ID, hashes...); err != nil {
 		return nil, 0, err
 	}
-	linked, err := c.chunkRepo.LinkedProjectChunkSizes(ctx, project.ID, hashes)
+	recorded, err := c.chunkRepo.ProjectChunkSizes(ctx, project.ID, hashes)
 	if err != nil {
 		return nil, 0, err
 	}
-	var toLink []domain.Hash
-	proofByHash := make(map[domain.Hash]ChunkProof, len(proofs))
-	for _, proof := range proofs {
-		proofByHash[proof.Hash] = proof
-	}
-	type possession struct {
-		size    int64
-		present bool
-	}
 	// receipted is filled before the read-backs start and only read after;
 	// checks is written by them under checkMu.
-	receipted := make(map[domain.Hash]possession)
-	checks := make(map[domain.Hash]possession)
-	// A valid receipt means the server received and stored these bytes for
-	// this project itself (proxied upload): present with the size it records,
-	// no read-back. An invalid or expired one falls through to the proof.
-	for _, hash := range hashes {
-		proof, supplied := proofByHash[hash]
-		if !supplied || proof.Receipt == "" {
-			continue
-		}
-		size, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, project.ID, hash, proof.Receipt, c.now())
-		if err != nil {
-			continue
-		}
-		receipted[hash] = possession{size: size, present: true}
-	}
+	receipted := c.verifyReceipts(project.ID, recorded, receipts)
+	checks := make(map[domain.Hash]chunkCheck)
 	var checkMu sync.Mutex
 	needsCheck := func(i int) bool {
-		if _, ok := receipted[hashes[i]]; ok {
-			return false
-		}
-		_, isLinked := linked[hashes[i]]
-		_, supplied := proofByHash[hashes[i]]
-		return !isLinked || supplied
+		_, isRecorded := recorded[hashes[i]]
+		_, isReceipted := receipted[hashes[i]]
+		return !isRecorded && !isReceipted
 	}
 	err = fanOut(ctx, c.verifySlots, len(hashes), needsCheck, func(ctx context.Context, i int) error {
 		hash := hashes[i]
-		size, present, err := c.verifyPossession(ctx, resolved.Store, project, hash, proofByHash[hash])
+		check, err := c.readBack(ctx, resolved.Store, project.ID, hash)
 		if err != nil {
 			return err
 		}
 		checkMu.Lock()
-		checks[hash] = possession{size: size, present: present}
+		checks[hash] = check
 		checkMu.Unlock()
 		return nil
 	})
 	if err != nil {
 		return nil, 0, err
 	}
+	var missing []domain.Hash
 	var rows []ChunkRef
+	var confirmedBytes int64
 	for _, hash := range hashes {
-		linkedSize, isLinked := linked[hash]
-		_, supplied := proofByHash[hash]
-		if isLinked && !supplied {
-			confirmedBytes += linkedSize
-			if ledger != nil {
-				attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: linkedSize})
-			}
+		if size, ok := recorded[hash]; ok {
+			confirmedBytes += size
 			continue
 		}
 		check, ok := receipted[hash]
 		if !ok {
 			check = checks[hash]
-		}
-		if check.present && !isLinked {
-			toLink = append(toLink, hash)
 		}
 		if !check.present {
 			missing = append(missing, hash)
@@ -799,78 +783,96 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		}
 		rows = append(rows, ChunkRef{Hash: hash, SizeBytes: check.size})
 		confirmedBytes += check.size
-		if ledger != nil {
-			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: check.size})
+	}
+	var attribute func(ctx context.Context) error
+	if ledger := c.ledgerFor(resolved); ledger != nil && len(rows) > 0 {
+		attributed := make([]LedgerChunk, 0, len(rows))
+		for _, row := range rows {
+			attributed = append(attributed, LedgerChunk(row))
+		}
+		attribute = func(ctx context.Context) error {
+			return ledger.Attribute(ctx, org, project, attributed)
 		}
 	}
-	// Rows first: the ledger and the links resolve chunks through them. A
-	// quota failure below still leaves the project unlinked; rows without a
-	// link are harmless.
-	if len(rows) > 0 {
-		if err := c.chunkRepo.InsertChunksIfNotExist(ctx, rows); err != nil {
-			return nil, 0, err
-		}
-	}
-	if len(attributed) > 0 {
-		if err := ledger.Attribute(ctx, org, project, attributed); err != nil {
-			return nil, 0, err
-		}
-	}
-	if len(toLink) > 0 {
-		if err := c.chunkRepo.LinkProjectChunks(ctx, project.ID, toLink); err != nil {
-			return nil, 0, err
-		}
+	if err := c.recordChunks(ctx, project.ID, rows, attribute); err != nil {
+		return nil, 0, err
 	}
 	return missing, confirmedBytes, nil
 }
 
-// verifyPossession decides whether the caller may be linked to a chunk it is
-// not linked to yet and returns the chunk's size. The challenge must be a live
-// one issued for this project and hash, and the proof must equal
-// BLAKE3(challenge || bytes) over bytes the server read itself. Direct uploads
-// land on the shared key without passing through the server, so the bytes are
-// also hashed: an object that does not match its key is deleted (it is garbage
-// that would otherwise block the real content) and reported missing.
-func (c *Chunk) verifyPossession(ctx context.Context, store storage.ChunkStore, project *domain.Project, hash domain.Hash, proof ChunkProof) (int64, bool, error) {
-	if proof.Challenge == "" || proof.Proof == "" {
-		return 0, false, nil
+// verifyReceipts returns the chunks without a row whose receipt is valid for
+// this project and hash: the server received and stored these bytes for the
+// project itself (proxied upload), so they are present with the size the
+// receipt records and need no read-back. Invalid or expired receipts are
+// ignored; those chunks are read back.
+func (c *Chunk) verifyReceipts(projectID snow.ID, recorded map[domain.Hash]int64, receipts []ChunkReceipt) map[domain.Hash]chunkCheck {
+	receipted := make(map[domain.Hash]chunkCheck, len(receipts))
+	for _, receipt := range receipts {
+		if _, ok := recorded[receipt.Hash]; ok || receipt.Receipt == "" {
+			continue
+		}
+		size, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, projectID, receipt.Hash, receipt.Receipt, c.now())
+		if err != nil {
+			continue
+		}
+		receipted[receipt.Hash] = chunkCheck{size: size, present: true}
 	}
-	if err := chunkproof.VerifyChallenge(c.transfer.SigningKey, project.ID, hash, proof.Challenge, c.now()); err != nil {
-		return 0, false, nil
-	}
-	verifier := chunkproof.NewVerifier(proof.Challenge)
-	err := readChunk(ctx, store, hash, verifier)
+	return receipted
+}
+
+// readBack streams the project's stored object through a plain BLAKE3 check
+// and returns its size. Direct uploads land in the store without passing
+// through the server, so the bytes are hashed here: an object that does not
+// match its key is deleted (it is garbage that would otherwise block the real
+// content at a create-only key) and reported missing, like an absent object.
+func (c *Chunk) readBack(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash) (chunkCheck, error) {
+	verifier := chunkproof.NewVerifier()
+	err := readChunk(ctx, store, projectID, hash, verifier)
 	if domain.IsErrorNotFound(err) {
-		return 0, false, nil
+		return chunkCheck{}, nil
 	}
 	if err != nil {
-		return 0, false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+		return chunkCheck{}, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
 	}
 	// A legitimate chunk is never larger than the maximum: presign rejects
 	// larger refs and direct uploads pin the signed length. readChunk stops
 	// one byte past it, so a larger object fails here without being read whole.
 	if verifier.Size() > chunker.MaxChunkSize() || verifier.Sum() != hash {
 		c.metrics.ObserveChunkVerifyFailure("confirm")
-		return 0, false, c.dropInvalidChunk(ctx, store, hash)
+		return chunkCheck{}, c.dropInvalidChunk(ctx, store, projectID, hash)
 	}
-	return verifier.Size(), chunkproof.Equal(verifier.Proof(), proof.Proof), nil
+	return chunkCheck{size: verifier.Size(), present: true}, nil
+}
+
+// uniqueHashes drops repeated hashes, keeping the first occurrence's order.
+func uniqueHashes(hashes []domain.Hash) []domain.Hash {
+	seen := make(map[domain.Hash]struct{}, len(hashes))
+	out := make([]domain.Hash, 0, len(hashes))
+	for _, hash := range hashes {
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		out = append(out, hash)
+	}
+	return out
 }
 
 // readChunk streams the stored chunk into w, at most one byte more than the
 // largest legal chunk. Stores implementing storage.ChunkOpener are streamed;
 // others are read whole with Get. A missing chunk is a domain NotFound error.
-func readChunk(ctx context.Context, store storage.ChunkStore, hash domain.Hash, w io.Writer) error {
+func readChunk(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash, w io.Writer) error {
 	limit := chunker.MaxChunkSize() + 1
 	opener, ok := store.(storage.ChunkOpener)
 	if !ok {
-		data, err := store.Get(ctx, hash)
+		data, err := store.Get(ctx, projectID, hash)
 		if err != nil {
 			return err
 		}
 		_, _ = w.Write(data[:min(int64(len(data)), limit)])
 		return nil
 	}
-	r, err := opener.Open(ctx, hash)
+	r, err := opener.Open(ctx, projectID, hash)
 	if err != nil {
 		return err
 	}
@@ -879,12 +881,12 @@ func readChunk(ctx context.Context, store storage.ChunkStore, hash domain.Hash, 
 	return err
 }
 
-func (c *Chunk) dropInvalidChunk(ctx context.Context, store storage.ChunkStore, hash domain.Hash) error {
+func (c *Chunk) dropInvalidChunk(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash) error {
 	direct, ok := store.(storage.DirectTransferStore)
 	if !ok {
 		return nil
 	}
-	if err := direct.DeleteChunk(ctx, hash); err != nil {
+	if err := direct.DeleteChunk(ctx, projectID, hash); err != nil {
 		return domain.NewErrorInternalServer(fmt.Sprintf("delete invalid chunk %s: %v", hash, err))
 	}
 	return nil

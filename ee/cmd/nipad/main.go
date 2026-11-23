@@ -272,7 +272,7 @@ func main() {
 	if reconciler := quotaReconciler(cfg, dbConn, storageLedger, billingSetup, uc.Audit); reconciler != nil {
 		dispatchers = append(dispatchers, newQuotaReconcileJob(reconciler))
 	}
-	purgeJob, err := newPurgeJob(cfg, dbConn, storageLedger, uc.Audit)
+	purgeJob, err := newPurgeJob(cfg, dbConn, storageLedger, uc.Audit, chunkStore)
 	if err != nil {
 		panic(fmt.Errorf("project purge: %w", err))
 	}

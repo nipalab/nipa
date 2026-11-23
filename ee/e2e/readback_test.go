@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"path/filepath"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 // existsCountingStore is the S3 store with its existence checks counted; the
@@ -23,9 +25,20 @@ type existsCountingStore struct {
 	exists atomic.Int64
 }
 
-func (s *existsCountingStore) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
+func (s *existsCountingStore) Exists(ctx context.Context, projectID snow.ID, hash domain.Hash) (bool, error) {
 	s.exists.Add(1)
-	return s.Store.Exists(ctx, hash)
+	return s.Store.Exists(ctx, projectID, hash)
+}
+
+// defaultProjectID is the id of the default/default project the e2e pushes
+// go to.
+func defaultProjectID(t *testing.T, dbConn *sql.DB) snow.ID {
+	t.Helper()
+	var id int64
+	require.NoError(t, dbConn.QueryRowContext(context.Background(),
+		`SELECT p.id FROM projects p JOIN organizations o ON o.id = p.org_id WHERE o.slug = $1 AND p.slug = $2`,
+		e2eOrgSlug, e2eProjectSlug).Scan(&id))
+	return snow.ID(id)
 }
 
 // TestEnterprisePushOverObjectsWithoutRows pushes content whose keys already
@@ -63,8 +76,9 @@ func TestEnterprisePushOverObjectsWithoutRows(t *testing.T) {
 	}
 	plantedHash, plantedData := encodedChunk("planted.txt", planted)
 	poisonedHash, poisonedData := encodedChunk("poisoned.txt", poisoned)
-	require.NoError(t, store.Put(ctx, plantedHash, plantedData))
-	require.NoError(t, store.Put(ctx, poisonedHash, []byte("garbage under someone else's hash")))
+	project := defaultProjectID(t, dbConn)
+	require.NoError(t, store.Put(ctx, project, plantedHash, plantedData))
+	require.NoError(t, store.Put(ctx, project, poisonedHash, []byte("garbage under someone else's hash")))
 
 	writeFile(t, target, "fresh.txt", fresh)
 	stagePath(t, target, "fresh.txt")
@@ -78,10 +92,10 @@ func TestEnterprisePushOverObjectsWithoutRows(t *testing.T) {
 	stagePath(t, target, "poisoned.txt")
 	require.NoError(t, pusher.Run(ctx, target, "push over objects without rows"))
 
-	got, err := store.Get(ctx, poisonedHash)
+	got, err := store.Get(ctx, project, poisonedHash)
 	require.NoError(t, err)
 	require.Equal(t, poisonedData, got, "the garbage was replaced by the real content")
-	got, err = store.Get(ctx, plantedHash)
+	got, err = store.Get(ctx, project, plantedHash)
 	require.NoError(t, err)
 	require.Equal(t, plantedData, got)
 

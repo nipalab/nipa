@@ -31,7 +31,7 @@ func TestLedger_AttributedSizes_Empty(t *testing.T) {
 }
 
 func TestLedger_AttributedSizes_DatabaseError(t *testing.T) {
-	_, ledger := newErrorLedger(t, "project_chunks")
+	_, ledger := newErrorLedger(t, "chunks")
 	_, err := ledger.AttributedSizes(context.Background(), snow.ID(1), []domain.Hash{{1}})
 	require.Equal(t, 500, errorCode(err))
 }
@@ -74,16 +74,12 @@ func TestLedger_Attribute_ErrorPaths(t *testing.T) {
 	_, ledger = newErrorLedger(t, "chunks")
 	require.Equal(t, 500, errorCode(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{chunk})), "chunk lookup error")
 
-	db, ledger := newErrorLedger(t, "project_chunks")
-	hash := seedAPIChunk(t, db, 10)
-	require.Equal(t, 500, errorCode(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 10}})), "link insert error")
-
-	db, ledger = newErrorLedger(t, "project_usage")
-	hash = seedAPIChunk(t, db, 10)
+	_, ledger = newErrorLedger(t, "project_usage")
+	hash := seedAPIChunk(t)
 	require.Equal(t, 500, errorCode(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 10}})), "project counter error")
 
-	db, ledger = newErrorLedger(t, "org_usage")
-	hash = seedAPIChunk(t, db, 10)
+	_, ledger = newErrorLedger(t, "org_usage")
+	hash = seedAPIChunk(t)
 	require.Equal(t, 500, errorCode(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 10}})), "org counter error")
 }
 
@@ -139,9 +135,6 @@ func TestLedger_RecountOrg_ErrorPaths(t *testing.T) {
 
 	_, ledger := newErrorLedger(t, "projects")
 	require.Equal(t, 500, errorCode(ledger.RecountOrg(ctx, snow.ID(1))), "project listing error")
-
-	_, ledger = newErrorLedger(t, "project_chunks")
-	require.Equal(t, 500, errorCode(ledger.RecountOrg(ctx, snow.ID(1))), "link delete error")
 
 	_, ledger = newErrorLedger(t, "project_usage")
 	require.Equal(t, 500, errorCode(ledger.RecountOrg(ctx, snow.ID(1))), "project counter error")
@@ -199,16 +192,20 @@ func TestLedger_Attribute_ConcurrentQuota(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	hashA := seedAPIChunk(t, db, 100)
-	hashB := seedAPIChunk(t, db, 100)
+	hashA := seedAPIChunk(t)
+	hashB := seedAPIChunk(t)
 	org := &domain.Organization{ID: 1}
 
 	results := make(chan error, 2)
 	go func() {
-		results <- ledger.Attribute(ctx, org, &domain.Project{ID: projectA}, []usecase.LedgerChunk{{Hash: hashA, SizeBytes: 100}})
+		results <- confirmChunks(ctx, db, func(ctx context.Context) error {
+			return ledger.Attribute(ctx, org, &domain.Project{ID: projectA}, []usecase.LedgerChunk{{Hash: hashA, SizeBytes: 100}})
+		}, projectA, []usecase.LedgerChunk{{Hash: hashA, SizeBytes: 100}})
 	}()
 	go func() {
-		results <- ledger.Attribute(ctx, org, &domain.Project{ID: projectB}, []usecase.LedgerChunk{{Hash: hashB, SizeBytes: 100}})
+		results <- confirmChunks(ctx, db, func(ctx context.Context) error {
+			return ledger.Attribute(ctx, org, &domain.Project{ID: projectB}, []usecase.LedgerChunk{{Hash: hashB, SizeBytes: 100}})
+		}, projectB, []usecase.LedgerChunk{{Hash: hashB, SizeBytes: 100}})
 	}()
 
 	first, second := <-results, <-results
@@ -251,7 +248,7 @@ func TestLedger_Attribute_ManyConcurrentConfirms(t *testing.T) {
 	batches := make([][]usecase.LedgerChunk, confirms)
 	for i := range batches {
 		for j := 0; j < perConfirm; j++ {
-			batches[i] = append(batches[i], usecase.LedgerChunk{Hash: seedAPIChunk(t, db, chunkSize), SizeBytes: chunkSize})
+			batches[i] = append(batches[i], usecase.LedgerChunk{Hash: seedAPIChunk(t), SizeBytes: chunkSize})
 		}
 	}
 
@@ -264,7 +261,9 @@ func TestLedger_Attribute_ManyConcurrentConfirms(t *testing.T) {
 		}
 		go func() {
 			<-start
-			results <- ledger.Attribute(ctx, org, &domain.Project{ID: project}, batch)
+			results <- confirmChunks(ctx, db, func(ctx context.Context) error {
+				return ledger.Attribute(ctx, org, &domain.Project{ID: project}, batch)
+			}, project, batch)
 		}()
 	}
 	close(start)
@@ -284,8 +283,8 @@ func TestLedger_Attribute_ManyConcurrentConfirms(t *testing.T) {
 		`SELECT COALESCE((SELECT used_bytes FROM org_usage WHERE org_id = 1), 0)`).Scan(&used))
 	require.Equal(t, int64(accepted*perConfirm*chunkSize), used)
 	var links int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM project_chunks`).Scan(&links))
-	require.Equal(t, accepted*perConfirm, links, "a rejected confirm links nothing")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chunks`).Scan(&links))
+	require.Equal(t, accepted*perConfirm, links, "a rejected confirm records no rows")
 }
 
 func TestLedger_Audit_ErrorPaths(t *testing.T) {

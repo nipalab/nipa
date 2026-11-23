@@ -13,19 +13,31 @@ import (
 )
 
 const adoptOrphanChunks = `-- name: AdoptOrphanChunks :execrows
-INSERT INTO chunks (hash, size_bytes, gc_marked_at)
-SELECT unnest($1::bytea[]), unnest($2::bigint[]), $3::timestamptz
-ON CONFLICT (hash) DO NOTHING
+INSERT INTO chunks (project_id, hash, size_bytes, gc_marked_at)
+SELECT k.project_id, k.hash, k.size_bytes, $1::timestamptz
+FROM (
+    SELECT unnest($2::bigint[]) AS project_id,
+           unnest($3::bytea[]) AS hash,
+           unnest($4::bigint[]) AS size_bytes
+) AS k
+WHERE EXISTS (SELECT 1 FROM projects p WHERE p.id = k.project_id)
+ON CONFLICT (project_id, hash) DO NOTHING
 `
 
 type AdoptOrphanChunksParams struct {
-	Hashes   [][]byte  `json:"hashes"`
-	Sizes    []int64   `json:"sizes"`
-	MarkedAt time.Time `json:"marked_at"`
+	MarkedAt   time.Time `json:"marked_at"`
+	ProjectIds []int64   `json:"project_ids"`
+	Hashes     [][]byte  `json:"hashes"`
+	Sizes      []int64   `json:"sizes"`
 }
 
 func (q *Queries) AdoptOrphanChunks(ctx context.Context, arg AdoptOrphanChunksParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, adoptOrphanChunks, pq.Array(arg.Hashes), pq.Array(arg.Sizes), arg.MarkedAt)
+	result, err := q.db.ExecContext(ctx, adoptOrphanChunks,
+		arg.MarkedAt,
+		pq.Array(arg.ProjectIds),
+		pq.Array(arg.Hashes),
+		pq.Array(arg.Sizes),
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -36,8 +48,7 @@ const countSweepableChunks = `-- name: CountSweepableChunks :one
 SELECT COUNT(*)::BIGINT AS chunks, COALESCE(SUM(c.size_bytes), 0)::BIGINT AS bytes FROM chunks c
 WHERE c.gc_marked_at IS NOT NULL AND c.gc_marked_at < $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
-  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.hash = c.hash)
-  AND NOT EXISTS (SELECT 1 FROM project_chunks pc WHERE pc.chunk_id = c.id)
+  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.project_id = c.project_id AND u.hash = c.hash)
 `
 
 type CountSweepableChunksRow struct {
@@ -64,23 +75,37 @@ func (q *Queries) DeleteChunksByIDs(ctx context.Context, ids []int64) (int64, er
 	return result.RowsAffected()
 }
 
-const existingChunkHashes = `-- name: ExistingChunkHashes :many
-SELECT hash FROM chunks WHERE hash = ANY($1::bytea[])
+const existingProjectChunks = `-- name: ExistingProjectChunks :many
+SELECT c.project_id, c.hash
+FROM chunks c
+WHERE (c.project_id, c.hash) IN (
+    SELECT unnest($1::bigint[]), unnest($2::bytea[])
+)
 `
 
-func (q *Queries) ExistingChunkHashes(ctx context.Context, hashes [][]byte) ([][]byte, error) {
-	rows, err := q.db.QueryContext(ctx, existingChunkHashes, pq.Array(hashes))
+type ExistingProjectChunksParams struct {
+	ProjectIds []int64  `json:"project_ids"`
+	Hashes     [][]byte `json:"hashes"`
+}
+
+type ExistingProjectChunksRow struct {
+	ProjectID int64  `json:"project_id"`
+	Hash      []byte `json:"hash"`
+}
+
+func (q *Queries) ExistingProjectChunks(ctx context.Context, arg ExistingProjectChunksParams) ([]ExistingProjectChunksRow, error) {
+	rows, err := q.db.QueryContext(ctx, existingProjectChunks, pq.Array(arg.ProjectIds), pq.Array(arg.Hashes))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items [][]byte
+	var items []ExistingProjectChunksRow
 	for rows.Next() {
-		var hash []byte
-		if err := rows.Scan(&hash); err != nil {
+		var i ExistingProjectChunksRow
+		if err := rows.Scan(&i.ProjectID, &i.Hash); err != nil {
 			return nil, err
 		}
-		items = append(items, hash)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -92,11 +117,10 @@ func (q *Queries) ExistingChunkHashes(ctx context.Context, hashes [][]byte) ([][
 }
 
 const lockSweepableChunks = `-- name: LockSweepableChunks :many
-SELECT c.id, c.hash, c.size_bytes FROM chunks c
+SELECT c.id, c.project_id, c.hash, c.size_bytes FROM chunks c
 WHERE c.gc_marked_at IS NOT NULL AND c.gc_marked_at < $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
-  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.hash = c.hash)
-  AND NOT EXISTS (SELECT 1 FROM project_chunks pc WHERE pc.chunk_id = c.id)
+  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.project_id = c.project_id AND u.hash = c.hash)
 ORDER BY c.id
 LIMIT $2::bigint
 FOR UPDATE OF c SKIP LOCKED
@@ -109,6 +133,7 @@ type LockSweepableChunksParams struct {
 
 type LockSweepableChunksRow struct {
 	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
 	Hash      []byte `json:"hash"`
 	SizeBytes int64  `json:"size_bytes"`
 }
@@ -122,7 +147,12 @@ func (q *Queries) LockSweepableChunks(ctx context.Context, arg LockSweepableChun
 	var items []LockSweepableChunksRow
 	for rows.Next() {
 		var i LockSweepableChunksRow
-		if err := rows.Scan(&i.ID, &i.Hash, &i.SizeBytes); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Hash,
+			&i.SizeBytes,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -141,8 +171,7 @@ UPDATE chunks c SET gc_marked_at = $1::timestamptz
 WHERE c.id > $2 AND c.id <= $3
   AND c.gc_marked_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
-  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.hash = c.hash)
-  AND NOT EXISTS (SELECT 1 FROM project_chunks pc WHERE pc.chunk_id = c.id)
+  AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.project_id = c.project_id AND u.hash = c.hash)
 RETURNING c.size_bytes
 `
 
@@ -188,11 +217,18 @@ func (q *Queries) MaxChunkID(ctx context.Context) (int64, error) {
 
 const unmarkChunks = `-- name: UnmarkChunks :execrows
 UPDATE chunks SET gc_marked_at = NULL
-WHERE hash = ANY($1::bytea[]) AND gc_marked_at IS NOT NULL
+WHERE project_id = $1
+  AND hash = ANY($2::bytea[])
+  AND gc_marked_at IS NOT NULL
 `
 
-func (q *Queries) UnmarkChunks(ctx context.Context, hashes [][]byte) (int64, error) {
-	result, err := q.db.ExecContext(ctx, unmarkChunks, pq.Array(hashes))
+type UnmarkChunksParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+func (q *Queries) UnmarkChunks(ctx context.Context, arg UnmarkChunksParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, unmarkChunks, arg.ProjectID, pq.Array(arg.Hashes))
 	if err != nil {
 		return 0, err
 	}

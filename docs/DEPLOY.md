@@ -339,6 +339,34 @@ logins and token refreshes, every user signs in again once, and the code
 cannot be rolled back to `v26.11.1` without `migrate-down`. Keep that flip
 short.
 
+### Per-project chunks release (wipe, not a rolling upgrade)
+
+The release that introduces per-project chunks (sqlite `000029`, postgres
+`000020_per_project_chunks`, chunk protocol 2) is a breaking release with no
+backward compatibility: clients and servers must be upgraded together (an
+older client is refused with `FailedPrecondition` "upgrade nipa", a newer
+client refuses an older server), and existing chunk data is **wiped**, not
+moved. The migration still backfills `chunks.project_id` and migrates a
+non-empty database without errors (it refuses only when a chunk is linked to
+two projects or a file references a chunk no project links), but objects
+stored under the old global keys (`<prefix>/ab/cdef...`) are never read by the
+new server, which uses `<prefix>/p/<project>/ab/cdef...`. Do not blue/green
+this release; deploy it with a short outage:
+
+1. Stop both colors (`systemctl stop nipad-ee@blue nipad-ee@green`, or the free
+   `nipad`).
+2. Reset the database: drop and recreate the postgres database (or schema)
+   the server uses, e.g. `dropdb nipa && createdb -O nipa nipa`; for the free
+   server delete the sqlite file (`nipa.db` plus its `-wal`/`-shm` files).
+3. Empty the chunk storage: every object under `CHUNK_S3_PREFIX` in
+   `CHUNK_S3_BUCKET` (e.g. `mc rm --recursive --force <alias>/<bucket>/<prefix>/`
+   or `aws s3 rm --recursive s3://<bucket>/<prefix>/`), or the free server's
+   `CHUNK_STORAGE_DIR`. Own-storage (BYO) buckets belong to customers: tell
+   them to empty their prefix as well, the server never deletes there.
+4. Install the new binary and start one color; it migrates the empty
+   database at startup. Then upgrade every client (`nipa`, desktop, plugins)
+   and push the test projects again.
+
 ## CI deploys (dev + production)
 
 `.github/workflows/server-deploy.yml` builds `nipad-ee` on GitHub Actions and

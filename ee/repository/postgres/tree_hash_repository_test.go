@@ -53,8 +53,7 @@ func (s *TreeHashRepositorySuite) TestBackfill() {
 		hash domain.Hash
 		size int64
 	}{{libChunk, libSize}, {aChunk, aSize}, {bChunk, bSize}} {
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, c.hash, c.size))
-		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, c.hash))
+		require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: c.hash, SizeBytes: c.size}}))
 	}
 
 	libRW := treehash.FileEntry{Name: "lib.so", Hash: libHash, Mode: 0o644}
@@ -240,8 +239,7 @@ func (s *TreeHashRepositorySuite) TestRollingDeploy() {
 		hash domain.Hash
 		size int64
 	}{{libChunk, libSize}, {aChunk, aSize}, {bChunk, bSize}} {
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, c.hash, c.size))
-		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, c.hash))
+		require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: c.hash, SizeBytes: c.size}}))
 	}
 	libX := treehash.FileEntry{Name: "lib.so", Hash: libHash, Mode: 0o755}
 	fileA := treehash.FileEntry{Name: "a.txt", Hash: aHash, Mode: 0o644}

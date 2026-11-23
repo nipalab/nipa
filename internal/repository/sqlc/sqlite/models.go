@@ -55,6 +55,7 @@ type BranchesRequiredReviewer struct {
 
 type Chunk struct {
 	ID        int64        `json:"id"`
+	ProjectID int64        `json:"project_id"`
 	Hash      []byte       `json:"hash"`
 	SizeBytes int64        `json:"size_bytes"`
 	CreatedAt sql.NullTime `json:"created_at"`

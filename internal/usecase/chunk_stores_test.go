@@ -31,7 +31,7 @@ func (f fakeChunkStores) ForProject(_ context.Context, projectID snow.ID) (Proje
 
 type twoStoreFixture struct {
 	uc     *Chunk
-	repo   *MockchunkRepository
+	repo   *fakeChunkRepo
 	ledger *MockStorageLedger
 	nipa   *stubChunkStore
 	own    *stubChunkStore
@@ -40,7 +40,7 @@ type twoStoreFixture struct {
 func newTwoStoreFixture(t *testing.T, external ProjectStore) twoStoreFixture {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	repo := NewMockchunkRepository(ctrl)
+	repo := newFakeChunkRepo()
 	ledger := NewMockStorageLedger(ctrl)
 	nipa, own := newStubChunkStore(), newStubChunkStore()
 	external.Store = own
@@ -48,7 +48,7 @@ func newTwoStoreFixture(t *testing.T, external ProjectStore) twoStoreFixture {
 		testProject.ID: external,
 		snow.ID(2):     {Store: nipa},
 	}}
-	uc := NewChunk(repo, nipa, ChunkTransferConfig{SigningKey: linkTestKey, PresignTTL: time.Hour, MaxPageSize: 10}).
+	uc := NewChunk(repo, nipa, ChunkTransferConfig{SigningKey: testSigningKey, PresignTTL: time.Hour, MaxPageSize: 10}).
 		WithChunkStores(stores).WithStorageLedger(ledger)
 	return twoStoreFixture{uc: uc, repo: repo, ledger: ledger, nipa: nipa, own: own}
 }
@@ -67,7 +67,7 @@ func TestProjectChunkReader(t *testing.T) {
 	store := newStubChunkStore()
 	data := []byte("content")
 	hash := chunker.Sum(data)
-	store.data[hash] = data
+	store.data[ck(hash)] = data
 
 	got, err := NewProjectChunkReader(StaticStores(store)).Get(ctx, snow.ID(1), hash)
 	require.NoError(t, err)
@@ -88,55 +88,49 @@ func TestChunk_PresignExistsIsPerStore(t *testing.T) {
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	data := []byte("held by nipa only")
 	hash := chunker.Sum(data)
-	f.nipa.data[hash] = data
-	f.repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).
-		Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
-	f.repo.EXPECT().KnownChunks(gomock.Any(), []domain.Hash{hash}).Return(map[domain.Hash]struct{}{hash: {}}, nil)
+	f.nipa.data[ck(hash)] = data
+	f.repo.record(testProject.ID, hash, int64(len(data)))
 
 	urls, _, err := f.uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 	require.False(t, urls[0].AlreadyStored)
-	require.NotEmpty(t, urls[0].URL)
-	require.NotEmpty(t, urls[0].ProofChallenge)
+	require.NotEmpty(t, urls[0].URL, "the project's own store lost the object: upload it again")
 }
 
 func TestChunk_ExternalConfirmSkipsLedger(t *testing.T) {
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	data := []byte("own bucket chunk")
 	hash := chunker.Sum(data)
-	f.own.data[hash] = data
-	f.repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(map[domain.Hash]int64{}, nil)
-	f.repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}).Return(nil)
-	f.repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
+	f.own.data[ck(hash)] = data
 
-	missing, err := f.uc.ConfirmUploads(context.Background(), testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, f.uc, hash, data)})
+	missing, err := f.uc.ConfirmUploads(context.Background(), testOrg, testProject, []domain.Hash{hash}, nil)
 
 	require.NoError(t, err)
 	require.Empty(t, missing)
+	require.True(t, f.repo.has(testProject.ID, hash), "own storage still records the project's rows")
 }
 
 func TestChunk_ExternalAttributeProjectChunksSkipsLedger(t *testing.T) {
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	hash := chunker.Sum([]byte("merged"))
-	f.repo.EXPECT().LinkProjectChunk(gomock.Any(), testProject.ID, hash).Return(nil)
 
 	require.NoError(t, f.uc.AttributeProjectChunks(context.Background(), testProject.ID, []LedgerChunk{{Hash: hash, SizeBytes: 6}}))
+	require.True(t, f.repo.has(testProject.ID, hash))
 }
 
 func TestChunk_StoreForProjectWritesProjectStore(t *testing.T) {
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	data := []byte("merge output")
 	hash := chunker.Sum(data)
-	f.repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
 
 	isNew, err := f.uc.StoreForProject(context.Background(), testProject.ID, hash, data)
 
 	require.NoError(t, err)
 	require.True(t, isNew)
-	require.Equal(t, data, f.own.data[hash])
-	require.NotContains(t, f.nipa.data, hash)
+	require.Equal(t, data, f.own.data[ck(hash)])
+	require.NotContains(t, f.nipa.data, ck(hash))
 }
 
 func TestChunk_StoreUploadedAndDownloadUseProjectStore(t *testing.T) {
@@ -146,8 +140,8 @@ func TestChunk_StoreUploadedAndDownloadUseProjectStore(t *testing.T) {
 	hash := chunker.Sum(data)
 
 	require.NoError(t, storeErr(f.uc.StoreUploaded(ctx, testProject.ID, hash, data)))
-	require.Equal(t, data, f.own.data[hash])
-	require.NotContains(t, f.nipa.data, hash)
+	require.Equal(t, data, f.own.data[ck(hash)])
+	require.NotContains(t, f.nipa.data, ck(hash))
 
 	got, err := f.uc.Download(ctx, testProject.ID, hash)
 	require.NoError(t, err)
@@ -180,7 +174,7 @@ func TestChunk_ReadOnlyRefusesWrites(t *testing.T) {
 	requireReadOnly(t, f.uc.RequireWritable(ctx, testProject.ID))
 	require.NoError(t, f.uc.RequireWritable(ctx, snow.ID(2)))
 
-	f.own.data[hash] = data
+	f.own.data[ck(hash)] = data
 	got, err := f.uc.Download(ctx, testProject.ID, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
@@ -192,7 +186,7 @@ func TestChunk_ReadOnlyRefusesWrites(t *testing.T) {
 func TestChunk_ResolverErrors(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("resolver down")
-	uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), newStubChunkStore(), ChunkTransferConfig{SigningKey: linkTestKey, PresignTTL: time.Hour}).
+	uc := NewChunk(newFakeChunkRepo(), newStubChunkStore(), ChunkTransferConfig{SigningKey: testSigningKey, PresignTTL: time.Hour}).
 		WithChunkStores(fakeChunkStores{err: wantErr})
 	hash := chunker.Sum([]byte("x"))
 
@@ -202,7 +196,7 @@ func TestChunk_ResolverErrors(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	_, err = uc.Download(ctx, testProject.ID, hash)
 	require.ErrorIs(t, err, wantErr)
-	require.ErrorIs(t, uc.AttributeProjectChunks(ctx, testProject.ID, nil), wantErr)
+	require.ErrorIs(t, uc.AttributeProjectChunks(ctx, testProject.ID, []LedgerChunk{{Hash: hash, SizeBytes: 1}}), wantErr)
 	require.ErrorIs(t, uc.RequireWritable(ctx, testProject.ID), wantErr)
 }
 
@@ -261,7 +255,7 @@ func TestBranch_MergedContentDecodesChunkByChunk(t *testing.T) {
 	for range 2 {
 		data := enc.EncodeAll(part, nil)
 		h := chunker.Sum(data)
-		f.own.data[h] = data
+		f.own.data[ck(h)] = data
 		hashes = append(hashes, h)
 	}
 	loaded, err := uc.loadMergedContent(ctx, testProject.ID, merge.File{Encoding: chunker.EncodingZstd, ChunkHashes: hashes})
@@ -278,20 +272,19 @@ func TestBranch_MergedContentUsesProjectStore(t *testing.T) {
 
 	base := []byte("line one\nline two\n")
 	baseHash := chunker.Sum(base)
-	f.own.data[baseHash] = base
+	f.own.data[ck(baseHash)] = base
 	loaded, err := uc.loadMergedContent(ctx, testProject.ID, merge.File{Encoding: chunker.EncodingRaw, ChunkHashes: []domain.Hash{baseHash}})
 	require.NoError(t, err)
 	require.Equal(t, base, loaded)
 	_, err = uc.loadMergedContent(ctx, snow.ID(2), merge.File{Encoding: chunker.EncodingRaw, ChunkHashes: []domain.Hash{baseHash}})
 	require.Error(t, err)
 
-	f.repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	file, stored, err := uc.storeMergedContent(ctx, testProject.ID, "notes.txt", 0o644, []byte("merged text\n"))
 	require.NoError(t, err)
 	require.NotEmpty(t, stored)
 	for _, hash := range file.ChunkHashes {
-		require.Contains(t, f.own.data, hash)
-		require.NotContains(t, f.nipa.data, hash)
+		require.Contains(t, f.own.data, ck(hash))
+		require.NotContains(t, f.nipa.data, ck(hash))
 	}
 }
 
@@ -323,7 +316,7 @@ func TestChunk_CheckUploadHeadroom(t *testing.T) {
 	_, err = readOnly.uc.CheckUploadHeadroom(ctx, testOrg, testProject, 10)
 	require.ErrorContains(t, err, "Own storage add-on")
 
-	noLedger := NewChunk(NewMockchunkRepository(gomock.NewController(t)), newStubChunkStore(), ChunkTransferConfig{})
+	noLedger := NewChunk(newFakeChunkRepo(), newStubChunkStore(), ChunkTransferConfig{})
 	checked, err = noLedger.CheckUploadHeadroom(ctx, testOrg, testProject, 10)
 	require.NoError(t, err)
 	require.False(t, checked)

@@ -237,14 +237,18 @@ instances serialize: file locks, merge requests (cascading checks, reviews,
 threads, events), tags and branches; detach commit parents in batches; delete
 commits in batches of `STORAGE_PURGE_BATCH_SIZE` with their root trees (each
 commit owns its root, whose delete cascades to subtrees, files and
-`file_chunks`); `project_chunk_uploads` and `project_chunks` in batches;
-`ReleaseProject` (for projects deleted before deletes released); finally the
+`file_chunks`); `project_chunk_uploads` markers and the project's chunk rows
+in batches (rows no `file_chunks` references any more; chunks belong to one
+project); its objects with one prefix delete of `p/<project>/` in the
+server's own store (`Purger.WithStore`, a `storage.ProjectDeleter`; skipped
+for own-storage projects, whose bucket is never touched; a failed delete
+stops before the project row and the next run retries); `ReleaseProject`
+(for projects deleted before deletes released); finally the
 project row (cascading the rest) with the `project.purged` audit entry. Tree
 reads resolve a bare (kept) directory node to the oldest content node with the
 same hash in any project, but every project also wrote its own content node
 for every hash it keeps, so purging one project only moves the lookup to the
-next copy (`TestPurgeExpired_RemovesTheProjectForGood`). Chunk rows and S3
-objects stay for the chunk GC (phase 3). Postgres `000017_project_purge` adds
+next copy (`TestPurgeExpired_RemovesTheProjectForGood`). Postgres `000017_project_purge` adds
 the indexes the commit deletes need (every foreign key into `commits(id)`,
 `commits(project_id)`).
 

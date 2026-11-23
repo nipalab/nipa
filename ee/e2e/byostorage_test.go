@@ -18,6 +18,7 @@ import (
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
+	"github.com/nipalab/nipa/internal/storage"
 )
 
 func minioAdmin(t *testing.T) (*minio.Client, string) {
@@ -130,9 +131,10 @@ func TestEnterpriseBYOStorage(t *testing.T) {
 	keys := objectKeys(t, admin, byoBucket, "tenant/")
 	require.NotEmpty(t, keys, "chunks land in the customer's bucket under its prefix")
 	for _, key := range keys {
-		hash, err := domain.ParseHashHex(strings.ReplaceAll(strings.TrimPrefix(key, "tenant/"), "/", ""))
-		require.NoError(t, err)
-		inNipa, err := nipaStore.Exists(ctx, hash)
+		project, hash, ok := storage.ParseChunkKey(strings.TrimPrefix(key, "tenant/"))
+		require.True(t, ok, "own storage uses the per-project layout too: %s", key)
+		require.Equal(t, byoProject.ID, project)
+		inNipa, err := nipaStore.Exists(ctx, project, hash)
 		require.NoError(t, err)
 		require.False(t, inNipa, "own-storage content never reaches the Nipa bucket")
 	}

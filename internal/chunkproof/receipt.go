@@ -18,9 +18,10 @@ import (
 const ReceiptHeader = "X-Nipa-Chunk-Receipt"
 
 const (
-	// receiptDomain separates receipt MACs from challenge MACs made with the
-	// same key, so neither can stand in for the other.
+	// receiptDomain separates receipt MACs from the other MACs made with the
+	// same key (signed chunk URLs), so none can stand in for another.
 	receiptDomain = "nipa-chunk-receipt:v1"
+	expiryBytes   = 8
 	sizeBytes     = 8
 	receiptBytes  = expiryBytes + sizeBytes
 )
@@ -30,8 +31,8 @@ const (
 var ErrInvalidReceipt = errors.New("invalid chunk upload receipt")
 
 // NewReceipt records that the server received and stored size bytes hashing
-// to hash on a transfer signed for projectID. Like a challenge it is stateless:
-// the HMAC under key covers the project, the hash, the server-measured size and
+// to hash on a transfer signed for projectID. It is stateless: the HMAC under
+// key covers the project, the hash, the server-measured size and
 // the expiry.
 func NewReceipt(key string, projectID snow.ID, hash domain.Hash, size int64, expires time.Time) string {
 	payload := make([]byte, receiptBytes)

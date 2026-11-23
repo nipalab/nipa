@@ -41,24 +41,6 @@ func chunkRow(t *testing.T, data string) (domain.Hash, int64, domain.Hash) {
 	return sum, int64(len(data)), fileHash
 }
 
-func (s *PushRepositorySuite) TestHasChunk() {
-	ctx := context.Background()
-	repo, _, _, _ := s.newPushTestEnv()
-
-	present, size, _ := chunkRow(s.T(), "present")
-	absent, _, _ := chunkRow(s.T(), "absent")
-
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, present, size))
-
-	ok, err := repo.HasChunk(ctx, present)
-	s.Require().NoError(err)
-	s.True(ok)
-
-	ok, err = repo.HasChunk(ctx, absent)
-	s.Require().NoError(err)
-	s.False(ok)
-}
-
 func (s *PushRepositorySuite) TestFirstPush() {
 	ctx := context.Background()
 	repo, branchRepo, projectID, branchID := s.newPushTestEnv()
@@ -66,8 +48,7 @@ func (s *PushRepositorySuite) TestFirstPush() {
 	chunkHash, size, fileHash := chunkRow(s.T(), "hello world")
 	commitID := snow.ID(12345)
 
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, chunkHash, size))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, chunkHash))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: chunkHash, SizeBytes: size}}))
 	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
@@ -125,10 +106,8 @@ func (s *PushRepositorySuite) TestIncrementalPushKeepsOldCommitReadable() {
 
 	ch1, sz1, fh1 := chunkRow(s.T(), "alpha")
 	ch2, sz2, fh2 := chunkRow(s.T(), "beta")
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch1, sz1))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch1))
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch2, sz2))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch2))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch1, SizeBytes: sz1}}))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch2, SizeBytes: sz2}}))
 
 	d1Hash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh1}}, nil)
 	d1Hash2 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh2}}, nil)
@@ -200,8 +179,7 @@ func (s *PushRepositorySuite) TestRemoveAllFiles() {
 	repo, branchRepo, projectID, branchID := s.newPushTestEnv()
 
 	ch, sz, fh := chunkRow(s.T(), "gone")
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch, sz))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	rootHash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "gone.txt", Mode: 0o644, Hash: fh}}, nil)
 	s.Require().NoError(repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
@@ -254,8 +232,7 @@ func (s *PushRepositorySuite) TestMergeCommitWithParent2() {
 	repo, branchRepo, projectID, branchID := s.newPushTestEnv()
 
 	ch, sz, fh := chunkRow(s.T(), "data")
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch, sz))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	rootHashA := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
 	rootHashB := treehash.TreeHash([]treehash.FileEntry{{Name: "b.txt", Mode: 0o644, Hash: fh}}, nil)
 
@@ -342,27 +319,37 @@ func getTreeChildByName(t *testing.T, repo *BranchRepository, parentID int64, na
 	return n
 }
 
-func (s *PushRepositorySuite) TestChunkLinks() {
+func (s *PushRepositorySuite) TestChunkRowsArePerProject() {
 	ctx := context.Background()
 	repo, _, projectID, branchID := s.newPushTestEnv()
+	otherProject := seedProject(s.T(), s.q, 1, "second")
 
-	linked, size, fileHash := chunkRow(s.T(), "linked")
-	other, _, _ := chunkRow(s.T(), "other")
-	rowless, _, _ := chunkRow(s.T(), "rowless")
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, linked, size))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, rowless))
+	recorded, size, fileHash := chunkRow(s.T(), "recorded")
+	other, otherSize, _ := chunkRow(s.T(), "other")
+	missing, _, _ := chunkRow(s.T(), "missing")
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: recorded, SizeBytes: size}}))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: recorded, SizeBytes: size + 1}}), "recording twice keeps the row")
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, otherProject, []usecase.ChunkRef{{Hash: other, SizeBytes: otherSize}, {Hash: recorded, SizeBytes: size}}))
 
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{linked, other, rowless})
+	got, err := repo.ProjectChunkSizes(ctx, projectID, []domain.Hash{recorded, other, missing})
 	s.Require().NoError(err)
-	s.Equal(map[domain.Hash]int64{linked: size}, got)
+	s.Equal(map[domain.Hash]int64{recorded: size}, got)
 
-	got, err = repo.LinkedProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{linked})
+	got, err = repo.ProjectChunkSizes(ctx, otherProject, []domain.Hash{recorded, other})
+	s.Require().NoError(err)
+	s.Equal(map[domain.Hash]int64{recorded: size, other: otherSize}, got, "the same hash in another project is its own row")
+
+	var rows, markers int
+	s.Require().NoError(s.db.QueryRow(`SELECT COUNT(*) FROM chunks WHERE hash = $1`, recorded.Bytes()).Scan(&rows))
+	s.Equal(2, rows)
+	s.Require().NoError(s.db.QueryRow(`SELECT COUNT(*) FROM project_chunk_uploads WHERE hash = $1`, recorded.Bytes()).Scan(&markers))
+	s.Equal(2, markers)
+
+	got, err = repo.ProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{recorded})
 	s.Require().NoError(err)
 	s.Empty(got)
 
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, other, size))
+	// A push may only reference its own project's rows.
 	err = repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
@@ -379,48 +366,28 @@ func (s *PushRepositorySuite) TestChunkLinks() {
 	s.Contains(err.Error(), "missing chunk data")
 }
 
-func (s *PushRepositorySuite) TestLinkProjectChunksBatch() {
+func (s *PushRepositorySuite) TestProjectChunkSizesBatches() {
 	ctx := context.Background()
 	repo, _, projectID, _ := s.newPushTestEnv()
 
-	first, firstSize, _ := chunkRow(s.T(), "first")
-	second, secondSize, _ := chunkRow(s.T(), "second")
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, first, firstSize))
-	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, second, secondSize))
-	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, nil))
-	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, first))
-	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}))
-
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{first, second})
-	s.Require().NoError(err)
-	s.Equal(map[domain.Hash]int64{first: firstSize, second: secondSize}, got)
-}
-
-func (s *PushRepositorySuite) TestLinkedProjectChunkSizesBatches() {
-	ctx := context.Background()
-	repo, _, projectID, _ := s.newPushTestEnv()
-
-	total := 2*linkedChunkBatch + 10
+	total := 2*1000 + 10
 	hashes := make([]domain.Hash, 0, total+1)
 	want := make(map[domain.Hash]int64, total)
+	var rows []usecase.ChunkRef
 	for i := 0; i < total; i++ {
 		hash, size, _ := chunkRow(s.T(), fmt.Sprintf("chunk-%d-%s", i, strings.Repeat("x", i%7)))
-		s.Require().NoError(repo.InsertChunkIfNotExists(ctx, hash, size))
 		hashes = append(hashes, hash)
 		if i%5 == 0 {
 			continue
 		}
+		rows = append(rows, usecase.ChunkRef{Hash: hash, SizeBytes: size})
 		want[hash] = size
 	}
-	linkable := make([]domain.Hash, 0, len(want))
-	for hash := range want {
-		linkable = append(linkable, hash)
-	}
-	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, linkable))
+	s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, rows))
 	unknown, _, _ := chunkRow(s.T(), "unknown")
 	hashes = append(hashes, unknown)
 
-	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, hashes)
+	got, err := repo.ProjectChunkSizes(ctx, projectID, hashes)
 	s.Require().NoError(err)
 	s.Equal(want, got)
 }

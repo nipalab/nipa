@@ -74,26 +74,14 @@ LEFT JOIN org_usage u ON u.org_id = b.org_id
 WHERE b.user_id = sqlc.arg(user_id)
 ORDER BY used_bytes DESC, o.slug;
 
--- name: GetChunkIDsByHashes :many
-SELECT id, hash FROM chunks WHERE hash = ANY(sqlc.arg(hashes)::bytea[]);
-
 -- name: GetAttributedSizes :many
-SELECT ch.hash, pc.size_bytes
-FROM project_chunks pc
-JOIN chunks ch ON ch.id = pc.chunk_id
-WHERE pc.project_id = sqlc.arg(project_id)
-  AND ch.hash = ANY(sqlc.arg(hashes)::bytea[]);
+SELECT hash, size_bytes
+FROM chunks
+WHERE project_id = sqlc.arg(project_id)
+  AND hash = ANY(sqlc.arg(hashes)::bytea[]);
 
 -- name: LockBillingOwner :exec
 SELECT pg_advisory_xact_lock(sqlc.arg(owner_id)::bigint);
-
--- name: InsertProjectChunks :many
-INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-SELECT sqlc.arg(project_id), ch.id, ch.size_bytes
-FROM chunks ch
-WHERE ch.id = ANY(sqlc.arg(chunk_ids)::bigint[])
-ON CONFLICT (project_id, chunk_id) DO NOTHING
-RETURNING size_bytes;
 
 -- name: AddProjectUsage :exec
 INSERT INTO project_usage (project_id, used_bytes)
@@ -117,27 +105,15 @@ WHERE p.org_id = sqlc.arg(org_id)
   AND (p.deleted = true
        OR EXISTS (SELECT 1 FROM project_storage ps WHERE ps.project_id = p.id));
 
--- name: DeleteProjectChunks :exec
-DELETE FROM project_chunks WHERE project_id = sqlc.arg(project_id);
-
--- name: RebuildProjectChunks :exec
-WITH RECURSIVE tree_ids(id) AS (
-    SELECT tree_id FROM commits WHERE project_id = sqlc.arg(project_id)
-    UNION
-    SELECT tn.id FROM tree_nodes tn JOIN tree_ids ti ON tn.parent_tree_id = ti.id
-)
-INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-SELECT DISTINCT sqlc.arg(project_id), fc.chunk_id, ch.size_bytes
-FROM files f
-JOIN file_chunks fc ON fc.file_id = f.id
-JOIN chunks ch ON ch.id = fc.chunk_id
-WHERE f.tree_id IN (SELECT id FROM tree_ids)
-ON CONFLICT (project_id, chunk_id) DO NOTHING;
+-- name: ResetProjectUsage :exec
+INSERT INTO project_usage (project_id, used_bytes)
+VALUES (sqlc.arg(project_id), 0)
+ON CONFLICT (project_id) DO UPDATE SET used_bytes = 0;
 
 -- name: SetProjectUsage :exec
 INSERT INTO project_usage (project_id, used_bytes)
 SELECT sqlc.arg(project_id), COALESCE(SUM(size_bytes), 0)::BIGINT
-FROM project_chunks
+FROM chunks
 WHERE project_id = sqlc.arg(project_id)
 ON CONFLICT (project_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes;
 

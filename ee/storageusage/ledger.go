@@ -1,5 +1,7 @@
 // Package storageusage implements the enterprise storage ledger: per-owner
-// quotas and per-project chunk attribution over postgres.
+// quotas and per-project chunk attribution over postgres. Chunks belong to one
+// project, so a project is charged for its chunk rows (chunks.project_id):
+// project_usage and org_usage are counters over them.
 //
 // Enterprise Edition: see ee/LICENSE.
 package storageusage
@@ -28,8 +30,9 @@ type Config struct {
 
 // Ledger attributes chunk bytes to projects and enforces the storage quota of
 // the organization's owner. It is safe for concurrent use: every mutating
-// operation runs in one transaction and the counters are updated in the same
-// transaction as the chunk links.
+// operation runs in one transaction under the owner's advisory lock, and
+// Attribute joins the caller's transaction, which inserts the chunk rows it
+// charged before committing.
 type Ledger struct {
 	queries      *sqlcPostgres.Queries
 	transactor   *dbtx.Transactor
@@ -88,8 +91,8 @@ type OwnerStorage struct {
 	Orgs       []OrgUsage
 }
 
-// AttributedSizes returns the stored size of every hash already linked to the
-// project. Hashes without a link are absent from the result. The lookup is one
+// AttributedSizes returns the stored size of every hash the project already
+// has a chunk row for. Other hashes are absent from the result. The lookup is one
 // batched query: presign hands over the whole unpaginated ref list of a push.
 func (l *Ledger) AttributedSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	sizes := make(map[domain.Hash]int64, len(hashes))
@@ -138,9 +141,12 @@ func (l *Ledger) Headroom(ctx context.Context, org *domain.Organization, project
 	return nil
 }
 
-// Attribute links the chunks to the project and updates the usage counters in
-// one transaction, enforcing the quota. When the batch would exceed the quota
-// nothing is recorded and a quota error is returned.
+// Attribute charges the chunks the project has no chunk row for yet to the
+// usage counters, enforcing the quota. It joins the transaction ctx carries:
+// the caller inserts the chunk rows afterwards in that transaction, still
+// under the owner lock, so two confirms of the same chunk are charged once.
+// When the batch would exceed the quota nothing is recorded and a quota
+// error is returned.
 func (l *Ledger) Attribute(ctx context.Context, org *domain.Organization, project *domain.Project, chunks []usecase.LedgerChunk) error {
 	return l.attribute(ctx, org.ID, project.ID, chunks)
 }
@@ -186,40 +192,24 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 				return dbError(err)
 			}
 		}
-		// One batched lookup and one batched link insert keep the per-owner
-		// lock short: a confirm can carry hundreds of chunks.
-		hashes := make([][]byte, 0, len(chunks))
-		for _, chunk := range chunks {
-			hashes = append(hashes, append([]byte(nil), chunk.Hash[:]...))
-		}
-		rows, err := l.queries.GetChunkIDsByHashes(ctx, hashes)
+		// One batched lookup keeps the per-owner lock short: a confirm can
+		// carry hundreds of chunks. Rows committed by a confirm that held
+		// the lock before are seen here, so they are not charged twice.
+		existing, err := l.AttributedSizes(ctx, projectID, hashesOf(chunks))
 		if err != nil {
-			return dbError(err)
-		}
-		ids := make(map[domain.Hash]int64, len(rows))
-		for _, row := range rows {
-			var hash domain.Hash
-			copy(hash[:], row.Hash)
-			ids[hash] = row.ID
-		}
-		chunkIDs := make([]int64, 0, len(chunks))
-		for _, chunk := range chunks {
-			id, ok := ids[chunk.Hash]
-			if !ok {
-				return domain.NewErrorInternalServer(fmt.Sprintf("chunk %s has no metadata row", chunk.Hash))
-			}
-			chunkIDs = append(chunkIDs, id)
-		}
-		inserted, err := l.queries.InsertProjectChunks(ctx, sqlcPostgres.InsertProjectChunksParams{
-			ProjectID: projectID.Int64(),
-			ChunkIds:  chunkIDs,
-		})
-		if err != nil {
-			return dbError(err)
+			return err
 		}
 		var newBytes int64
-		for _, size := range inserted {
-			newBytes += size
+		seen := make(map[domain.Hash]struct{}, len(chunks))
+		for _, chunk := range chunks {
+			if _, ok := existing[chunk.Hash]; ok {
+				continue
+			}
+			if _, ok := seen[chunk.Hash]; ok {
+				continue
+			}
+			seen[chunk.Hash] = struct{}{}
+			newBytes += chunk.SizeBytes
 		}
 		if newBytes > 0 && quota > 0 && used+newBytes > quota {
 			return quotaExceeded(used, quota, newBytes, l.billingURL)
@@ -242,11 +232,13 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 	})
 }
 
-// ReleaseProject drops every chunk link of a deleted project and gives its
-// bytes back to the owner's quota, in one transaction under the owner lock
-// that Attribute takes. The links are read after the lock, so a confirm that
-// committed first is released too. It returns the released bytes; releasing
-// an already released project returns 0.
+// ReleaseProject gives a deleted project's bytes back to the owner's quota, in
+// one transaction under the owner lock that Attribute takes: the project's
+// counter drops to zero and the org counter by what it held. The chunk rows
+// stay (a restore charges them again; the purge deletes them). The counter is
+// read after the lock, so a confirm that committed first is released too. It
+// returns the released bytes; releasing an already released project returns
+// 0.
 func (l *Ledger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error) {
 	var released int64
 	err := l.transactor.WithinTx(ctx, func(ctx context.Context) error {
@@ -268,10 +260,7 @@ func (l *Ledger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, 
 		if err != nil {
 			return dbError(err)
 		}
-		if err := l.queries.DeleteProjectChunks(ctx, projectID.Int64()); err != nil {
-			return dbError(err)
-		}
-		if err := l.queries.SetProjectUsage(ctx, projectID.Int64()); err != nil {
+		if err := l.queries.ResetProjectUsage(ctx, projectID.Int64()); err != nil {
 			return dbError(err)
 		}
 		if used != 0 {
@@ -291,9 +280,9 @@ func (l *Ledger) ReleaseProject(ctx context.Context, projectID snow.ID) (int64, 
 	return released, nil
 }
 
-// RestoreProject charges a restored project's history back to the owner's
-// quota: under the owner lock it rebuilds the project's links from its commit
-// trees and adds the difference to the counters. When the bytes do not fit
+// RestoreProject charges a restored project's chunk rows back to the owner's
+// quota: under the owner lock it recomputes the project's counter from its
+// rows and adds the difference to the org counter. When the bytes do not fit
 // the quota it returns the quota error and, rolled back with the caller's
 // transaction, records nothing. A project on its own storage server is never
 // charged. It returns the project's charged bytes.
@@ -330,12 +319,6 @@ func (l *Ledger) RestoreProject(ctx context.Context, projectID snow.ID) (int64, 
 		}
 		used, err := l.queries.GetOwnerUsage(ctx, owner.Int64())
 		if err != nil {
-			return dbError(err)
-		}
-		if err := l.queries.DeleteProjectChunks(ctx, projectID.Int64()); err != nil {
-			return dbError(err)
-		}
-		if err := l.queries.RebuildProjectChunks(ctx, projectID.Int64()); err != nil {
 			return dbError(err)
 		}
 		if err := l.queries.SetProjectUsage(ctx, projectID.Int64()); err != nil {
@@ -665,6 +648,14 @@ func FormatBytes(n int64) string {
 		return fmt.Sprintf("%.0f %s", value, units[unit])
 	}
 	return fmt.Sprintf("%.1f %s", value, units[unit])
+}
+
+func hashesOf(chunks []usecase.LedgerChunk) []domain.Hash {
+	hashes := make([]domain.Hash, 0, len(chunks))
+	for _, chunk := range chunks {
+		hashes = append(hashes, chunk.Hash)
+	}
+	return hashes
 }
 
 func dbError(err error) error {

@@ -17,19 +17,19 @@ func TestStore_OverwriteReplacesGarbageWithoutHead(t *testing.T) {
 	data := []byte("verified content")
 	hash := chunker.Sum(data)
 	fake.mu.Lock()
-	fake.buckets["test-bucket"][store.key(hash)] = []byte("garbage planted by a direct upload")
+	fake.buckets["test-bucket"][store.key(testProject, hash)] = []byte("garbage planted by a direct upload")
 	fake.mu.Unlock()
 	headsBefore := fake.heads.Load()
 
-	require.NoError(t, store.Overwrite(ctx, hash, data))
+	require.NoError(t, store.Overwrite(ctx, testProject, hash, data))
 
 	require.Equal(t, headsBefore, fake.heads.Load(), "overwrite must not check for the object first")
-	got, err := store.Get(ctx, hash)
+	got, err := store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 
 	// Writing the same content again is one more PUT, never an error.
-	require.NoError(t, store.Overwrite(ctx, hash, data))
+	require.NoError(t, store.Overwrite(ctx, testProject, hash, data))
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	require.Equal(t, 2, fake.puts)
@@ -40,7 +40,7 @@ func TestStore_OverwriteError(t *testing.T) {
 	fake.failPut.Store(true)
 	data := []byte("verified content")
 
-	err := store.Overwrite(context.Background(), chunker.Sum(data), data)
+	err := store.Overwrite(context.Background(), testProject, chunker.Sum(data), data)
 	require.ErrorContains(t, err, "s3: put chunk")
 }
 
@@ -60,14 +60,14 @@ func TestStore_PutPayloadSigning(t *testing.T) {
 		store, err := New(context.Background(), cfg)
 		require.NoError(t, err)
 
-		require.NoError(t, store.Overwrite(context.Background(), hash, data))
+		require.NoError(t, store.Overwrite(context.Background(), testProject, hash, data))
 		require.Equal(t, "UNSIGNED-PAYLOAD", fake.payloadSHA.Load())
 	})
 
 	t.Run("http", func(t *testing.T) {
 		store, fake := newTestStore(t)
 
-		require.NoError(t, store.Overwrite(context.Background(), hash, data))
+		require.NoError(t, store.Overwrite(context.Background(), testProject, hash, data))
 		require.Equal(t, "STREAMING-AWS4-HMAC-SHA256-PAYLOAD", fake.payloadSHA.Load())
 	})
 }

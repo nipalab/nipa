@@ -42,11 +42,11 @@ func TestStore_OpenStreamsWithOneGet(t *testing.T) {
 
 	data := bytes.Repeat([]byte("stream me "), 10_000)
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 	fake.gets.Store(0)
 	fake.heads.Store(0)
 
-	r, err := store.Open(ctx, hash)
+	r, err := store.Open(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Empty(t, endedSpans(recorder, "storage.s3.get_object"), "the span lasts until the reader is closed")
 	got, err := io.ReadAll(r)
@@ -66,7 +66,7 @@ func TestStore_OpenMissingIsNotFound(t *testing.T) {
 	recorder := recordSpans(t)
 	store, fake := newTestStore(t)
 
-	_, err := store.Open(context.Background(), chunker.Sum([]byte("absent")))
+	_, err := store.Open(context.Background(), testProject, chunker.Sum([]byte("absent")))
 	require.True(t, domain.IsErrorNotFound(err), "got %v", err)
 	require.Equal(t, int64(1), fake.gets.Load())
 	require.Len(t, endedSpans(recorder, "storage.s3.get_object"), 1)
@@ -77,7 +77,7 @@ func TestStore_OpenError(t *testing.T) {
 	store, fake := newTestStore(t)
 	fake.failGet.Store(true)
 
-	_, err := store.Open(context.Background(), chunker.Sum([]byte("x")))
+	_, err := store.Open(context.Background(), testProject, chunker.Sum([]byte("x")))
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 	spans := endedSpans(recorder, "storage.s3.get_object")
@@ -92,10 +92,10 @@ func TestStore_OpenTruncatedBodyFailsTheRead(t *testing.T) {
 
 	data := bytes.Repeat([]byte("truncated "), 1000)
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 	fake.truncateGet.Store(true)
 
-	r, err := store.Open(ctx, hash)
+	r, err := store.Open(ctx, testProject, hash)
 	require.NoError(t, err)
 	_, err = io.ReadAll(r)
 	require.Error(t, err, "a body shorter than its Content-Length is a read error, not a short chunk")

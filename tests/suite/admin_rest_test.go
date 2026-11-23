@@ -20,6 +20,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
@@ -176,8 +177,9 @@ func serverUploadURL(project, hash string, size int64) *pb.PresignedChunkUrl {
 	defer cancel()
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+api.token)
 	resp, err := pb.NewNipaServiceClient(conn).GetChunkUploadUrls(ctx, &pb.GetChunkUploadUrlsRequest{
-		Context: &pb.ProjectContext{Org: orgSlug, Project: project},
-		Chunks:  []*pb.ChunkRef{{Hash: hash, SizeBytes: size}},
+		Context:       &pb.ProjectContext{Org: orgSlug, Project: project},
+		Chunks:        []*pb.ChunkRef{{Hash: hash, SizeBytes: size}},
+		ChunkProtocol: chunkproof.Protocol,
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.GetUrls()).To(HaveLen(1))

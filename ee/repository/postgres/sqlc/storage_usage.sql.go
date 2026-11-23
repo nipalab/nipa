@@ -53,15 +53,6 @@ func (q *Queries) ClearOwnerQuotaOverride(ctx context.Context, userID int64) err
 	return err
 }
 
-const deleteProjectChunks = `-- name: DeleteProjectChunks :exec
-DELETE FROM project_chunks WHERE project_id = $1
-`
-
-func (q *Queries) DeleteProjectChunks(ctx context.Context, projectID int64) error {
-	_, err := q.db.ExecContext(ctx, deleteProjectChunks, projectID)
-	return err
-}
-
 const ensureBillingOwner = `-- name: EnsureBillingOwner :one
 INSERT INTO org_billing_owner (org_id, user_id)
 VALUES ($1, $2)
@@ -93,11 +84,10 @@ func (q *Queries) GetActiveUserID(ctx context.Context, id int64) (int64, error) 
 }
 
 const getAttributedSizes = `-- name: GetAttributedSizes :many
-SELECT ch.hash, pc.size_bytes
-FROM project_chunks pc
-JOIN chunks ch ON ch.id = pc.chunk_id
-WHERE pc.project_id = $1
-  AND ch.hash = ANY($2::bytea[])
+SELECT hash, size_bytes
+FROM chunks
+WHERE project_id = $1
+  AND hash = ANY($2::bytea[])
 `
 
 type GetAttributedSizesParams struct {
@@ -142,38 +132,6 @@ func (q *Queries) GetBillingOwner(ctx context.Context, orgID int64) (int64, erro
 	var user_id int64
 	err := row.Scan(&user_id)
 	return user_id, err
-}
-
-const getChunkIDsByHashes = `-- name: GetChunkIDsByHashes :many
-SELECT id, hash FROM chunks WHERE hash = ANY($1::bytea[])
-`
-
-type GetChunkIDsByHashesRow struct {
-	ID   int64  `json:"id"`
-	Hash []byte `json:"hash"`
-}
-
-func (q *Queries) GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getChunkIDsByHashes, pq.Array(hashes))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetChunkIDsByHashesRow
-	for rows.Next() {
-		var i GetChunkIDsByHashesRow
-		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getOrgCreatedBy = `-- name: GetOrgCreatedBy :one
@@ -259,43 +217,6 @@ func (q *Queries) GetProjectUsageBytes(ctx context.Context, projectID int64) (in
 	var used_bytes int64
 	err := row.Scan(&used_bytes)
 	return used_bytes, err
-}
-
-const insertProjectChunks = `-- name: InsertProjectChunks :many
-INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-SELECT $1, ch.id, ch.size_bytes
-FROM chunks ch
-WHERE ch.id = ANY($2::bigint[])
-ON CONFLICT (project_id, chunk_id) DO NOTHING
-RETURNING size_bytes
-`
-
-type InsertProjectChunksParams struct {
-	ProjectID int64   `json:"project_id"`
-	ChunkIds  []int64 `json:"chunk_ids"`
-}
-
-func (q *Queries) InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, insertProjectChunks, arg.ProjectID, pq.Array(arg.ChunkIds))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var size_bytes int64
-		if err := rows.Scan(&size_bytes); err != nil {
-			return nil, err
-		}
-		items = append(items, size_bytes)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const isProjectExternal = `-- name: IsProjectExternal :one
@@ -484,23 +405,14 @@ func (q *Queries) LockOrgForBillingOwner(ctx context.Context, orgID int64) (int6
 	return id, err
 }
 
-const rebuildProjectChunks = `-- name: RebuildProjectChunks :exec
-WITH RECURSIVE tree_ids(id) AS (
-    SELECT tree_id FROM commits WHERE project_id = $1
-    UNION
-    SELECT tn.id FROM tree_nodes tn JOIN tree_ids ti ON tn.parent_tree_id = ti.id
-)
-INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-SELECT DISTINCT $1, fc.chunk_id, ch.size_bytes
-FROM files f
-JOIN file_chunks fc ON fc.file_id = f.id
-JOIN chunks ch ON ch.id = fc.chunk_id
-WHERE f.tree_id IN (SELECT id FROM tree_ids)
-ON CONFLICT (project_id, chunk_id) DO NOTHING
+const resetProjectUsage = `-- name: ResetProjectUsage :exec
+INSERT INTO project_usage (project_id, used_bytes)
+VALUES ($1, 0)
+ON CONFLICT (project_id) DO UPDATE SET used_bytes = 0
 `
 
-func (q *Queries) RebuildProjectChunks(ctx context.Context, projectID int64) error {
-	_, err := q.db.ExecContext(ctx, rebuildProjectChunks, projectID)
+func (q *Queries) ResetProjectUsage(ctx context.Context, projectID int64) error {
+	_, err := q.db.ExecContext(ctx, resetProjectUsage, projectID)
 	return err
 }
 
@@ -556,7 +468,7 @@ func (q *Queries) SetOwnerQuotaOverride(ctx context.Context, arg SetOwnerQuotaOv
 const setProjectUsage = `-- name: SetProjectUsage :exec
 INSERT INTO project_usage (project_id, used_bytes)
 SELECT $1, COALESCE(SUM(size_bytes), 0)::BIGINT
-FROM project_chunks
+FROM chunks
 WHERE project_id = $1
 ON CONFLICT (project_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes
 `

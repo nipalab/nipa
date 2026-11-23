@@ -1,22 +1,25 @@
 // Package chunkgc deletes chunk content nothing references any more: no file
-// of any commit, no project's upload marker and no storage ledger link.
-// Chunks are content-addressed and shared across every project on the server,
-// so a chunk only becomes garbage once the last reference is gone (a purged
-// project, an upload rejected by the quota, an abandoned push).
+// of any commit of its project and no upload marker of its project. Chunks
+// belong to one project (per-project dedup, keyed by (project, hash) in the
+// database and p/<project>/... in the bucket), so every reference check stays
+// inside the chunk's project. Garbage is content no push committed (an
+// upload rejected by the quota, an abandoned push, an object whose confirm
+// never ran); a purged project's rows and objects go with the purge.
 //
 // The collector marks, then sweeps:
 //
 //   - Mark: chunks without references get chunks.gc_marked_at.
-//   - Adopt: chunk objects in the bucket without a chunks row (uploads that were
-//     never confirmed) older than the grace period get a marked row, so they
-//     go through the same sweep.
+//   - Adopt: chunk objects in the bucket without a chunks row for their
+//     project (uploads that were never confirmed) older than the grace period
+//     get a marked row, so they go through the same sweep. Objects of a
+//     project that no longer exists are left to the purge.
 //   - Sweep: rows still unreferenced whose mark is older than the grace period
 //     are locked (FOR UPDATE SKIP LOCKED), their objects deleted, then the rows.
 //
 // Every caller that is about to rely on chunk content clears its mark first
 // (Guard.Protect, wired into usecase.Chunk). That update waits for a sweep
 // holding the row, so content a sweep removed is reported missing and
-// uploaded again; it is never linked while gone. Rows that did not exist when
+// uploaded again; it is never recorded while gone. Rows that did not exist when
 // the caller checked (orphan objects) are protected by the grace period: an
 // adopted row cannot be swept before it has been marked for that long.
 //
@@ -40,6 +43,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 // Mode selects what the collector does.
@@ -80,7 +84,7 @@ const (
 
 // ObjectStore is the server's own chunk bucket.
 type ObjectStore interface {
-	DeleteChunk(ctx context.Context, hash domain.Hash) error
+	DeleteChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
 	ListChunks(ctx context.Context, fn func(s3.StoredChunk) error) error
 }
 
@@ -234,27 +238,34 @@ func (c *Collector) adopt(ctx context.Context, now time.Time, report *Report) er
 			return nil
 		}
 		defer func() { batch = batch[:0] }()
+		projects := make([]int64, 0, len(batch))
 		hashes := make([][]byte, 0, len(batch))
 		for _, chunk := range batch {
+			projects = append(projects, chunk.ProjectID.Int64())
 			hashes = append(hashes, append([]byte(nil), chunk.Hash[:]...))
 		}
-		known, err := c.queries.ExistingChunkHashes(ctx, hashes)
+		known, err := c.queries.ExistingProjectChunks(ctx, sqlcPostgres.ExistingProjectChunksParams{
+			ProjectIds: projects,
+			Hashes:     hashes,
+		})
 		if err != nil {
 			return fmt.Errorf("chunkgc: orphan lookup: %w", err)
 		}
-		recorded := make(map[domain.Hash]bool, len(known))
-		for _, raw := range known {
-			var hash domain.Hash
-			copy(hash[:], raw)
-			recorded[hash] = true
+		recorded := make(map[projectChunk]bool, len(known))
+		for _, row := range known {
+			key := projectChunk{project: snow.ID(row.ProjectID)}
+			copy(key.hash[:], row.Hash)
+			recorded[key] = true
 		}
+		var orphanProjects []int64
 		var orphanHashes [][]byte
 		var orphanSizes []int64
 		var bytes int64
 		for _, chunk := range batch {
-			if recorded[chunk.Hash] {
+			if recorded[projectChunk{project: chunk.ProjectID, hash: chunk.Hash}] {
 				continue
 			}
+			orphanProjects = append(orphanProjects, chunk.ProjectID.Int64())
 			orphanHashes = append(orphanHashes, append([]byte(nil), chunk.Hash[:]...))
 			orphanSizes = append(orphanSizes, chunk.SizeBytes)
 			bytes += chunk.SizeBytes
@@ -265,9 +276,10 @@ func (c *Collector) adopt(ctx context.Context, now time.Time, report *Report) er
 		count := int64(len(orphanHashes))
 		if c.cfg.Mode == ModeOn {
 			count, err = c.queries.AdoptOrphanChunks(ctx, sqlcPostgres.AdoptOrphanChunksParams{
-				Hashes:   orphanHashes,
-				Sizes:    orphanSizes,
-				MarkedAt: now,
+				ProjectIds: orphanProjects,
+				Hashes:     orphanHashes,
+				Sizes:      orphanSizes,
+				MarkedAt:   now,
 			})
 			if err != nil {
 				return fmt.Errorf("chunkgc: adopt: %w", err)
@@ -315,7 +327,7 @@ func (c *Collector) sweep(ctx context.Context, cutoff time.Time, report *Report)
 			for _, row := range rows {
 				var hash domain.Hash
 				copy(hash[:], row.Hash)
-				if err := c.store.DeleteChunk(ctx, hash); err != nil {
+				if err := c.store.DeleteChunk(ctx, snow.ID(row.ProjectID), hash); err != nil {
 					return fmt.Errorf("chunkgc: delete object %s: %w", hash, err)
 				}
 				ids = append(ids, row.ID)
@@ -342,6 +354,12 @@ func (c *Collector) sweep(ctx context.Context, cutoff time.Time, report *Report)
 	}
 }
 
+// projectChunk identifies one chunk row: chunks are unique per project.
+type projectChunk struct {
+	project snow.ID
+	hash    domain.Hash
+}
+
 // Guard clears garbage marks for content a caller is about to rely on; it
 // implements usecase.ChunkGCGuard.
 type Guard struct {
@@ -353,9 +371,10 @@ func NewGuard(db *sql.DB) *Guard {
 	return &Guard{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
-// Protect clears the marks of hashes. It blocks while a sweep holds one of
-// their rows; afterwards that row is gone and the content reads as missing.
-func (g *Guard) Protect(ctx context.Context, hashes []domain.Hash) error {
+// Protect clears the marks of the project's chunks with these hashes. It
+// blocks while a sweep holds one of their rows; afterwards that row is gone
+// and the content reads as missing.
+func (g *Guard) Protect(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -363,7 +382,7 @@ func (g *Guard) Protect(ctx context.Context, hashes []domain.Hash) error {
 	for _, hash := range hashes {
 		raw = append(raw, append([]byte(nil), hash[:]...))
 	}
-	if _, err := g.queries.UnmarkChunks(ctx, raw); err != nil {
+	if _, err := g.queries.UnmarkChunks(ctx, sqlcPostgres.UnmarkChunksParams{ProjectID: projectID.Int64(), Hashes: raw}); err != nil {
 		return domain.NewErrorDatabase(fmt.Sprintf("protect chunks from gc: %v", err))
 	}
 	return nil
