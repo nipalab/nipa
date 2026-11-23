@@ -743,13 +743,15 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	}
 	// receipted is filled before the read-backs start and only read after;
 	// checks is written by them under checkMu.
-	receipted := c.verifyReceipts(project.ID, recorded, receipts)
+	receipted := c.verifyReceipts(project.ID, receipts)
 	checks := make(map[domain.Hash]chunkCheck)
 	var checkMu sync.Mutex
 	needsCheck := func(i int) bool {
-		_, isRecorded := recorded[hashes[i]]
+		// A row does not vouch for the object: presign re-issues an upload
+		// when the object behind a row is gone, so the new bytes of a
+		// recorded chunk are hashed too unless a receipt says the server did.
 		_, isReceipted := receipted[hashes[i]]
-		return !isRecorded && !isReceipted
+		return !isReceipted
 	}
 	err = fanOut(ctx, c.verifySlots, len(hashes), needsCheck, func(ctx context.Context, i int) error {
 		hash := hashes[i]
@@ -769,16 +771,17 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	var rows []ChunkRef
 	var confirmedBytes int64
 	for _, hash := range hashes {
-		if size, ok := recorded[hash]; ok {
-			confirmedBytes += size
-			continue
-		}
 		check, ok := receipted[hash]
 		if !ok {
 			check = checks[hash]
 		}
 		if !check.present {
 			missing = append(missing, hash)
+			continue
+		}
+		if size, ok := recorded[hash]; ok {
+			// Already charged and recorded: keep the row's size.
+			confirmedBytes += size
 			continue
 		}
 		rows = append(rows, ChunkRef{Hash: hash, SizeBytes: check.size})
@@ -805,10 +808,10 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 // project itself (proxied upload), so they are present with the size the
 // receipt records and need no read-back. Invalid or expired receipts are
 // ignored; those chunks are read back.
-func (c *Chunk) verifyReceipts(projectID snow.ID, recorded map[domain.Hash]int64, receipts []ChunkReceipt) map[domain.Hash]chunkCheck {
+func (c *Chunk) verifyReceipts(projectID snow.ID, receipts []ChunkReceipt) map[domain.Hash]chunkCheck {
 	receipted := make(map[domain.Hash]chunkCheck, len(receipts))
 	for _, receipt := range receipts {
-		if _, ok := recorded[receipt.Hash]; ok || receipt.Receipt == "" {
+		if receipt.Receipt == "" {
 			continue
 		}
 		size, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, projectID, receipt.Hash, receipt.Receipt, c.now())

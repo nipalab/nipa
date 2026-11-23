@@ -893,6 +893,7 @@ func TestChunk_ConfirmUploads_RecordedChunksUseStoredSizes(t *testing.T) {
 
 	store := &countingChunkStore{stubChunkStore: newStubChunkStore()}
 	store.data[ck(freshHash)] = freshData
+	store.data[ck(recordedHash)] = recordedData
 	repo := newFakeChunkRepo()
 	ledger := NewMockStorageLedger(gomock.NewController(t))
 	uc := NewChunk(repo, store, ChunkTransferConfig{SigningKey: testSigningKey, PresignTTL: time.Hour}).WithStorageLedger(ledger)
@@ -909,7 +910,7 @@ func TestChunk_ConfirmUploads_RecordedChunksUseStoredSizes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{absentHash}, missing)
 	require.Zero(t, store.sizeCalls.Load())
-	require.Equal(t, 2, store.gets, "only the chunks without a row are read back")
+	require.Equal(t, 3, store.gets, "every chunk without a receipt is read back, recorded or not")
 	require.Contains(t, scrapeUsecaseMetrics(t, metrics), fmt.Sprintf(`nipa_chunk_bytes_total{op="confirm"} %d`, storedSize+len(freshData)))
 }
 

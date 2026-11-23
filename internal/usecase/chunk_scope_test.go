@@ -107,7 +107,9 @@ func TestChunk_ConfirmUploads_NothingNewOpensNoTransaction(t *testing.T) {
 	ctx := context.Background()
 	data := []byte("already recorded")
 	hash := chunker.Sum(data)
-	uc, repo := newLinkFixture(t, newStubChunkStore())
+	store := newStubChunkStore()
+	store.data[ck(hash)] = data
+	uc, repo := newLinkFixture(t, store)
 	tx := &chunkTxRecorder{}
 	uc.WithStorageLedger(NewMockStorageLedger(gomock.NewController(t))).WithTransactor(tx)
 	repo.record(testProject.ID, hash, int64(len(data)))
@@ -116,6 +118,38 @@ func TestChunk_ConfirmUploads_NothingNewOpensNoTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, tx.began, "recorded chunks need no ledger and no rows")
+}
+
+// TestChunk_ConfirmUploads_RecordedChunkIsReadBack covers a row whose object
+// was lost: presign re-issues the upload, so confirm must hash the new bytes
+// instead of trusting the stale row.
+func TestChunk_ConfirmUploads_RecordedChunkIsReadBack(t *testing.T) {
+	ctx := context.Background()
+	data := []byte("re-uploaded content")
+	hash := chunker.Sum(data)
+
+	tests := []struct {
+		name   string
+		stored []byte
+	}{
+		{name: "object still lost", stored: nil},
+		{name: "wrong bytes re-uploaded", stored: []byte("not what the hash says")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newStubChunkStore()
+			if tc.stored != nil {
+				store.data[ck(hash)] = tc.stored
+			}
+			uc, repo := newLinkFixture(t, store)
+			repo.record(testProject.ID, hash, int64(len(data)))
+
+			missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, nil)
+			require.NoError(t, err)
+			require.Equal(t, []domain.Hash{hash}, missing)
+			require.Empty(t, repo.inserts)
+		})
+	}
 }
 
 // TestChunk_SameHashInTwoProjects checks per-project dedup end to end on the

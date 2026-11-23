@@ -161,8 +161,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   checks, `presignExistsLimit`) = `already_stored`, no URL; a row but the
   object lost = needs upload again. Every chunk that needs an upload gets a
   URL; `url` is empty only with `already_stored`. **Confirm**
-  (`ConfirmUploads`) protects the batch from the GC, trusts hashes the
-  project already has a row for (size from the row), and verifies the rest:
+  (`ConfirmUploads`) protects the batch from the GC and verifies every hash
+  (a recorded row does not vouch for its object, since presign re-issues an
+  upload when the object is gone; a row only keeps its size and charge):
   a valid receipt (`ConfirmChunkUploadsRequest.receipts`, `ChunkReceipt{hash,
   receipt}`, see below) means the server hashed the bytes itself, so its
   signed size is used with no store read; anything else (direct uploads, an
