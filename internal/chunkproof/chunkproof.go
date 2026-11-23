@@ -1,6 +1,6 @@
 // Package chunkproof holds what the server uses to trust chunk bytes at
 // confirm: the streaming verifier that hashes stored bytes read back from a
-// store, and the signed receipts a proxied upload returns (receipt.go). It
+// store, and the signed receipts a bundle upload returns (receipt.go). It
 // also owns the chunk transfer protocol version both sides send.
 //
 // Dedup is per project: a project only ever references chunks uploaded into
@@ -15,9 +15,11 @@ import (
 // Protocol is the chunk transfer protocol version (chunk_protocol on the
 // GetChunkUploadUrls, GetChunkDownloadUrls and ConfirmChunkUploads requests
 // and responses). Version 2 is per-project scope without possession proofs;
-// client and server must speak the same version, an older peer is refused
-// with an upgrade hint.
-const Protocol uint32 = 2
+// version 3 uploads through the server in bundles (one signed bundle URL per
+// presign, receipts v2 with a location) instead of one PUT per chunk. Client
+// and server must speak the same version, an older peer is refused with an
+// upgrade hint.
+const Protocol uint32 = 3
 
 // Verifier checks streamed chunk bytes in one pass: it computes the chunk
 // hash (equal to chunker.Sum) and counts the bytes, so the server never holds

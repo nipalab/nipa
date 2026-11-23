@@ -944,7 +944,7 @@ func (x *ChunkRef) GetSizeBytes() int64 {
 type PresignedChunkUrl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                                                                                 // hex-encoded BLAKE3 hash of data
-	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty only when already_stored
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // GET URL (signed server path or absolute backend URL); for uploads, the direct PUT URL, empty when already_stored or when the chunk goes in a bundle (GetChunkUploadUrlsResponse.bundle_url)
 	AlreadyStored bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                         // the project already holds the chunk; skip the transfer
 	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // upload URLs only: request headers the PUT must carry (they are part of the signature)
 	unknownFields protoimpl.UnknownFields
@@ -1090,8 +1090,16 @@ type GetChunkUploadUrlsResponse struct {
 	Urls          []*PresignedChunkUrl   `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	ChunkProtocol uint32                 `protobuf:"varint,3,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// bundle_url is set when this page's chunks that need an upload go to the
+	// server in bundles (a store without direct transfers, or proxy mode):
+	// a signed path relative to the server base URL taking PUTs of bundle
+	// bodies (internal/chunkbundle), each at most bundle_max_bytes long and
+	// bundle_max_chunks entries, answered with JSON [{hash, receipt}].
+	BundleUrl       string `protobuf:"bytes,4,opt,name=bundle_url,json=bundleUrl,proto3" json:"bundle_url,omitempty"`
+	BundleMaxBytes  int64  `protobuf:"varint,5,opt,name=bundle_max_bytes,json=bundleMaxBytes,proto3" json:"bundle_max_bytes,omitempty"`
+	BundleMaxChunks int32  `protobuf:"varint,6,opt,name=bundle_max_chunks,json=bundleMaxChunks,proto3" json:"bundle_max_chunks,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetChunkUploadUrlsResponse) Reset() {
@@ -1141,6 +1149,27 @@ func (x *GetChunkUploadUrlsResponse) GetNextPageToken() string {
 func (x *GetChunkUploadUrlsResponse) GetChunkProtocol() uint32 {
 	if x != nil {
 		return x.ChunkProtocol
+	}
+	return 0
+}
+
+func (x *GetChunkUploadUrlsResponse) GetBundleUrl() string {
+	if x != nil {
+		return x.BundleUrl
+	}
+	return ""
+}
+
+func (x *GetChunkUploadUrlsResponse) GetBundleMaxBytes() int64 {
+	if x != nil {
+		return x.BundleMaxBytes
+	}
+	return 0
+}
+
+func (x *GetChunkUploadUrlsResponse) GetBundleMaxChunks() int32 {
+	if x != nil {
+		return x.BundleMaxChunks
 	}
 	return 0
 }
@@ -1301,7 +1330,7 @@ type ConfirmChunkUploadsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	Hashes        []string               `protobuf:"bytes,2,rep,name=hashes,proto3" json:"hashes,omitempty"`     // hex-encoded BLAKE3 hashes of every chunk the client uploaded
-	Receipts      []*ChunkReceipt        `protobuf:"bytes,4,rep,name=receipts,proto3" json:"receipts,omitempty"` // receipts of proxied uploads; a valid one spares the server the read-back
+	Receipts      []*ChunkReceipt        `protobuf:"bytes,4,rep,name=receipts,proto3" json:"receipts,omitempty"` // receipts of bundle uploads; a valid one spares the server the read-back
 	ChunkProtocol uint32                 `protobuf:"varint,5,opt,name=chunk_protocol,json=chunkProtocol,proto3" json:"chunk_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1365,8 +1394,9 @@ func (x *ConfirmChunkUploadsRequest) GetChunkProtocol() uint32 {
 	return 0
 }
 
-// ChunkReceipt is the X-Nipa-Chunk-Receipt a proxied upload of one chunk
-// returned: a signed record of the size the server stored for this project.
+// ChunkReceipt is what a bundle upload returned for one chunk: a signed
+// record (nipa-chunk-receipt:v2) of the size and location the server stored
+// for this project.
 type ChunkReceipt struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"` // hex-encoded BLAKE3 hash of the chunk
@@ -13450,11 +13480,15 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\x12%\n" +
-	"\x0echunk_protocol\x18\x05 \x01(\rR\rchunkProtocol\"\x99\x01\n" +
+	"\x0echunk_protocol\x18\x05 \x01(\rR\rchunkProtocol\"\x8e\x02\n" +
 	"\x1aGetChunkUploadUrlsResponse\x12,\n" +
 	"\x04urls\x18\x01 \x03(\v2\x18.greet.PresignedChunkUrlR\x04urls\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12%\n" +
-	"\x0echunk_protocol\x18\x03 \x01(\rR\rchunkProtocol\"\xfe\x01\n" +
+	"\x0echunk_protocol\x18\x03 \x01(\rR\rchunkProtocol\x12\x1d\n" +
+	"\n" +
+	"bundle_url\x18\x04 \x01(\tR\tbundleUrl\x12(\n" +
+	"\x10bundle_max_bytes\x18\x05 \x01(\x03R\x0ebundleMaxBytes\x12*\n" +
+	"\x11bundle_max_chunks\x18\x06 \x01(\x05R\x0fbundleMaxChunks\"\xfe\x01\n" +
 	"\x1bGetChunkDownloadUrlsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x1d\n" +
 	"\n" +

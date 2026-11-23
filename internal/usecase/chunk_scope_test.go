@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -169,14 +170,15 @@ func TestChunk_SameHashInTwoProjects(t *testing.T) {
 	ref := []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}
 
 	for _, project := range []*domain.Project{testProject, other} {
-		urls, _, err := uc.PresignUploadURLs(ctx, testOrg, project, ref, 10, "")
+		presign, err := uc.PresignUploadURLs(ctx, testOrg, project, ref, 10, "")
 		require.NoError(t, err)
-		require.False(t, urls[0].AlreadyStored, "project %s must upload its own copy", project.Slug)
-		require.NotEmpty(t, urls[0].URL)
+		require.False(t, presign.URLs[0].AlreadyStored, "project %s must upload its own copy", project.Slug)
+		require.NotEmpty(t, presign.BundleURL)
 
-		receipt, err := uc.StoreUploaded(ctx, project.ID, hash, data)
+		body := bundleOf(t, data)
+		receipts, err := uc.StoreBundle(ctx, project.ID, bytes.NewReader(body), int64(len(body)), 1)
 		require.NoError(t, err)
-		missing, err := uc.ConfirmUploads(ctx, testOrg, project, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
+		missing, err := uc.ConfirmUploads(ctx, testOrg, project, []domain.Hash{hash}, receipts)
 		require.NoError(t, err)
 		require.Empty(t, missing)
 	}
@@ -187,9 +189,10 @@ func TestChunk_SameHashInTwoProjects(t *testing.T) {
 		got, err := store.Get(ctx, project, hash)
 		require.NoError(t, err)
 		require.Equal(t, data, got)
-		urls, _, err := uc.PresignUploadURLs(ctx, testOrg, &domain.Project{ID: project, Slug: "x"}, ref, 10, "")
+		presign, err := uc.PresignUploadURLs(ctx, testOrg, &domain.Project{ID: project, Slug: "x"}, ref, 10, "")
 		require.NoError(t, err)
-		require.True(t, urls[0].AlreadyStored)
+		require.True(t, presign.URLs[0].AlreadyStored)
+		require.Empty(t, presign.BundleURL)
 	}
 
 	// Deleting one project's content leaves the other's untouched.
@@ -242,18 +245,14 @@ func TestChunk_UploadForProject(t *testing.T) {
 	data := []byte("server content")
 	hash := chunker.Sum(data)
 
-	isNew, err := uc.UploadForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
-	require.True(t, isNew)
+	require.NoError(t, uc.UploadForProject(ctx, testProject.ID, hash, data))
 	require.True(t, repo.has(testProject.ID, hash))
 	require.Equal(t, data, store.data[ck(hash)])
 
-	isNew, err = uc.UploadForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
-	require.False(t, isNew)
+	require.NoError(t, uc.UploadForProject(ctx, testProject.ID, hash, data))
+	require.Len(t, repo.inserts, 2, "rows are inserted if not existing; the repository dedupes")
 
-	_, err = uc.UploadForProject(ctx, testProject.ID, hash, []byte("mismatch"))
-	require400(t, err, "chunk hash mismatch")
+	require400(t, uc.UploadForProject(ctx, testProject.ID, hash, []byte("mismatch")), "chunk hash mismatch")
 }
 
 func TestUniqueHashes(t *testing.T) {

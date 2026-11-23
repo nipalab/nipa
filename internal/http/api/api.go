@@ -205,12 +205,9 @@ func (a *API) SetupRoute() http.Handler {
 	}
 	restful.Add(apiWs)
 
-	chunkWs := new(restful.WebService).ApiVersion("1.0.0")
-	chunkWs.Path("/api/chunks").
-		Filter(sameOriginFilter)
-	a.enforceMaintenance(chunkWs)
-	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk(), a.useCase.Common()))
-	restful.Add(chunkWs)
+	for _, ws := range a.chunkWebServices(handler.NewChunkHandler(a.useCase.Chunk(), a.useCase.Common()), sameOriginFilter) {
+		restful.Add(ws)
+	}
 
 	restful.Add(newMaintenanceWebService(h))
 

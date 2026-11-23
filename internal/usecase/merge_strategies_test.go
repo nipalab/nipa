@@ -329,8 +329,8 @@ type stubChunkUploader struct {
 	attrErr error
 }
 
-func (u stubChunkUploader) StoreForProject(context.Context, snow.ID, domain.Hash, []byte) (bool, error) {
-	return false, u.err
+func (u stubChunkUploader) StoreChunks(context.Context, snow.ID, []ChunkContent) error {
+	return u.err
 }
 
 func (u stubChunkUploader) AttributeProjectChunks(context.Context, snow.ID, []LedgerChunk) error {

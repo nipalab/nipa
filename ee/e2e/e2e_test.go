@@ -373,14 +373,14 @@ func mustSnowNode(t *testing.T, nodeID int64) snow.Node {
 	return node
 }
 
-func connectClient(t *testing.T, host string) (*clientusecase.Repo, *clientusecase.Push) {
+func connectClient(t *testing.T, host string, opts ...clientgrpc.ClientOption) (*clientusecase.Repo, *clientusecase.Push) {
 	t.Helper()
 
 	ctx := context.Background()
 	store := newMemoryStore()
 	transport := clientgrpc.NewTransport()
 	session := clientusecase.NewSession(store, transport, failPrompt{})
-	grpcClient := clientgrpc.NewClient(transport, session)
+	grpcClient := clientgrpc.NewClient(transport, session, opts...)
 	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
 	require.NoError(t, grpcClient.Connect(ctx, host))
 

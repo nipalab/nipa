@@ -224,7 +224,7 @@ func TestAPIRoutes(t *testing.T) {
 			require.NoError(t, err)
 			hashes := make([]domain.Hash, 0, len(chunks))
 			for _, c := range chunks {
-				_, err := chunkUc.UploadForProject(pushCtx, snow.ID(1), c.Hash, c.Data)
+				err := chunkUc.UploadForProject(pushCtx, snow.ID(1), c.Hash, c.Data)
 				require.NoError(t, err)
 				hashes = append(hashes, c.Hash)
 			}
@@ -2440,7 +2440,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, "server is in maintenance (read-only): backup", rejection.Error)
 		require.Equal(t, maintenance.ScopeServer, rejection.Maintenance.Scope)
 		refused(t, http.MethodPost, hook, "", "", "server;read_only")
-		refused(t, http.MethodPut, server.URL+"/api/chunks/mt-enf/a/abcd", "", "", "server;read_only")
+		refused(t, http.MethodPut, server.URL+"/api/chunk-bundles/mt-enf/a", "", "", "server;read_only")
 		expect(t, http.MethodGet, server.URL+"/api/maintenance", "", "", http.StatusOK)
 		expect(t, http.MethodGet, v1+"/me", "", superTok, http.StatusOK)
 		loginAs(t, "nipa")
@@ -2522,7 +2522,7 @@ func TestAPIRoutes(t *testing.T) {
 		refused(t, http.MethodDelete, admin, "", superTok)
 		refused(t, http.MethodPut, proj+"/maintenance", `{"mode":"full"}`, superTok)
 		refused(t, http.MethodPost, server.URL+"/api/webhooks/test", "", "")
-		refused(t, http.MethodPut, server.URL+"/api/chunks/mt-frz/a/abcd", "", "")
+		refused(t, http.MethodPut, server.URL+"/api/chunk-bundles/mt-frz/a", "", "")
 		refused(t, http.MethodPost, v1+"/auth/login", `{"email":"nipa@example.com","password":"secret"}`, "")
 		resp := doMethodCookies(t, http.MethodPost, v1+"/auth/refresh", "", cookies)
 		_ = resp.Body.Close()

@@ -91,12 +91,12 @@ func TestChunk_PresignExistsIsPerStore(t *testing.T) {
 	f.nipa.data[ck(hash)] = data
 	f.repo.record(testProject.ID, hash, int64(len(data)))
 
-	urls, _, err := f.uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	got, err := f.uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 
 	require.NoError(t, err)
-	require.Len(t, urls, 1)
-	require.False(t, urls[0].AlreadyStored)
-	require.NotEmpty(t, urls[0].URL, "the project's own store lost the object: upload it again")
+	require.Len(t, got.URLs, 1)
+	require.False(t, got.URLs[0].AlreadyStored)
+	require.NotEmpty(t, got.BundleURL, "the project's own store lost the object: upload it again")
 }
 
 func TestChunk_ExternalConfirmSkipsLedger(t *testing.T) {
@@ -125,21 +125,22 @@ func TestChunk_StoreForProjectWritesProjectStore(t *testing.T) {
 	data := []byte("merge output")
 	hash := chunker.Sum(data)
 
-	isNew, err := f.uc.StoreForProject(context.Background(), testProject.ID, hash, data)
+	err := f.uc.StoreForProject(context.Background(), testProject.ID, hash, data)
 
 	require.NoError(t, err)
-	require.True(t, isNew)
 	require.Equal(t, data, f.own.data[ck(hash)])
 	require.NotContains(t, f.nipa.data, ck(hash))
 }
 
-func TestChunk_StoreUploadedAndDownloadUseProjectStore(t *testing.T) {
+func TestChunk_StoreBundleAndDownloadUseProjectStore(t *testing.T) {
 	ctx := context.Background()
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	data := []byte("signed put")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, storeErr(f.uc.StoreUploaded(ctx, testProject.ID, hash, data)))
+	body := bundleOf(t, data)
+	_, err := f.uc.StoreBundle(ctx, testProject.ID, bytes.NewReader(body), int64(len(body)), 1)
+	require.NoError(t, err)
 	require.Equal(t, data, f.own.data[ck(hash)])
 	require.NotContains(t, f.nipa.data, ck(hash))
 
@@ -164,13 +165,14 @@ func TestChunk_ReadOnlyRefusesWrites(t *testing.T) {
 		require.Equal(t, "own storage requires the Own storage add-on", domainErr.Message)
 	}
 
-	_, _, err := f.uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	_, err := f.uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	requireReadOnly(t, err)
 	_, err = f.uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, nil)
 	requireReadOnly(t, err)
-	requireReadOnly(t, storeErr(f.uc.StoreUploaded(ctx, testProject.ID, hash, data)))
-	_, err = f.uc.UploadForProject(ctx, testProject.ID, hash, data)
+	body := bundleOf(t, data)
+	_, err = f.uc.StoreBundle(ctx, testProject.ID, bytes.NewReader(body), int64(len(body)), 1)
 	requireReadOnly(t, err)
+	requireReadOnly(t, f.uc.UploadForProject(ctx, testProject.ID, hash, data))
 	requireReadOnly(t, f.uc.RequireWritable(ctx, testProject.ID))
 	require.NoError(t, f.uc.RequireWritable(ctx, snow.ID(2)))
 
@@ -190,7 +192,7 @@ func TestChunk_ResolverErrors(t *testing.T) {
 		WithChunkStores(fakeChunkStores{err: wantErr})
 	hash := chunker.Sum([]byte("x"))
 
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
 	require.ErrorIs(t, err, wantErr)
 	_, _, err = uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{hash}, 10, "")
 	require.ErrorIs(t, err, wantErr)

@@ -34,10 +34,11 @@ type mergeCommitter interface {
 	ApplyPushAll(ctx context.Context, reqs []ApplyPushRequest) error
 }
 
-// chunkUploader stores merge-generated content, records its metadata and
-// attributes it to the project's storage ledger.
+// chunkUploader stores merge-generated content (through the same chunk
+// storage service bundle uploads use), records its metadata and attributes it
+// to the project's storage ledger.
 type chunkUploader interface {
-	StoreForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error)
+	StoreChunks(ctx context.Context, projectID snow.ID, chunks []ChunkContent) error
 	AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
 }
 
@@ -308,13 +309,15 @@ func (b *Branch) storeMergedContent(ctx context.Context, projectID snow.ID, path
 	hashes := make([]domain.Hash, 0, len(chunks))
 	sizes := make([]int64, 0, len(chunks))
 	stored := make([]LedgerChunk, 0, len(chunks))
+	contents := make([]ChunkContent, 0, len(chunks))
 	for _, chunk := range chunks {
-		if _, err := b.chunkUploads.StoreForProject(ctx, projectID, chunk.Hash, chunk.Data); err != nil {
-			return merge.File{}, nil, err
-		}
+		contents = append(contents, ChunkContent{Hash: chunk.Hash, Data: chunk.Data})
 		hashes = append(hashes, chunk.Hash)
 		sizes = append(sizes, chunk.SizeBytes)
 		stored = append(stored, LedgerChunk{Hash: chunk.Hash, SizeBytes: chunk.SizeBytes})
+	}
+	if err := b.chunkUploads.StoreChunks(ctx, projectID, contents); err != nil {
+		return merge.File{}, nil, err
 	}
 	return merge.File{
 		Path:        path,

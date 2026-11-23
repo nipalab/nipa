@@ -2,14 +2,12 @@ package handler
 
 import (
 	"context"
-	"errors"
-	"io"
+	"fmt"
 	nethttp "net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
@@ -23,7 +21,8 @@ type chunkProjectResolver interface {
 	ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (*domain.Organization, *domain.Project, error)
 }
 
-// ChunkHandler serves signed-URL chunk transfers over HTTP.
+// ChunkHandler serves signed-URL chunk transfers over HTTP: bundle uploads
+// and single-chunk downloads.
 type ChunkHandler struct {
 	chunks   *usecase.Chunk
 	projects chunkProjectResolver
@@ -33,79 +32,68 @@ func NewChunkHandler(chunks *usecase.Chunk, projects chunkProjectResolver) *Chun
 	return &ChunkHandler{chunks: chunks, projects: projects}
 }
 
-// PutChunk stores one chunk uploaded through a signed transfer URL. The URL
-// pins the exact size; the BLAKE3 hash is verified before storing. A stored
-// chunk is answered 204 with a receipt (chunkproof.ReceiptHeader) the client
-// passes to confirm instead of having the server read the chunk back. Nothing
-// is recorded in the database here: the project's rows and quota wait for
-// confirm.
-func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
-	hashHex := appCtx.PathParameter("hash")
-	params, err := chunkurl.ParseParams(appCtx.Request().URL.Query())
+// BundleReceipt is one entry of a bundle upload's response: the receipt of
+// one stored chunk, passed to ConfirmChunkUploads.
+type BundleReceipt struct {
+	Hash    string `json:"hash"`
+	Receipt string `json:"receipt"`
+}
+
+// PutBundle stores the chunks of one bundle upload (chunkbundle format)
+// through a signed bundle URL, which is the capability: no bearer token. The
+// body needs an exact Content-Length within the URL's signed size. That many
+// bytes are reserved from the server-wide upload budget before the body is
+// read, every entry is hashed and checked before anything is written (any
+// failure is a 400 with nothing stored), then each chunk is stored and the
+// response is 200 with a JSON array of {hash, receipt}. Nothing is recorded
+// in the database here: the project's rows and quota wait for confirm.
+func (h *ChunkHandler) PutBundle(appCtx httpApp.AppContext) {
+	params, err := chunkurl.ParseBundleParams(appCtx.Request().URL.Query())
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	if params.Op != chunkurl.OpUpload {
-		appCtx.HandleError(domain.NewErrorNoPermission())
-		return
-	}
-	project, err := h.verifyURL(appCtx, hashHex, params)
-	if err != nil {
+	orgSlug, projectSlug := appCtx.PathParameter("org"), appCtx.PathParameter("project")
+	if err := h.chunks.VerifyBundleURL(orgSlug, projectSlug, params); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	hash, err := domain.ParseHashHex(hashHex)
-	if err != nil {
-		appCtx.HandleError(domain.NewErrorUser("invalid chunk hash"))
-		return
-	}
-	trace.SpanFromContext(appCtx.Context()).SetAttributes(attribute.String(obs.AttrChunkHash, hashHex))
 	request := appCtx.Request()
-	if request.ContentLength >= 0 && request.ContentLength != params.Size {
-		appCtx.HandleError(domain.NewErrorUser("chunk size mismatch"))
+	size := request.ContentLength
+	if size < 0 {
+		appCtx.HandleError(domain.NewErrorUser("chunk bundle needs a Content-Length"))
 		return
 	}
-	// The signed size is reserved from the server-wide proxy budget before
-	// the body is read and given back once it is stored or rejected, so
-	// bodies in memory stay bounded however many clients upload at once.
-	release, err := h.chunks.ReserveUploadBuffer(appCtx.Context(), params.Size)
+	if size == 0 || size > params.MaxSize {
+		appCtx.HandleError(domain.NewErrorUser(fmt.Sprintf("chunk bundle of %d bytes is outside 1..%d", size, params.MaxSize)))
+		return
+	}
+	_, project, err := h.projects.ResolveBySlug(appCtx.Context(), orgSlug, projectSlug)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	trace.SpanFromContext(appCtx.Context()).SetAttributes(attribute.Int64(obs.AttrChunkBytes, size))
+	// The body's bytes are reserved from the server-wide budget before it is
+	// read and given back once it is stored or rejected, so bodies in memory
+	// stay bounded however many clients upload at once.
+	release, err := h.chunks.ReserveUploadBuffer(appCtx.Context(), size)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
 	defer release()
-	data, err := readChunkBody(appCtx, request, params.Size)
+	body := nethttp.MaxBytesReader(appCtx.ResponseWriter(), request.Body, size)
+	receipts, err := h.chunks.StoreBundle(appCtx.Context(), project.ID, body, size, params.MaxCount)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	receipt, err := h.chunks.StoreUploaded(appCtx.Context(), project.ID, hash, data)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
+	out := make([]BundleReceipt, 0, len(receipts))
+	for _, receipt := range receipts {
+		out = append(out, BundleReceipt{Hash: receipt.Hash.String(), Receipt: receipt.Receipt})
 	}
-	appCtx.ResponseWriter().Header().Set(chunkproof.ReceiptHeader, receipt)
-	appCtx.ResponseWriter().WriteHeader(nethttp.StatusNoContent)
-}
-
-// readChunkBody reads exactly size bytes into one buffer of that size (the
-// reserved budget), then makes sure nothing follows; MaxBytesReader stops a
-// longer body one byte past the signed size.
-func readChunkBody(appCtx httpApp.AppContext, request *nethttp.Request, size int64) ([]byte, error) {
-	body := nethttp.MaxBytesReader(appCtx.ResponseWriter(), request.Body, size+1)
-	data := make([]byte, size)
-	if _, err := io.ReadFull(body, data); err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
-			return nil, domain.NewErrorUser("chunk size mismatch")
-		}
-		return nil, domain.NewErrorUser("unable to read chunk body")
-	}
-	var extra [1]byte
-	if n, _ := io.ReadFull(body, extra[:]); n > 0 {
-		return nil, domain.NewErrorUser("chunk size mismatch")
-	}
-	return data, nil
+	_ = appCtx.WriteJson(nethttp.StatusOK, out)
 }
 
 // GetChunk serves one chunk through a signed download URL.

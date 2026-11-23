@@ -223,10 +223,11 @@ Caddy proxy); it is not part of the Netlify deployment.
 
    Chunk uploads in proxy mode (`CHUNK_UPLOAD_MODE=proxy`, set in
    `deploy/nipad-ee.env.sample` for the SaaS R2 bucket) flow through Caddy to
-   `nipad-ee`, up to 16 MiB per request: do not add a `request_body
-   max_size` below 16 MiB (the shipped Caddyfile sets none). The server holds
-   at most `CHUNK_PROXY_BUFFER_MIB` (default 128) of upload bodies in memory
-   and writes R2 itself, so server to R2 traffic counts against the VPS
+   `nipad-ee` as bundles of many chunks, up to `CHUNK_BUNDLE_MAX_MIB`
+   (default 64 MiB) per request: do not add a `request_body max_size` below
+   that (the shipped Caddyfile sets none). The server holds at most
+   `CHUNK_PROXY_BUFFER_MIB` (default 256) of bundle bodies in memory and
+   writes R2 itself, so server to R2 traffic counts against the VPS
    outbound transfer; bring-your-own storage projects still upload directly.
    The SaaS default is provisional until the push-throughput loadtest rerun
    (MinIO, R2 direct, R2 proxy) picks it.

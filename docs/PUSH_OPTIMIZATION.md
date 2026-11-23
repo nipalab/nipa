@@ -27,6 +27,12 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
   hashes the bytes, overwrites the object and returns a signed receipt;
   confirm accepts the receipt instead of reading the chunk back (one store
   request per new chunk). Own-storage projects stay direct.
+- Later (bundle uploads, chunk protocol 3): uploads through the server (free
+  `nipad`, proxy mode) go in bundles, one `PUT /api/chunk-bundles/{org}/{project}`
+  per upload window carrying many chunks (`internal/chunkbundle`, at most
+  `CHUNK_BUNDLE_MAX_MIB`), verified entry by entry before anything is stored
+  and answered with v2 receipts; the single-chunk PUT is gone. Each entry is
+  still stored as its own object until packs land.
 - Phase 2 is deferred: with presign checks concurrent and confirm batched, the
   remaining saving is the ref payload and the concurrent `Exists` calls.
 

@@ -57,7 +57,15 @@ func TestRateLimitMiddlewareExemptAndChunkScope(t *testing.T) {
 	}
 	for i := 0; i < 5; i++ {
 		assert.Equal(t, 200, serve(h, "/api/chunks/o/p/h", "").Code)
+		assert.Equal(t, 200, serve(h, "/api/chunk-bundles/o/p", "").Code, "bundle uploads use the chunk bucket")
 	}
+}
+
+func TestRateLimitChunkBucketThrottlesBundles(t *testing.T) {
+	h := testRateLimit(ratelimit.ScopeChunkIP, 1).Middleware(okHandler)
+	assert.Equal(t, 200, serve(h, "/api/chunk-bundles/o/p", "198.51.100.9").Code)
+	assert.Equal(t, http.StatusTooManyRequests, serve(h, "/api/chunk-bundles/o/p", "198.51.100.9").Code)
+	assert.Equal(t, 200, serve(h, "/x", "198.51.100.9").Code, "the global bucket is separate")
 }
 
 func TestRateLimitMiddlewareSkipsGRPCAndNil(t *testing.T) {

@@ -31,7 +31,7 @@ func TestVerifierMatchesSum(t *testing.T) {
 }
 
 func TestProtocolVersion(t *testing.T) {
-	require.Equal(t, uint32(2), Protocol, "bumping the chunk protocol is a breaking change for every client")
+	require.Equal(t, uint32(3), Protocol, "bumping the chunk protocol is a breaking change for every client")
 }
 
 func FuzzVerifierMatchesSum(f *testing.F) {

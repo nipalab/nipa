@@ -64,9 +64,13 @@ func maintContainer(svc *maintenance.Service, metrics *obs.Metrics) http.Handler
 
 	chunks := new(restful.WebService).Path("/api/chunks")
 	a.enforceMaintenance(chunks)
-	chunks.Route(chunks.PUT("/{org}/{project}/{hash}").To(ok))
 	chunks.Route(chunks.GET("/{org}/{project}/{hash}").To(ok))
 	container.Add(chunks)
+
+	bundles := new(restful.WebService).Path("/api/chunk-bundles")
+	a.enforceMaintenance(bundles)
+	bundles.Route(bundles.PUT("/{org}/{project}").To(ok))
+	container.Add(bundles)
 
 	hooks := new(restful.WebService).Path("/api/webhooks/paddle")
 	a.enforceMaintenance(hooks)
@@ -97,7 +101,7 @@ func TestRouteClass(t *testing.T) {
 		"HEAD /api/v1/orgs":                                           maintenance.ClassRead,
 		"OPTIONS /api/v1/orgs":                                        maintenance.ClassRead,
 		"POST /api/webhooks/paddle":                                   maintenance.ClassWrite,
-		"PUT /api/chunks/{org}/{project}/{hash}":                      maintenance.ClassWrite,
+		"PUT /api/chunk-bundles/{org}/{project}":                      maintenance.ClassWrite,
 		"GET /api/chunks/{org}/{project}/{hash}":                      maintenance.ClassRead,
 		"DELETE /api/v1/orgs/{org}/projects/{project}/permissions/me": maintenance.ClassWrite,
 	}
@@ -126,12 +130,12 @@ func TestMaintenanceFilterRules(t *testing.T) {
 	}{
 		{name: "off", calls: []call{
 			{http.MethodPost, "/api/webhooks/paddle", allowed},
-			{http.MethodPut, "/api/chunks/acme/game/ab", allowed},
+			{http.MethodPut, "/api/chunk-bundles/acme/game", allowed},
 		}},
 		{name: "server read_only", window: ptr(activeWindow(maintenance.ReadOnly, "", "")), calls: []call{
 			{http.MethodGet, "/api/v1/orgs/acme/projects/game/tree", allowed},
 			{http.MethodGet, "/api/chunks/acme/game/ab", allowed},
-			{http.MethodPut, "/api/chunks/acme/game/ab", refused},
+			{http.MethodPut, "/api/chunk-bundles/acme/game", refused},
 			{http.MethodPost, "/api/v1/orgs/acme/projects/game/locks", refused},
 			{http.MethodPost, "/api/v1/auth/register", refused},
 			{http.MethodPost, "/api/webhooks/paddle", refused},
@@ -148,7 +152,7 @@ func TestMaintenanceFilterRules(t *testing.T) {
 		}},
 		{name: "project read_only", window: ptr(activeWindow(maintenance.ReadOnly, "acme", "game")), calls: []call{
 			{http.MethodPost, "/api/v1/orgs/acme/projects/game/locks", refused},
-			{http.MethodPut, "/api/chunks/acme/game/ab", refused},
+			{http.MethodPut, "/api/chunk-bundles/acme/game", refused},
 			{http.MethodPost, "/api/v1/orgs/acme/projects/other/locks", allowed},
 			{http.MethodPost, "/api/v1/orgs/acme/members", allowed},
 			{http.MethodPost, "/api/webhooks/paddle", allowed},

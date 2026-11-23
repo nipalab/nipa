@@ -12,10 +12,9 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 )
 
-const (
-	OpUpload   = "put"
-	OpDownload = "get"
-)
+// OpDownload is the only operation of a single-chunk URL: uploads go through
+// signed bundle URLs (BundlePath).
+const OpDownload = "get"
 
 const (
 	queryOp   = "op"
@@ -33,7 +32,7 @@ type Params struct {
 
 func ParseParams(query url.Values) (Params, error) {
 	op := query.Get(queryOp)
-	if op != OpUpload && op != OpDownload {
+	if op != OpDownload {
 		return Params{}, domain.NewErrorUser("invalid chunk transfer operation")
 	}
 	exp, err := strconv.ParseInt(query.Get(queryExp), 10, 64)
@@ -69,15 +68,6 @@ func Sign(key, org, project, hash, op string, size, exp int64) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = fmt.Fprintf(mac, "%s\n%s\n%s\n%s\n%d\n%d", op, org, project, hash, size, exp)
 	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func UploadPath(key, org, project, hash string, size, exp int64) string {
-	q := url.Values{}
-	q.Set(queryOp, OpUpload)
-	q.Set(querySize, strconv.FormatInt(size, 10))
-	q.Set(queryExp, strconv.FormatInt(exp, 10))
-	q.Set(querySig, Sign(key, org, project, hash, OpUpload, size, exp))
-	return chunkPath(org, project, hash) + "?" + q.Encode()
 }
 
 func DownloadPath(key, org, project, hash string, exp int64) string {

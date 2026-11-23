@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/nipalab/nipa/internal/chunkbundle"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
@@ -43,9 +44,13 @@ type chunkTransactor interface {
 // confirm runs at once when CHUNK_VERIFY_CONCURRENCY is unset.
 const DefaultChunkVerifyConcurrency = 64
 
-// DefaultChunkProxyBufferBytes is the server-wide memory budget for proxied
+// DefaultChunkProxyBufferBytes is the server-wide memory budget for bundle
 // upload bodies when none is configured (CHUNK_PROXY_BUFFER_MIB).
-const DefaultChunkProxyBufferBytes = 128 << 20
+const DefaultChunkProxyBufferBytes = 256 << 20
+
+// DefaultChunkBundleMaxBytes is the largest bundle body a presign signs when
+// none is configured (CHUNK_BUNDLE_MAX_MIB).
+const DefaultChunkBundleMaxBytes = 64 << 20
 
 // UploadMode selects how clients send chunk bytes to a store that supports
 // direct transfers (CHUNK_UPLOAD_MODE).
@@ -55,10 +60,11 @@ const (
 	// UploadModeDirect hands out the store's own presigned upload URLs; the
 	// bytes bypass the server and confirm reads every chunk back.
 	UploadModeDirect UploadMode = "direct"
-	// UploadModeProxy hands out signed server paths: the server hashes the
-	// bytes on the way in, writes the store itself and returns a receipt that
-	// lets confirm skip the read-back. Own-storage (External) projects keep
-	// uploading direct so customer bytes never flow through the server.
+	// UploadModeProxy hands out a signed bundle URL: clients send many chunks
+	// per request, the server hashes them on the way in, writes the store
+	// itself and returns receipts that let confirm skip the read-back.
+	// Own-storage (External) projects keep uploading direct so customer bytes
+	// never flow through the server.
 	UploadModeProxy UploadMode = "proxy"
 )
 
@@ -73,8 +79,10 @@ type ChunkRef struct {
 }
 
 // ChunkURL pairs a chunk hash with its signed transfer path. For uploads, URL
-// is empty only when AlreadyStored is set; Headers are request headers the PUT
-// must carry because they are part of a direct backend's signature.
+// is set only for direct uploads (the chunk goes to the store's presigned
+// URL): it is empty when AlreadyStored is set or when the chunk goes in a
+// bundle (UploadPresign.BundleURL). Headers are request headers the PUT must
+// carry because they are part of a direct backend's signature.
 type ChunkURL struct {
 	Hash          domain.Hash
 	URL           string
@@ -82,11 +90,24 @@ type ChunkURL struct {
 	Headers       map[string]string
 }
 
-// ChunkReceipt is what StoreUploaded issued for a proxied upload of one chunk;
-// a valid one stands in for the read-back at confirm.
+// ChunkReceipt is what StoreBundle issued for one chunk of a bundle upload; a
+// valid one stands in for the read-back at confirm.
 type ChunkReceipt struct {
 	Hash    domain.Hash
 	Receipt string
+}
+
+// UploadPresign is one page of upload decisions. When the project's store
+// takes uploads through the server (a store without direct transfers, or the
+// server's own store in proxy mode), every chunk that needs an upload has no
+// URL and goes in bundles to BundleURL instead, each body at most
+// BundleMaxBytes and BundleMaxChunks entries.
+type UploadPresign struct {
+	URLs            []ChunkURL
+	NextPageToken   string
+	BundleURL       string
+	BundleMaxBytes  int64
+	BundleMaxChunks int
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -113,10 +134,12 @@ type Chunk struct {
 	verifySlots *semaphore.Weighted
 	existsSlots *semaphore.Weighted
 	uploadMode  UploadMode
-	// proxyBuffer bounds the bytes of every proxied upload body held in
+	// proxyBuffer bounds the bytes of every bundle upload body held in
 	// memory at once, across all requests; proxyBufferSize is its capacity.
 	proxyBuffer     *semaphore.Weighted
 	proxyBufferSize int64
+	// bundleMax is the largest bundle body a presign signs.
+	bundleMax int64
 }
 
 // ChunkGCGuard keeps a chunk garbage collector from deleting content a caller
@@ -142,7 +165,19 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 
 		proxyBuffer:     semaphore.NewWeighted(DefaultChunkProxyBufferBytes),
 		proxyBufferSize: DefaultChunkProxyBufferBytes,
+		bundleMax:       DefaultChunkBundleMaxBytes,
 	}
+}
+
+// WithBundleMax sets the largest bundle body a presign signs; n <= 0 keeps
+// DefaultChunkBundleMaxBytes. It never goes below one entry of the largest
+// chunk, so every chunk fits in some bundle.
+func (c *Chunk) WithBundleMax(n int64) *Chunk {
+	if n <= 0 {
+		n = DefaultChunkBundleMaxBytes
+	}
+	c.bundleMax = max(n, chunkbundle.EncodedSize(int(chunker.MaxChunkSize())))
+	return c
 }
 
 // WithUploadMode selects direct or proxied uploads for projects on the
@@ -155,7 +190,7 @@ func (c *Chunk) WithUploadMode(mode UploadMode) *Chunk {
 	return c
 }
 
-// WithProxyBuffer sets the server-wide byte budget for proxied upload bodies
+// WithProxyBuffer sets the server-wide byte budget for bundle upload bodies
 // held in memory; n <= 0 keeps DefaultChunkProxyBufferBytes.
 func (c *Chunk) WithProxyBuffer(n int64) *Chunk {
 	if n <= 0 {
@@ -166,7 +201,7 @@ func (c *Chunk) WithProxyBuffer(n int64) *Chunk {
 	return c
 }
 
-// ReserveUploadBuffer takes size bytes of the proxied upload budget before
+// ReserveUploadBuffer takes size bytes of the bundle upload budget before
 // the caller reads an upload body, waiting while other uploads hold it. A body
 // larger than the whole budget takes all of it. It fails when ctx ends first.
 // The caller must call release once the body is stored or dropped.
@@ -286,37 +321,8 @@ func (c *Chunk) WithMetrics(metrics *obs.Metrics) *Chunk {
 	return c
 }
 
-// upload stores one chunk in the project's store. It returns true when the
-// content was newly stored, false when an identical chunk was already
-// present. It records no row: recordChunks does, once the ledger accepted it.
-func (c *Chunk) upload(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
-	if got := chunker.Sum(data); got != hash {
-		c.metrics.ObserveChunkVerifyFailure("store")
-		return false, domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
-	}
-	if err := c.protect(ctx, projectID, hash); err != nil {
-		return false, err
-	}
-	exists, err := store.Exists(ctx, projectID, hash)
-	if err != nil {
-		c.metrics.ObserveChunkOp("upload", "error")
-		return false, domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
-	}
-	if exists {
-		c.metrics.ObserveChunkOp("upload", "dedup")
-		return false, nil
-	}
-	if err := store.Put(ctx, projectID, hash, data); err != nil {
-		c.metrics.ObserveChunkOp("upload", "error")
-		return false, domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
-	}
-	c.metrics.ObserveChunkOp("upload", "stored")
-	c.metrics.ObserveChunkBytes("upload", int64(len(data)))
-	return true, nil
-}
-
 // AttributeProjectChunks records the project's rows for chunks the server
-// produced itself (merge output) and stored with StoreForProject. The ledger
+// produced itself (merge output) and stored with StoreChunks. The ledger
 // attributes them first, in the same transaction, so a quota failure leaves
 // no row.
 func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
@@ -357,99 +363,6 @@ func (c *Chunk) recordChunks(ctx context.Context, projectID snow.ID, rows []Chun
 	})
 }
 
-// StoreForProject stores server-held content in the project's store without
-// recording its row; AttributeProjectChunks records it once the caller is
-// ready to land it.
-func (c *Chunk) StoreForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
-	resolved, err := c.writableStore(ctx, projectID)
-	if err != nil {
-		return false, err
-	}
-	return c.upload(ctx, resolved.Store, projectID, hash, data)
-}
-
-// UploadForProject stores server-held content in the project's store and
-// records its row (through the ledger) so a push of that project may
-// reference it.
-func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
-	isNew, err := c.StoreForProject(ctx, projectID, hash, data)
-	if err != nil {
-		return false, err
-	}
-	if err := c.AttributeProjectChunks(ctx, projectID, []LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}); err != nil {
-		return false, err
-	}
-	return isNew, nil
-}
-
-// StoreUploaded verifies and stores chunk content a client sent through a
-// signed server path, without recording metadata; the project's chunk row is
-// written by ConfirmUploads once the client reports the transfer done (quota
-// is enforced there), so this path records no rows. Content writes are safe
-// to run concurrently.
-//
-// It returns a receipt (chunkproof.NewReceipt) for the project, hash and the
-// size the server measured, valid for the presign TTL: the server saw these
-// bytes itself, so confirm accepts the receipt instead of reading them back.
-//
-// A store clients can also write directly (storage.ChunkOverwriter, i.e.
-// S3 in proxy mode) is written unconditionally, which replaces garbage an
-// earlier direct upload left at the key; other stores skip content they
-// already hold. A chunk garbage collector's mark on the project's chunk is
-// cleared before the write, so a sweep cannot remove the content between this
-// write and the confirm that relies on the receipt.
-func (c *Chunk) StoreUploaded(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (receipt string, err error) {
-	ctx, span := obs.StartSpan(ctx, "chunk.store",
-		attribute.String(obs.AttrChunkHash, hash.String()),
-		attribute.Int(obs.AttrChunkSize, len(data)))
-	defer func() { obs.FinishSpan(span, err) }()
-
-	if got := chunker.Sum(data); got != hash {
-		c.metrics.ObserveChunkVerifyFailure("store")
-		return "", domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
-	}
-	resolved, err := c.writableStore(ctx, projectID)
-	if err != nil {
-		return "", err
-	}
-	if err := c.protect(ctx, projectID, hash); err != nil {
-		return "", err
-	}
-	if err := c.writeUploaded(ctx, resolved.Store, projectID, hash, data); err != nil {
-		return "", err
-	}
-	size := int64(len(data))
-	return chunkproof.NewReceipt(c.transfer.SigningKey, projectID, hash, size, c.now().Add(c.transfer.PresignTTL)), nil
-}
-
-func (c *Chunk) writeUploaded(ctx context.Context, store storage.ChunkStore, projectID snow.ID, hash domain.Hash, data []byte) error {
-	if overwriter, ok := store.(storage.ChunkOverwriter); ok {
-		if err := overwriter.Overwrite(ctx, projectID, hash, data); err != nil {
-			c.metrics.ObserveChunkOp("put", "error")
-			return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
-		}
-		c.metrics.ObserveChunkOp("put", "stored")
-		c.metrics.ObserveChunkBytes("put", int64(len(data)))
-		return nil
-	}
-	exists, err := store.Exists(ctx, projectID, hash)
-	if err != nil {
-		c.metrics.ObserveChunkOp("put", "error")
-		return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
-	}
-	if exists {
-		c.metrics.ObserveChunkOp("put", "dedup")
-		return nil
-	}
-	if err := store.Put(ctx, projectID, hash, data); err != nil {
-		c.metrics.ObserveChunkOp("put", "error")
-		return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
-	}
-	c.metrics.ObserveChunkOp("put", "stored")
-	c.metrics.ObserveChunkBytes("put", int64(len(data)))
-	return nil
-}
-
 // Download returns the stored content for a chunk hash.
 func (c *Chunk) Download(ctx context.Context, projectID snow.ID, hash domain.Hash) (data []byte, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.download",
@@ -481,35 +394,35 @@ func (c *Chunk) Download(ctx context.Context, projectID snow.ID, hash domain.Has
 //
 // When a ledger is attached, refs that would add new bytes are checked against
 // the organization's remaining quota first.
-func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) (UploadPresign, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
 		attribute.String(obs.AttrOrg, org.Slug),
 		attribute.String(obs.AttrProject, project.Slug),
 		attribute.Int(obs.AttrChunkCount, len(refs)))
-	urls, next, err := c.presignUploadURLs(ctx, org, project, refs, pageSize, pageToken)
+	presign, err := c.presignUploadURLs(ctx, org, project, refs, pageSize, pageToken)
 	obs.FinishSpan(span, err)
 	result := "ok"
 	if err != nil {
 		result = "error"
 	}
 	c.metrics.ObserveChunkOp("presign_upload", result)
-	return urls, next, err
+	return presign, err
 }
 
-func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) (UploadPresign, error) {
 	if err := validateChunkRefs(refs); err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	resolved, err := c.writableStore(ctx, project.ID)
 	if err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	if err := c.checkHeadroom(ctx, c.ledgerFor(resolved), org, project, refs); err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	page, next, err := paginate(refs, pageSize, pageToken, c.transfer.MaxPageSize)
 	if err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	expiry := chunkurl.Expiry(c.now(), c.transfer.PresignTTL)
 	pageHashes := make([]domain.Hash, 0, len(page))
@@ -518,7 +431,7 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	}
 	recorded, err := c.chunkRepo.ProjectChunkSizes(ctx, project.ID, pageHashes)
 	if err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	// Recorded chunks are protected from GC before they are checked: confirm
 	// does not see the ones the store already holds (the client skips them),
@@ -526,25 +439,36 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	// Protect waits for a sweep holding a row, so a swept chunk then reads as
 	// missing and is uploaded again.
 	if err := c.protect(ctx, project.ID, recordedHashes(pageHashes, recorded)...); err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
 	exists, err := c.existsRecorded(ctx, resolved.Store, project.ID, page, recorded)
 	if err != nil {
-		return nil, "", err
+		return UploadPresign{}, err
 	}
-	urls := make([]ChunkURL, 0, len(page))
+	direct, isDirect := c.directUploads(resolved)
+	presign := UploadPresign{URLs: make([]ChunkURL, 0, len(page)), NextPageToken: next}
+	bundled := 0
 	for i, ref := range page {
-		if exists[i] {
-			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
-			continue
+		switch {
+		case exists[i]:
+			presign.URLs = append(presign.URLs, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
+		case !isDirect:
+			presign.URLs = append(presign.URLs, ChunkURL{Hash: ref.Hash})
+			bundled++
+		default:
+			target, err := direct.PresignUpload(ctx, project.ID, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+			if err != nil {
+				return UploadPresign{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
+			}
+			presign.URLs = append(presign.URLs, ChunkURL{Hash: ref.Hash, URL: target.URL, Headers: target.Headers})
 		}
-		target, err := c.uploadTarget(ctx, resolved, org, project, ref, expiry)
-		if err != nil {
-			return nil, "", err
-		}
-		urls = append(urls, ChunkURL{Hash: ref.Hash, URL: target.URL, Headers: target.Headers})
 	}
-	return urls, next, nil
+	if bundled > 0 {
+		presign.BundleURL = chunkurl.BundlePath(c.transfer.SigningKey, org.Slug, project.Slug, c.bundleMax, bundled, expiry)
+		presign.BundleMaxBytes = c.bundleMax
+		presign.BundleMaxChunks = bundled
+	}
+	return presign, nil
 }
 
 // recordedHashes returns the hashes the project has a chunk row for.
@@ -638,22 +562,16 @@ func (c *Chunk) checkHeadroom(ctx context.Context, ledger StorageLedger, org *do
 	return ledger.Headroom(ctx, org, project, projected)
 }
 
-// uploadTarget picks where a client PUTs one chunk: the store's own presigned
-// URL for a direct-transfer store, or the signed server path (StoreUploaded)
-// for any other store and, in proxy mode, for the server's own store too.
-// Own-storage (External) projects always upload direct.
-func (c *Chunk) uploadTarget(ctx context.Context, resolved ProjectStore, org *domain.Organization, project *domain.Project, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
+// directUploads reports whether clients PUT the project's chunks straight to
+// its store (presigned URLs) rather than in bundles through the server: only
+// a direct-transfer store does, and in proxy mode only for own-storage
+// (External) projects, whose bytes never flow through the server.
+func (c *Chunk) directUploads(resolved ProjectStore) (storage.DirectTransferStore, bool) {
 	direct, ok := resolved.Store.(storage.DirectTransferStore)
 	if !ok || (c.uploadMode == UploadModeProxy && !resolved.External) {
-		return storage.UploadTarget{
-			URL: chunkurl.UploadPath(c.transfer.SigningKey, org.Slug, project.Slug, ref.Hash.String(), ref.SizeBytes, expiry),
-		}, nil
+		return nil, false
 	}
-	target, err := direct.PresignUpload(ctx, project.ID, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
-	if err != nil {
-		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
-	}
-	return target, nil
+	return direct, true
 }
 
 // PresignDownloadURLs signs one page of download paths for hashes the caller
@@ -706,7 +624,7 @@ func (c *Chunk) downloadPath(ctx context.Context, store storage.ChunkStore, org 
 // store and records the project's chunk rows for the present chunks. Hashes
 // the project already has a row for are trusted (the content was verified
 // when the row was written). For the others the verification depends on the
-// upload path: a valid receipt from StoreUploaded (proxied upload, same
+// upload path: a valid receipt from StoreBundle (bundle upload, same
 // project and hash, not expired) means the server hashed the bytes on the way
 // in, so its size is used with no store read; anything else (direct uploads,
 // an invalid or expired receipt) is read back from the store, streamed and
@@ -824,7 +742,7 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 
 // verifyReceipts returns the chunks without a row whose receipt is valid for
 // this project and hash: the server received and stored these bytes for the
-// project itself (proxied upload), so they are present with the size the
+// project itself (bundle upload), so they are present with the size the
 // receipt records and need no read-back. Invalid or expired receipts are
 // ignored; those chunks are read back.
 func (c *Chunk) verifyReceipts(projectID snow.ID, receipts []ChunkReceipt) map[domain.Hash]chunkCheck {
@@ -833,7 +751,9 @@ func (c *Chunk) verifyReceipts(projectID snow.ID, receipts []ChunkReceipt) map[d
 		if receipt.Receipt == "" {
 			continue
 		}
-		size, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, projectID, receipt.Hash, receipt.Receipt, c.now())
+		// Every location is loose until packs exist, so only the size is
+		// used; the location is still covered by the receipt's MAC.
+		size, _, err := chunkproof.VerifyReceipt(c.transfer.SigningKey, projectID, receipt.Hash, receipt.Receipt, c.now())
 		if err != nil {
 			continue
 		}

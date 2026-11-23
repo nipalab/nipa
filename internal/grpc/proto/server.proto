@@ -108,14 +108,14 @@ message PresignedChunkUrl {
     reserved 5;
     reserved "proof_challenge";
     string hash = 1; // hex-encoded BLAKE3 hash of data
-    string url = 2; // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty only when already_stored
+    string url = 2; // GET URL (signed server path or absolute backend URL); for uploads, the direct PUT URL, empty when already_stored or when the chunk goes in a bundle (GetChunkUploadUrlsResponse.bundle_url)
     bool already_stored = 3; // the project already holds the chunk; skip the transfer
     map<string, string> headers = 4; // upload URLs only: request headers the PUT must carry (they are part of the signature)
 }
 
 // chunk_protocol on the chunk RPCs is the chunk transfer protocol version
 // (internal/chunkproof.Protocol, 2 = per-project scope without possession
-// proofs). A server refuses a request with an older (or missing) version with
+// proofs, 3 = bundle uploads with v2 receipts). A server refuses a request with an older (or missing) version with
 // FAILED_PRECONDITION and an upgrade hint; a client refuses a response with an
 // older one the same way, so client and server always speak the same version.
 
@@ -131,6 +131,14 @@ message GetChunkUploadUrlsResponse {
     repeated PresignedChunkUrl urls = 1;
     string next_page_token = 2;
     uint32 chunk_protocol = 3;
+    // bundle_url is set when this page's chunks that need an upload go to the
+    // server in bundles (a store without direct transfers, or proxy mode):
+    // a signed path relative to the server base URL taking PUTs of bundle
+    // bodies (internal/chunkbundle), each at most bundle_max_bytes long and
+    // bundle_max_chunks entries, answered with JSON [{hash, receipt}].
+    string bundle_url = 4;
+    int64 bundle_max_bytes = 5;
+    int32 bundle_max_chunks = 6;
 }
 
 message GetChunkDownloadUrlsRequest {
@@ -154,12 +162,13 @@ message ConfirmChunkUploadsRequest {
     reserved "proofs";
     ProjectContext context = 1;
     repeated string hashes = 2; // hex-encoded BLAKE3 hashes of every chunk the client uploaded
-    repeated ChunkReceipt receipts = 4; // receipts of proxied uploads; a valid one spares the server the read-back
+    repeated ChunkReceipt receipts = 4; // receipts of bundle uploads; a valid one spares the server the read-back
     uint32 chunk_protocol = 5;
 }
 
-// ChunkReceipt is the X-Nipa-Chunk-Receipt a proxied upload of one chunk
-// returned: a signed record of the size the server stored for this project.
+// ChunkReceipt is what a bundle upload returned for one chunk: a signed
+// record (nipa-chunk-receipt:v2) of the size and location the server stored
+// for this project.
 message ChunkReceipt {
     string hash = 1; // hex-encoded BLAKE3 hash of the chunk
     string receipt = 2;
