@@ -806,3 +806,55 @@ func (g *failingAfterProtect) Protect(context.Context, snow.ID, []domain.Hash) e
 	g.repo.sizesErr = errors.New("db down")
 	return nil
 }
+
+func TestChunk_RecordStoredChunks_Relocation(t *testing.T) {
+	ctx := context.Background()
+	data := []byte("merge output")
+	hash := chunker.Sum(data)
+	oldPack := ChunkLocation{PackID: snow.ID(77), Offset: 4}
+	content := []ChunkContent{{Hash: hash, Data: data}}
+
+	record := func(t *testing.T, setup func(repo *fakeChunkRepo)) (*fakeChunkRepo, ChunkLocation) {
+		t.Helper()
+		uc, repo, _ := newPackFixture(t)
+		setup(repo)
+		stored, err := uc.StoreChunks(ctx, testProject.ID, content)
+		require.NoError(t, err)
+		require.NoError(t, uc.RecordStoredChunks(ctx, testProject.ID, stored))
+		return repo, stored[0].Location
+	}
+
+	t.Run("unreadable pack is relocated", func(t *testing.T) {
+		repo, fresh := record(t, func(repo *fakeChunkRepo) {
+			repo.recordAt(testProject.ID, hash, int64(len(data)), oldPack)
+		})
+		require.Equal(t, fresh, repo.location(testProject.ID, hash))
+		require.Len(t, repo.moves, 1)
+	})
+	t.Run("readable pack is not moved", func(t *testing.T) {
+		repo, _ := record(t, func(repo *fakeChunkRepo) {
+			repo.recordAt(testProject.ID, hash, int64(len(data)), oldPack)
+			repo.states[oldPack.PackID] = ChunkPackStored
+		})
+		require.Equal(t, oldPack, repo.location(testProject.ID, hash))
+		require.Empty(t, repo.moves)
+	})
+	t.Run("loose row with missing object is relocated", func(t *testing.T) {
+		repo, fresh := record(t, func(repo *fakeChunkRepo) {
+			repo.recordAt(testProject.ID, hash, int64(len(data)), ChunkLocation{})
+		})
+		require.Equal(t, fresh, repo.location(testProject.ID, hash))
+		require.Equal(t, []ChunkRelocation{{Hash: hash, From: ChunkLocation{}, To: fresh}}, repo.moves)
+	})
+	t.Run("no existing record means no moves", func(t *testing.T) {
+		repo, fresh := record(t, func(*fakeChunkRepo) {})
+		require.Equal(t, fresh, repo.location(testProject.ID, hash))
+		require.Empty(t, repo.moves)
+	})
+	t.Run("records lookup error propagates", func(t *testing.T) {
+		uc, repo, _ := newPackFixture(t)
+		repo.sizesErr = errors.New("db down")
+		err := uc.RecordStoredChunks(ctx, testProject.ID, []ChunkRow{{Hash: hash, SizeBytes: 1}})
+		require.ErrorIs(t, err, repo.sizesErr)
+	})
+}

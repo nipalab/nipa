@@ -392,7 +392,23 @@ func (c *Chunk) RecordStoredChunks(ctx context.Context, projectID snow.ID, rows 
 			return ledger.AttributeProjectChunks(ctx, projectID, chunks)
 		}
 	}
-	return c.recordChunks(ctx, projectID, rows, nil, attribute)
+	hashes := make([]domain.Hash, 0, len(rows))
+	stored := make(map[domain.Hash]chunkCheck, len(rows))
+	for _, row := range rows {
+		hashes = append(hashes, row.Hash)
+		stored[row.Hash] = chunkCheck{size: row.SizeBytes, present: true, location: row.Location}
+	}
+	recorded, err := c.chunkRepo.ProjectChunkRecords(ctx, projectID, hashes)
+	if err != nil {
+		return err
+	}
+	// An existing row keeps its location unless its content was lost: then
+	// it moves to the bytes just stored.
+	moves, err := c.lostRows(ctx, unwrapStore(resolved.Store), projectID, recorded, stored)
+	if err != nil {
+		return err
+	}
+	return c.recordChunks(ctx, projectID, rows, moves, attribute)
 }
 
 // recordChunks runs the ledger attribution (when given), then inserts the

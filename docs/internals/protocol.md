@@ -289,6 +289,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   merge content is stored with `Chunk.StoreChunks` (the same `storeChunks`,
   object only, hashes checked first, returning each chunk's location) and
   recorded by `RecordStoredChunks` (ledger, then rows at those locations,
+  plus `lostRows` relocations of existing rows whose content was lost,
   one transaction) before `ApplyPushAll`.
   **Packs** (`CHUNK_PACKS`, `off` default; `on` requires
   `CHUNK_UPLOAD_MODE=proxy` and a `storage.PackStore` default store, checked
