@@ -43,6 +43,7 @@ func (gcObjects) DeleteChunk(context.Context, snow.ID, domain.Hash) error { retu
 func (gcObjects) ListChunks(context.Context, func(s3.StoredChunk) error) error {
 	return nil
 }
+func (gcObjects) DeletePack(context.Context, string) error { return nil }
 
 func TestChunkGCWiring(t *testing.T) {
 	require.Nil(t, newChunkGCGuard(chunkgc.ModeOff, nil))

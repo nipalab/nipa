@@ -90,9 +90,9 @@ nipa.NipaService/ConfirmChunkUploads
     │   └── storage.s3.get_object | storage.local.get
     └── storage.s3.stat_object | storage.local.size
 
-"PUT /api/chunks/..."               (HTTP server span, automatic)
-└── chunk.store                     nipa.chunk.hash, size
-    └── storage.local.put           (local backend)
+"PUT /api/chunk-bundles/..."        (HTTP server span, automatic)
+└── chunk.store_bundle              body bytes, chunk count
+    └── storage.local.put | storage.s3.put_object   (one per chunk)
 
 nipa.NipaService/GetChunkUploadUrls
 └── chunk.presign_upload            chunk count
@@ -110,8 +110,10 @@ where a corrupted direct upload shows up.
 
 ## Notes
 
-- HTTP span names use `METHOD /path`, so each chunk transfer is visible
-  individually (`PUT /api/chunks/<org>/<project>/<hash>`).
+- HTTP span names use `METHOD /path`, so each chunk download is visible
+  individually (`GET /api/chunks/<org>/<project>/<hash>`) and each bundle
+  upload as one span (`PUT /api/chunk-bundles/<org>/<project>`, client side
+  `chunk.upload.bundle`).
 - `/healthz`, `/readyz`, `/version`, `/metrics` and pprof are never traced.
 - Chunk-heavy pushes emit one span per chunk; use `*_SAMPLE_RATIO` (or a
   collector-side sampler) when the volume becomes noisy.

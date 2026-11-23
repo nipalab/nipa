@@ -61,6 +61,12 @@ func exemptFromRateLimit(path string) bool {
 	return strings.HasPrefix(path, "/debug/pprof")
 }
 
+// isChunkTransferPath reports the signed chunk transfer routes: downloads
+// (/api/chunks/) and bundle uploads (/api/chunk-bundles/).
+func isChunkTransferPath(path string) bool {
+	return strings.HasPrefix(path, "/api/chunks/") || strings.HasPrefix(path, "/api/chunk-bundles/")
+}
+
 // Middleware throttles every non-gRPC request per client IP; the signed
 // chunk routes get their own, larger bucket.
 func (rl *RateLimit) Middleware(next http.Handler) http.Handler {
@@ -73,7 +79,7 @@ func (rl *RateLimit) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		scope := ratelimit.ScopeGlobalIP
-		if strings.HasPrefix(r.URL.Path, "/api/chunks/") {
+		if isChunkTransferPath(r.URL.Path) {
 			scope = ratelimit.ScopeChunkIP
 		}
 		res := rl.Limiter.Allow(r.Context(), scope, rl.clientIP(r))

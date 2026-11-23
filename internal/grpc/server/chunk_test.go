@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/url"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunkbundle"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
@@ -87,7 +90,7 @@ func newStubChunkRepo() *stubChunkRepo {
 	return &stubChunkRepo{rows: map[chunkRowKey]int64{}}
 }
 
-func (r *stubChunkRepo) InsertChunksIfNotExist(_ context.Context, projectID snow.ID, chunks []usecase.ChunkRef) error {
+func (r *stubChunkRepo) InsertChunkRows(_ context.Context, projectID snow.ID, chunks []usecase.ChunkRow) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, chunk := range chunks {
@@ -98,16 +101,26 @@ func (r *stubChunkRepo) InsertChunksIfNotExist(_ context.Context, projectID snow
 	return nil
 }
 
-func (r *stubChunkRepo) ProjectChunkSizes(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+func (r *stubChunkRepo) ProjectChunkRecords(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]usecase.ChunkRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	sizes := make(map[domain.Hash]int64, len(hashes))
+	records := make(map[domain.Hash]usecase.ChunkRecord, len(hashes))
 	for _, hash := range hashes {
 		if size, ok := r.rows[chunkRowKey{projectID, hash}]; ok {
-			sizes[hash] = size
+			records[hash] = usecase.ChunkRecord{SizeBytes: size}
 		}
 	}
-	return sizes, nil
+	return records, nil
+}
+
+func (r *stubChunkRepo) RelocateChunks(context.Context, snow.ID, []usecase.ChunkRelocation) error {
+	return nil
+}
+
+func (r *stubChunkRepo) InsertChunkPack(context.Context, usecase.ChunkPack) error { return nil }
+
+func (r *stubChunkRepo) SetChunkPackState(context.Context, snow.ID, usecase.ChunkPackState) error {
+	return nil
 }
 
 func (r *stubChunkRepo) has(projectID snow.ID, hash domain.Hash) bool {
@@ -171,7 +184,7 @@ func TestGetChunkUploadUrlsHandler(t *testing.T) {
 	stored := []byte("stored chunk")
 	storedHash := chunker.Sum(stored)
 	require.NoError(t, store.Put(context.Background(), testChunkProject, storedHash, stored))
-	require.NoError(t, repo.InsertChunksIfNotExist(context.Background(), testChunkProject, []usecase.ChunkRef{{Hash: storedHash, SizeBytes: int64(len(stored))}}))
+	require.NoError(t, repo.InsertChunkRows(context.Background(), testChunkProject, []usecase.ChunkRow{{Hash: storedHash, SizeBytes: int64(len(stored))}}))
 
 	fresh := []byte("fresh chunk")
 	freshHash := chunker.Sum(fresh)
@@ -192,7 +205,18 @@ func TestGetChunkUploadUrlsHandler(t *testing.T) {
 	require.Empty(t, res.GetUrls()[0].GetUrl())
 
 	require.False(t, res.GetUrls()[1].GetAlreadyStored())
-	verifySignedURL(t, res.GetUrls()[1].GetUrl(), "org", "proj", chunkurl.OpUpload, int64(len(fresh)))
+	require.Empty(t, res.GetUrls()[1].GetUrl(), "the local store takes uploads in bundles")
+
+	u, err := url.Parse(res.GetBundleUrl())
+	require.NoError(t, err)
+	require.Equal(t, "/api/chunk-bundles/org/proj", u.Path)
+	params, err := chunkurl.ParseBundleParams(u.Query())
+	require.NoError(t, err)
+	require.Equal(t, res.GetBundleMaxBytes(), params.MaxSize)
+	require.Equal(t, int64(usecase.DefaultChunkBundleMaxBytes), params.MaxSize)
+	require.Equal(t, int(res.GetBundleMaxChunks()), params.MaxCount)
+	require.Equal(t, 1, params.MaxCount, "one chunk needs an upload")
+	require.NoError(t, chunkurl.VerifyBundle(testSigningKey, "org", "proj", params, time.Now()))
 }
 
 func TestGetChunkUploadUrlsHandler_DirectStore(t *testing.T) {
@@ -215,6 +239,7 @@ func TestGetChunkUploadUrlsHandler_DirectStore(t *testing.T) {
 	require.Len(t, res.GetUrls(), 1)
 	require.Equal(t, "https://s3.example.com/bucket/p/16/ab/cdef?X-Amz-Signature=x", res.GetUrls()[0].GetUrl())
 	require.Equal(t, map[string]string{"If-None-Match": "*"}, res.GetUrls()[0].GetHeaders())
+	require.Empty(t, res.GetBundleUrl(), "direct mode hands out per-chunk URLs only")
 }
 
 func TestGetChunkUploadUrlsHandler_NoPermission(t *testing.T) {
@@ -337,8 +362,11 @@ func TestConfirmChunkUploadsHandler_ReceiptSkipsTheReadBack(t *testing.T) {
 
 	data := []byte("proxied")
 	hash := chunker.Sum(data)
-	receipt, err := chunk.StoreUploaded(context.Background(), testChunkProject, hash, data)
+	body, err := io.ReadAll(chunkbundle.NewEncoder([]chunkbundle.Entry{{Hash: hash, Data: data}}))
 	require.NoError(t, err)
+	receipts, err := chunk.StoreBundle(context.Background(), testChunkProject, bytes.NewReader(body), int64(len(body)), 1)
+	require.NoError(t, err)
+	receipt := receipts[0].Receipt
 	// The bytes vanish after the PUT: only the receipt can confirm them.
 	require.NoError(t, store.DeleteProject(context.Background(), testChunkProject))
 

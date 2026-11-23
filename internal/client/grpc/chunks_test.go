@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunkbundle"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -91,11 +93,30 @@ type chunkTestServer struct {
 	confirmDelay   time.Duration
 	confirmsActive int
 	confirmsPeak   int
-	// receipts answers every accepted PUT with a receipt header, like a
-	// server proxying uploads; absoluteBase hands out absolute upload URLs
-	// (base + path), like a direct object store.
-	receipts     bool
+	// absoluteBase hands out absolute upload URLs (base + path), like a
+	// direct object store.
 	absoluteBase string
+
+	// bundles answers presign with a bundle URL instead of per-chunk URLs,
+	// like a server that takes uploads itself; bundleMaxBytes and
+	// bundleMaxChunks are the limits it signs (0 = none sent).
+	bundles         bool
+	bundleMaxBytes  int64
+	bundleMaxChunks int32
+	// bundleRequests logs the entry hashes of every bundle PUT the server
+	// accepted, in arrival order; failBundles fails that many bundle PUTs
+	// with failBundleStatus first.
+	bundleRequests   [][]string
+	bundleAttempts   int
+	failBundles      int
+	failBundleStatus int
+	// bundleReceipts overrides the receipts a bundle PUT answers with.
+	bundleReceipts func(hashes []string) []bundleReceipt
+	// bundleBody overrides the raw body a bundle PUT answers with.
+	bundleBody string
+	// packed answers download presigns for these hashes with a range of a
+	// pack object (url, offset, length) instead of a loose chunk URL.
+	packed map[string]*pb.PresignedChunkUrl
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -179,7 +200,13 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 		linked := s.isLinked(ref.GetHash())
 		_, stored := s.storedChunk(ref.GetHash())
 		entry := &pb.PresignedChunkUrl{Hash: ref.GetHash(), AlreadyStored: linked && stored}
-		if !entry.AlreadyStored && !s.emptyURLs {
+		if !entry.AlreadyStored && s.bundles {
+			resp.BundleUrl = s.absoluteBase + fmt.Sprintf("/api/chunk-bundles/%s/%s?size=%d&count=%d&exp=9999999999&sig=test",
+				req.GetContext().GetOrg(), req.GetContext().GetProject(), s.bundleMaxBytes, s.bundleMaxChunks)
+			resp.BundleMaxBytes = s.bundleMaxBytes
+			resp.BundleMaxChunks = s.bundleMaxChunks
+		}
+		if !entry.AlreadyStored && !s.emptyURLs && !s.bundles {
 			entry.Url = s.absoluteBase + fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
 				req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
 			entry.Headers = map[string]string{"If-None-Match": "*"}
@@ -216,6 +243,10 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	}
 	resp := &pb.GetChunkDownloadUrlsResponse{ChunkProtocol: s.protocol()}
 	for _, hash := range req.GetHashes() {
+		if ranged, ok := s.packed[hash]; ok {
+			resp.Urls = append(resp.Urls, ranged)
+			continue
+		}
 		if _, exists := s.storedChunk(hash); !exists {
 			continue
 		}
@@ -300,7 +331,68 @@ func (s *chunkTestServer) protocol() uint32 {
 	return chunkproof.Protocol
 }
 
+// serveBundle stores a bundle like a server would: every entry checked, then
+// stored, answered with "receipt-<hash>" receipts.
+func (s *chunkTestServer) serveBundle(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.bundleAttempts++
+	fail := s.failBundles > 0
+	if fail {
+		s.failBundles--
+	}
+	failStatus := s.failBundleStatus
+	s.mu.Unlock()
+	if fail {
+		if s.retryAfter != "" {
+			w.Header().Set("Retry-After", s.retryAfter)
+		}
+		http.Error(w, "bundle failed", failStatus)
+		return
+	}
+	if r.ContentLength <= 0 {
+		http.Error(w, "content length required", http.StatusBadRequest)
+		return
+	}
+	entries, err := chunkbundle.DecodeAll(r.Body, chunkbundle.Limits{Size: r.ContentLength, MaxCount: 100000})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	hashes := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		hashes = append(hashes, entry.Hash.String())
+		s.put(entry.Hash.String(), entry.Data)
+	}
+	s.mu.Lock()
+	s.bundleRequests = append(s.bundleRequests, hashes)
+	s.putHeaders = r.Header.Clone()
+	s.mu.Unlock()
+	if s.bundleBody != "" {
+		_, _ = io.WriteString(w, s.bundleBody)
+		return
+	}
+	receipts := make([]bundleReceipt, 0, len(hashes))
+	for _, hash := range hashes {
+		receipts = append(receipts, bundleReceipt{Hash: hash, Receipt: "receipt-" + hash})
+	}
+	if s.bundleReceipts != nil {
+		receipts = s.bundleReceipts(hashes)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(receipts)
+}
+
+func (s *chunkTestServer) bundleLog() [][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]string(nil), s.bundleRequests...)
+}
+
 func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/chunk-bundles/") && r.Method == http.MethodPut {
+		s.serveBundle(w, r)
+		return
+	}
 	hash := path.Base(r.URL.Path)
 	switch r.URL.Query().Get("op") {
 	case "put":
@@ -348,9 +440,6 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		s.put(hash, data)
-		if s.receipts {
-			w.Header().Set(chunkproof.ReceiptHeader, "receipt-"+hash)
-		}
 		w.WriteHeader(http.StatusNoContent)
 	case "get":
 		if s.hookBeforeGet != nil {

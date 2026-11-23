@@ -30,15 +30,16 @@ func testHash(i int) domain.Hash {
 
 func TestInsertChunkRows_SortsDedupesAndBatches(t *testing.T) {
 	withChunkRowBatch(t, 3)
-	var chunks []usecase.ChunkRef
+	var refs []usecase.ChunkRef
 	for i := 0; i < 7; i++ {
-		chunks = append(chunks, usecase.ChunkRef{Hash: testHash(i), SizeBytes: int64(i + 1)})
+		refs = append(refs, usecase.ChunkRef{Hash: testHash(i), SizeBytes: int64(i + 1)})
 	}
-	chunks = append(chunks, usecase.ChunkRef{Hash: testHash(2), SizeBytes: 99})
+	refs = append(refs, usecase.ChunkRef{Hash: testHash(2), SizeBytes: 99})
+	chunks := LooseRows(refs)
 
-	var batches [][][2]any
+	var batches [][][]any
 	require.NoError(t, InsertChunkRows(context.Background(), chunks, func(_ context.Context, payload []byte) error {
-		var rows [][2]any
+		var rows [][]any
 		require.NoError(t, json.Unmarshal(payload, &rows))
 		batches = append(batches, rows)
 		return nil
@@ -70,6 +71,23 @@ func TestInsertChunkRows_SortsDedupesAndBatches(t *testing.T) {
 	}))
 }
 
+func TestInsertChunkRows_EncodesPackLocations(t *testing.T) {
+	rows := []usecase.ChunkRow{
+		{Hash: testHash(1), SizeBytes: 10},
+		{Hash: testHash(2), SizeBytes: 20, Location: usecase.ChunkLocation{PackID: 1 << 60, Offset: 4}},
+	}
+	var payloads []string
+	require.NoError(t, InsertChunkRows(context.Background(), rows, func(_ context.Context, payload []byte) error {
+		payloads = append(payloads, string(payload))
+		return nil
+	}))
+	require.Len(t, payloads, 1)
+	// Sorted by hash: testHash(2) sorts first (descending input). The pack id
+	// is written exactly, not as a float.
+	require.Equal(t, fmt.Sprintf(`[["%s",20,%d,4],["%s",10]]`,
+		hex.EncodeToString(rows[1].Hash[:]), int64(1<<60), hex.EncodeToString(rows[0].Hash[:])), payloads[0])
+}
+
 func TestInsertHashes_SortsDedupesAndBatches(t *testing.T) {
 	withChunkRowBatch(t, 2)
 	hashes := []domain.Hash{testHash(1), testHash(3), testHash(2), testHash(1), testHash(4)}
@@ -98,7 +116,7 @@ func TestChunkRowInserterErrorsStop(t *testing.T) {
 	calls := 0
 	fail := func(context.Context, []byte) error { calls++; return boom }
 
-	err := InsertChunkRows(context.Background(), []usecase.ChunkRef{{Hash: testHash(1)}, {Hash: testHash(2)}}, fail)
+	err := InsertChunkRows(context.Background(), []usecase.ChunkRow{{Hash: testHash(1)}, {Hash: testHash(2)}}, fail)
 	require.ErrorIs(t, err, boom)
 	require.ErrorIs(t, InsertHashes(context.Background(), []domain.Hash{testHash(1), testHash(2)}, fail), boom)
 	require.Equal(t, 2, calls, "the first failing batch stops the rest")

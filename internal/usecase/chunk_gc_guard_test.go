@@ -38,7 +38,7 @@ func TestChunk_GCGuardProtectsServerUploadsBeforeTheCheck(t *testing.T) {
 	guard := &recordingGuard{store: store}
 	uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{}).WithGCGuard(guard)
 
-	_, err := uc.StoreForProject(ctx, snow.ID(7), hash, data)
+	err := storeOne(uc, ctx, snow.ID(7), hash, data)
 	require.NoError(t, err)
 	require.Equal(t, [][]domain.Hash{{hash}}, guard.protected)
 	require.Equal(t, []snow.ID{7}, guard.projects, "marks are cleared in the writing project only")
@@ -51,7 +51,7 @@ func TestChunk_GCGuardErrorStopsServerUpload(t *testing.T) {
 	guard := &recordingGuard{store: store, err: errors.New("db down")}
 	uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{}).WithGCGuard(guard)
 
-	_, err := uc.StoreForProject(context.Background(), snow.ID(1), chunker.Sum(data), data)
+	err := storeOne(uc, context.Background(), snow.ID(1), chunker.Sum(data), data)
 	require.Error(t, err)
 	require.Zero(t, store.puts)
 }
@@ -94,11 +94,11 @@ func TestChunk_GCGuardProtectsRecordedChunksAtPresign(t *testing.T) {
 	repo.record(testProject.ID, hash, int64(len(data)))
 	fresh := chunker.Sum([]byte("fresh"))
 
-	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
+	got, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
 		{Hash: hash, SizeBytes: int64(len(data))}, {Hash: fresh, SizeBytes: 5},
 	}, 10, "")
 	require.NoError(t, err)
-	require.True(t, urls[0].AlreadyStored)
+	require.True(t, got.URLs[0].AlreadyStored)
 	require.Equal(t, [][]domain.Hash{{hash}}, guard.protected, "only recorded chunks are protected")
 }
 
@@ -110,6 +110,6 @@ func TestChunk_GCGuardErrorStopsPresign(t *testing.T) {
 	hash := chunker.Sum([]byte("x"))
 	repo.record(testProject.ID, hash, 1)
 
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
 	require.ErrorIs(t, err, errGuard)
 }

@@ -107,7 +107,10 @@ type objectKey struct {
 type memStore struct {
 	mu       sync.Mutex
 	objects  map[objectKey]s3.StoredChunk
+	packs    map[string]bool
 	deleted  []objectKey
+	packDels []string
+	failPack error
 	hold     chan struct{}
 	entered  chan struct{}
 	failDel  error
@@ -145,6 +148,32 @@ func (m *memStore) DeleteChunk(_ context.Context, project snow.ID, hash domain.H
 	defer m.mu.Unlock()
 	delete(m.objects, objectKey{project, hash})
 	m.deleted = append(m.deleted, objectKey{project, hash})
+	return nil
+}
+
+func (m *memStore) putPack(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.packs == nil {
+		m.packs = map[string]bool{}
+	}
+	m.packs[key] = true
+}
+
+func (m *memStore) hasPack(key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.packs[key]
+}
+
+func (m *memStore) DeletePack(_ context.Context, key string) error {
+	if m.failPack != nil {
+		return m.failPack
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.packs, key)
+	m.packDels = append(m.packDels, key)
 	return nil
 }
 

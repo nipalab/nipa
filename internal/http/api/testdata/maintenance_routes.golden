@@ -142,7 +142,7 @@ write POST /api/v1/orgs/{org}/projects/{project}/webhooks/{id}/test
 write POST /api/v1/users
 write POST /api/v1/users/{user}/password
 write POST /api/webhooks/test/
-write PUT /api/chunks/{org}/{project}/{hash}
+write PUT /api/chunk-bundles/{org}/{project}
 write PUT /api/v1/orgs/{org}/issue-tracker
 write PUT /api/v1/orgs/{org}/projects/{project}/branches/{name}/protection
 write PUT /api/v1/orgs/{org}/projects/{project}/issue-tracker

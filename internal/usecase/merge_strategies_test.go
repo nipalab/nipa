@@ -329,11 +329,18 @@ type stubChunkUploader struct {
 	attrErr error
 }
 
-func (u stubChunkUploader) StoreForProject(context.Context, snow.ID, domain.Hash, []byte) (bool, error) {
-	return false, u.err
+func (u stubChunkUploader) StoreChunks(_ context.Context, _ snow.ID, chunks []ChunkContent) ([]ChunkRow, error) {
+	if u.err != nil {
+		return nil, u.err
+	}
+	rows := make([]ChunkRow, 0, len(chunks))
+	for _, chunk := range chunks {
+		rows = append(rows, ChunkRow{Hash: chunk.Hash, SizeBytes: int64(len(chunk.Data))})
+	}
+	return rows, nil
 }
 
-func (u stubChunkUploader) AttributeProjectChunks(context.Context, snow.ID, []LedgerChunk) error {
+func (u stubChunkUploader) RecordStoredChunks(context.Context, snow.ID, []ChunkRow) error {
 	return u.attrErr
 }
 

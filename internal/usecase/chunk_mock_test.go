@@ -42,33 +42,75 @@ func (m *MockchunkRepository) EXPECT() *MockchunkRepositoryMockRecorder {
 	return m.recorder
 }
 
-// InsertChunksIfNotExist mocks base method.
-func (m *MockchunkRepository) InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []ChunkRef) error {
+// InsertChunkPack mocks base method.
+func (m *MockchunkRepository) InsertChunkPack(ctx context.Context, pack ChunkPack) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertChunksIfNotExist", ctx, projectID, chunks)
+	ret := m.ctrl.Call(m, "InsertChunkPack", ctx, pack)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// InsertChunksIfNotExist indicates an expected call of InsertChunksIfNotExist.
-func (mr *MockchunkRepositoryMockRecorder) InsertChunksIfNotExist(ctx, projectID, chunks any) *gomock.Call {
+// InsertChunkPack indicates an expected call of InsertChunkPack.
+func (mr *MockchunkRepositoryMockRecorder) InsertChunkPack(ctx, pack any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunksIfNotExist", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunksIfNotExist), ctx, projectID, chunks)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunkPack", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunkPack), ctx, pack)
 }
 
-// ProjectChunkSizes mocks base method.
-func (m *MockchunkRepository) ProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+// InsertChunkRows mocks base method.
+func (m *MockchunkRepository) InsertChunkRows(ctx context.Context, projectID snow.ID, rows []ChunkRow) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProjectChunkSizes", ctx, projectID, hashes)
-	ret0, _ := ret[0].(map[domain.Hash]int64)
+	ret := m.ctrl.Call(m, "InsertChunkRows", ctx, projectID, rows)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertChunkRows indicates an expected call of InsertChunkRows.
+func (mr *MockchunkRepositoryMockRecorder) InsertChunkRows(ctx, projectID, rows any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertChunkRows", reflect.TypeOf((*MockchunkRepository)(nil).InsertChunkRows), ctx, projectID, rows)
+}
+
+// ProjectChunkRecords mocks base method.
+func (m *MockchunkRepository) ProjectChunkRecords(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]ChunkRecord, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProjectChunkRecords", ctx, projectID, hashes)
+	ret0, _ := ret[0].(map[domain.Hash]ChunkRecord)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ProjectChunkSizes indicates an expected call of ProjectChunkSizes.
-func (mr *MockchunkRepositoryMockRecorder) ProjectChunkSizes(ctx, projectID, hashes any) *gomock.Call {
+// ProjectChunkRecords indicates an expected call of ProjectChunkRecords.
+func (mr *MockchunkRepositoryMockRecorder) ProjectChunkRecords(ctx, projectID, hashes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectChunkSizes", reflect.TypeOf((*MockchunkRepository)(nil).ProjectChunkSizes), ctx, projectID, hashes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectChunkRecords", reflect.TypeOf((*MockchunkRepository)(nil).ProjectChunkRecords), ctx, projectID, hashes)
+}
+
+// RelocateChunks mocks base method.
+func (m *MockchunkRepository) RelocateChunks(ctx context.Context, projectID snow.ID, moves []ChunkRelocation) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RelocateChunks", ctx, projectID, moves)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RelocateChunks indicates an expected call of RelocateChunks.
+func (mr *MockchunkRepositoryMockRecorder) RelocateChunks(ctx, projectID, moves any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RelocateChunks", reflect.TypeOf((*MockchunkRepository)(nil).RelocateChunks), ctx, projectID, moves)
+}
+
+// SetChunkPackState mocks base method.
+func (m *MockchunkRepository) SetChunkPackState(ctx context.Context, packID snow.ID, state ChunkPackState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetChunkPackState", ctx, packID, state)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetChunkPackState indicates an expected call of SetChunkPackState.
+func (mr *MockchunkRepositoryMockRecorder) SetChunkPackState(ctx, packID, state any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetChunkPackState", reflect.TypeOf((*MockchunkRepository)(nil).SetChunkPackState), ctx, packID, state)
 }
 
 // MockchunkTransactor is a mock of chunkTransactor interface.

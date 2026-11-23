@@ -162,7 +162,7 @@ func TestChunk_ConfirmUploads_ReadBackDecisionTable(t *testing.T) {
 				require.NoError(t, err)
 				if tc.want.recorded {
 					require.Empty(t, missing)
-					require.Equal(t, [][]ChunkRef{{{Hash: tc.hash, SizeBytes: tc.want.size}}}, repo.inserts)
+					require.Equal(t, [][]ChunkRow{{{Hash: tc.hash, SizeBytes: tc.want.size}}}, repo.inserts)
 				} else {
 					require.Equal(t, []domain.Hash{tc.hash}, missing)
 					require.Empty(t, repo.inserts)
@@ -379,8 +379,10 @@ func TestChunk_Presign_ExistsOnlyForRecordedChunks(t *testing.T) {
 		{Hash: storedHash, SizeBytes: int64(len(storedData))},
 	}
 
-	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 10, "")
+	got, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 10, "")
 	require.NoError(t, err)
+	urls := got.URLs
+	require.Empty(t, got.BundleURL, "direct mode hands out per-chunk URLs only")
 	require.Equal(t, int64(2), store.existsCalls.Load(), "only the two hashes with a row are checked")
 
 	require.Equal(t, "https://s3.example.com/put", urls[0].URL)

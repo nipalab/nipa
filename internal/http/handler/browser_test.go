@@ -32,7 +32,7 @@ func (env *handlerTestEnv) seedPushTo(t *testing.T, branch, baseCommitID string,
 		require.NoError(t, err)
 		hashes := make([]domain.Hash, 0, len(chunks))
 		for _, c := range chunks {
-			_, err := env.chunkUc.UploadForProject(ctx, snow.ID(1), c.Hash, c.Data)
+			err := env.chunkUc.UploadForProject(ctx, snow.ID(1), c.Hash, c.Data)
 			require.NoError(t, err)
 			hashes = append(hashes, c.Hash)
 		}

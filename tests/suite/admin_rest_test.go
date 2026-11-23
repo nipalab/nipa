@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,9 +18,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunkbundle"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
@@ -168,7 +169,27 @@ func withQuery(path string, edit func(url.Values)) string {
 	return u.String()
 }
 
-func serverUploadURL(project, hash string, size int64) *pb.PresignedChunkUrl {
+// encodeChunkBundle encodes contents as one bundle upload body.
+func encodeChunkBundle(contents ...[]byte) []byte {
+	GinkgoHelper()
+	entries := make([]chunkbundle.Entry, 0, len(contents))
+	for _, data := range contents {
+		entries = append(entries, chunkbundle.Entry{Hash: chunker.Sum(data), Data: data})
+	}
+	body, err := io.ReadAll(chunkbundle.NewEncoder(entries))
+	Expect(err).NotTo(HaveOccurred())
+	return body
+}
+
+// encodeChunkBundleAs encodes data under a hash it may not have.
+func encodeChunkBundleAs(hash serverDomain.Hash, data []byte) []byte {
+	GinkgoHelper()
+	body, err := io.ReadAll(chunkbundle.NewEncoder([]chunkbundle.Entry{{Hash: hash, Data: data}}))
+	Expect(err).NotTo(HaveOccurred())
+	return body
+}
+
+func serverUploadURLs(project, hash string, size int64) *pb.GetChunkUploadUrlsResponse {
 	GinkgoHelper()
 	conn, err := grpc.NewClient(cli.host, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	Expect(err).NotTo(HaveOccurred())
@@ -182,8 +203,27 @@ func serverUploadURL(project, hash string, size int64) *pb.PresignedChunkUrl {
 		ChunkProtocol: chunkproof.Protocol,
 	})
 	Expect(err).NotTo(HaveOccurred())
-	Expect(resp.GetUrls()).To(HaveLen(1))
-	return resp.GetUrls()[0]
+	return resp
+}
+
+// serverConfirm confirms one bundle-uploaded chunk with its receipt and
+// returns the hashes the server still misses.
+func serverConfirm(project, hash, receipt string) []string {
+	GinkgoHelper()
+	conn, err := grpc.NewClient(cli.host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+api.token)
+	resp, err := pb.NewNipaServiceClient(conn).ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
+		Context:       &pb.ProjectContext{Org: orgSlug, Project: project},
+		Hashes:        []string{hash},
+		Receipts:      []*pb.ChunkReceipt{{Hash: hash, Receipt: receipt}},
+		ChunkProtocol: chunkproof.Protocol,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	return resp.GetMissingHashes()
 }
 
 var _ = Describe("auth REST refresh and logout", func() {
@@ -680,53 +720,72 @@ var _ = Describe("webhook REST API by id", func() {
 })
 
 var _ = Describe("signed chunk transfer routes", func() {
-	It("rejects bad signatures, expired URLs and mismatched uploads", func() {
+	It("rejects bad signatures, expired URLs and bad bundles", func() {
 		project := newProject("rest-chunk")
 		data := randomBytes(1024)
 		hash := chunker.Sum(data).String()
-		size := int64(len(data))
 		future := time.Now().Add(time.Hour).Unix()
+		bundle := encodeChunkBundle(data)
 
-		put := serverUploadURL(project, hash, size)
-		Expect(put.GetAlreadyStored()).To(BeFalse())
-		upload := put.GetUrl()
-		if !strings.HasPrefix(upload, "/api/chunks/") {
-			upload = chunkurl.UploadPath(chunkSigningKey, orgSlug, project, hash, size, future)
+		// The free server takes uploads in bundles; the enterprise one in
+		// direct mode hands out per-chunk store URLs. The bundle route is
+		// served by both.
+		presign := serverUploadURLs(project, hash, int64(len(data)))
+		Expect(presign.GetUrls()).To(HaveLen(1))
+		Expect(presign.GetUrls()[0].GetAlreadyStored()).To(BeFalse())
+		upload := presign.GetBundleUrl()
+		if upload == "" {
+			upload = chunkurl.BundlePath(chunkSigningKey, orgSlug, project, 64<<20, 1, future)
 		}
-		Expect(upload).To(HavePrefix("/api/chunks/" + orgSlug + "/" + project + "/" + hash))
+		Expect(upload).To(HavePrefix("/api/chunk-bundles/" + orgSlug + "/" + project + "?"))
 
 		tampered := withQuery(upload, func(q url.Values) { q.Set("sig", strings.Repeat("0", 64)) })
-		status, _ := chunkRequest(http.MethodPut, tampered, data)
+		status, _ := chunkRequest(http.MethodPut, tampered, bundle)
 		Expect(status).To(Equal(http.StatusForbidden))
 		unsigned := withQuery(upload, func(q url.Values) { q.Del("sig") })
-		status, _ = chunkRequest(http.MethodPut, unsigned, data)
+		status, _ = chunkRequest(http.MethodPut, unsigned, bundle)
 		Expect(status).To(Equal(http.StatusForbidden))
-		resized := withQuery(upload, func(q url.Values) { q.Set("size", strconv.FormatInt(size+1, 10)) })
-		status, _ = chunkRequest(http.MethodPut, resized, append(data, 0))
-		Expect(status).To(Equal(http.StatusForbidden), "the size is part of the signature")
-		otherProject := strings.Replace(upload, "/"+project+"/", "/"+project+"-x/", 1)
-		status, _ = chunkRequest(http.MethodPut, otherProject, data)
+		resized := withQuery(upload, func(q url.Values) { q.Set("size", "1073741824") })
+		status, _ = chunkRequest(http.MethodPut, resized, bundle)
+		Expect(status).To(Equal(http.StatusForbidden), "the size limit is part of the signature")
+		recounted := withQuery(upload, func(q url.Values) { q.Set("count", "1000") })
+		status, _ = chunkRequest(http.MethodPut, recounted, bundle)
+		Expect(status).To(Equal(http.StatusForbidden), "the count limit is part of the signature")
+		otherProject := strings.Replace(upload, "/"+project+"?", "/"+project+"-x?", 1)
+		status, _ = chunkRequest(http.MethodPut, otherProject, bundle)
 		Expect(status).To(Equal(http.StatusForbidden), "the url is bound to its project")
-		status, _ = chunkRequest(http.MethodGet, upload, nil)
-		Expect(status).To(Equal(http.StatusForbidden), "an upload url cannot download")
 
-		expired := chunkurl.UploadPath(chunkSigningKey, orgSlug, project, hash, size, time.Now().Add(-time.Minute).Unix())
-		status, _ = chunkRequest(http.MethodPut, expired, data)
+		expired := chunkurl.BundlePath(chunkSigningKey, orgSlug, project, 64<<20, 1, time.Now().Add(-time.Minute).Unix())
+		status, _ = chunkRequest(http.MethodPut, expired, bundle)
 		Expect(status).To(Equal(http.StatusForbidden))
 
-		status, body := chunkRequest(http.MethodPut, upload, data[:512])
+		status, body := chunkRequest(http.MethodPut, upload, bundle[:len(bundle)-10])
 		Expect(status).To(Equal(http.StatusBadRequest), string(body))
-		Expect(string(body)).To(ContainSubstring("size mismatch"))
-		status, body = chunkRequest(http.MethodPut, upload, randomBytes(int(size)))
+		Expect(string(body)).To(ContainSubstring("past the end"))
+		status, body = chunkRequest(http.MethodPut, upload, encodeChunkBundleAs(chunker.Sum(data), randomBytes(len(data))))
 		Expect(status).To(Equal(http.StatusBadRequest), string(body))
-		Expect(string(body)).To(ContainSubstring("hash mismatch"))
+		Expect(string(body)).To(ContainSubstring("does not hash"))
+		status, body = chunkRequest(http.MethodPut, upload, encodeChunkBundle(data, randomBytes(16)))
+		Expect(status).To(Equal(http.StatusBadRequest), string(body))
+		Expect(string(body)).To(ContainSubstring("more than 1 entries"))
 
 		download := chunkurl.DownloadPath(chunkSigningKey, orgSlug, project, hash, future)
 		status, _ = chunkRequest(http.MethodGet, download, nil)
 		Expect(status).To(Equal(http.StatusNotFound), "nothing was stored by the rejected uploads")
 
-		status, body = chunkRequest(http.MethodPut, upload, data)
-		Expect(status).To(Equal(http.StatusNoContent), string(body))
+		status, body = chunkRequest(http.MethodPut, upload, bundle)
+		Expect(status).To(Equal(http.StatusOK), string(body))
+		var receipts []struct {
+			Hash    string `json:"hash"`
+			Receipt string `json:"receipt"`
+		}
+		Expect(json.Unmarshal(body, &receipts)).To(Succeed())
+		Expect(receipts).To(HaveLen(1))
+		Expect(receipts[0].Hash).To(Equal(hash))
+		Expect(receipts[0].Receipt).NotTo(BeEmpty())
+		// Confirm records the row (and, with CHUNK_PACKS=on, the chunk's pack
+		// location), which a read of packed content needs.
+		Expect(serverConfirm(project, hash, receipts[0].Receipt)).To(BeEmpty())
 		status, body = chunkRequest(http.MethodGet, download, nil)
 		Expect(status).To(Equal(http.StatusOK))
 		Expect(body).To(Equal(data))
@@ -737,6 +796,6 @@ var _ = Describe("signed chunk transfer routes", func() {
 		status, _ = chunkRequest(http.MethodGet, withQuery(download, func(q url.Values) { q.Set("sig", "bad") }), nil)
 		Expect(status).To(Equal(http.StatusForbidden))
 		status, _ = chunkRequest(http.MethodPut, download, data)
-		Expect(status).To(Equal(http.StatusForbidden), "a download url cannot upload")
+		Expect(status).To(Equal(http.StatusMethodNotAllowed), "single-chunk uploads are gone")
 	})
 })

@@ -133,10 +133,12 @@ be probed by hash. Merge, revert and diff pass every commit involved (target,
 source, base/parent), because three-way materialization mixes chunks from
 several trees. `GetChunkUploadUrls`/`ConfirmChunkUploads` only need project
 write, so content can be uploaded before a push that is then validated per path.
-Signed URLs are capabilities: the `/api/chunks` HTTP endpoints verify the HMAC
-signature (project, hash, op, size, expiry) instead of the Bearer token, so a
-URL works without a session until it expires. Upload URLs bind the exact chunk
-size and PUTs are size- and BLAKE3-checked; chunk metadata rows are only written
+Signed URLs are capabilities: the `/api/chunks` (download) and
+`/api/chunk-bundles` (upload) HTTP endpoints verify the HMAC signature
+(project, hash or bundle limits, expiry) instead of the Bearer token, so a URL
+works without a session until it expires. Bundle URLs bind the project, the
+largest body and the most chunks per body, and every chunk of a bundle is
+BLAKE3-checked before anything is stored; chunk metadata rows are only written
 by `ConfirmChunkUploads` after the content exists.
 
 ### Admin surface

@@ -230,16 +230,22 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 - Every client hashing path goes through `chunker.Encode`/`ConfigForFile`
   with the tracked encoding (`storedEncoding`), or file hashes diverge.
 - Chunk transfer is presigned HTTP, not gRPC streaming; the `/api/chunks`
-  routes are not behind the bearer filter (the signature is the capability).
+  (download) and `/api/chunk-bundles` (bundle upload) routes are not behind
+  the bearer filter (the signature is the capability).
   Chunks are per project: rows are `UNIQUE (project_id, hash)` and every
   `storage.ChunkStore` call and object key (`p/<project>/ab/cdef...`) takes
-  the project, so never look a chunk up by hash alone. The chunk RPCs carry
+  the project, so never look a chunk up by hash alone. With `CHUNK_PACKS=on`
+  a row may point into a pack (`chunks.pack_id`/`pack_offset`, object
+  `packs/<project>/<pack id>`): read chunk bytes only through
+  `ProjectChunkReader`/`Chunk.Download` (the pack-aware `packedStore`), never
+  `store.Get` on the raw store. The chunk RPCs carry
   `chunk_protocol` (`chunkproof.Protocol`); changing the chunk wire contract
   means bumping it on both sides.
-  With `CHUNK_UPLOAD_MODE=proxy` (and always on free `nipad`) uploads go
-  through the signed PUT, which answers with an HMAC receipt that lets
-  confirm skip the read-back; never link, attribute or write rows at PUT
-  (quota is enforced at confirm), and keep own-storage projects direct.
+  With `CHUNK_UPLOAD_MODE=proxy` (and always on free `nipad`) uploads go in
+  bundles through the signed bundle PUT, which answers with HMAC receipts
+  that let confirm skip the read-back; never link, attribute or write rows at
+  PUT (quota is enforced at confirm), keep own-storage projects direct, and
+  write server-side chunk bytes only through `Chunk.storeChunks`.
 - Every new REST route needs a maintenance class
   (`testdata/maintenance_routes.golden`, `NIPA_UPDATE_GOLDEN=1`) and every new
   gRPC method an entry in `maintenance_classes.go`.

@@ -30,8 +30,8 @@ func (q *Queries) BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommit
 }
 
 const chunkInsertManyOrIgnore = `-- name: ChunkInsertManyOrIgnore :exec
-INSERT INTO chunks (project_id, hash, size_bytes)
-SELECT $1::bigint, decode(r->>0, 'hex'), (r->>1)::bigint
+INSERT INTO chunks (project_id, hash, size_bytes, pack_id, pack_offset)
+SELECT $1::bigint, decode(r->>0, 'hex'), (r->>1)::bigint, (r->>2)::bigint, (r->>3)::bigint
 FROM jsonb_array_elements($2::jsonb) AS r
 ON CONFLICT (project_id, hash) DO NOTHING
 `
@@ -83,6 +83,79 @@ func (q *Queries) ChunkListByHashesForProject(ctx context.Context, arg ChunkList
 		return nil, err
 	}
 	return items, nil
+}
+
+const chunkPackInsert = `-- name: ChunkPackInsert :exec
+INSERT INTO chunk_packs (id, project_id, size_bytes, chunk_count, state)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type ChunkPackInsertParams struct {
+	ID         int64  `json:"id"`
+	ProjectID  int64  `json:"project_id"`
+	SizeBytes  int64  `json:"size_bytes"`
+	ChunkCount int64  `json:"chunk_count"`
+	State      string `json:"state"`
+}
+
+func (q *Queries) ChunkPackInsert(ctx context.Context, arg ChunkPackInsertParams) error {
+	_, err := q.db.ExecContext(ctx, chunkPackInsert,
+		arg.ID,
+		arg.ProjectID,
+		arg.SizeBytes,
+		arg.ChunkCount,
+		arg.State,
+	)
+	return err
+}
+
+const chunkPackSetState = `-- name: ChunkPackSetState :execrows
+UPDATE chunk_packs SET state = $1 WHERE id = $2
+`
+
+type ChunkPackSetStateParams struct {
+	State string `json:"state"`
+	ID    int64  `json:"id"`
+}
+
+func (q *Queries) ChunkPackSetState(ctx context.Context, arg ChunkPackSetStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, chunkPackSetState, arg.State, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const chunkRelocate = `-- name: ChunkRelocate :execrows
+UPDATE chunks
+SET pack_id = $1::bigint, pack_offset = $2::bigint
+WHERE project_id = $3 AND hash = $4
+  AND pack_id IS NOT DISTINCT FROM $5::bigint
+  AND pack_offset IS NOT DISTINCT FROM $6::bigint
+`
+
+type ChunkRelocateParams struct {
+	NewPackID     sql.NullInt64 `json:"new_pack_id"`
+	NewPackOffset sql.NullInt64 `json:"new_pack_offset"`
+	ProjectID     int64         `json:"project_id"`
+	Hash          []byte        `json:"hash"`
+	OldPackID     sql.NullInt64 `json:"old_pack_id"`
+	OldPackOffset sql.NullInt64 `json:"old_pack_offset"`
+}
+
+func (q *Queries) ChunkRelocate(ctx context.Context, arg ChunkRelocateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, chunkRelocate,
+		arg.NewPackID,
+		arg.NewPackOffset,
+		arg.ProjectID,
+		arg.Hash,
+		arg.OldPackID,
+		arg.OldPackOffset,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const commitInsert = `-- name: CommitInsert :exec
@@ -187,6 +260,55 @@ type FileSetTreeParams struct {
 func (q *Queries) FileSetTree(ctx context.Context, arg FileSetTreeParams) error {
 	_, err := q.db.ExecContext(ctx, fileSetTree, arg.TreeID, arg.ID)
 	return err
+}
+
+const projectChunkRecords = `-- name: ProjectChunkRecords :many
+SELECT c.hash, c.size_bytes, c.pack_id, c.pack_offset, p.state AS pack_state
+FROM chunks c
+LEFT JOIN chunk_packs p ON p.id = c.pack_id
+WHERE c.project_id = $1 AND c.hash = ANY($2::bytea[])
+`
+
+type ProjectChunkRecordsParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+type ProjectChunkRecordsRow struct {
+	Hash       []byte         `json:"hash"`
+	SizeBytes  int64          `json:"size_bytes"`
+	PackID     sql.NullInt64  `json:"pack_id"`
+	PackOffset sql.NullInt64  `json:"pack_offset"`
+	PackState  sql.NullString `json:"pack_state"`
+}
+
+func (q *Queries) ProjectChunkRecords(ctx context.Context, arg ProjectChunkRecordsParams) ([]ProjectChunkRecordsRow, error) {
+	rows, err := q.db.QueryContext(ctx, projectChunkRecords, arg.ProjectID, pq.Array(arg.Hashes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectChunkRecordsRow
+	for rows.Next() {
+		var i ProjectChunkRecordsRow
+		if err := rows.Scan(
+			&i.Hash,
+			&i.SizeBytes,
+			&i.PackID,
+			&i.PackOffset,
+			&i.PackState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const projectChunkSizes = `-- name: ProjectChunkSizes :many

@@ -27,6 +27,19 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
   hashes the bytes, overwrites the object and returns a signed receipt;
   confirm accepts the receipt instead of reading the chunk back (one store
   request per new chunk). Own-storage projects stay direct.
+- Later (bundle uploads, chunk protocol 3): uploads through the server (free
+  `nipad`, proxy mode) go in bundles, one `PUT /api/chunk-bundles/{org}/{project}`
+  per upload window carrying many chunks (`internal/chunkbundle`, at most
+  `CHUNK_BUNDLE_MAX_MIB`), verified entry by entry before anything is stored
+  and answered with v2 receipts; the single-chunk PUT is gone. Each entry is
+  still stored as its own object until packs land.
+- Later (chunk packs, chunk protocol 4): with `CHUNK_PACKS=on` (proxy mode,
+  S3/R2) each bundle, and each merge's output, is written as one pack object
+  (`packs/<project>/<pack id>`, one store write instead of one per chunk) and
+  receipts carry the pack and offset; clones get the pack URL plus an offset
+  and length per chunk and merge neighbours into Range GETs (gap <= 1 MiB,
+  span <= 32 MiB), so ~1000 chunks come in one or a few requests. Loose
+  writes (packs off) run concurrently under `CHUNK_STORE_WRITE_CONCURRENCY`.
 - Phase 2 is deferred: with presign checks concurrent and confirm batched, the
   remaining saving is the ref payload and the concurrent `Exists` calls.
 

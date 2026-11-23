@@ -18,13 +18,14 @@ var chunkRowBatch = 1000
 type ChunkRowInserter func(ctx context.Context, payload []byte) error
 
 // InsertChunkRows inserts the chunk metadata rows confirm recorded, as JSON
-// arrays of ["<hex hash>", size] in batches of chunkRowBatch. Duplicates are
-// dropped (the first size wins) and rows are sorted by hash, so concurrent
+// arrays of ["<hex hash>", size] (a loose row) or ["<hex hash>", size, pack
+// id, offset] (a packed row) in batches of chunkRowBatch. Duplicates are
+// dropped (the first wins) and rows are sorted by hash, so concurrent
 // confirms with overlapping hashes take the unique-index locks in the same
 // order and cannot deadlock on postgres.
-func InsertChunkRows(ctx context.Context, chunks []usecase.ChunkRef, insert ChunkRowInserter) error {
+func InsertChunkRows(ctx context.Context, chunks []usecase.ChunkRow, insert ChunkRowInserter) error {
 	seen := make(map[domain.Hash]struct{}, len(chunks))
-	rows := make([]usecase.ChunkRef, 0, len(chunks))
+	rows := make([]usecase.ChunkRow, 0, len(chunks))
 	for _, chunk := range chunks {
 		if _, ok := seen[chunk.Hash]; ok {
 			continue
@@ -32,12 +33,16 @@ func InsertChunkRows(ctx context.Context, chunks []usecase.ChunkRef, insert Chun
 		seen[chunk.Hash] = struct{}{}
 		rows = append(rows, chunk)
 	}
-	slices.SortFunc(rows, func(a, b usecase.ChunkRef) int { return bytes.Compare(a.Hash[:], b.Hash[:]) })
+	slices.SortFunc(rows, func(a, b usecase.ChunkRow) int { return bytes.Compare(a.Hash[:], b.Hash[:]) })
 	for start := 0; start < len(rows); start += chunkRowBatch {
 		end := min(start+chunkRowBatch, len(rows))
-		batch := make([][2]any, 0, end-start)
+		batch := make([][]any, 0, end-start)
 		for _, row := range rows[start:end] {
-			batch = append(batch, [2]any{hex.EncodeToString(row.Hash[:]), row.SizeBytes})
+			entry := []any{hex.EncodeToString(row.Hash[:]), row.SizeBytes}
+			if row.Location.Packed() {
+				entry = append(entry, row.Location.PackID.Int64(), row.Location.Offset)
+			}
+			batch = append(batch, entry)
 		}
 		if err := insertJSON(ctx, batch, insert); err != nil {
 			return err
@@ -63,6 +68,15 @@ func InsertHashes(ctx context.Context, hashes []domain.Hash, insert ChunkRowInse
 		}
 	}
 	return nil
+}
+
+// LooseRows turns chunk refs into loose chunk rows.
+func LooseRows(chunks []usecase.ChunkRef) []usecase.ChunkRow {
+	rows := make([]usecase.ChunkRow, 0, len(chunks))
+	for _, chunk := range chunks {
+		rows = append(rows, usecase.ChunkRow{Hash: chunk.Hash, SizeBytes: chunk.SizeBytes})
+	}
+	return rows
 }
 
 func insertJSON(ctx context.Context, batch any, insert ChunkRowInserter) error {

@@ -37,7 +37,7 @@ never to no limit. The warning and the `error` metric are still emitted.
 | `auth_email` | password login, SSH begin/complete login with an email, after `auth_id` allowed it | SHA-256 of the lower-cased email | 1 / 20 |
 | `register_email` | `nipad-ee` SaaS `register` and `register/resend` | SHA-256 of the lower-cased email | 0.1 / 3 |
 | `api_user` | authenticated REST (`/api/v1`) and gRPC | user id | 3000 / 200 |
-| `chunk_ip` | signed `/api/chunks/*` transfers | client IP | 60000 / 5000 |
+| `chunk_ip` | signed `/api/chunks/*` downloads and `/api/chunk-bundles/*` uploads | client IP | 60000 / 5000 |
 | `global_ip` | every other HTTP request | client IP | 6000 / 300 |
 
 Exempt: `/healthz`, `/readyz`, `/metrics`, `/version`, pprof, gRPC health and

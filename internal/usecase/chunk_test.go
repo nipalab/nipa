@@ -144,22 +144,35 @@ func (s *stubDirectChunkStore) DeleteChunk(_ context.Context, projectID snow.ID,
 	return s.deleteErr
 }
 
-// fakeChunkRepo keeps chunk rows per (project, hash) like the repositories.
+// fakeChunkRepo keeps chunk rows per (project, hash) and pack rows like the
+// repositories.
 type fakeChunkRepo struct {
 	mu        sync.Mutex
 	rows      map[objectKey]int64
-	inserts   [][]ChunkRef
+	locations map[objectKey]ChunkLocation
+	packs     map[snow.ID]ChunkPack
+	states    map[snow.ID]ChunkPackState
+	inserts   [][]ChunkRow
+	moves     []ChunkRelocation
 	insertErr error
 	sizesErr  error
+	packErr   error
+	stateErr  error
+	moveErr   error
 	// onInsert runs before an insert is recorded (ordering checks).
-	onInsert func(ctx context.Context, projectID snow.ID, chunks []ChunkRef)
+	onInsert func(ctx context.Context, projectID snow.ID, chunks []ChunkRow)
 }
 
 func newFakeChunkRepo() *fakeChunkRepo {
-	return &fakeChunkRepo{rows: map[objectKey]int64{}}
+	return &fakeChunkRepo{
+		rows:      map[objectKey]int64{},
+		locations: map[objectKey]ChunkLocation{},
+		packs:     map[snow.ID]ChunkPack{},
+		states:    map[snow.ID]ChunkPackState{},
+	}
 }
 
-func (r *fakeChunkRepo) InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []ChunkRef) error {
+func (r *fakeChunkRepo) InsertChunkRows(ctx context.Context, projectID snow.ID, chunks []ChunkRow) error {
 	if r.onInsert != nil {
 		r.onInsert(ctx, projectID, chunks)
 	}
@@ -168,29 +181,85 @@ func (r *fakeChunkRepo) InsertChunksIfNotExist(ctx context.Context, projectID sn
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.inserts = append(r.inserts, append([]ChunkRef(nil), chunks...))
+	r.inserts = append(r.inserts, append([]ChunkRow(nil), chunks...))
 	for _, chunk := range chunks {
 		key := objectKey{projectID, chunk.Hash}
 		if _, ok := r.rows[key]; !ok {
 			r.rows[key] = chunk.SizeBytes
+			r.locations[key] = chunk.Location
 		}
 	}
 	return nil
 }
 
-func (r *fakeChunkRepo) ProjectChunkSizes(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+func (r *fakeChunkRepo) ProjectChunkRecords(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]ChunkRecord, error) {
 	if r.sizesErr != nil {
 		return nil, r.sizesErr
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	sizes := make(map[domain.Hash]int64, len(hashes))
+	records := make(map[domain.Hash]ChunkRecord, len(hashes))
 	for _, hash := range hashes {
-		if size, ok := r.rows[objectKey{projectID, hash}]; ok {
-			sizes[hash] = size
+		key := objectKey{projectID, hash}
+		if size, ok := r.rows[key]; ok {
+			record := ChunkRecord{SizeBytes: size, Location: r.locations[key]}
+			if record.Location.Packed() {
+				record.PackState = r.states[record.Location.PackID]
+			}
+			records[hash] = record
 		}
 	}
-	return sizes, nil
+	return records, nil
+}
+
+func (r *fakeChunkRepo) RelocateChunks(_ context.Context, projectID snow.ID, moves []ChunkRelocation) error {
+	if r.moveErr != nil {
+		return r.moveErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, move := range moves {
+		key := objectKey{projectID, move.Hash}
+		if r.locations[key] == move.From {
+			r.locations[key] = move.To
+			r.moves = append(r.moves, move)
+		}
+	}
+	return nil
+}
+
+func (r *fakeChunkRepo) InsertChunkPack(_ context.Context, pack ChunkPack) error {
+	if r.packErr != nil {
+		return r.packErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.packs[pack.ID] = pack
+	r.states[pack.ID] = ChunkPackPending
+	return nil
+}
+
+func (r *fakeChunkRepo) SetChunkPackState(_ context.Context, packID snow.ID, state ChunkPackState) error {
+	if r.stateErr != nil {
+		return r.stateErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states[packID] = state
+	return nil
+}
+
+func (r *fakeChunkRepo) location(projectID snow.ID, hash domain.Hash) ChunkLocation {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.locations[objectKey{projectID, hash}]
+}
+
+func (r *fakeChunkRepo) recordAt(projectID snow.ID, hash domain.Hash, size int64, location ChunkLocation) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rows[objectKey{projectID, hash}] = size
+	r.locations[objectKey{projectID, hash}] = location
 }
 
 func (r *fakeChunkRepo) record(projectID snow.ID, hash domain.Hash, size int64) {
@@ -204,6 +273,12 @@ func (r *fakeChunkRepo) has(projectID snow.ID, hash domain.Hash) bool {
 	defer r.mu.Unlock()
 	_, ok := r.rows[objectKey{projectID, hash}]
 	return ok
+}
+
+// storeOne stores one chunk of server-held content (StoreChunks).
+func storeOne(uc *Chunk, ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) error {
+	_, err := uc.StoreChunks(ctx, projectID, []ChunkContent{{Hash: hash, Data: data}})
+	return err
 }
 
 func newChunkFixture(t *testing.T) (*Chunk, *fakeChunkRepo, *storage.LocalStore) {
@@ -252,14 +327,12 @@ func TestChunk_StoreForProjectStoresWithoutARow(t *testing.T) {
 	data := []byte("chunk one")
 	hash := chunker.Sum(data)
 
-	isNew, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
-	require.True(t, isNew)
+	require.NoError(t, storeOne(uc, ctx, testProject.ID, hash, data))
 
 	got, err := store.Get(ctx, testProject.ID, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
-	require.False(t, repo.has(testProject.ID, hash), "the row waits for AttributeProjectChunks")
+	require.False(t, repo.has(testProject.ID, hash), "the row waits for RecordStoredChunks")
 }
 
 func TestChunk_StoreForProjectDedupesPerProject(t *testing.T) {
@@ -269,29 +342,22 @@ func TestChunk_StoreForProjectDedupesPerProject(t *testing.T) {
 	data := []byte("dedupe me")
 	hash := chunker.Sum(data)
 
-	first, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
-	require.True(t, first)
+	require.NoError(t, storeOne(uc, ctx, testProject.ID, hash, data))
+	require.NoError(t, storeOne(uc, ctx, testProject.ID, hash, data), "storing again is harmless")
 
-	second, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
-	require.False(t, second)
-
-	other, err := uc.StoreForProject(ctx, snow.ID(2), hash, data)
-	require.NoError(t, err)
-	require.True(t, other, "the same bytes in another project are another object")
+	require.NoError(t, storeOne(uc, ctx, snow.ID(2), hash, data), "the same bytes in another project are another object")
 	ok, err := store.Exists(ctx, snow.ID(2), hash)
 	require.NoError(t, err)
 	require.True(t, ok)
 }
 
-func TestChunk_AttributeProjectChunks(t *testing.T) {
+func TestChunk_RecordStoredChunks(t *testing.T) {
 	ctx := context.Background()
 	uc, repo, _ := newChunkFixture(t)
 	ledger := NewMockStorageLedger(gomock.NewController(t))
 	uc = uc.WithStorageLedger(ledger)
 
-	require.NoError(t, uc.AttributeProjectChunks(ctx, testProject.ID, nil), "nothing to attribute")
+	require.NoError(t, uc.RecordStoredChunks(ctx, testProject.ID, nil), "nothing to attribute")
 
 	chunks := []LedgerChunk{{Hash: domain.Hash{1}, SizeBytes: 1}}
 	ledger.EXPECT().AttributeProjectChunks(gomock.Any(), testProject.ID, chunks).DoAndReturn(
@@ -299,7 +365,9 @@ func TestChunk_AttributeProjectChunks(t *testing.T) {
 			require.False(t, repo.has(testProject.ID, domain.Hash{1}), "the ledger runs before the row exists")
 			return nil
 		})
-	require.NoError(t, uc.AttributeProjectChunks(ctx, testProject.ID, chunks))
+	location := ChunkLocation{PackID: snow.ID(5), Offset: 4}
+	require.NoError(t, uc.RecordStoredChunks(ctx, testProject.ID, []ChunkRow{{Hash: domain.Hash{1}, SizeBytes: 1, Location: location}}))
+	require.Equal(t, location, repo.location(testProject.ID, domain.Hash{1}), "the row records where StoreChunks put the bytes")
 	require.True(t, repo.has(testProject.ID, domain.Hash{1}))
 	require.False(t, repo.has(snow.ID(2), domain.Hash{1}))
 }
@@ -308,8 +376,7 @@ func TestChunk_UploadHashMismatch(t *testing.T) {
 	ctx := context.Background()
 	uc, _, _ := newChunkFixture(t)
 
-	_, err := uc.StoreForProject(ctx, testProject.ID, domain.Hash{9}, []byte("not matching"))
-	require400(t, err, "chunk hash mismatch")
+	require400(t, storeOne(uc, ctx, testProject.ID, domain.Hash{9}, []byte("not matching")), "chunk hash mismatch")
 }
 
 func TestChunk_DownloadFound(t *testing.T) {
@@ -318,8 +385,7 @@ func TestChunk_DownloadFound(t *testing.T) {
 
 	data := []byte("download me")
 	hash := chunker.Sum(data)
-	_, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-	require.NoError(t, err)
+	require.NoError(t, storeOne(uc, ctx, testProject.ID, hash, data))
 
 	got, err := uc.Download(ctx, testProject.ID, hash)
 	require.NoError(t, err)
@@ -350,12 +416,13 @@ func TestChunk_PresignUploadURLs(t *testing.T) {
 	fresh := []byte("fresh chunk")
 	freshHash := chunker.Sum(fresh)
 
-	urls, next, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
+	presign, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
 		{Hash: existingHash, SizeBytes: int64(len(existing))},
 		{Hash: freshHash, SizeBytes: int64(len(fresh))},
 	}, 10, "")
 	require.NoError(t, err)
-	require.Equal(t, "", next)
+	require.Equal(t, "", presign.NextPageToken)
+	urls := presign.URLs
 	require.Len(t, urls, 2)
 
 	require.Equal(t, existingHash, urls[0].Hash)
@@ -364,7 +431,14 @@ func TestChunk_PresignUploadURLs(t *testing.T) {
 
 	require.Equal(t, freshHash, urls[1].Hash)
 	require.False(t, urls[1].AlreadyStored)
-	verifyChunkURL(t, uc, "acme", "game", urls[1].URL, chunkurl.OpUpload, int64(len(fresh)))
+	require.Empty(t, urls[1].URL, "the local store takes uploads in bundles")
+	verifyBundleURL(t, uc, "acme", "game", presign, 1)
+}
+
+// presignURLs unpacks an upload presign for tests that only look at the
+// per-chunk decisions.
+func presignURLs(presign UploadPresign, err error) ([]ChunkURL, string, error) {
+	return presign.URLs, presign.NextPageToken, err
 }
 
 func TestChunk_PresignUploadURLsPaginates(t *testing.T) {
@@ -377,14 +451,14 @@ func TestChunk_PresignUploadURLsPaginates(t *testing.T) {
 		refs = append(refs, ChunkRef{Hash: hash, SizeBytes: int64(len(data))})
 	}
 
-	page1, next, err := uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, "")
+	page1, next, err := presignURLs(uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, ""))
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
 	require.Equal(t, "2", next)
 	require.Equal(t, refs[0].Hash, page1[0].Hash)
 	require.Equal(t, refs[1].Hash, page1[1].Hash)
 
-	page2, next2, err := uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, next)
+	page2, next2, err := presignURLs(uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, next))
 	require.NoError(t, err)
 	require.Len(t, page2, 1)
 	require.Empty(t, next2)
@@ -396,17 +470,17 @@ func TestChunk_PresignUploadURLsInvalid(t *testing.T) {
 	uc, _, _ := newChunkFixture(t)
 	hash := chunker.Sum([]byte("x"))
 
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 0}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 0}}, 10, "")
 	require400(t, err, "invalid chunk size")
 
-	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.MaxChunkSize() + 1}}, 10, "")
+	_, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.MaxChunkSize() + 1}}, 10, "")
 	require400(t, err, "invalid chunk size")
 
-	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.PackedAssetConfig.Max}}, 10, "")
+	urls, _, err := presignURLs(uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.PackedAssetConfig.Max}}, 10, ""))
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 
-	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 10}}, 10, "-1")
+	_, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 10}}, 10, "-1")
 	require400(t, err, "invalid page token")
 }
 
@@ -414,7 +488,7 @@ func TestChunk_PresignUploadURLsRowLookupError(t *testing.T) {
 	uc, repo, _ := newChunkFixture(t)
 	repo.sizesErr = errors.New("db down")
 
-	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: domain.Hash{1}, SizeBytes: 1}}, 10, "")
+	_, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: domain.Hash{1}, SizeBytes: 1}}, 10, "")
 	require.ErrorIs(t, err, repo.sizesErr)
 }
 
@@ -479,7 +553,7 @@ func TestChunk_PresignUploadURLsDirectStore(t *testing.T) {
 
 	data := []byte("payload")
 	hash := chunker.Sum(data)
-	urls, next, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	urls, next, err := presignURLs(uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, ""))
 	require.NoError(t, err)
 	require.Empty(t, next)
 	require.Len(t, urls, 1)
@@ -498,7 +572,7 @@ func TestChunk_PresignUploadURLsDirectStoreAlreadyStored(t *testing.T) {
 	uc, repo := newDirectChunkFixture(t, store)
 	repo.record(testProject.ID, chunker.Sum(data), int64(len(data)))
 
-	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	urls, _, err := presignURLs(uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, ""))
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 	require.True(t, urls[0].AlreadyStored)
@@ -514,7 +588,7 @@ func TestChunk_PresignUploadURLsDirectStoreError(t *testing.T) {
 	uc, _ := newDirectChunkFixture(t, store)
 
 	data := []byte("payload")
-	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	_, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
 	require.Error(t, err)
 	var domainErr *domain.Error
 	require.ErrorAs(t, err, &domainErr)
@@ -534,7 +608,7 @@ func TestChunk_ConfirmUploads(t *testing.T) {
 	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{presentHash, absentHash, presentHash}, nil)
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{absentHash}, missing)
-	require.Equal(t, [][]ChunkRef{{{Hash: presentHash, SizeBytes: int64(len(present))}}}, repo.inserts, "one row per hash, measured by the server")
+	require.Equal(t, [][]ChunkRow{{{Hash: presentHash, SizeBytes: int64(len(present))}}}, repo.inserts, "one row per hash, measured by the server")
 }
 
 func TestChunk_UploadStoreErrors(t *testing.T) {
@@ -542,68 +616,18 @@ func TestChunk_UploadStoreErrors(t *testing.T) {
 	data := []byte("payload")
 	hash := chunker.Sum(data)
 
-	t.Run("exists", func(t *testing.T) {
-		store := &stubChunkStore{data: map[objectKey][]byte{}, existsErr: errors.New("boom")}
-		uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{})
-		_, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-		require.Error(t, err)
-	})
-
 	t.Run("put", func(t *testing.T) {
 		store := &stubChunkStore{data: map[objectKey][]byte{}, putErr: errors.New("boom")}
 		uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{})
-		_, err := uc.StoreForProject(ctx, testProject.ID, hash, data)
-		require.Error(t, err)
+		require.Error(t, storeOne(uc, ctx, testProject.ID, hash, data))
+		require.Error(t, uc.UploadForProject(ctx, testProject.ID, hash, data))
 	})
 
 	t.Run("row", func(t *testing.T) {
 		repo := newFakeChunkRepo()
 		repo.insertErr = errors.New("boom")
 		uc := NewChunk(repo, newStubChunkStore(), ChunkTransferConfig{})
-		_, err := uc.UploadForProject(ctx, testProject.ID, hash, data)
-		require.ErrorIs(t, err, repo.insertErr)
-	})
-}
-
-func TestChunk_StoreUploaded(t *testing.T) {
-	ctx := context.Background()
-	store := newStubChunkStore()
-	repo := newFakeChunkRepo()
-	uc := NewChunk(repo, store, ChunkTransferConfig{})
-
-	data := []byte("payload")
-	hash := chunker.Sum(data)
-
-	require.NoError(t, storeErr(uc.StoreUploaded(ctx, testProject.ID, hash, data)))
-	require.Equal(t, data, store.data[ck(hash)])
-	require.Equal(t, 1, store.puts)
-
-	require.NoError(t, storeErr(uc.StoreUploaded(ctx, testProject.ID, hash, data)))
-	require.Equal(t, 1, store.puts, "stored content must not be written twice")
-
-	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(2), hash, data)))
-	require.Equal(t, 2, store.puts, "another project stores its own copy")
-
-	_, err := uc.StoreUploaded(ctx, testProject.ID, hash, []byte("other bytes"))
-	require400(t, err, "chunk hash mismatch")
-	require.Empty(t, repo.inserts, "a proxied PUT records no rows")
-}
-
-func TestChunk_StoreUploadedErrors(t *testing.T) {
-	ctx := context.Background()
-	data := []byte("payload")
-	hash := chunker.Sum(data)
-
-	t.Run("exists", func(t *testing.T) {
-		store := &stubChunkStore{data: map[objectKey][]byte{}, existsErr: errors.New("boom")}
-		uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{})
-		require.Error(t, storeErr(uc.StoreUploaded(ctx, testProject.ID, hash, data)))
-	})
-
-	t.Run("put", func(t *testing.T) {
-		store := &stubChunkStore{data: map[objectKey][]byte{}, putErr: errors.New("boom")}
-		uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{})
-		require.Error(t, storeErr(uc.StoreUploaded(ctx, testProject.ID, hash, data)))
+		require.ErrorIs(t, uc.UploadForProject(ctx, testProject.ID, hash, data), repo.insertErr)
 	})
 }
 
@@ -613,7 +637,7 @@ func TestChunk_VerifyTransferURL(t *testing.T) {
 	data := []byte("payload")
 	hash := chunker.Sum(data)
 	expiry := uc.now().Add(uc.transfer.PresignTTL).Unix()
-	path := chunkurl.UploadPath(uc.transfer.SigningKey, "acme", "game", hash.String(), int64(len(data)), expiry)
+	path := chunkurl.DownloadPath(uc.transfer.SigningKey, "acme", "game", hash.String(), expiry)
 
 	u, err := url.Parse(path)
 	require.NoError(t, err)
@@ -639,7 +663,7 @@ func TestChunk_PresignUploadURLsStoreError(t *testing.T) {
 
 	data := []byte("payload")
 	repo.record(testProject.ID, chunker.Sum(data), int64(len(data))) // a row, so presign checks the store
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
 	require.Error(t, err)
 }
 
@@ -708,7 +732,7 @@ func TestChunk_PresignUploadURLsLedgerHeadroomRejects(t *testing.T) {
 	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil, nil)
 	ledger.EXPECT().Headroom(gomock.Any(), testOrg, testProject, int64(len(data))).Return(quotaErr)
 
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.ErrorIs(t, err, quotaErr)
 }
 
@@ -726,7 +750,7 @@ func TestChunk_PresignUploadURLsLedgerSkipsAttributedRefs(t *testing.T) {
 	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).
 		Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 
-	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	urls, _, err := presignURLs(uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, ""))
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 	require.True(t, urls[0].AlreadyStored)
@@ -742,7 +766,7 @@ func TestChunk_PresignUploadURLsLedgerReadError(t *testing.T) {
 	wantErr := errors.New("ledger down")
 	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil, wantErr)
 
-	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 4}}, 10, "")
+	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 4}}, 10, "")
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -850,7 +874,7 @@ func TestChunk_PresignUploadURLs_DecisionTable(t *testing.T) {
 		}
 	}
 
-	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 100, "")
+	urls, _, err := presignURLs(uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 100, ""))
 	require.NoError(t, err)
 	require.Len(t, urls, len(refs))
 	require.Equal(t, int64(rows), store.existsCalls.Load(), "only hashes with a row in the project are checked")
@@ -864,7 +888,7 @@ func TestChunk_PresignUploadURLs_DecisionTable(t *testing.T) {
 			continue
 		}
 		require.False(t, u.AlreadyStored, "case %d needs an upload", i%4)
-		require.NotEmpty(t, u.URL)
+		require.Empty(t, u.URL, "bundled")
 	}
 }
 
@@ -876,7 +900,7 @@ func TestChunk_PresignUploadURLs_ExistsErrorIsADatabaseError(t *testing.T) {
 	repo.record(testProject.ID, refs[1].Hash, 1)
 	uc := NewChunk(repo, store, ChunkTransferConfig{SigningKey: "k", PresignTTL: time.Hour, MaxPageSize: 10})
 
-	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 10, "")
+	_, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 10, "")
 	var domainErr *domain.Error
 	require.ErrorAs(t, err, &domainErr)
 	require.Equal(t, domain.NewErrorDatabase("").Code, domainErr.Code)
@@ -952,9 +976,4 @@ func TestChunk_ConfirmUploads_BoundsConcurrentVerificationReads(t *testing.T) {
 	require.Empty(t, missing)
 	require.LessOrEqual(t, store.maxInFlight.Load(), int64(3))
 	require.Greater(t, store.maxInFlight.Load(), int64(1))
-}
-
-// storeErr drops StoreUploaded's receipt for tests that only check the error.
-func storeErr(_ string, err error) error {
-	return err
 }

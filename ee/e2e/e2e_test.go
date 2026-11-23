@@ -184,6 +184,8 @@ type serverOptions struct {
 	integrations bool
 	// uploadMode is CHUNK_UPLOAD_MODE; empty is direct.
 	uploadMode string
+	// packs turns CHUNK_PACKS on (with uploadMode proxy).
+	packs bool
 }
 
 func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
@@ -207,6 +209,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 			ChunkPresignTTLSeconds: 3600,
 			ChunkMaxPageSize:       1000,
 			ChunkUploadMode:        opts.uploadMode,
+			ChunkPacks:             packsSetting(opts.packs),
 		},
 		DB:                dbConn,
 		Snow:              node,
@@ -302,6 +305,13 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	return lis.Addr().String(), uc
 }
 
+func packsSetting(on bool) string {
+	if on {
+		return config.ChunkPacksOn
+	}
+	return config.ChunkPacksOff
+}
+
 func newS3ChunkStore(t *testing.T) storage.ChunkStore {
 	t.Helper()
 
@@ -373,14 +383,14 @@ func mustSnowNode(t *testing.T, nodeID int64) snow.Node {
 	return node
 }
 
-func connectClient(t *testing.T, host string) (*clientusecase.Repo, *clientusecase.Push) {
+func connectClient(t *testing.T, host string, opts ...clientgrpc.ClientOption) (*clientusecase.Repo, *clientusecase.Push) {
 	t.Helper()
 
 	ctx := context.Background()
 	store := newMemoryStore()
 	transport := clientgrpc.NewTransport()
 	session := clientusecase.NewSession(store, transport, failPrompt{})
-	grpcClient := clientgrpc.NewClient(transport, session)
+	grpcClient := clientgrpc.NewClient(transport, session, opts...)
 	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
 	require.NoError(t, grpcClient.Connect(ctx, host))
 

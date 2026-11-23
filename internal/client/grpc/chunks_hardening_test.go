@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -294,7 +295,20 @@ func TestStallGuard_UploadDisabledWithoutTimeout(t *testing.T) {
 	g := newStallGuard(0, func() {})
 	request, err := http.NewRequestWithContext(g.traceUpload(context.Background()), http.MethodPut, "http://example.invalid", nil)
 	require.NoError(t, err)
-	g.wrapUpload(request, []byte("x"))
-	require.Nil(t, request.Body, "no guard, no wrapping")
+	g.setUploadBody(request, 1, func() io.Reader { return strings.NewReader("x") })
+	_, wrapped := request.Body.(*uploadBody)
+	require.False(t, wrapped, "no guard, no wrapping")
+	require.Equal(t, int64(1), request.ContentLength)
+	replay, err := request.GetBody()
+	require.NoError(t, err)
+	got, err := io.ReadAll(replay)
+	require.NoError(t, err)
+	require.Equal(t, "x", string(got))
+
+	g.setUploadBody(request, 0, func() io.Reader { return strings.NewReader("") })
+	require.Equal(t, http.NoBody, request.Body)
+	empty, err := request.GetBody()
+	require.NoError(t, err)
+	require.Equal(t, http.NoBody, empty)
 	g.stop()
 }

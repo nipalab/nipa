@@ -50,7 +50,9 @@ type fakeS3 struct {
 	truncateGet atomic.Bool
 	gets        atomic.Int64
 	heads       atomic.Int64
-	listTime    time.Time
+	// lastRange is the Range header of the last GET.
+	lastRange atomic.Value
+	listTime  time.Time
 	// payloadSHA is the X-Amz-Content-Sha256 header of the last PUT.
 	payloadSHA atomic.Value
 }
@@ -143,6 +145,12 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !exists {
 			writeS3Error(w, http.StatusNotFound, "NoSuchKey")
+			return
+		}
+		f.lastRange.Store(r.Header.Get("Range"))
+		if r.Header.Get("Range") != "" {
+			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
 			return
 		}
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
@@ -885,4 +893,79 @@ func TestStore_DeleteProject(t *testing.T) {
 	fake.failDelete.Store(false)
 	fake.failList.Store(true)
 	require.Error(t, store.DeleteProject(ctx, other))
+}
+
+func TestStore_Packs(t *testing.T) {
+	fake, server := newFakeS3(t)
+	cfg := testConfig(server)
+	cfg.Prefix = "tenant"
+	store, err := New(context.Background(), cfg)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	const packID snow.ID = 99
+	key := storage.PackKey(testProject, packID)
+	require.Equal(t, "packs/7/2r", key)
+	body := []byte("NPK1-chunk-one-chunk-two-index")
+	require.NoError(t, store.PutPack(ctx, key, bytes.NewReader(body), int64(len(body))))
+	fake.mu.Lock()
+	stored := fake.buckets["test-bucket"]["tenant/"+key]
+	fake.mu.Unlock()
+	require.Equal(t, body, stored, "the pack lands under the store prefix")
+
+	got, err := store.GetRange(ctx, key, 5, 9)
+	require.NoError(t, err)
+	require.Equal(t, []byte("chunk-one"), got)
+	require.Equal(t, "bytes=5-13", fake.lastRange.Load())
+
+	_, err = store.GetRange(ctx, key, int64(len(body))-2, 10)
+	require.Error(t, err, "a range past the end is an error, not a short read")
+	_, err = store.GetRange(ctx, key, -1, 3)
+	require.Error(t, err)
+	_, err = store.GetRange(ctx, key, 0, 0)
+	require.Error(t, err)
+	_, err = store.GetRange(ctx, storage.PackKey(testProject, 100), 0, 3)
+	require.True(t, domain.IsErrorNotFound(err), "a missing pack is NotFound")
+	fake.failGet.Store(true)
+	_, err = store.GetRange(ctx, key, 0, 3)
+	require.Error(t, err)
+	require.False(t, domain.IsErrorNotFound(err))
+	fake.failGet.Store(false)
+
+	presigned, err := store.PresignPackDownload(ctx, key, 8*24*time.Hour)
+	require.NoError(t, err)
+	u, err := url.Parse(presigned)
+	require.NoError(t, err)
+	require.Equal(t, "/test-bucket/tenant/"+key, u.Path)
+	require.Equal(t, "604800", u.Query().Get("X-Amz-Expires"), "clamped to SigV4's 7 days")
+	request, err := http.NewRequest(http.MethodGet, presigned, nil)
+	require.NoError(t, err)
+	request.Header.Set("Range", "bytes=15-23")
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	ranged, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Equal(t, http.StatusPartialContent, response.StatusCode, "a client reads part of the pack with a Range header")
+	require.Equal(t, []byte("chunk-two"), ranged)
+	_, err = store.PresignPackDownload(ctx, key, -time.Second)
+	require.Error(t, err)
+
+	// DeleteProject takes the pack prefix too.
+	require.NoError(t, store.PutPack(ctx, storage.PackKey(8, 1), bytes.NewReader(body), int64(len(body))))
+	require.NoError(t, store.DeleteProject(ctx, testProject))
+	_, err = store.GetRange(ctx, key, 0, 3)
+	require.True(t, domain.IsErrorNotFound(err))
+	got, err = store.GetRange(ctx, storage.PackKey(8, 1), 0, 4)
+	require.NoError(t, err, "another project's packs stay")
+	require.Equal(t, []byte("NPK1"), got)
+
+	require.NoError(t, store.DeletePack(ctx, storage.PackKey(8, 1)))
+	require.NoError(t, store.DeletePack(ctx, storage.PackKey(8, 1)), "a missing pack is not an error")
+	fake.failDelete.Store(true)
+	require.Error(t, store.DeletePack(ctx, storage.PackKey(8, 1)))
+	fake.failDelete.Store(false)
+
+	fake.failPut.Store(true)
+	require.Error(t, store.PutPack(ctx, key, bytes.NewReader(body), int64(len(body))))
 }

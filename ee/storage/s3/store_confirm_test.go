@@ -17,16 +17,26 @@ import (
 // memChunkRepo is the smallest chunk repository confirm needs: no chunk is
 // recorded yet and every write succeeds.
 type memChunkRepo struct {
-	rows []usecase.ChunkRef
+	rows []usecase.ChunkRow
 }
 
-func (r *memChunkRepo) InsertChunksIfNotExist(_ context.Context, _ snow.ID, rows []usecase.ChunkRef) error {
+func (r *memChunkRepo) InsertChunkRows(_ context.Context, _ snow.ID, rows []usecase.ChunkRow) error {
 	r.rows = append(r.rows, rows...)
 	return nil
 }
 
-func (r *memChunkRepo) ProjectChunkSizes(context.Context, snow.ID, []domain.Hash) (map[domain.Hash]int64, error) {
-	return map[domain.Hash]int64{}, nil
+func (r *memChunkRepo) ProjectChunkRecords(context.Context, snow.ID, []domain.Hash) (map[domain.Hash]usecase.ChunkRecord, error) {
+	return map[domain.Hash]usecase.ChunkRecord{}, nil
+}
+
+func (r *memChunkRepo) RelocateChunks(context.Context, snow.ID, []usecase.ChunkRelocation) error {
+	return nil
+}
+
+func (r *memChunkRepo) InsertChunkPack(context.Context, usecase.ChunkPack) error { return nil }
+
+func (r *memChunkRepo) SetChunkPackState(context.Context, snow.ID, usecase.ChunkPackState) error {
+	return nil
 }
 
 // TestStore_ConfirmReadBackDecisions runs confirm's read-back against the S3
@@ -76,7 +86,7 @@ func TestStore_ConfirmReadBackDecisions(t *testing.T) {
 			require.Zero(t, fake.heads.Load())
 			if tc.recorded {
 				require.Empty(t, missing)
-				require.Equal(t, []usecase.ChunkRef{{Hash: tc.hash, SizeBytes: int64(len(tc.stored))}}, repo.rows)
+				require.Equal(t, []usecase.ChunkRow{{Hash: tc.hash, SizeBytes: int64(len(tc.stored))}}, repo.rows)
 			} else {
 				require.Equal(t, []domain.Hash{tc.hash}, missing)
 				require.Empty(t, repo.rows)

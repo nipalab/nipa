@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -57,8 +58,9 @@ func TestChunkMetrics(t *testing.T) {
 	data := []byte("hello chunk")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
-	require.NoError(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, data)))
+	body := bundleOf(t, data)
+	_, err := uc.StoreBundle(ctx, snow.ID(1), bytes.NewReader(body), int64(len(body)), 1)
+	require.NoError(t, err)
 
 	got, err := uc.Download(ctx, snow.ID(1), hash)
 	require.NoError(t, err)
@@ -69,19 +71,21 @@ func TestChunkMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{missing}, missingHashes)
 
-	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	_, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 
-	require.Error(t, storeErr(uc.StoreUploaded(ctx, snow.ID(1), hash, []byte("tampered"))))
+	tampered := bytes.Clone(body)
+	tampered[len(tampered)-1] ^= 1
+	_, err = uc.StoreBundle(ctx, snow.ID(1), bytes.NewReader(tampered), int64(len(tampered)), 1)
+	require.Error(t, err)
 
-	body := scrapeUsecaseMetrics(t, metrics)
-	require.Contains(t, body, `nipa_chunk_ops_total{op="put",result="stored"} 1`)
-	require.Contains(t, body, `nipa_chunk_ops_total{op="put",result="dedup"} 1`)
-	require.Contains(t, body, `nipa_chunk_ops_total{op="get",result="ok"} 1`)
-	require.Contains(t, body, `nipa_chunk_ops_total{op="confirm",result="partial"} 1`)
-	require.Contains(t, body, `nipa_chunk_ops_total{op="presign_upload",result="ok"} 1`)
-	require.Contains(t, body, `nipa_chunk_verify_failures_total{stage="store"} 1`)
-	require.Contains(t, body, `nipa_chunk_bytes_total{op="put"} 11`)
-	require.Contains(t, body, `nipa_chunk_bytes_total{op="get"} 11`)
-	require.Contains(t, body, `nipa_chunk_bytes_total{op="confirm"} 11`)
+	scraped := scrapeUsecaseMetrics(t, metrics)
+	require.Contains(t, scraped, `nipa_chunk_ops_total{op="put",result="stored"} 1`)
+	require.Contains(t, scraped, `nipa_chunk_ops_total{op="get",result="ok"} 1`)
+	require.Contains(t, scraped, `nipa_chunk_ops_total{op="confirm",result="partial"} 1`)
+	require.Contains(t, scraped, `nipa_chunk_ops_total{op="presign_upload",result="ok"} 1`)
+	require.Contains(t, scraped, `nipa_chunk_verify_failures_total{stage="store"} 1`)
+	require.Contains(t, scraped, `nipa_chunk_bytes_total{op="put"} 11`)
+	require.Contains(t, scraped, `nipa_chunk_bytes_total{op="get"} 11`)
+	require.Contains(t, scraped, `nipa_chunk_bytes_total{op="confirm"} 11`)
 }

@@ -29,20 +29,6 @@ func parsePath(t *testing.T, path string) (string, string, string, url.Values) {
 	return parts[2], parts[3], parts[4], u.Query()
 }
 
-func TestUploadPathRoundTrip(t *testing.T) {
-	exp := time.Now().Add(time.Hour).Unix()
-	path := UploadPath(testKey, testOrg, testProject, testHash, 10, exp)
-
-	org, project, hash, query := parsePath(t, path)
-
-	params, err := ParseParams(query)
-	require.NoError(t, err)
-	require.Equal(t, OpUpload, params.Op)
-	require.Equal(t, int64(10), params.Size)
-	require.Equal(t, exp, params.Exp)
-	require.NoError(t, Verify(testKey, org, project, hash, params, time.Now()))
-}
-
 func TestDownloadPathRoundTrip(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Unix()
 	path := DownloadPath(testKey, testOrg, testProject, testHash, exp)
@@ -59,7 +45,7 @@ func TestDownloadPathRoundTrip(t *testing.T) {
 
 func TestVerifyTampered(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Unix()
-	path := UploadPath(testKey, testOrg, testProject, testHash, 10, exp)
+	path := DownloadPath(testKey, testOrg, testProject, testHash, exp)
 	_, _, _, query := parsePath(t, path)
 	params, err := ParseParams(query)
 	require.NoError(t, err)
@@ -76,7 +62,7 @@ func TestVerifyTampered(t *testing.T) {
 		{name: "wrong org", key: testKey, org: "other", project: testProject, hash: testHash},
 		{name: "wrong project", key: testKey, org: testOrg, project: "other", hash: testHash},
 		{name: "wrong hash", key: testKey, org: testOrg, project: testProject, hash: "ffff"},
-		{name: "wrong op", key: testKey, org: testOrg, project: testProject, hash: testHash, mutate: func(p *Params) { p.Op = OpDownload }},
+		{name: "wrong op", key: testKey, org: testOrg, project: testProject, hash: testHash, mutate: func(p *Params) { p.Op = "put" }},
 		{name: "wrong size", key: testKey, org: testOrg, project: testProject, hash: testHash, mutate: func(p *Params) { p.Size = 11 }},
 		{name: "wrong expiry", key: testKey, org: testOrg, project: testProject, hash: testHash, mutate: func(p *Params) { p.Exp = p.Exp + 1 }},
 		{name: "wrong sig", key: testKey, org: testOrg, project: testProject, hash: testHash, mutate: func(p *Params) { p.Sig = strings.Repeat("0", 64) }},
@@ -115,8 +101,9 @@ func TestParseParamsInvalid(t *testing.T) {
 		{name: "unknown op", query: "op=delete&exp=1&sig=abc"},
 		{name: "missing expiry", query: "op=get&sig=abc"},
 		{name: "bad expiry", query: "op=get&exp=abc&sig=abc"},
-		{name: "bad size", query: "op=put&exp=1&size=abc&sig=abc"},
-		{name: "negative size", query: "op=put&exp=1&size=-1&sig=abc"},
+		{name: "upload op", query: "op=put&exp=1&size=1&sig=abc"},
+		{name: "bad size", query: "op=get&exp=1&size=abc&sig=abc"},
+		{name: "negative size", query: "op=get&exp=1&size=-1&sig=abc"},
 		{name: "missing sig", query: "op=get&exp=1"},
 	}
 	for _, tt := range tests {

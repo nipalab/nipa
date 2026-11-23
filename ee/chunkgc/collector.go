@@ -15,6 +15,16 @@
 //     project that no longer exists are left to the purge.
 //   - Sweep: rows still unreferenced whose mark is older than the grace period
 //     are locked (FOR UPDATE SKIP LOCKED), their objects deleted, then the rows.
+//     A packed row (chunks.pack_id) has no object of its own: its sweep
+//     deletes only the row, and its bytes go with the pack.
+//   - Packs: a pack no chunk row points at (a bundle whose confirm never ran,
+//     or whose rows were all swept) or still pending (its write failed) is
+//     marked (chunk_packs.gc_marked_at); a pack that gained rows again loses
+//     its mark. Packs still unreferenced (or pending) whose mark is older than
+//     the grace period are locked, their objects deleted, then the rows. A
+//     pack can only gain rows through a receipt, and receipts expire after
+//     the presign TTL (at most half the grace period), so a swept pack is
+//     never referenced again. No bucket listing is needed for packs.
 //
 // Every caller that is about to rely on chunk content clears its mark first
 // (Guard.Protect, wired into usecase.Chunk). That update waits for a sweep
@@ -44,6 +54,7 @@ import (
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
 )
 
 // Mode selects what the collector does.
@@ -86,6 +97,7 @@ const (
 type ObjectStore interface {
 	DeleteChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
 	ListChunks(ctx context.Context, fn func(s3.StoredChunk) error) error
+	DeletePack(ctx context.Context, key string) error
 }
 
 // Config tunes the collector.
@@ -110,6 +122,13 @@ type Report struct {
 	DeletedBytes   int64
 	Candidates     int64
 	CandidateBytes int64
+	// Pack counterparts of the fields above.
+	PacksMarked         int64
+	PacksMarkedBytes    int64
+	PacksDeleted        int64
+	PacksDeletedBytes   int64
+	PackCandidates      int64
+	PackCandidatesBytes int64
 }
 
 // Collector runs the mark, adopt and sweep phases.
@@ -191,10 +210,15 @@ func (c *Collector) Run(ctx context.Context) (Report, error) {
 	} else if err := c.sweep(ctx, cutoff, &report); err != nil {
 		return report, err
 	}
+	if err := c.collectPacks(ctx, now, cutoff, &report); err != nil {
+		return report, err
+	}
 	slog.Info("chunk gc run finished", "mode", c.cfg.Mode,
 		"marked", report.Marked, "adopted", report.Adopted,
 		"deleted", report.Deleted, "deleted_bytes", report.DeletedBytes,
-		"candidates", report.Candidates, "candidate_bytes", report.CandidateBytes)
+		"candidates", report.Candidates, "candidate_bytes", report.CandidateBytes,
+		"packs_marked", report.PacksMarked, "packs_deleted", report.PacksDeleted,
+		"packs_deleted_bytes", report.PacksDeletedBytes, "pack_candidates", report.PackCandidates)
 	return report, nil
 }
 
@@ -327,8 +351,12 @@ func (c *Collector) sweep(ctx context.Context, cutoff time.Time, report *Report)
 			for _, row := range rows {
 				var hash domain.Hash
 				copy(hash[:], row.Hash)
-				if err := c.store.DeleteChunk(ctx, snow.ID(row.ProjectID), hash); err != nil {
-					return fmt.Errorf("chunkgc: delete object %s: %w", hash, err)
+				// A packed row's bytes belong to its pack, which the pack
+				// phase deletes once no row points at it.
+				if !row.PackID.Valid {
+					if err := c.store.DeleteChunk(ctx, snow.ID(row.ProjectID), hash); err != nil {
+						return fmt.Errorf("chunkgc: delete object %s: %w", hash, err)
+					}
 				}
 				ids = append(ids, row.ID)
 				bytes += row.SizeBytes
@@ -351,6 +379,84 @@ func (c *Collector) sweep(ctx context.Context, cutoff time.Time, report *Report)
 		report.Deleted += deleted
 		report.DeletedBytes += bytes
 		c.metrics.ObserveChunkGC("deleted", deleted, bytes)
+	}
+}
+
+// collectPacks marks unreferenced and pending packs, clears the marks of
+// packs that gained rows, and sweeps (or, in dry-run mode, counts) the packs
+// marked before cutoff.
+func (c *Collector) collectPacks(ctx context.Context, now, cutoff time.Time, report *Report) error {
+	if _, err := c.queries.UnmarkReferencedChunkPacks(ctx); err != nil {
+		return fmt.Errorf("chunkgc: unmark packs: %w", err)
+	}
+	sizes, err := c.queries.MarkChunkPacks(ctx, now)
+	if err != nil {
+		return fmt.Errorf("chunkgc: mark packs: %w", err)
+	}
+	var marked int64
+	for _, size := range sizes {
+		marked += size
+	}
+	report.PacksMarked += int64(len(sizes))
+	report.PacksMarkedBytes += marked
+	c.metrics.ObserveChunkGC("packs_marked", int64(len(sizes)), marked)
+	if c.cfg.Mode == ModeDryRun {
+		row, err := c.queries.CountSweepableChunkPacks(ctx, cutoff)
+		if err != nil {
+			return fmt.Errorf("chunkgc: count packs: %w", err)
+		}
+		report.PackCandidates, report.PackCandidatesBytes = row.Packs, row.Bytes
+		c.metrics.ObserveChunkGC("packs_dry_run", row.Packs, row.Bytes)
+		return nil
+	}
+	return c.sweepPacks(ctx, cutoff, report)
+}
+
+// sweepPacks deletes marked packs past the cutoff that are still
+// unreferenced (or pending), one locked batch per transaction: objects
+// first, then rows. A failed object delete rolls the batch back and the next
+// run retries.
+func (c *Collector) sweepPacks(ctx context.Context, cutoff time.Time, report *Report) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var deleted, bytes int64
+		err := c.transactor.WithinTx(ctx, func(ctx context.Context) error {
+			rows, err := c.queries.LockSweepableChunkPacks(ctx, sqlcPostgres.LockSweepableChunkPacksParams{
+				Cutoff: cutoff,
+				Limit:  sweepBatch,
+			})
+			if err != nil {
+				return fmt.Errorf("chunkgc: lock packs: %w", err)
+			}
+			ids := make([]int64, 0, len(rows))
+			for _, row := range rows {
+				key := storage.PackKey(snow.ID(row.ProjectID), snow.ID(row.ID))
+				if err := c.store.DeletePack(ctx, key); err != nil {
+					return fmt.Errorf("chunkgc: delete pack %s: %w", key, err)
+				}
+				ids = append(ids, row.ID)
+				bytes += row.SizeBytes
+			}
+			if len(ids) == 0 {
+				return nil
+			}
+			deleted, err = c.queries.DeleteChunkPacksByIDs(ctx, ids)
+			if err != nil {
+				return fmt.Errorf("chunkgc: delete pack rows: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if deleted == 0 {
+			return nil
+		}
+		report.PacksDeleted += deleted
+		report.PacksDeletedBytes += bytes
+		c.metrics.ObserveChunkGC("packs_deleted", deleted, bytes)
 	}
 }
 

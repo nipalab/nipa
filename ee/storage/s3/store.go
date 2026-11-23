@@ -35,6 +35,7 @@ var _ storage.DirectTransferStore = (*Store)(nil)
 var _ storage.ChunkOpener = (*Store)(nil)
 var _ storage.ChunkOverwriter = (*Store)(nil)
 var _ storage.ProjectDeleter = (*Store)(nil)
+var _ storage.PackStore = (*Store)(nil)
 
 // maxPresignTTL is the longest expiry SigV4 presigned requests support.
 const maxPresignTTL = 7 * 24 * time.Hour
@@ -338,6 +339,96 @@ func (s *Store) DeleteChunk(ctx context.Context, projectID snow.ID, hash domain.
 	return nil
 }
 
+// PutPack writes a pack object in one single-part PUT of exactly size bytes
+// (UNSIGNED-PAYLOAD over https, as putObject). body seeks, so minio can
+// replay it when it retries the request.
+func (s *Store) PutPack(ctx context.Context, key string, body io.ReadSeeker, size int64) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.put_pack",
+		attribute.Int64(obs.AttrChunkBytes, size),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	_, err = s.client.PutObject(ctx, s.bucket, s.withPrefix(key), body, size, minio.PutObjectOptions{
+		ContentType:      "application/octet-stream",
+		DisableMultipart: true,
+	})
+	if err != nil {
+		return fmt.Errorf("s3: put pack %s: %w", key, err)
+	}
+	return nil
+}
+
+// GetRange reads length bytes of the object at key from offset with one
+// ranged GET. A missing object is a domain NotFound error; an object that
+// ends before the range does is an error.
+func (s *Store) GetRange(ctx context.Context, key string, offset, length int64) (data []byte, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.get_range",
+		attribute.Int64("nipa.storage.offset", offset),
+		attribute.Int64(obs.AttrChunkSize, length),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	if offset < 0 || length <= 0 {
+		return nil, fmt.Errorf("s3: invalid range %d+%d of %s", offset, length, key)
+	}
+	opts := minio.GetObjectOptions{}
+	if err := opts.SetRange(offset, offset+length-1); err != nil {
+		return nil, fmt.Errorf("s3: range of %s: %w", key, err)
+	}
+	body, _, _, err := minio.Core{Client: s.client}.GetObject(ctx, s.bucket, s.withPrefix(key), opts)
+	if err != nil {
+		return nil, s.mapKeyError(err, key)
+	}
+	defer func() { _ = body.Close() }()
+	data = make([]byte, length)
+	if _, err := io.ReadFull(body, data); err != nil {
+		return nil, fmt.Errorf("s3: read range %d+%d of %s: %w", offset, length, key, err)
+	}
+	return data, nil
+}
+
+// PresignPackDownload returns an absolute GET URL for the object at key.
+// The Range header is not part of the signature, so a client may read any
+// part of the object with it. Expiries beyond SigV4's 7-day limit are
+// clamped.
+func (s *Store) PresignPackDownload(ctx context.Context, key string, expires time.Duration) (presignedURL string, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_pack_download",
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	if expires > maxPresignTTL {
+		expires = maxPresignTTL
+	}
+	presigned, err := s.client.PresignedGetObject(ctx, s.bucket, s.withPrefix(key), expires, nil)
+	if err != nil {
+		return "", fmt.Errorf("s3: presign download for %s: %w", key, err)
+	}
+	return presigned.String(), nil
+}
+
+// DeletePack removes the object at key; S3 treats a missing key as success.
+func (s *Store) DeletePack(ctx context.Context, key string) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_pack",
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	if err := s.client.RemoveObject(ctx, s.bucket, s.withPrefix(key), minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("s3: delete pack %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *Store) mapKeyError(err error, key string) error {
+	if isNotFound(err) {
+		return domain.NewErrorNotFound("object not found: " + key)
+	}
+	return fmt.Errorf("s3: object %s: %w", key, err)
+}
+
 // StoredChunk is one chunk object found by ListChunks.
 type StoredChunk struct {
 	ProjectID    snow.ID
@@ -376,18 +467,27 @@ func (s *Store) ListChunks(ctx context.Context, fn func(StoredChunk) error) (err
 	return nil
 }
 
-// DeleteProject removes every object below the project's key prefix
-// (p/<project>/), in batched multi-object deletes. It implements
-// storage.ProjectDeleter; a project without content is not an error.
+// DeleteProject removes every object below the project's key prefixes
+// (p/<project>/ for loose chunks, packs/<project>/ for packs), in batched
+// multi-object deletes. It implements storage.ProjectDeleter; a project
+// without content is not an error.
 func (s *Store) DeleteProject(ctx context.Context, projectID snow.ID) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_prefix",
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
+	for _, prefix := range []string{storage.ProjectPrefix(projectID), storage.PackPrefix(projectID)} {
+		if err := s.deletePrefix(ctx, projectID, s.withPrefix(prefix)+"/"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) deletePrefix(ctx context.Context, projectID snow.ID, prefix string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	prefix := s.withPrefix(storage.ProjectPrefix(projectID)) + "/"
 	objects := make(chan minio.ObjectInfo)
 	var listErr error
 	go func() {

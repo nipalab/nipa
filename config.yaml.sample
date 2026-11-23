@@ -130,16 +130,33 @@ CHUNK_VERIFY_CONCURRENCY: 64
 # How clients upload chunk bytes to a direct-transfer store (S3/R2):
 #   direct (default): clients PUT to presigned object store URLs; confirm
 #     reads every new chunk back to verify it.
-#   proxy: clients PUT to the server's signed /api/chunks path; the server
-#     hashes the bytes on the way in, writes the store itself and returns a
-#     signed receipt, so confirm reads nothing back. Costs server bandwidth
-#     and CPU; projects on their own storage (BYO) always upload direct.
-# The free `nipad` (local store) always uploads through the server and returns
-# receipts whatever this says. Invalid values are rejected at startup.
+#   proxy: clients PUT bundles of many chunks to the server's signed
+#     /api/chunk-bundles path; the server hashes every chunk on the way in,
+#     writes the store itself and returns signed receipts, so confirm reads
+#     nothing back. Costs server bandwidth and CPU; projects on their own
+#     storage (BYO) always upload direct.
+# The free `nipad` (local store) always uploads bundles through the server and
+# returns receipts whatever this says. Invalid values are rejected at startup.
 CHUNK_UPLOAD_MODE: direct
-# Memory budget for proxied upload bodies held at once, server-wide, in MiB
-# (default 128, <= 0 means the default). Uploads past it wait for room.
-CHUNK_PROXY_BUFFER_MIB: 128
+# Memory budget for bundle upload bodies held at once, server-wide, in MiB
+# (default 256, <= 0 means the default). Uploads past it wait for room.
+CHUNK_PROXY_BUFFER_MIB: 256
+# Largest bundle upload body a presign signs, in MiB (default 64, <= 0 means
+# the default; never less than one maximum-size chunk).
+CHUNK_BUNDLE_MAX_MIB: 64
+# Chunk packs (nipad-ee only): on writes every bundle upload, and every
+# server-side write such as a merge, as one pack object of many chunks
+# (packs/<project>/<pack id>) instead of one object per chunk, and clones read
+# packed chunks with merged HTTP Range requests. Requires
+# CHUNK_UPLOAD_MODE=proxy and CHUNK_STORAGE=s3 (refused at startup
+# otherwise); own-storage (BYO) projects keep one object per chunk. The free
+# `nipad` ignores it. Default off.
+CHUNK_PACKS: "off"
+# Loose chunk writes (one object per chunk, packs off) the server runs at once,
+# server-wide (default 64, <= 0 means the default). A bundle's chunks are
+# written concurrently under this limit; with R2/S3 latency it sets the write
+# rate.
+CHUNK_STORE_WRITE_CONCURRENCY: 64
 # Most files plus removed paths one push may carry (default 2000000).
 PUSH_MAX_FILES: 2000000
 # Chunk hashes the clone download cache keeps per server (32 bytes each,

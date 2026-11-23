@@ -54,11 +54,23 @@ type BranchesRequiredReviewer struct {
 }
 
 type Chunk struct {
-	ID        int64        `json:"id"`
-	ProjectID int64        `json:"project_id"`
-	Hash      []byte       `json:"hash"`
-	SizeBytes int64        `json:"size_bytes"`
-	CreatedAt sql.NullTime `json:"created_at"`
+	ID         int64         `json:"id"`
+	ProjectID  int64         `json:"project_id"`
+	Hash       []byte        `json:"hash"`
+	SizeBytes  int64         `json:"size_bytes"`
+	CreatedAt  sql.NullTime  `json:"created_at"`
+	PackID     sql.NullInt64 `json:"pack_id"`
+	PackOffset sql.NullInt64 `json:"pack_offset"`
+}
+
+type ChunkPack struct {
+	ID         int64        `json:"id"`
+	ProjectID  int64        `json:"project_id"`
+	SizeBytes  int64        `json:"size_bytes"`
+	ChunkCount int64        `json:"chunk_count"`
+	State      string       `json:"state"`
+	CreatedAt  time.Time    `json:"created_at"`
+	GcMarkedAt sql.NullTime `json:"gc_marked_at"`
 }
 
 type Commit struct {

@@ -67,7 +67,11 @@ func requireMaintenance(t *testing.T, err error, scope maintenance.Scope, mode m
 
 func rawChunk(t *testing.T, method, host, project string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(method, "http://"+host+"/api/chunks/"+e2eOrgSlug+"/"+project+"/abcd", nil)
+	path := "/api/chunks/" + e2eOrgSlug + "/" + project + "/abcd"
+	if method == http.MethodPut {
+		path = "/api/chunk-bundles/" + e2eOrgSlug + "/" + project
+	}
+	req, err := http.NewRequest(method, "http://"+host+path, nil)
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
