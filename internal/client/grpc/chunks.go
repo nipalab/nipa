@@ -280,6 +280,11 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 // stream wants are copied from the response body straight into stream.Write
 // and never buffered, the rest reach onChunk as before. Write verifies the
 // content itself and may run concurrently for different chunks.
+//
+// Chunks stored in packs come as ranges of a pack object: each window's
+// ranges are merged into as few Range requests as planDownloads allows,
+// each request runs through the download pool like one chunk and is split
+// into its chunks on the way in.
 func (c *Client) DownloadChunksStream(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, stream *domain.ChunkStream, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	if len(hashes) == 0 {
 		return nil
@@ -317,7 +322,7 @@ func (c *Client) DownloadChunksStream(ctx context.Context, scope domain.ChunkSco
 			if start+downloadWindow < len(hashes) {
 				next = fetch(start + downloadWindow)
 			}
-			for _, job := range window.jobs {
+			for _, job := range planDownloads(window.jobs) {
 				if !emit(job) {
 					return nil
 				}
@@ -325,6 +330,9 @@ func (c *Client) DownloadChunksStream(ctx context.Context, scope domain.ChunkSco
 		}
 		return nil
 	}, func(ctx context.Context, job chunkTransfer) (int64, error) {
+		if len(job.ranges) > 0 {
+			return c.downloadRange(ctx, stream, sink, job)
+		}
 		if stream != nil && stream.Wants(job.hash) {
 			return c.streamChunk(ctx, stream, job)
 		}
@@ -364,8 +372,11 @@ func (c *Client) downloadURLs(ctx context.Context, client pb.NipaServiceClient, 
 			if err != nil {
 				return nil, err
 			}
+			if err := checkDownloadRange(hash, u.GetOffset(), u.GetLength()); err != nil {
+				return nil, err
+			}
 			found[hash] = struct{}{}
-			jobs = append(jobs, chunkTransfer{hash: hash, url: u.GetUrl()})
+			jobs = append(jobs, chunkTransfer{hash: hash, url: u.GetUrl(), offset: u.GetOffset(), length: u.GetLength()})
 		}
 		pageToken = res.GetNextPageToken()
 		if pageToken == "" {
@@ -388,6 +399,12 @@ type chunkTransfer struct {
 	data    []byte
 	// bundle is set for a bundle upload: many chunks in one PUT to url.
 	bundle *chunkBundle
+	// offset and length, for a download, name the chunk's byte range in the
+	// object at url (a pack); length 0 means the whole object.
+	offset, length int64
+	// ranges is set for a ranged download: these chunks, in offset order, in
+	// one Range request to url (planDownloads).
+	ranges []rangePart
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
@@ -561,7 +578,28 @@ func (r *countingReader) Read(p []byte) (int, error) {
 // fails with errTransferStalled when the server stops sending for longer than
 // the client's stall timeout.
 func (c *Client) openChunk(ctx context.Context, span trace.Span, job chunkTransfer) (*http.Response, retryHint, error) {
-	target, err := c.transferURL(job.url)
+	res, hint, err := c.openGET(ctx, span, job.url, nil)
+	if err != nil {
+		return nil, hint, err
+	}
+	fail := func(hint retryHint, err error) (*http.Response, retryHint, error) {
+		_ = res.Body.Close()
+		return nil, hint, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return fail(httpRetryHint(res), chunkHTTPError(res))
+	}
+	if res.ContentLength > chunker.MaxChunkSize() {
+		return fail(retryHint{}, oversizedChunkError(job.hash, chunker.MaxChunkSize()))
+	}
+	return res, retryHint{}, nil
+}
+
+// openGET sends one GET to a transfer URL (with the headers setHeaders adds)
+// and returns the response of any status except a maintenance refusal, its
+// body guarded against stalls.
+func (c *Client) openGET(ctx context.Context, span trace.Span, url string, setHeaders func(http.Header)) (*http.Response, retryHint, error) {
+	target, err := c.transferURL(url)
 	if err != nil {
 		return nil, retryHint{}, err
 	}
@@ -571,6 +609,9 @@ func (c *Client) openChunk(ctx context.Context, span trace.Span, job chunkTransf
 	if err != nil {
 		guard.stop()
 		return nil, retryHint{}, err
+	}
+	if setHeaders != nil {
+		setHeaders(request.Header)
 	}
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
@@ -582,18 +623,9 @@ func (c *Client) openChunk(ctx context.Context, span trace.Span, job chunkTransf
 	guard.body = res.Body
 	res.Body = guard
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
-	fail := func(hint retryHint, err error) (*http.Response, retryHint, error) {
-		_ = res.Body.Close()
-		return nil, hint, err
-	}
 	if refused, ok := httpMaintenanceError(res); ok {
-		return fail(retryHint{}, refused)
-	}
-	if res.StatusCode != http.StatusOK {
-		return fail(httpRetryHint(res), chunkHTTPError(res))
-	}
-	if res.ContentLength > chunker.MaxChunkSize() {
-		return fail(retryHint{}, oversizedChunkError(job.hash, chunker.MaxChunkSize()))
+		_ = res.Body.Close()
+		return nil, retryHint{}, refused
 	}
 	return res, retryHint{}, nil
 }

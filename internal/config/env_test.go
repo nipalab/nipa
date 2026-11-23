@@ -77,9 +77,12 @@ func TestLoadConfig_EveryFieldFromEnv(t *testing.T) {
 		switch f.Type.Kind() {
 		case reflect.String:
 			raw = "env-" + key
-			if key == "CHUNK_UPLOAD_MODE" {
+			switch key {
+			case "CHUNK_UPLOAD_MODE":
 				// Validated at load: only a known mode is accepted.
 				raw = ChunkUploadModeProxy
+			case "CHUNK_PACKS":
+				raw = ChunkPacksOn
 			}
 			val = reflect.ValueOf(raw)
 		case reflect.Int, reflect.Int64:

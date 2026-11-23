@@ -16,10 +16,12 @@ import (
 // GetChunkUploadUrls, GetChunkDownloadUrls and ConfirmChunkUploads requests
 // and responses). Version 2 is per-project scope without possession proofs;
 // version 3 uploads through the server in bundles (one signed bundle URL per
-// presign, receipts v2 with a location) instead of one PUT per chunk. Client
+// presign, receipts v2 with a location) instead of one PUT per chunk;
+// version 4 adds chunk packs: download URLs carry an offset and length (a
+// range of a pack object) and receipts may name a pack location. Client
 // and server must speak the same version, an older peer is refused with an
 // upgrade hint.
-const Protocol uint32 = 3
+const Protocol uint32 = 4
 
 // Verifier checks streamed chunk bytes in one pass: it computes the chunk
 // hash (equal to chunker.Sum) and counts the bytes, so the server never holds

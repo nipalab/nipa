@@ -7,6 +7,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/lib/pq"
@@ -44,6 +45,25 @@ func (q *Queries) AdoptOrphanChunks(ctx context.Context, arg AdoptOrphanChunksPa
 	return result.RowsAffected()
 }
 
+const countSweepableChunkPacks = `-- name: CountSweepableChunkPacks :one
+SELECT COUNT(*)::BIGINT AS packs, COALESCE(SUM(p.size_bytes), 0)::BIGINT AS bytes FROM chunk_packs p
+WHERE p.gc_marked_at IS NOT NULL AND p.gc_marked_at < $1::timestamptz
+  AND (p.state = 'pending'
+       OR NOT EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id))
+`
+
+type CountSweepableChunkPacksRow struct {
+	Packs int64 `json:"packs"`
+	Bytes int64 `json:"bytes"`
+}
+
+func (q *Queries) CountSweepableChunkPacks(ctx context.Context, cutoff time.Time) (CountSweepableChunkPacksRow, error) {
+	row := q.db.QueryRowContext(ctx, countSweepableChunkPacks, cutoff)
+	var i CountSweepableChunkPacksRow
+	err := row.Scan(&i.Packs, &i.Bytes)
+	return i, err
+}
+
 const countSweepableChunks = `-- name: CountSweepableChunks :one
 SELECT COUNT(*)::BIGINT AS chunks, COALESCE(SUM(c.size_bytes), 0)::BIGINT AS bytes FROM chunks c
 WHERE c.gc_marked_at IS NOT NULL AND c.gc_marked_at < $1::timestamptz
@@ -61,6 +81,18 @@ func (q *Queries) CountSweepableChunks(ctx context.Context, cutoff time.Time) (C
 	var i CountSweepableChunksRow
 	err := row.Scan(&i.Chunks, &i.Bytes)
 	return i, err
+}
+
+const deleteChunkPacksByIDs = `-- name: DeleteChunkPacksByIDs :execrows
+DELETE FROM chunk_packs WHERE id = ANY($1::bigint[])
+`
+
+func (q *Queries) DeleteChunkPacksByIDs(ctx context.Context, ids []int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteChunkPacksByIDs, pq.Array(ids))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteChunksByIDs = `-- name: DeleteChunksByIDs :execrows
@@ -116,8 +148,52 @@ func (q *Queries) ExistingProjectChunks(ctx context.Context, arg ExistingProject
 	return items, nil
 }
 
+const lockSweepableChunkPacks = `-- name: LockSweepableChunkPacks :many
+SELECT p.id, p.project_id, p.size_bytes FROM chunk_packs p
+WHERE p.gc_marked_at IS NOT NULL AND p.gc_marked_at < $1::timestamptz
+  AND (p.state = 'pending'
+       OR NOT EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id))
+ORDER BY p.id
+LIMIT $2::bigint
+FOR UPDATE OF p SKIP LOCKED
+`
+
+type LockSweepableChunkPacksParams struct {
+	Cutoff time.Time `json:"cutoff"`
+	Limit  int64     `json:"limit"`
+}
+
+type LockSweepableChunkPacksRow struct {
+	ID        int64 `json:"id"`
+	ProjectID int64 `json:"project_id"`
+	SizeBytes int64 `json:"size_bytes"`
+}
+
+func (q *Queries) LockSweepableChunkPacks(ctx context.Context, arg LockSweepableChunkPacksParams) ([]LockSweepableChunkPacksRow, error) {
+	rows, err := q.db.QueryContext(ctx, lockSweepableChunkPacks, arg.Cutoff, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockSweepableChunkPacksRow
+	for rows.Next() {
+		var i LockSweepableChunkPacksRow
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.SizeBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSweepableChunks = `-- name: LockSweepableChunks :many
-SELECT c.id, c.project_id, c.hash, c.size_bytes FROM chunks c
+SELECT c.id, c.project_id, c.hash, c.size_bytes, c.pack_id FROM chunks c
 WHERE c.gc_marked_at IS NOT NULL AND c.gc_marked_at < $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
   AND NOT EXISTS (SELECT 1 FROM project_chunk_uploads u WHERE u.project_id = c.project_id AND u.hash = c.hash)
@@ -132,10 +208,11 @@ type LockSweepableChunksParams struct {
 }
 
 type LockSweepableChunksRow struct {
-	ID        int64  `json:"id"`
-	ProjectID int64  `json:"project_id"`
-	Hash      []byte `json:"hash"`
-	SizeBytes int64  `json:"size_bytes"`
+	ID        int64         `json:"id"`
+	ProjectID int64         `json:"project_id"`
+	Hash      []byte        `json:"hash"`
+	SizeBytes int64         `json:"size_bytes"`
+	PackID    sql.NullInt64 `json:"pack_id"`
 }
 
 func (q *Queries) LockSweepableChunks(ctx context.Context, arg LockSweepableChunksParams) ([]LockSweepableChunksRow, error) {
@@ -152,10 +229,42 @@ func (q *Queries) LockSweepableChunks(ctx context.Context, arg LockSweepableChun
 			&i.ProjectID,
 			&i.Hash,
 			&i.SizeBytes,
+			&i.PackID,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markChunkPacks = `-- name: MarkChunkPacks :many
+UPDATE chunk_packs p SET gc_marked_at = $1::timestamptz
+WHERE p.gc_marked_at IS NULL
+  AND (p.state = 'pending'
+       OR NOT EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id))
+RETURNING p.size_bytes
+`
+
+func (q *Queries) MarkChunkPacks(ctx context.Context, markedAt time.Time) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, markChunkPacks, markedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var size_bytes int64
+		if err := rows.Scan(&size_bytes); err != nil {
+			return nil, err
+		}
+		items = append(items, size_bytes)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -229,6 +338,21 @@ type UnmarkChunksParams struct {
 
 func (q *Queries) UnmarkChunks(ctx context.Context, arg UnmarkChunksParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, unmarkChunks, arg.ProjectID, pq.Array(arg.Hashes))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const unmarkReferencedChunkPacks = `-- name: UnmarkReferencedChunkPacks :execrows
+UPDATE chunk_packs p SET gc_marked_at = NULL
+WHERE p.gc_marked_at IS NOT NULL
+  AND p.state <> 'pending'
+  AND EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id)
+`
+
+func (q *Queries) UnmarkReferencedChunkPacks(ctx context.Context) (int64, error) {
+	result, err := q.db.ExecContext(ctx, unmarkReferencedChunkPacks)
 	if err != nil {
 		return 0, err
 	}

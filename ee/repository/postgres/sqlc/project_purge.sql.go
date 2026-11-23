@@ -126,6 +126,30 @@ func (q *Queries) PurgeProjectBranches(ctx context.Context, projectID int64) (in
 	return result.RowsAffected()
 }
 
+const purgeProjectChunkPacks = `-- name: PurgeProjectChunkPacks :execrows
+DELETE FROM chunk_packs d
+WHERE d.id IN (
+    SELECT p.id FROM chunk_packs p
+    WHERE p.project_id = $1
+      AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id)
+    ORDER BY p.id
+    LIMIT $2::bigint
+)
+`
+
+type PurgeProjectChunkPacksParams struct {
+	ProjectID int64 `json:"project_id"`
+	Limit     int64 `json:"limit"`
+}
+
+func (q *Queries) PurgeProjectChunkPacks(ctx context.Context, arg PurgeProjectChunkPacksParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeProjectChunkPacks, arg.ProjectID, arg.Limit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const purgeProjectChunkRows = `-- name: PurgeProjectChunkRows :execrows
 DELETE FROM chunks d
 WHERE d.id IN (

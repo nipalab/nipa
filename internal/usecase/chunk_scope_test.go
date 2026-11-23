@@ -70,7 +70,7 @@ func TestChunk_ConfirmUploads_LedgerThenRowsInOneTransaction(t *testing.T) {
 			order = append(order, "ledger")
 			return nil
 		})
-	repo.onInsert = func(ctx context.Context, projectID snow.ID, _ []ChunkRef) {
+	repo.onInsert = func(ctx context.Context, projectID snow.ID, _ []ChunkRow) {
 		require.True(t, inFakeTx(ctx), "the rows are inserted in the same transaction")
 		require.Equal(t, testProject.ID, projectID)
 		require.Zero(t, tx.committed, "rows are written before the transaction commits")
@@ -204,19 +204,19 @@ func TestChunk_SameHashInTwoProjects(t *testing.T) {
 	require.True(t, domain.IsErrorNotFound(err))
 }
 
-func TestChunk_AttributeProjectChunks_RecordsWithoutLedger(t *testing.T) {
+func TestChunk_RecordStoredChunks_RecordsWithoutLedger(t *testing.T) {
 	ctx := context.Background()
 	uc, repo := newLinkFixture(t, newStubChunkStore())
 	tx := &chunkTxRecorder{}
 	uc.WithTransactor(tx)
 	hashes := []domain.Hash{chunker.Sum([]byte("a")), chunker.Sum([]byte("b"))}
 
-	require.NoError(t, uc.AttributeProjectChunks(ctx, testProject.ID, []LedgerChunk{{Hash: hashes[0], SizeBytes: 1}, {Hash: hashes[1], SizeBytes: 1}}))
-	require.Equal(t, [][]ChunkRef{{{Hash: hashes[0], SizeBytes: 1}, {Hash: hashes[1], SizeBytes: 1}}}, repo.inserts)
+	require.NoError(t, uc.RecordStoredChunks(ctx, testProject.ID, []ChunkRow{{Hash: hashes[0], SizeBytes: 1}, {Hash: hashes[1], SizeBytes: 1}}))
+	require.Equal(t, [][]ChunkRow{{{Hash: hashes[0], SizeBytes: 1}, {Hash: hashes[1], SizeBytes: 1}}}, repo.inserts)
 	require.Equal(t, 1, tx.committed)
 }
 
-func TestChunk_AttributeProjectChunks_QuotaFailureLeavesNoRow(t *testing.T) {
+func TestChunk_RecordStoredChunks_QuotaFailureLeavesNoRow(t *testing.T) {
 	ctx := context.Background()
 	uc, repo := newLinkFixture(t, newStubChunkStore())
 	ledger := NewMockStorageLedger(gomock.NewController(t))
@@ -225,16 +225,16 @@ func TestChunk_AttributeProjectChunks_QuotaFailureLeavesNoRow(t *testing.T) {
 	chunks := []LedgerChunk{{Hash: chunker.Sum([]byte("merge")), SizeBytes: 5}}
 	ledger.EXPECT().AttributeProjectChunks(gomock.Any(), testProject.ID, chunks).Return(quota)
 
-	require.ErrorIs(t, uc.AttributeProjectChunks(ctx, testProject.ID, chunks), quota)
+	require.ErrorIs(t, uc.RecordStoredChunks(ctx, testProject.ID, []ChunkRow{{Hash: chunks[0].Hash, SizeBytes: 5}}), quota)
 	require.Empty(t, repo.inserts)
 }
 
-func TestChunk_AttributeProjectChunks_ResolverError(t *testing.T) {
+func TestChunk_RecordStoredChunks_ResolverError(t *testing.T) {
 	uc, _ := newLinkFixture(t, newStubChunkStore())
 	resolveErr := errors.New("resolver down")
 	uc.WithChunkStores(fakeChunkStores{err: resolveErr})
 
-	err := uc.AttributeProjectChunks(context.Background(), testProject.ID, []LedgerChunk{{Hash: domain.Hash{1}, SizeBytes: 1}})
+	err := uc.RecordStoredChunks(context.Background(), testProject.ID, []ChunkRow{{Hash: domain.Hash{1}, SizeBytes: 1}})
 	require.ErrorIs(t, err, resolveErr)
 }
 

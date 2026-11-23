@@ -112,11 +112,11 @@ func TestChunk_ExternalConfirmSkipsLedger(t *testing.T) {
 	require.True(t, f.repo.has(testProject.ID, hash), "own storage still records the project's rows")
 }
 
-func TestChunk_ExternalAttributeProjectChunksSkipsLedger(t *testing.T) {
+func TestChunk_ExternalRecordStoredChunksSkipsLedger(t *testing.T) {
 	f := newTwoStoreFixture(t, ProjectStore{External: true})
 	hash := chunker.Sum([]byte("merged"))
 
-	require.NoError(t, f.uc.AttributeProjectChunks(context.Background(), testProject.ID, []LedgerChunk{{Hash: hash, SizeBytes: 6}}))
+	require.NoError(t, f.uc.RecordStoredChunks(context.Background(), testProject.ID, []ChunkRow{{Hash: hash, SizeBytes: 6}}))
 	require.True(t, f.repo.has(testProject.ID, hash))
 }
 
@@ -125,7 +125,7 @@ func TestChunk_StoreForProjectWritesProjectStore(t *testing.T) {
 	data := []byte("merge output")
 	hash := chunker.Sum(data)
 
-	err := f.uc.StoreForProject(context.Background(), testProject.ID, hash, data)
+	err := storeOne(f.uc, context.Background(), testProject.ID, hash, data)
 
 	require.NoError(t, err)
 	require.Equal(t, data, f.own.data[ck(hash)])
@@ -198,7 +198,7 @@ func TestChunk_ResolverErrors(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	_, err = uc.Download(ctx, testProject.ID, hash)
 	require.ErrorIs(t, err, wantErr)
-	require.ErrorIs(t, uc.AttributeProjectChunks(ctx, testProject.ID, []LedgerChunk{{Hash: hash, SizeBytes: 1}}), wantErr)
+	require.ErrorIs(t, uc.RecordStoredChunks(ctx, testProject.ID, []ChunkRow{{Hash: hash, SizeBytes: 1}}), wantErr)
 	require.ErrorIs(t, uc.RequireWritable(ctx, testProject.ID), wantErr)
 }
 

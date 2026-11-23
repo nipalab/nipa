@@ -67,6 +67,8 @@ type Config struct {
 	ChunkUploadMode                 string  `mapstructure:"CHUNK_UPLOAD_MODE"`
 	ChunkProxyBufferMiB             int     `mapstructure:"CHUNK_PROXY_BUFFER_MIB"`
 	ChunkBundleMaxMiB               int     `mapstructure:"CHUNK_BUNDLE_MAX_MIB"`
+	ChunkPacks                      string  `mapstructure:"CHUNK_PACKS"`
+	ChunkStoreWriteConcurrency      int     `mapstructure:"CHUNK_STORE_WRITE_CONCURRENCY"`
 	PushMaxFiles                    int     `mapstructure:"PUSH_MAX_FILES"`
 	ChunkVisibilityCacheHashes      int     `mapstructure:"CHUNK_VISIBILITY_CACHE_HASHES"`
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
@@ -170,6 +172,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_UPLOAD_MODE", ChunkUploadModeDirect)
 	v.SetDefault("CHUNK_PROXY_BUFFER_MIB", DefaultChunkProxyBufferMiB)
 	v.SetDefault("CHUNK_BUNDLE_MAX_MIB", DefaultChunkBundleMaxMiB)
+	v.SetDefault("CHUNK_PACKS", ChunkPacksOff)
+	v.SetDefault("CHUNK_STORE_WRITE_CONCURRENCY", DefaultChunkStoreWriteConcurrency)
 	v.SetDefault("PUSH_MAX_FILES", 2_000_000)
 	v.SetDefault("CHUNK_VISIBILITY_CACHE_HASHES", 2_000_000)
 	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)
@@ -251,6 +255,11 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	cfg.ChunkUploadMode = mode
+	packs, err := ParseChunkPacks(cfg.ChunkPacks)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ChunkPacks = packs
 	cfg.SnowflakeNodeIDSet = v.IsSet("SNOWFLAKE_NODE_ID")
 	cfg.MFAEnabledSet = v.IsSet("MFA_ENABLED")
 

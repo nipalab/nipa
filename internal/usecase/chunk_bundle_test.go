@@ -36,6 +36,8 @@ func (s *overwritingDirectStore) Overwrite(_ context.Context, projectID snow.ID,
 	if s.overwriteErr != nil {
 		return s.overwriteErr
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.overwrites++
 	s.data[objectKey{projectID, hash}] = data
 	return nil
@@ -302,7 +304,9 @@ func TestChunk_StoreChunks_SharedService(t *testing.T) {
 		guard := &recordingGuard{}
 		uc, repo := newLinkFixture(t, store)
 		uc.WithGCGuard(guard)
-		require.NoError(t, uc.StoreChunks(ctx, testProject.ID, []ChunkContent{{chunker.Sum(a), a}, {chunker.Sum(b), b}}))
+		stored, err := uc.StoreChunks(ctx, testProject.ID, []ChunkContent{{chunker.Sum(a), a}, {chunker.Sum(b), b}, {chunker.Sum(a), a}})
+		require.NoError(t, err)
+		require.Equal(t, []ChunkRow{{Hash: chunker.Sum(a), SizeBytes: int64(len(a))}, {Hash: chunker.Sum(b), SizeBytes: int64(len(b))}}, stored, "loose, a repeated hash once")
 		require.Equal(t, 2, store.overwrites, "server content is written like a bundle entry")
 		require.Zero(t, store.existsCalls)
 		require.Equal(t, [][]domain.Hash{{chunker.Sum(a), chunker.Sum(b)}}, guard.protected, "one protect for the batch")
@@ -311,7 +315,7 @@ func TestChunk_StoreChunks_SharedService(t *testing.T) {
 	t.Run("hash mismatch writes nothing", func(t *testing.T) {
 		store := newStubChunkStore()
 		uc, _ := newLinkFixture(t, store)
-		err := uc.StoreChunks(ctx, testProject.ID, []ChunkContent{{chunker.Sum(a), a}, {chunker.Sum(a), b}})
+		_, err := uc.StoreChunks(ctx, testProject.ID, []ChunkContent{{chunker.Sum(a), a}, {chunker.Sum(a), b}})
 		var derr *domain.Error
 		require.ErrorAs(t, err, &derr)
 		require.Equal(t, 400, derr.Code)
@@ -319,7 +323,9 @@ func TestChunk_StoreChunks_SharedService(t *testing.T) {
 	})
 	t.Run("empty", func(t *testing.T) {
 		uc, _ := newLinkFixture(t, newStubChunkStore())
-		require.NoError(t, uc.StoreChunks(ctx, testProject.ID, nil))
+		stored, err := uc.StoreChunks(ctx, testProject.ID, nil)
+		require.NoError(t, err)
+		require.Empty(t, stored)
 	})
 }
 
@@ -389,7 +395,7 @@ func TestChunk_ConfirmUploads_ValidReceiptSkipsTheReadBack(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, store.readCount(), "the server saw the bytes itself; nothing is read back")
-	require.Equal(t, [][]ChunkRef{{{Hash: hash, SizeBytes: int64(len(data))}}}, repo.inserts, "the receipt's size is recorded")
+	require.Equal(t, [][]ChunkRow{{{Hash: hash, SizeBytes: int64(len(data))}}}, repo.inserts, "the receipt's size is recorded")
 }
 
 func TestChunk_ConfirmUploads_ReceiptForARecordedChunkIsIgnored(t *testing.T) {

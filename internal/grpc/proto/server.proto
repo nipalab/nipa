@@ -111,11 +111,14 @@ message PresignedChunkUrl {
     string url = 2; // GET URL (signed server path or absolute backend URL); for uploads, the direct PUT URL, empty when already_stored or when the chunk goes in a bundle (GetChunkUploadUrlsResponse.bundle_url)
     bool already_stored = 3; // the project already holds the chunk; skip the transfer
     map<string, string> headers = 4; // upload URLs only: request headers the PUT must carry (they are part of the signature)
+    int64 offset = 6; // download URLs only: with length > 0, the chunk is bytes [offset, offset+length) of the object at url (a pack); read it with a Range request
+    int64 length = 7; // download URLs only: the chunk's length in a pack; 0 means the whole object at url is the chunk
 }
 
 // chunk_protocol on the chunk RPCs is the chunk transfer protocol version
 // (internal/chunkproof.Protocol, 2 = per-project scope without possession
-// proofs, 3 = bundle uploads with v2 receipts). A server refuses a request with an older (or missing) version with
+// proofs, 3 = bundle uploads with v2 receipts, 4 = chunk packs: download URLs
+// with an offset and length, receipts with pack locations). A server refuses a request with an older (or missing) version with
 // FAILED_PRECONDITION and an upgrade hint; a client refuses a response with an
 // older one the same way, so client and server always speak the same version.
 

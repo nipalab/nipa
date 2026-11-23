@@ -114,6 +114,9 @@ type chunkTestServer struct {
 	bundleReceipts func(hashes []string) []bundleReceipt
 	// bundleBody overrides the raw body a bundle PUT answers with.
 	bundleBody string
+	// packed answers download presigns for these hashes with a range of a
+	// pack object (url, offset, length) instead of a loose chunk URL.
+	packed map[string]*pb.PresignedChunkUrl
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -240,6 +243,10 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	}
 	resp := &pb.GetChunkDownloadUrlsResponse{ChunkProtocol: s.protocol()}
 	for _, hash := range req.GetHashes() {
+		if ranged, ok := s.packed[hash]; ok {
+			resp.Urls = append(resp.Urls, ranged)
+			continue
+		}
 		if _, exists := s.storedChunk(hash); !exists {
 			continue
 		}

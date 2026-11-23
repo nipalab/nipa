@@ -182,6 +182,8 @@ func toPBChunkURLs(urls []usecase.ChunkURL) []*pb.PresignedChunkUrl {
 			Url:           u.URL,
 			AlreadyStored: u.AlreadyStored,
 			Headers:       u.Headers,
+			Offset:        u.Offset,
+			Length:        u.Length,
 		})
 	}
 	return out

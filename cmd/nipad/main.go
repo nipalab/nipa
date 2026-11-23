@@ -151,6 +151,9 @@ func main() {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer func() { _ = chunkStore.Close() }()
+	if cfg.ChunkPacksEnabled() {
+		slog.Warn("CHUNK_PACKS=on is ignored: the free server stores every chunk as a loose file")
+	}
 	if cfg.ChunkURLSigningKey == "" {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}

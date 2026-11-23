@@ -31,13 +31,23 @@ const (
 	// LocationLoose is one object per chunk at the project's key for its
 	// hash. It carries no further fields.
 	LocationLoose LocationKind = 1
+	// LocationPack is a range of a pack object of the project: the pack id
+	// (u64) and the chunk's offset in it (u64); the length is the receipt's
+	// size.
+	LocationPack LocationKind = 2
 )
 
+// packFieldBytes is the size of a pack location's fields: pack id, offset.
+const packFieldBytes = 16
+
 // Location is where a bundle upload stored a chunk. It is encoded as one kind
-// byte followed by the kind's fields, so a new kind (a pack and an offset)
-// adds a value, not a new receipt format.
+// byte followed by the kind's fields, so a new kind adds a value, not a new
+// receipt format.
 type Location struct {
 	Kind LocationKind
+	// PackID and Offset are set for LocationPack only.
+	PackID snow.ID
+	Offset int64
 }
 
 // Loose is the location of a chunk stored as its own object.
@@ -45,10 +55,23 @@ func Loose() Location {
 	return Location{Kind: LocationLoose}
 }
 
+// Packed is the location of a chunk at offset in the project's pack packID.
+func Packed(packID snow.ID, offset int64) Location {
+	return Location{Kind: LocationPack, PackID: packID, Offset: offset}
+}
+
 func (l Location) encode() ([]byte, bool) {
 	switch l.Kind {
 	case LocationLoose:
 		return []byte{byte(LocationLoose)}, true
+	case LocationPack:
+		if l.PackID <= 0 || l.Offset < 0 {
+			return nil, false
+		}
+		out := make([]byte, 1, 1+packFieldBytes)
+		out[0] = byte(LocationPack)
+		out = binary.BigEndian.AppendUint64(out, uint64(l.PackID.Int64()))
+		return binary.BigEndian.AppendUint64(out, uint64(l.Offset)), true
 	default:
 		return nil, false
 	}
@@ -61,6 +84,16 @@ func decodeLocation(raw []byte) (Location, bool) {
 	switch LocationKind(raw[0]) {
 	case LocationLoose:
 		return Loose(), len(raw) == 1
+	case LocationPack:
+		if len(raw) != 1+packFieldBytes {
+			return Location{}, false
+		}
+		packID := int64(binary.BigEndian.Uint64(raw[1:]))
+		offset := int64(binary.BigEndian.Uint64(raw[9:]))
+		if packID <= 0 || offset < 0 {
+			return Location{}, false
+		}
+		return Packed(snow.ID(packID), offset), true
 	default:
 		return Location{}, false
 	}
@@ -74,8 +107,8 @@ var ErrInvalidReceipt = errors.New("invalid chunk upload receipt")
 // hashing to hash for projectID at location. It is stateless:
 // base64url(expiry ‖ size ‖ location) "." base64url(HMAC-SHA256), the MAC
 // under key covering the domain label, the project, the hash and the whole
-// payload. It panics on a location kind it cannot encode (a programming
-// error).
+// payload (so the pack and offset too). It panics on a location it cannot
+// encode (a programming error).
 func NewReceipt(key string, projectID snow.ID, hash domain.Hash, size int64, location Location, expires time.Time) string {
 	loc, ok := location.encode()
 	if !ok {

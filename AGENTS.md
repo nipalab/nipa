@@ -234,7 +234,11 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   the bearer filter (the signature is the capability).
   Chunks are per project: rows are `UNIQUE (project_id, hash)` and every
   `storage.ChunkStore` call and object key (`p/<project>/ab/cdef...`) takes
-  the project, so never look a chunk up by hash alone. The chunk RPCs carry
+  the project, so never look a chunk up by hash alone. With `CHUNK_PACKS=on`
+  a row may point into a pack (`chunks.pack_id`/`pack_offset`, object
+  `packs/<project>/<pack id>`): read chunk bytes only through
+  `ProjectChunkReader`/`Chunk.Download` (the pack-aware `packedStore`), never
+  `store.Get` on the raw store. The chunk RPCs carry
   `chunk_protocol` (`chunkproof.Protocol`); changing the chunk wire contract
   means bumping it on both sides.
   With `CHUNK_UPLOAD_MODE=proxy` (and always on free `nipad`) uploads go in

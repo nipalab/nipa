@@ -63,3 +63,17 @@ func (r *ProjectChunkReader) Get(ctx context.Context, projectID snow.ID, hash do
 	}
 	return resolved.Store.Get(ctx, projectID, hash)
 }
+
+// Prefetch looks up the locations of chunks the caller is about to read one
+// by one (a merge reading a file), so a store with packs resolves them in one
+// query instead of one per chunk. Other stores ignore it.
+func (r *ProjectChunkReader) Prefetch(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
+	resolved, err := r.stores.ForProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if packed, ok := resolved.Store.(*packedStore); ok {
+		return packed.Prefetch(ctx, projectID, hashes)
+	}
+	return nil
+}

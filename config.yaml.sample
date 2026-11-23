@@ -144,6 +144,19 @@ CHUNK_PROXY_BUFFER_MIB: 256
 # Largest bundle upload body a presign signs, in MiB (default 64, <= 0 means
 # the default; never less than one maximum-size chunk).
 CHUNK_BUNDLE_MAX_MIB: 64
+# Chunk packs (nipad-ee only): on writes every bundle upload, and every
+# server-side write such as a merge, as one pack object of many chunks
+# (packs/<project>/<pack id>) instead of one object per chunk, and clones read
+# packed chunks with merged HTTP Range requests. Requires
+# CHUNK_UPLOAD_MODE=proxy and CHUNK_STORAGE=s3 (refused at startup
+# otherwise); own-storage (BYO) projects keep one object per chunk. The free
+# `nipad` ignores it. Default off.
+CHUNK_PACKS: "off"
+# Loose chunk writes (one object per chunk, packs off) the server runs at once,
+# server-wide (default 64, <= 0 means the default). A bundle's chunks are
+# written concurrently under this limit; with R2/S3 latency it sets the write
+# rate.
+CHUNK_STORE_WRITE_CONCURRENCY: 64
 # Most files plus removed paths one push may carry (default 2000000).
 PUSH_MAX_FILES: 2000000
 # Chunk hashes the clone download cache keeps per server (32 bytes each,

@@ -144,6 +144,12 @@ Project restore window: `run.sh` sets `STORAGE_PURGE_RETENTION_DAYS`
 the suite, which asserts `purge_after = deleted_at + retention`; on free the
 variable is empty and `purge_after` must be absent.
 
+Chunk packs: `NIPA_TEST_CHUNK_PACKS=1` starts nipad-ee with
+`CHUNK_UPLOAD_MODE=proxy` and `CHUNK_PACKS=on`, so every push stores its
+bundles as pack objects and clones read them with Range requests (free is
+unaffected). Run the suite both ways:
+`make test-client-both` and `NIPA_TEST_CHUNK_PACKS=1 make test-client-ee`.
+
 Makefile shortcuts: `make test-client`, `make test-client-ee`,
 `make test-client-both`.
 

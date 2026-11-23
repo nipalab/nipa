@@ -90,7 +90,7 @@ func newStubChunkRepo() *stubChunkRepo {
 	return &stubChunkRepo{rows: map[chunkRowKey]int64{}}
 }
 
-func (r *stubChunkRepo) InsertChunksIfNotExist(_ context.Context, projectID snow.ID, chunks []usecase.ChunkRef) error {
+func (r *stubChunkRepo) InsertChunkRows(_ context.Context, projectID snow.ID, chunks []usecase.ChunkRow) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, chunk := range chunks {
@@ -101,16 +101,26 @@ func (r *stubChunkRepo) InsertChunksIfNotExist(_ context.Context, projectID snow
 	return nil
 }
 
-func (r *stubChunkRepo) ProjectChunkSizes(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+func (r *stubChunkRepo) ProjectChunkRecords(_ context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]usecase.ChunkRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	sizes := make(map[domain.Hash]int64, len(hashes))
+	records := make(map[domain.Hash]usecase.ChunkRecord, len(hashes))
 	for _, hash := range hashes {
 		if size, ok := r.rows[chunkRowKey{projectID, hash}]; ok {
-			sizes[hash] = size
+			records[hash] = usecase.ChunkRecord{SizeBytes: size}
 		}
 	}
-	return sizes, nil
+	return records, nil
+}
+
+func (r *stubChunkRepo) RelocateChunks(context.Context, snow.ID, []usecase.ChunkRelocation) error {
+	return nil
+}
+
+func (r *stubChunkRepo) InsertChunkPack(context.Context, usecase.ChunkPack) error { return nil }
+
+func (r *stubChunkRepo) SetChunkPackState(context.Context, snow.ID, usecase.ChunkPackState) error {
+	return nil
 }
 
 func (r *stubChunkRepo) has(projectID snow.ID, hash domain.Hash) bool {
@@ -174,7 +184,7 @@ func TestGetChunkUploadUrlsHandler(t *testing.T) {
 	stored := []byte("stored chunk")
 	storedHash := chunker.Sum(stored)
 	require.NoError(t, store.Put(context.Background(), testChunkProject, storedHash, stored))
-	require.NoError(t, repo.InsertChunksIfNotExist(context.Background(), testChunkProject, []usecase.ChunkRef{{Hash: storedHash, SizeBytes: int64(len(stored))}}))
+	require.NoError(t, repo.InsertChunkRows(context.Background(), testChunkProject, []usecase.ChunkRow{{Hash: storedHash, SizeBytes: int64(len(stored))}}))
 
 	fresh := []byte("fresh chunk")
 	freshHash := chunker.Sum(fresh)

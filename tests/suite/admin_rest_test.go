@@ -206,6 +206,26 @@ func serverUploadURLs(project, hash string, size int64) *pb.GetChunkUploadUrlsRe
 	return resp
 }
 
+// serverConfirm confirms one bundle-uploaded chunk with its receipt and
+// returns the hashes the server still misses.
+func serverConfirm(project, hash, receipt string) []string {
+	GinkgoHelper()
+	conn, err := grpc.NewClient(cli.host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+api.token)
+	resp, err := pb.NewNipaServiceClient(conn).ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
+		Context:       &pb.ProjectContext{Org: orgSlug, Project: project},
+		Hashes:        []string{hash},
+		Receipts:      []*pb.ChunkReceipt{{Hash: hash, Receipt: receipt}},
+		ChunkProtocol: chunkproof.Protocol,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	return resp.GetMissingHashes()
+}
+
 var _ = Describe("auth REST refresh and logout", func() {
 	It("rotates the refresh cookie and revokes it on logout", func() {
 		id := newIdentity("auth-refresh")
@@ -763,6 +783,9 @@ var _ = Describe("signed chunk transfer routes", func() {
 		Expect(receipts).To(HaveLen(1))
 		Expect(receipts[0].Hash).To(Equal(hash))
 		Expect(receipts[0].Receipt).NotTo(BeEmpty())
+		// Confirm records the row (and, with CHUNK_PACKS=on, the chunk's pack
+		// location), which a read of packed content needs.
+		Expect(serverConfirm(project, hash, receipts[0].Receipt)).To(BeEmpty())
 		status, body = chunkRequest(http.MethodGet, download, nil)
 		Expect(status).To(Equal(http.StatusOK))
 		Expect(body).To(Equal(data))

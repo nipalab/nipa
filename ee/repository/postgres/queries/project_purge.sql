@@ -64,6 +64,16 @@ WHERE d.id IN (
     LIMIT sqlc.arg('limit')::bigint
 );
 
+-- name: PurgeProjectChunkPacks :execrows
+DELETE FROM chunk_packs d
+WHERE d.id IN (
+    SELECT p.id FROM chunk_packs p
+    WHERE p.project_id = sqlc.arg(project_id)
+      AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.pack_id = p.id)
+    ORDER BY p.id
+    LIMIT sqlc.arg('limit')::bigint
+);
+
 -- name: IsProjectOnOwnStorage :one
 SELECT EXISTS (SELECT 1 FROM project_storage WHERE project_id = sqlc.arg(project_id))::BOOLEAN AS external;
 

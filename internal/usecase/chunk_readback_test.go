@@ -162,7 +162,7 @@ func TestChunk_ConfirmUploads_ReadBackDecisionTable(t *testing.T) {
 				require.NoError(t, err)
 				if tc.want.recorded {
 					require.Empty(t, missing)
-					require.Equal(t, [][]ChunkRef{{{Hash: tc.hash, SizeBytes: tc.want.size}}}, repo.inserts)
+					require.Equal(t, [][]ChunkRow{{{Hash: tc.hash, SizeBytes: tc.want.size}}}, repo.inserts)
 				} else {
 					require.Equal(t, []domain.Hash{tc.hash}, missing)
 					require.Empty(t, repo.inserts)

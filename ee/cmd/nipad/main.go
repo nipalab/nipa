@@ -158,6 +158,9 @@ func main() {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer func() { _ = chunkStore.Close() }()
+	if err := validateChunkPacks(cfg, chunkStore); err != nil {
+		panic(err)
+	}
 
 	storageLedger, err := createStorageLedger(cfg, dbConn)
 	if err != nil {
@@ -475,6 +478,19 @@ func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledg
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)
 	}
+}
+
+// validateChunkPacks refuses CHUNK_PACKS=on unless uploads are proxied and the
+// server's own store holds packs.
+func validateChunkPacks(cfg *config.Config, store storage.ChunkStore) error {
+	_, storesPacks := store.(storage.PackStore)
+	if err := cfg.ValidateChunkPacks(storesPacks); err != nil {
+		return err
+	}
+	if cfg.ChunkPacksEnabled() {
+		slog.Info("chunk packs enabled: bundle uploads and merges are written as one pack object each")
+	}
+	return nil
 }
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {

@@ -35,6 +35,9 @@ type Querier interface {
 	ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
+	ChunkPackInsert(ctx context.Context, arg ChunkPackInsertParams) error
+	ChunkPackSetState(ctx context.Context, arg ChunkPackSetStateParams) (int64, error)
+	ChunkRelocate(ctx context.Context, arg ChunkRelocateParams) (int64, error)
 	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error)
@@ -217,6 +220,7 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	ProjectChunkRecords(ctx context.Context, arg ProjectChunkRecordsParams) ([]ProjectChunkRecordsRow, error)
 	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)
 	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error
 	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)

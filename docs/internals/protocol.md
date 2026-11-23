@@ -150,18 +150,22 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   hash)`), two projects holding the same bytes store them twice, and the
   project's chunk row is its link to the content (no possession proofs, no
   challenges, no claim round). The three chunk RPCs carry `chunk_protocol`
-  (`chunkproof.Protocol`, 3: per-project scope plus bundle uploads with v2
-  receipts) on request and response: the server answers an
+  (`chunkproof.Protocol`, 4: per-project scope, bundle uploads with v2
+  receipts, chunk packs with ranged download URLs) on request and response: the server answers an
   older or missing version with `FailedPrecondition` and an "upgrade nipa"
   hint (`internal/grpc/server/chunk.go` `checkChunkProtocol`), and the client
   refuses a response without the current version (an older server) with a
   409 and the hint "upgrade the nipa server" (`checkServerChunkProtocol`).
   **Presign** (`PresignUploadURLs`) looks up the page's hashes in the
-  project's rows (one batched `ProjectChunkSizes`): no row = needs upload, no
-  store check (B4: a fresh push makes no existence checks); a row and the
-  object present (`Exists`, through a server-wide limit of 64 concurrent
-  checks, `presignExistsLimit`) = `already_stored`, no URL; a row but the
-  object lost = needs upload again; presign first protects the recorded
+  project's rows (one batched `ProjectChunkRecords`: size, location and pack
+  state): no row = needs upload, no store check (B4: a fresh push makes no
+  existence checks); a loose row and the object present (`Exists`, through a
+  server-wide limit of 64 concurrent checks, `presignExistsLimit`) =
+  `already_stored`, no URL; a packed row is answered from its pack's state
+  (`stored`/`retired` = present) with no store request (with a GC guard the
+  protected rows are read again after `Protect`, so a row a sweep removed
+  meanwhile reads as missing); a row but the
+  object (or pack) lost = needs upload again; presign first protects the recorded
   chunks from the GC (clears marks). A chunk that needs an upload gets a
   direct presigned URL (direct mode, see below) or, when the store takes
   uploads through the server, no URL: the page's response carries one
@@ -184,11 +188,22 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Chunk.WithVerifyLimit` via `UsecaseDeps.Config`). Then, in one
   transaction (`Chunk.WithTransactor`, the `dbtx` transactor), the ledger
   attributes the new rows (`ledger.Attribute`, quota, S5) and the project's
-  rows are inserted (`InsertChunksIfNotExist`: chunk rows plus their
-  `project_chunk_uploads` markers, `pushbatch` JSON statements, deduplicated,
+  rows are inserted (`InsertChunkRows`: chunk rows with their location,
+  `pack_id`/`pack_offset` from the receipt or NULL for a loose object, plus
+  their `project_chunk_uploads` markers, `pushbatch` JSON statements, deduplicated,
   sorted by hash so concurrent postgres confirms take index locks in the same
   order, 1000 rows per statement, `ON CONFLICT DO NOTHING`), so no row is
-  visible before the quota accepted it and a refused quota leaves none. The
+  visible before the quota accepted it and a refused quota leaves none. An
+  existing row keeps its location (a retried bundle or a concurrent push of
+  the same content: the new copy is dead bytes in its pack), except a row
+  whose content is lost (`Chunk.lostRows`): its pack is not readable (pack
+  state, no store request) or, for a loose row a packed receipt names new
+  bytes for, its object is missing (one `Exists`, only in that case, the
+  presign B4 found it missing too). Those rows move to the receipt's
+  location in the same transaction (`RelocateChunks`, one compare-and-set
+  `UPDATE ... WHERE pack_id/pack_offset IS NOT DISTINCT FROM` the old
+  location per row, so a concurrent move wins); only server-signed locations
+  reach it. The
   recorded size is always measured by the server. A client runs at most
   `maxConcurrentConfirms` (3) confirms at once across its upload windows
   (`Client.confirmSlots`; a waiter gives up when its context ends), so one
@@ -234,8 +249,12 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`internal/usecase/chunk_writer.go`), the one place server-side chunk bytes
   reach a project's store: it clears the GC marks of the batch
   (`ChunkGCGuard.Protect(project, hashes)`, so a sweep cannot remove an
-  object between the write and the confirm that trusts the receipt) and
-  writes each chunk as its own (loose) object: a store implementing
+  object between the write and the confirm that trusts the receipt), then
+  writes either one pack (packs on, see **Packs** below) or each chunk as its
+  own (loose) object, concurrently through a server-wide limit of
+  `CHUNK_STORE_WRITE_CONCURRENCY` writes (default 64, `<= 0` = default,
+  `Chunk.WithStoreWriteLimit`, the `fanOut` helper presign and confirm use;
+  the first failure cancels the others): a store implementing
   `storage.ChunkOverwriter` (S3) gets an unconditional single-part
   `Overwrite` with no `Exists` first (it replaces garbage an earlier direct
   upload left at the key), other stores `Put` (which skips content they
@@ -246,8 +265,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`chunkproof.NewReceipt`/`VerifyReceipt`, stateless): base64url(expiry ‖
   size ‖ location) "." base64url(HMAC-SHA256 under `CHUNK_URL_SIGNING_KEY`
   over the domain label `nipa-chunk-receipt:v2`, project id, hash and the
-  whole payload); the location is a kind byte plus the kind's fields, only
-  `LocationLoose` (1, no fields) exists until packs add a kind; expiry is the
+  whole payload); the location is a kind byte plus the kind's fields:
+  `LocationLoose` (1, no fields) or `LocationPack` (2, pack id u64 + offset
+  u64; the length is the receipt's size), so a client cannot make confirm
+  record a location that points at other bytes; expiry is the
   presign TTL and both blue/green colours share the key. v1 receipts are
   refused. A receipt no longer proves possession (nothing to prove within one
   project); it spares the read-back and carries the server-measured size
@@ -266,9 +287,68 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   Direct mode keeps one PUT per chunk to the store's URL.
   Receipts never skip the rows, the ledger or the quota. Server-generated
   merge content is stored with `Chunk.StoreChunks` (the same `storeChunks`,
-  object only, hashes checked first) and
-  recorded by `AttributeProjectChunks` (ledger, then rows, one transaction)
-  before `ApplyPushAll`.
+  object only, hashes checked first, returning each chunk's location) and
+  recorded by `RecordStoredChunks` (ledger, then rows at those locations,
+  one transaction) before `ApplyPushAll`.
+  **Packs** (`CHUNK_PACKS`, `off` default; `on` requires
+  `CHUNK_UPLOAD_MODE=proxy` and a `storage.PackStore` default store, checked
+  at `nipad-ee` startup by `validateChunkPacks`; free `nipad` ignores it,
+  its local store has no packs). `storeChunks` packs when the project is on
+  the server's own store (not `External`), the store implements
+  `storage.PackStore` (`ee/storage/s3`: `PutPack` single-part exact length,
+  `GetRange` = one ranged GET, `PresignPackDownload`, `DeletePack`) and
+  `Chunk.WithPacks(node)` is set: every chunk of the call (a bundle, a
+  merged file; large chunks too) goes into one object
+  `packs/<project base36>/<pack id base36>` (`storage.PackKey`, under the
+  store prefix): insert a `chunk_packs` row (`state = 'pending'`, snow id,
+  `size_bytes`, `chunk_count`), one `PutPack` (the body streams from the
+  decoded bundle's memory, `pack.Pack.Reader` seeks for retries), set
+  `stored`, return `(pack_id, offset)` per chunk for the receipts. A
+  failure after the insert leaves a pending row for the GC; no receipt names
+  it. Format (`internal/storage/pack`, fuzzed `FuzzReadIndex`): `"NPK1"`,
+  the chunks back to back (offsets from the object start), an index of
+  `hash 32 | offset u64 | length u32` per chunk, then `index offset u64 |
+  "NPK1"`; the index makes a pack self-describing. Schema (sqlite 000030,
+  postgres 000021, sqlite only for parity): `chunk_packs (id, project_id
+  cascade, size_bytes, chunk_count, state pending|stored|retired,
+  created_at, gc_marked_at)`, `chunks.pack_id` (FK) + `pack_offset` (both
+  NULL = loose), partial indexes on `chunks.pack_id` and
+  `chunk_packs.gc_marked_at`. **Reads**: `serverapp.BuildUsecases` wraps the
+  stores in `usecase.PackedReads(stores, repos.Push)`: for a project on a
+  `PackStore` (not `External`) `ForProject` returns a `packedStore` whose
+  `Get`/`Open` look up the chunk's row (`ProjectChunkRecords`, an LRU of
+  100k `(project, hash)` locations; `ProjectChunkReader.Prefetch` resolves a
+  merged file's chunks in one query) and read the pack range or the loose
+  key; every read is BLAKE3-checked (a mismatch is an error, never wrong
+  content), and a cached location that fails (404 or mismatch, e.g. after a
+  future compaction) is looked up once more. `Exists` of a packed row is the
+  pack state; `Size` the row's size. Browser, diff, blame and merges read
+  through `ProjectChunkReader`/`Chunk.Download` unchanged; presign, confirm
+  and writes use the raw store (`unwrapStore`). **Downloads**:
+  `PresignedChunkUrl.offset`/`length` (protocol 4): a packed chunk gets its
+  pack's presigned GET (signed once per pack per page) with its offset and
+  length, a loose chunk its own URL with 0/0 (the local store's signed
+  server path is always loose). The client (`internal/client/grpc/ranges.go`)
+  validates the range, then `planDownloads` groups a window's packed jobs by
+  URL, sorts by offset and merges neighbours while the gap is
+  `<= maxRangeGap` (1 MiB) and the span `<= maxRangeSpan` (32 MiB); each
+  merged range is one `Range: bytes=a-b` GET through the download pool (one
+  limiter slot, stall guard, `openGET`), split chunk by chunk on the way in
+  (only one chunk in memory; a wanted chunk streams into `ChunkStream.Write`,
+  the rest go to the callback, which verifies BLAKE3 as before). A transfer
+  that breaks is retried as a unit from the first chunk not yet delivered
+  (no chunk is delivered twice); a consumer failure is final; a server that
+  ignores `Range` (200) is read from the start. Loose jobs keep the
+  whole-object path. **GC**: a packed row's sweep deletes only the row;
+  `chunk_packs` rows with no chunk row pointing at them, or still `pending`,
+  are marked (marks of packs that gained rows are cleared) and, once marked
+  longer than the grace and still unreferenced or pending, locked (`SKIP
+  LOCKED`), their object deleted, then the row (a failed delete rolls back).
+  Receipts expire after the presign TTL (`<= grace / 2`), so a swept pack
+  can never gain a row again. No bucket listing is needed for packs.
+  Purge deletes the project's pack rows after its chunk rows, and
+  `DeleteProject` removes both `p/<project>/` and `packs/<project>/`.
+  Compaction and locality repack are not implemented yet.
   The client pushes through the client-streaming `PushStream` only (the unary
   `Push` stays for older clients; an older server answers `Unimplemented`,
   reported with an upgrade hint): `PushStreamHeader` first, then
@@ -485,8 +565,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   delete the project's objects, then the rows; a failed object delete rolls
   the batch back). `CHUNK_GC_MODE=dry-run` (default) marks and reports
   (`nipa_chunk_gc_*{phase="dry_run"}`) but deletes and adopts nothing.
-  Own-storage (BYO) buckets are never touched. Project purge deletes the
-  project's rows and its `p/<project>/` prefix (`ee/projectpurge`,
+  Own-storage (BYO) buckets are never touched. Packed rows and packs: see
+  **Packs** above. Project purge deletes the
+  project's rows and its `p/<project>/` and `packs/<project>/` prefixes (`ee/projectpurge`,
   `Purger.WithStore`). Plan and race analysis:
   `docs/plans/STORAGE_RECLAIM.md` (written for global chunks; the reference
   checks are now per project).

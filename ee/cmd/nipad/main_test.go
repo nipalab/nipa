@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/ee/registration"
+	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/storage"
 )
 
 func TestCreateStorageLedger(t *testing.T) {
@@ -187,4 +189,16 @@ func TestResolveSnowflakeNodeRefusesReservedCLINode(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, node)
 	require.Nil(t, lease)
+}
+
+func TestValidateChunkPacks(t *testing.T) {
+	packs, err := s3store.New(context.Background(), s3store.Config{Bucket: "b", Endpoint: "http://127.0.0.1:1", AccessKeyID: "a", SecretAccessKey: "s", SkipProbe: true})
+	require.NoError(t, err)
+	local, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+
+	require.NoError(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOff}, local), "packs off needs nothing")
+	require.NoError(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeProxy}, packs))
+	require.ErrorContains(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeDirect}, packs), "CHUNK_UPLOAD_MODE")
+	require.ErrorContains(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeProxy}, local), "holds packs")
 }

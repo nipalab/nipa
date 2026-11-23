@@ -46,8 +46,8 @@ FROM jsonb_array_elements(sqlc.arg(links)::jsonb) AS r
 ON CONFLICT (file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
 
 -- name: ChunkInsertManyOrIgnore :exec
-INSERT INTO chunks (project_id, hash, size_bytes)
-SELECT sqlc.arg(project_id)::bigint, decode(r->>0, 'hex'), (r->>1)::bigint
+INSERT INTO chunks (project_id, hash, size_bytes, pack_id, pack_offset)
+SELECT sqlc.arg(project_id)::bigint, decode(r->>0, 'hex'), (r->>1)::bigint, (r->>2)::bigint, (r->>3)::bigint
 FROM jsonb_array_elements(sqlc.arg(chunk_rows)::jsonb) AS r
 ON CONFLICT (project_id, hash) DO NOTHING;
 
@@ -56,3 +56,23 @@ INSERT INTO project_chunk_uploads (project_id, hash)
 SELECT sqlc.arg(project_id)::bigint, decode(h, 'hex')
 FROM jsonb_array_elements_text(sqlc.arg(hashes)::jsonb) AS h
 ON CONFLICT (project_id, hash) DO NOTHING;
+
+-- name: ProjectChunkRecords :many
+SELECT c.hash, c.size_bytes, c.pack_id, c.pack_offset, p.state AS pack_state
+FROM chunks c
+LEFT JOIN chunk_packs p ON p.id = c.pack_id
+WHERE c.project_id = sqlc.arg(project_id) AND c.hash = ANY(sqlc.arg(hashes)::bytea[]);
+
+-- name: ChunkRelocate :execrows
+UPDATE chunks
+SET pack_id = sqlc.narg(new_pack_id)::bigint, pack_offset = sqlc.narg(new_pack_offset)::bigint
+WHERE project_id = sqlc.arg(project_id) AND hash = sqlc.arg(hash)
+  AND pack_id IS NOT DISTINCT FROM sqlc.narg(old_pack_id)::bigint
+  AND pack_offset IS NOT DISTINCT FROM sqlc.narg(old_pack_offset)::bigint;
+
+-- name: ChunkPackInsert :exec
+INSERT INTO chunk_packs (id, project_id, size_bytes, chunk_count, state)
+VALUES (sqlc.arg(id), sqlc.arg(project_id), sqlc.arg(size_bytes), sqlc.arg(chunk_count), sqlc.arg(state));
+
+-- name: ChunkPackSetState :execrows
+UPDATE chunk_packs SET state = sqlc.arg(state) WHERE id = sqlc.arg(id);

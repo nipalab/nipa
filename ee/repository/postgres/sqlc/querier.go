@@ -39,6 +39,9 @@ type Querier interface {
 	ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
+	ChunkPackInsert(ctx context.Context, arg ChunkPackInsertParams) error
+	ChunkPackSetState(ctx context.Context, arg ChunkPackSetStateParams) (int64, error)
+	ChunkRelocate(ctx context.Context, arg ChunkRelocateParams) (int64, error)
 	ClearOwnerQuotaOverride(ctx context.Context, userID int64) error
 	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
@@ -54,10 +57,12 @@ type Querier interface {
 	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
 	CountOwnerSeats(ctx context.Context, ownerID int64) (int64, error)
 	CountStorageServersByOwner(ctx context.Context, ownerUserID int64) (int64, error)
+	CountSweepableChunkPacks(ctx context.Context, cutoff time.Time) (CountSweepableChunkPacksRow, error)
 	CountSweepableChunks(ctx context.Context, cutoff time.Time) (CountSweepableChunksRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateStorageServer(ctx context.Context, arg CreateStorageServerParams) (StorageServer, error)
+	DeleteChunkPacksByIDs(ctx context.Context, ids []int64) (int64, error)
 	DeleteChunksByIDs(ctx context.Context, ids []int64) (int64, error)
 	DeleteDeletedOrgStorageDefaults(ctx context.Context, id int64) error
 	DeleteDeletedProjectStorage(ctx context.Context, id int64) error
@@ -178,6 +183,7 @@ type Querier interface {
 	LockPurgeableProject(ctx context.Context, arg LockPurgeableProjectParams) (LockPurgeableProjectRow, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
 	LockStorageServerOwner(ctx context.Context, lockKey int64) error
+	LockSweepableChunkPacks(ctx context.Context, arg LockSweepableChunkPacksParams) ([]LockSweepableChunkPacksRow, error)
 	LockSweepableChunks(ctx context.Context, arg LockSweepableChunksParams) ([]LockSweepableChunksRow, error)
 	MFAChallengeAddAttempt(ctx context.Context, tokenHash string) (int64, error)
 	MFAChallengeCreate(ctx context.Context, arg MFAChallengeCreateParams) error
@@ -202,6 +208,7 @@ type Querier interface {
 	MaintenanceUpsertServer(ctx context.Context, arg MaintenanceUpsertServerParams) (MaintenanceWindow, error)
 	MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error
 	MarkBillingEventProcessed(ctx context.Context, eventID string) error
+	MarkChunkPacks(ctx context.Context, markedAt time.Time) ([]int64, error)
 	MarkUnreferencedChunks(ctx context.Context, arg MarkUnreferencedChunksParams) ([]int64, error)
 	MaxChunkID(ctx context.Context) (int64, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
@@ -282,6 +289,7 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	ProjectChunkRecords(ctx context.Context, arg ProjectChunkRecordsParams) ([]ProjectChunkRecordsRow, error)
 	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)
 	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error
 	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
@@ -292,6 +300,7 @@ type Querier interface {
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
 	PurgeProjectBranches(ctx context.Context, projectID int64) (int64, error)
+	PurgeProjectChunkPacks(ctx context.Context, arg PurgeProjectChunkPacksParams) (int64, error)
 	PurgeProjectChunkRows(ctx context.Context, arg PurgeProjectChunkRowsParams) (int64, error)
 	PurgeProjectChunkUploads(ctx context.Context, arg PurgeProjectChunkUploadsParams) (int64, error)
 	PurgeProjectCommitBatch(ctx context.Context, arg PurgeProjectCommitBatchParams) ([]int64, error)
@@ -377,6 +386,7 @@ type Querier interface {
 	TreeNodeSetHash(ctx context.Context, arg TreeNodeSetHashParams) error
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UnmarkChunks(ctx context.Context, arg UnmarkChunksParams) (int64, error)
+	UnmarkReferencedChunkPacks(ctx context.Context) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateStorageServer(ctx context.Context, arg UpdateStorageServerParams) (StorageServer, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error

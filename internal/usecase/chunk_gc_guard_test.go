@@ -38,7 +38,7 @@ func TestChunk_GCGuardProtectsServerUploadsBeforeTheCheck(t *testing.T) {
 	guard := &recordingGuard{store: store}
 	uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{}).WithGCGuard(guard)
 
-	err := uc.StoreForProject(ctx, snow.ID(7), hash, data)
+	err := storeOne(uc, ctx, snow.ID(7), hash, data)
 	require.NoError(t, err)
 	require.Equal(t, [][]domain.Hash{{hash}}, guard.protected)
 	require.Equal(t, []snow.ID{7}, guard.projects, "marks are cleared in the writing project only")
@@ -51,7 +51,7 @@ func TestChunk_GCGuardErrorStopsServerUpload(t *testing.T) {
 	guard := &recordingGuard{store: store, err: errors.New("db down")}
 	uc := NewChunk(newFakeChunkRepo(), store, ChunkTransferConfig{}).WithGCGuard(guard)
 
-	err := uc.StoreForProject(context.Background(), snow.ID(1), chunker.Sum(data), data)
+	err := storeOne(uc, context.Background(), snow.ID(1), chunker.Sum(data), data)
 	require.Error(t, err)
 	require.Zero(t, store.puts)
 }

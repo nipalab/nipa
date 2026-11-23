@@ -26,6 +26,9 @@ EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
 STORAGE_LEDGER="${NIPA_TEST_STORAGE_LEDGER-cloud}"
 SAAS_MODE="${NIPA_TEST_SAAS-1}"
 RATELIMIT_PROFILE="${NIPA_TEST_RATELIMIT:-0}"
+# CHUNK_PACKS on nipad-ee (with CHUNK_UPLOAD_MODE=proxy): bundles are written
+# as pack objects and clones read them with Range requests.
+CHUNK_PACKS="${NIPA_TEST_CHUNK_PACKS:-0}"
 # Deleted projects stay restorable this many days on nipad-ee (its purge
 # retention); the free server never purges and ignores the setting.
 PURGE_RETENTION_DAYS="${NIPA_TEST_PURGE_RETENTION_DAYS:-1}"
@@ -86,6 +89,9 @@ Environment:
                             restore window the project lifecycle spec checks)
   NIPA_TEST_BYO_S3_BUCKET=nipa-byo Second MinIO bucket the ee run registers as
                             a bring-your-own storage server
+  NIPA_TEST_CHUNK_PACKS=1   nipad-ee with CHUNK_UPLOAD_MODE=proxy and
+                            CHUNK_PACKS=on (bundles stored as packs, clones
+                            by range GETs); inert on the free server
 
 The extra nipad-ee instances share the postgres server, MinIO and redis but
 each gets its own database (tests/cmd/pgdatabase), S3 prefix and rate-limit
@@ -206,6 +212,11 @@ CHUNK_S3_SECRET_ACCESS_KEY: '$S3_SECRET_KEY'
 STORAGE_PURGE_RETENTION_DAYS: $PURGE_RETENTION_DAYS
 EOF
 )
+		if [[ "$CHUNK_PACKS" == "1" ]]; then
+			chunk_lines="$chunk_lines
+CHUNK_UPLOAD_MODE: proxy
+CHUNK_PACKS: 'on'"
+		fi
 		if [[ -n "$STORAGE_LEDGER" ]]; then
 			chunk_lines="$chunk_lines
 STORAGE_LEDGER: '$STORAGE_LEDGER'

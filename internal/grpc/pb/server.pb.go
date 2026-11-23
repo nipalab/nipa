@@ -947,6 +947,8 @@ type PresignedChunkUrl struct {
 	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // GET URL (signed server path or absolute backend URL); for uploads, the direct PUT URL, empty when already_stored or when the chunk goes in a bundle (GetChunkUploadUrlsResponse.bundle_url)
 	AlreadyStored bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                         // the project already holds the chunk; skip the transfer
 	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // upload URLs only: request headers the PUT must carry (they are part of the signature)
+	Offset        int64                  `protobuf:"varint,6,opt,name=offset,proto3" json:"offset,omitempty"`                                                                            // download URLs only: with length > 0, the chunk is bytes [offset, offset+length) of the object at url (a pack); read it with a Range request
+	Length        int64                  `protobuf:"varint,7,opt,name=length,proto3" json:"length,omitempty"`                                                                            // download URLs only: the chunk's length in a pack; 0 means the whole object at url is the chunk
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1007,6 +1009,20 @@ func (x *PresignedChunkUrl) GetHeaders() map[string]string {
 		return x.Headers
 	}
 	return nil
+}
+
+func (x *PresignedChunkUrl) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *PresignedChunkUrl) GetLength() int64 {
+	if x != nil {
+		return x.Length
+	}
+	return 0
 }
 
 type GetChunkUploadUrlsRequest struct {
@@ -13465,12 +13481,14 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\bChunkRef\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\xf4\x01\n" +
+	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\xa4\x02\n" +
 	"\x11PresignedChunkUrl\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12%\n" +
 	"\x0ealready_stored\x18\x03 \x01(\bR\ralreadyStored\x12?\n" +
-	"\aheaders\x18\x04 \x03(\v2%.greet.PresignedChunkUrl.HeadersEntryR\aheaders\x1a:\n" +
+	"\aheaders\x18\x04 \x03(\v2%.greet.PresignedChunkUrl.HeadersEntryR\aheaders\x12\x16\n" +
+	"\x06offset\x18\x06 \x01(\x03R\x06offset\x12\x16\n" +
+	"\x06length\x18\a \x01(\x03R\x06length\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x0fproof_challenge\"\xd8\x01\n" +

@@ -32,10 +32,56 @@ func TestReceiptRoundTrip(t *testing.T) {
 	require.Equal(t, int64(4096), size)
 }
 
+func TestReceiptRoundTripPacked(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	hash := chunker.Sum([]byte("payload"))
+
+	receipt := NewReceipt("key", snow.ID(7), hash, 4096, Packed(snow.ID(42), 1234), now.Add(time.Hour))
+	size, location, err := VerifyReceipt("key", snow.ID(7), hash, receipt, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(4096), size)
+	require.Equal(t, LocationPack, location.Kind)
+	require.Equal(t, snow.ID(42), location.PackID)
+	require.Equal(t, int64(1234), location.Offset)
+}
+
 func TestNewReceiptPanicsOnUnknownLocation(t *testing.T) {
-	require.Panics(t, func() {
-		NewReceipt("key", snow.ID(7), domain.Hash{}, 1, Location{Kind: 99}, time.Unix(1, 0))
-	})
+	for name, location := range map[string]Location{
+		"unknown kind":    {Kind: 99},
+		"pack without id": Packed(0, 4),
+		"negative offset": Packed(snow.ID(1), -1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Panics(t, func() {
+				NewReceipt("key", snow.ID(7), domain.Hash{}, 1, location, time.Unix(1, 0))
+			})
+		})
+	}
+}
+
+// packFields encodes a pack location's kind byte and fields.
+func packFields(packID, offset int64) []byte {
+	out := []byte{byte(LocationPack)}
+	out = binary.BigEndian.AppendUint64(out, uint64(packID))
+	return binary.BigEndian.AppendUint64(out, uint64(offset))
+}
+
+func TestVerifyReceiptRejectsMovedPackLocation(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	hash := chunker.Sum([]byte("payload"))
+	receipt := NewReceipt("key", snow.ID(7), hash, 4096, Packed(snow.ID(42), 1234), now.Add(time.Hour))
+	_, sig, _ := strings.Cut(receipt, ".")
+	for name, fields := range map[string][]byte{
+		"other pack":   packFields(43, 1234),
+		"other offset": packFields(42, 1235),
+		"loose":        {byte(LocationLoose)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			forged := b64(encodePayload(now.Add(time.Hour), 4096, fields...)) + "." + sig
+			_, _, err := VerifyReceipt("key", snow.ID(7), hash, forged, now)
+			require.ErrorIs(t, err, ErrInvalidReceipt)
+		})
+	}
 }
 
 // encodePayload builds a receipt payload for forging tests.
@@ -118,14 +164,19 @@ func TestVerifyReceiptRejectsBadPayloads(t *testing.T) {
 	loose := byte(LocationLoose)
 
 	for name, receipt := range map[string]string{
-		"no location":         signed(encodePayload(now.Add(time.Hour), 10)),
-		"short payload":       signed(make([]byte, fixedBytes-1)),
-		"not base64":          "!!not-base64!!." + signReceipt("key", snow.ID(7), hash, nil),
-		"zero size":           signed(encodePayload(now.Add(time.Hour), 0, loose)),
-		"negative size":       signed(encodePayload(now.Add(time.Hour), -1, loose)),
-		"unknown kind":        signed(encodePayload(now.Add(time.Hour), 10, 0)),
-		"loose with a field":  signed(encodePayload(now.Add(time.Hour), 10, loose, 1)),
-		"future kind (packs)": signed(encodePayload(now.Add(time.Hour), 10, 2, 0, 0, 0, 0, 0, 0, 0, 1)),
+		"no location":        signed(encodePayload(now.Add(time.Hour), 10)),
+		"short payload":      signed(make([]byte, fixedBytes-1)),
+		"not base64":         "!!not-base64!!." + signReceipt("key", snow.ID(7), hash, nil),
+		"zero size":          signed(encodePayload(now.Add(time.Hour), 0, loose)),
+		"negative size":      signed(encodePayload(now.Add(time.Hour), -1, loose)),
+		"unknown kind":       signed(encodePayload(now.Add(time.Hour), 10, 0)),
+		"loose with a field": signed(encodePayload(now.Add(time.Hour), 10, loose, 1)),
+		"short pack fields":  signed(encodePayload(now.Add(time.Hour), 10, 2, 0, 0, 0, 0, 0, 0, 0, 1)),
+		"long pack fields":   signed(encodePayload(now.Add(time.Hour), 10, append(packFields(1, 4), 0)...)),
+		"zero pack id":       signed(encodePayload(now.Add(time.Hour), 10, packFields(0, 4)...)),
+		"negative pack id":   signed(encodePayload(now.Add(time.Hour), 10, packFields(-1, 4)...)),
+		"negative offset":    signed(encodePayload(now.Add(time.Hour), 10, packFields(1, -4)...)),
+		"future kind":        signed(encodePayload(now.Add(time.Hour), 10, 3)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := VerifyReceipt("key", snow.ID(7), hash, receipt, now)
@@ -138,6 +189,7 @@ func FuzzVerifyReceipt(f *testing.F) {
 	now := time.Unix(1700000000, 0)
 	hash := chunker.Sum([]byte("payload"))
 	f.Add(NewReceipt("key", snow.ID(7), hash, 4096, Loose(), now.Add(time.Hour)))
+	f.Add(NewReceipt("key", snow.ID(7), hash, 4096, Packed(snow.ID(9), 4), now.Add(time.Hour)))
 	f.Add("")
 	f.Add(".")
 	f.Add("AAAAAAAAAAAAAAAAAAAAAAE.sig")
@@ -160,19 +212,23 @@ func FuzzVerifyReceipt(f *testing.F) {
 }
 
 func FuzzReceiptRoundTrip(f *testing.F) {
-	f.Add(int64(1), int64(4096), int64(3600))
-	f.Add(int64(-5), int64(16<<20), int64(0))
-	f.Fuzz(func(t *testing.T, project, size, ttl int64) {
-		if size <= 0 || ttl < 0 || ttl > 1<<40 {
+	f.Add(int64(1), int64(4096), int64(3600), int64(0), int64(0))
+	f.Add(int64(-5), int64(16<<20), int64(0), int64(7), int64(4))
+	f.Fuzz(func(t *testing.T, project, size, ttl, packID, offset int64) {
+		if size <= 0 || ttl < 0 || ttl > 1<<40 || packID < 0 || offset < 0 {
 			t.Skip()
 		}
 		now := time.Unix(1700000000, 0)
 		hash := chunker.Sum([]byte("payload"))
-		receipt := NewReceipt("key", snow.ID(project), hash, size, Loose(), now.Add(time.Duration(ttl)*time.Second))
+		want := Loose()
+		if packID > 0 {
+			want = Packed(snow.ID(packID), offset)
+		}
+		receipt := NewReceipt("key", snow.ID(project), hash, size, want, now.Add(time.Duration(ttl)*time.Second))
 		got, location, err := VerifyReceipt("key", snow.ID(project), hash, receipt, now)
 		require.NoError(t, err)
 		require.Equal(t, size, got)
-		require.Equal(t, Loose(), location)
+		require.Equal(t, want, location)
 		_, _, err = VerifyReceipt("key", snow.ID(project+1), hash, receipt, now)
 		require.ErrorIs(t, err, ErrInvalidReceipt)
 	})

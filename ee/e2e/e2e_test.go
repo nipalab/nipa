@@ -184,6 +184,8 @@ type serverOptions struct {
 	integrations bool
 	// uploadMode is CHUNK_UPLOAD_MODE; empty is direct.
 	uploadMode string
+	// packs turns CHUNK_PACKS on (with uploadMode proxy).
+	packs bool
 }
 
 func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
@@ -207,6 +209,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 			ChunkPresignTTLSeconds: 3600,
 			ChunkMaxPageSize:       1000,
 			ChunkUploadMode:        opts.uploadMode,
+			ChunkPacks:             packsSetting(opts.packs),
 		},
 		DB:                dbConn,
 		Snow:              node,
@@ -300,6 +303,13 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	})
 
 	return lis.Addr().String(), uc
+}
+
+func packsSetting(on bool) string {
+	if on {
+		return config.ChunkPacksOn
+	}
+	return config.ChunkPacksOff
 }
 
 func newS3ChunkStore(t *testing.T) storage.ChunkStore {

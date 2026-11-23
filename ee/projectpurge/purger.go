@@ -1,8 +1,9 @@
 // Package projectpurge removes deleted projects for good once their restore
 // window has passed: their history rows (commits, trees, files, file chunk
-// links), refs, merge requests, chunk rows and upload markers, the chunk
-// objects in the server's own store (one prefix delete: chunks belong to one
-// project) and the project row, which frees the slug. A project on its own
+// links), refs, merge requests, chunk rows, pack rows and upload markers,
+// the chunk and pack objects in the server's own store (prefix deletes of
+// p/<project>/ and packs/<project>/: chunks and packs belong to one project)
+// and the project row, which frees the slug. A project on its own
 // storage (BYO) keeps its objects: the customer's bucket is never touched.
 //
 // Enterprise Edition: see ee/LICENSE.
@@ -61,6 +62,7 @@ type Stats struct {
 	Commits   int64
 	Trees     int64
 	Chunks    int64
+	Packs     int64
 }
 
 // Purger removes deleted projects past their retention. Every step runs in
@@ -211,15 +213,26 @@ func (p *Purger) PurgeProject(ctx context.Context, projectID snow.ID, cutoff tim
 		return stats, err
 	}
 	// Chunk rows once no file references them any more (the trees above
-	// took their file chunk links), then the objects: rows first, so a
-	// failed object delete leaves nothing pointing at missing content and
-	// the next run deletes the prefix again.
+	// took their file chunk links), then the pack rows no chunk row points
+	// at any more, then the objects: rows first, so a failed object delete
+	// leaves nothing pointing at missing content and the next run deletes the
+	// prefixes again.
 	if err := p.drain(ctx, projectID, cutoff, func(ctx context.Context) (int64, error) {
 		n, err := p.queries.PurgeProjectChunkRows(ctx, sqlcPostgres.PurgeProjectChunkRowsParams{
 			ProjectID: id,
 			Limit:     p.batch * rowBatchFactor,
 		})
 		stats.Chunks += n
+		return n, err
+	}); err != nil {
+		return stats, err
+	}
+	if err := p.drain(ctx, projectID, cutoff, func(ctx context.Context) (int64, error) {
+		n, err := p.queries.PurgeProjectChunkPacks(ctx, sqlcPostgres.PurgeProjectChunkPacksParams{
+			ProjectID: id,
+			Limit:     p.batch * rowBatchFactor,
+		})
+		stats.Packs += n
 		return n, err
 	}); err != nil {
 		return stats, err
@@ -277,7 +290,7 @@ func (p *Purger) PurgeProject(ctx context.Context, projectID snow.ID, cutoff tim
 	if err != nil {
 		return stats, err
 	}
-	slog.Info("project purged", "project_id", projectID.Base36(), "commits", stats.Commits, "trees", stats.Trees, "chunks", stats.Chunks)
+	slog.Info("project purged", "project_id", projectID.Base36(), "commits", stats.Commits, "trees", stats.Trees, "chunks", stats.Chunks, "packs", stats.Packs)
 	return stats, nil
 }
 

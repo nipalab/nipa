@@ -68,6 +68,9 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	if chunkStores == nil {
 		chunkStores = usecase.StaticStores(deps.ChunkStore)
 	}
+	// Reads find packed chunks by their row's location; stores without packs
+	// (the free server's local store, own storage) are served unchanged.
+	chunkStores = usecase.PackedReads(chunkStores, repos.Push)
 	transactor := dbtx.NewTransactor(deps.DB)
 
 	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
@@ -127,7 +130,10 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	}).WithChunkStores(chunkStores).WithMetrics(deps.Metrics).WithVerifyLimit(cfg.ChunkVerifyConcurrency).
 		WithUploadMode(usecase.UploadMode(cfg.ChunkUploadMode)).WithProxyBuffer(cfg.ChunkProxyBufferBytes()).WithBundleMax(cfg.ChunkBundleMaxBytes()).
-		WithTransactor(transactor)
+		WithTransactor(transactor).WithStoreWriteLimit(cfg.ChunkStoreWriteConcurrency)
+	if cfg.ChunkPacksEnabled() {
+		chunkUsecase = chunkUsecase.WithPacks(node)
+	}
 	if deps.StorageLedger != nil {
 		chunkUsecase = chunkUsecase.WithStorageLedger(deps.StorageLedger)
 		projectUsecase.WithStorageLedger(deps.StorageLedger)

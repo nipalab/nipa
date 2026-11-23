@@ -21,15 +21,21 @@ func NewPushRepository(db *sql.DB) *PushRepository {
 	return &PushRepository{db: db}
 }
 
-// InsertChunksIfNotExist records the project's chunk rows for chunks confirm
-// (or a server-side write) verified, together with their upload markers
-// (project_chunk_uploads, which keep the garbage collector away from chunks
-// a push has not committed yet), in one statement per batch each. A chunk row
-// is the project's link to the content: rows that already exist are left
-// alone. It joins the transaction the context carries, if any.
+// InsertChunksIfNotExist records loose chunk rows (InsertChunkRows).
 func (p *PushRepository) InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []usecase.ChunkRef) error {
+	return p.InsertChunkRows(ctx, projectID, pushbatch.LooseRows(chunks))
+}
+
+// InsertChunkRows records the project's chunk rows for chunks confirm (or a
+// server-side write) verified, at their locations (a pack and offset, or
+// loose), together with their upload markers (project_chunk_uploads, which
+// keep the garbage collector away from chunks a push has not committed
+// yet), in one statement per batch each. A chunk row is the project's link to
+// the content: rows that already exist are left alone and keep their
+// location. It joins the transaction the context carries, if any.
+func (p *PushRepository) InsertChunkRows(ctx context.Context, projectID snow.ID, rows []usecase.ChunkRow) error {
 	q := sqlcPostgres.New(dbtx.New(p.db))
-	err := pushbatch.InsertChunkRows(ctx, chunks, func(ctx context.Context, payload []byte) error {
+	err := pushbatch.InsertChunkRows(ctx, rows, func(ctx context.Context, payload []byte) error {
 		return handleError(q.ChunkInsertManyOrIgnore(ctx, sqlcPostgres.ChunkInsertManyOrIgnoreParams{
 			ProjectID: projectID.Int64(),
 			ChunkRows: payload,
@@ -38,9 +44,9 @@ func (p *PushRepository) InsertChunksIfNotExist(ctx context.Context, projectID s
 	if err != nil {
 		return err
 	}
-	hashes := make([]domain.Hash, 0, len(chunks))
-	for _, chunk := range chunks {
-		hashes = append(hashes, chunk.Hash)
+	hashes := make([]domain.Hash, 0, len(rows))
+	for _, row := range rows {
+		hashes = append(hashes, row.Hash)
 	}
 	return pushbatch.InsertHashes(ctx, hashes, func(ctx context.Context, payload []byte) error {
 		return handleError(q.ProjectChunkUploadInsertMany(ctx, sqlcPostgres.ProjectChunkUploadInsertManyParams{

@@ -7,7 +7,9 @@
 //
 //	p/<project base36>/<hash[:2]>/<hash[2:]>
 //
-// so a project's content is one prefix. The default backend is local: chunk
+// so a project's content is one prefix. Stores implementing PackStore also
+// hold packs of many chunks at packs/<project base36>/<pack id base36>. The
+// default backend is local: chunk
 // content is written to the server's filesystem.
 package storage
 
@@ -95,8 +97,48 @@ type UploadTarget struct {
 	Headers map[string]string
 }
 
+// PackStore is implemented by stores that hold chunk packs (internal/storage/
+// pack): objects written by the server only, each holding many chunks of one
+// project, addressed by key (PackKey) and read by byte range. The server
+// writes bundle uploads as packs only to a store implementing it (S3 in
+// proxy mode with CHUNK_PACKS=on); the local store keeps loose files.
+type PackStore interface {
+	// PutPack writes the object at key with exactly size bytes from body in
+	// one single-part request, replacing anything at the key. body may be
+	// read again from the start (it seeks) when the request is retried.
+	PutPack(ctx context.Context, key string, body io.ReadSeeker, size int64) error
+
+	// GetRange returns length bytes of the object at key starting at
+	// offset, or a domain NotFound error when the object is absent. A
+	// shorter object is an error, never a short read.
+	GetRange(ctx context.Context, key string, offset, length int64) ([]byte, error)
+
+	// PresignPackDownload returns an absolute URL for reading the object at
+	// key; clients send a Range header with it to read part of the object.
+	PresignPackDownload(ctx context.Context, key string, expires time.Duration) (string, error)
+
+	// DeletePack removes the object at key; a missing object is not an
+	// error.
+	DeletePack(ctx context.Context, key string) error
+}
+
 // projectKeyPrefix is the first path element of every chunk key.
 const projectKeyPrefix = "p"
+
+// packKeyPrefix is the first path element of every pack key.
+const packKeyPrefix = "packs"
+
+// PackPrefix is the key prefix (no trailing slash) under which every pack
+// of the project lives: "packs/<project base36>".
+func PackPrefix(projectID snow.ID) string {
+	return packKeyPrefix + "/" + projectID.Base36()
+}
+
+// PackKey is the key of one pack below a store's prefix:
+// "packs/<project base36>/<pack id base36>".
+func PackKey(projectID, packID snow.ID) string {
+	return PackPrefix(projectID) + "/" + packID.Base36()
+}
 
 // ProjectPrefix is the key prefix (no trailing slash) under which every
 // chunk of the project lives: "p/<project base36>".

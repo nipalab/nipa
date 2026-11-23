@@ -48,8 +48,9 @@ WHERE true
 ON CONFLICT(file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
 
 -- name: ChunkInsertManyOrIgnore :exec
-INSERT INTO chunks (project_id, hash, size_bytes)
-SELECT sqlc.arg(project_id), unhex(json_extract(value, '$[0]')), json_extract(value, '$[1]')
+INSERT INTO chunks (project_id, hash, size_bytes, pack_id, pack_offset)
+SELECT sqlc.arg(project_id), unhex(json_extract(value, '$[0]')), json_extract(value, '$[1]'),
+       json_extract(value, '$[2]'), json_extract(value, '$[3]')
 FROM json_each(sqlc.arg(chunk_rows))
 WHERE true
 ON CONFLICT(project_id, hash) DO NOTHING;
@@ -60,3 +61,22 @@ SELECT sqlc.arg(project_id), unhex(value)
 FROM json_each(sqlc.arg(hashes))
 WHERE true
 ON CONFLICT(project_id, hash) DO NOTHING;
+
+-- name: ProjectChunkRecords :many
+SELECT c.hash, c.size_bytes, c.pack_id, c.pack_offset, p.state AS pack_state
+FROM chunks c
+LEFT JOIN chunk_packs p ON p.id = c.pack_id
+WHERE c.project_id = sqlc.arg(project_id) AND c.hash IN (sqlc.slice('hashes'));
+
+-- name: ChunkRelocate :execrows
+UPDATE chunks
+SET pack_id = sqlc.narg(new_pack_id), pack_offset = sqlc.narg(new_pack_offset)
+WHERE project_id = sqlc.arg(project_id) AND hash = sqlc.arg(hash)
+  AND pack_id IS sqlc.narg(old_pack_id) AND pack_offset IS sqlc.narg(old_pack_offset);
+
+-- name: ChunkPackInsert :exec
+INSERT INTO chunk_packs (id, project_id, size_bytes, chunk_count, state)
+VALUES (sqlc.arg(id), sqlc.arg(project_id), sqlc.arg(size_bytes), sqlc.arg(chunk_count), sqlc.arg(state));
+
+-- name: ChunkPackSetState :execrows
+UPDATE chunk_packs SET state = sqlc.arg(state) WHERE id = sqlc.arg(id);
