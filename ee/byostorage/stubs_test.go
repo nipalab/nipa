@@ -242,12 +242,12 @@ type stubStore struct {
 	closed   bool
 }
 
-func (s *stubStore) Put(context.Context, domain.Hash, []byte) error    { return nil }
-func (s *stubStore) Get(context.Context, domain.Hash) ([]byte, error)  { return nil, nil }
-func (s *stubStore) Size(context.Context, domain.Hash) (int64, error)  { return 0, nil }
-func (s *stubStore) Exists(context.Context, domain.Hash) (bool, error) { return false, nil }
-func (s *stubStore) Close() error                                      { s.closed = true; return nil }
-func (s *stubStore) Probe(context.Context) error                       { return s.probeErr }
+func (s *stubStore) Put(context.Context, snow.ID, domain.Hash, []byte) error    { return nil }
+func (s *stubStore) Get(context.Context, snow.ID, domain.Hash) ([]byte, error)  { return nil, nil }
+func (s *stubStore) Size(context.Context, snow.ID, domain.Hash) (int64, error)  { return 0, nil }
+func (s *stubStore) Exists(context.Context, snow.ID, domain.Hash) (bool, error) { return false, nil }
+func (s *stubStore) Close() error                                               { s.closed = true; return nil }
+func (s *stubStore) Probe(context.Context) error                                { return s.probeErr }
 
 type stubOpener struct {
 	opened   []*stubStore

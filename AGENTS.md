@@ -231,6 +231,11 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   with the tracked encoding (`storedEncoding`), or file hashes diverge.
 - Chunk transfer is presigned HTTP, not gRPC streaming; the `/api/chunks`
   routes are not behind the bearer filter (the signature is the capability).
+  Chunks are per project: rows are `UNIQUE (project_id, hash)` and every
+  `storage.ChunkStore` call and object key (`p/<project>/ab/cdef...`) takes
+  the project, so never look a chunk up by hash alone. The chunk RPCs carry
+  `chunk_protocol` (`chunkproof.Protocol`); changing the chunk wire contract
+  means bumping it on both sides.
   With `CHUNK_UPLOAD_MODE=proxy` (and always on free `nipad`) uploads go
   through the signed PUT, which answers with an HMAC receipt that lets
   confirm skip the read-back; never link, attribute or write rows at PUT

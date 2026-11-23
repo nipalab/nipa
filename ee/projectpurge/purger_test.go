@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -157,12 +158,26 @@ func (s *purgeSuite) deleteProject(id snow.ID, ago time.Duration) {
 	s.exec(`UPDATE projects SET deleted = true, deleted_at = $2 WHERE id = $1`, id.Int64(), s.now.Add(-ago))
 }
 
-func (s *purgeSuite) chunk() int64 {
+func (s *purgeSuite) chunk(projectID snow.ID) int64 {
 	s.T().Helper()
 	var id int64
 	s.Require().NoError(s.db.QueryRowContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES ($1, 10) RETURNING id`, uniqueHash()).Scan(&id))
+		`INSERT INTO chunks (project_id, hash, size_bytes) VALUES ($1, $2, 10) RETURNING id`, projectID.Int64(), uniqueHash()).Scan(&id))
 	return id
+}
+
+// fakeStore records the projects whose objects the purge deleted.
+type fakeStore struct {
+	deleted []snow.ID
+	err     error
+}
+
+func (f *fakeStore) DeleteProject(_ context.Context, projectID snow.ID) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.deleted = append(f.deleted, projectID)
+	return nil
 }
 
 func (s *purgeSuite) tree(hash []byte, name string, parent *int64) int64 {
@@ -192,11 +207,11 @@ func (s *purgeSuite) commit(projectID snow.ID, treeID int64, parent *int64) int6
 
 // seedFullProject gives a project a two-commit history whose first commit
 // holds an "assets" directory with the content hash shared, refs, a merge
-// request with every commit-referencing child, a file lock and upload/link
-// rows. It returns the commit ids.
+// request with every commit-referencing child, a file lock, its chunk row,
+// upload marker and usage counter. It returns the commit ids.
 func (s *purgeSuite) seedFullProject(projectID snow.ID, shared []byte) (int64, int64) {
 	s.T().Helper()
-	chunkID := s.chunk()
+	chunkID := s.chunk(projectID)
 	root1 := s.tree(uniqueHash(), "", nil)
 	assets := s.tree(shared, "assets", &root1)
 	s.file(assets, chunkID, "hero.png")
@@ -221,7 +236,6 @@ func (s *purgeSuite) seedFullProject(projectID snow.ID, shared []byte) (int64, i
 	s.exec(`INSERT INTO merge_request_threads (id, merge_request_id, base_commit_id, head_commit_id, created_by) VALUES ($1, $2, $3, $4, 1)`, nextID(), mr, c1, c2)
 	s.exec(`INSERT INTO file_locks (id, project_id, branch_id, path, held_by, merge_request_id) VALUES ($1, $2, $3, 'assets/hero.png', 1, $4)`, nextID(), pid, main, mr)
 	s.exec(`INSERT INTO project_chunk_uploads (project_id, hash) SELECT $1, hash FROM chunks WHERE id = $2`, pid, chunkID)
-	s.exec(`INSERT INTO project_chunks (project_id, chunk_id, size_bytes) VALUES ($1, $2, 10)`, pid, chunkID)
 	s.exec(`INSERT INTO project_usage (project_id, used_bytes) VALUES ($1, 10)`, pid)
 	return c1, c2
 }
@@ -244,7 +258,7 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 	// content: its bare node resolves by hash to the oldest content node,
 	// which belongs to the purged project until the purge.
 	live := s.project("live-game")
-	liveChunk := s.chunk()
+	liveChunk := s.chunk(live)
 	liveRoot1 := s.tree(uniqueHash(), "", nil)
 	liveAssets := s.tree(shared, "assets", &liveRoot1)
 	s.file(liveAssets, liveChunk, "hero.png")
@@ -267,7 +281,8 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 	s.Require().NoError(err)
 	audit := usecase.NewAudit(postgres.NewAuditRepository(s.db), node, dbtx.NewTransactor(s.db))
 	releaser := &fakeReleaser{}
-	purger := s.newPurger(1).WithAudit(audit).WithReleaser(releaser)
+	store := &fakeStore{}
+	purger := s.newPurger(1).WithAudit(audit).WithReleaser(releaser).WithStore(store)
 
 	stats, err := purger.PurgeExpired(ctx)
 	s.Require().NoError(err)
@@ -276,6 +291,8 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 	s.Equal(int64(2), stats[0].Commits)
 	s.Equal(int64(2), stats[0].Trees)
 	s.Equal([]snow.ID{purged}, releaser.released)
+	s.Equal(int64(1), stats[0].Chunks)
+	s.Equal([]snow.ID{purged}, store.deleted, "the project's objects go with one prefix delete")
 
 	pid := purged.Int64()
 	for table, query := range map[string]string{
@@ -286,7 +303,7 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 		"merge_requests":        `SELECT count(*) FROM merge_requests WHERE project_id = $1`,
 		"file_locks":            `SELECT count(*) FROM file_locks WHERE project_id = $1`,
 		"project_chunk_uploads": `SELECT count(*) FROM project_chunk_uploads WHERE project_id = $1`,
-		"project_chunks":        `SELECT count(*) FROM project_chunks WHERE project_id = $1`,
+		"chunks":                `SELECT count(*) FROM chunks WHERE project_id = $1`,
 		"project_usage":         `SELECT count(*) FROM project_usage WHERE project_id = $1`,
 	} {
 		s.Zero(s.count(query, pid), "%s rows remain", table)
@@ -295,7 +312,7 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 	s.Zero(s.count(`SELECT count(*) FROM file_chunks fc LEFT JOIN files f ON f.id = fc.file_id WHERE f.id IS NULL`))
 	s.Zero(s.count(`SELECT count(*) FROM tree_nodes t WHERE t.parent_tree_id IS NULL AND NOT EXISTS (SELECT 1 FROM commits c WHERE c.tree_id = t.id)`),
 		"no orphaned tree root is left behind")
-	s.Equal(3, s.count(`SELECT count(*) FROM chunks`), "chunk content is left to the chunk GC")
+	s.Equal(2, s.count(`SELECT count(*) FROM chunks`), "the live and the recent project keep their chunk rows")
 
 	files, err = queries.FileListByTree(ctx, liveKept)
 	s.Require().NoError(err)
@@ -316,6 +333,42 @@ func (s *purgeSuite) TestPurgeExpired_RemovesTheProjectForGood() {
 	s.Equal(purged.Base36(), target)
 	s.Equal(int64(1), orgID.Int64)
 	s.Equal(int64(2), commits)
+}
+
+func (s *purgeSuite) TestPurgeProject_OwnStorageKeepsItsObjects() {
+	ctx := context.Background()
+	project := s.project("byo")
+	s.seedFullProject(project, uniqueHash())
+	s.exec(`INSERT INTO storage_servers (id, owner_user_id, name, endpoint, bucket, access_key_id, secret_sealed)
+		VALUES (91, 1, 'byo', 'https://s3.example.com', 'b', 'a', '\x00')`)
+	s.exec(`INSERT INTO project_storage (project_id, storage_server_id) VALUES ($1, 91)`, project.Int64())
+	s.deleteProject(project, 40*24*time.Hour)
+
+	store := &fakeStore{}
+	_, err := s.newPurger(10).WithStore(store).PurgeProject(ctx, project, s.now.Add(-30*24*time.Hour))
+	s.Require().NoError(err)
+	s.Empty(store.deleted, "the customer's bucket is never touched")
+	s.Zero(s.count(`SELECT count(*) FROM chunks WHERE project_id = $1`, project.Int64()), "the rows go anyway")
+}
+
+func (s *purgeSuite) TestPurgeProject_StoreErrorStopsBeforeTheProjectRow() {
+	ctx := context.Background()
+	project := s.project("store-error")
+	s.seedFullProject(project, uniqueHash())
+	s.deleteProject(project, 40*24*time.Hour)
+
+	store := &fakeStore{err: errors.New("bucket down")}
+	_, err := s.newPurger(10).WithStore(store).PurgeProject(ctx, project, s.now.Add(-30*24*time.Hour))
+	s.Require().ErrorContains(err, "bucket down")
+	s.Equal(1, s.count(`SELECT count(*) FROM projects WHERE id = $1`, project.Int64()), "the next run retries the prefix delete")
+	s.Zero(s.count(`SELECT count(*) FROM chunks WHERE project_id = $1`, project.Int64()))
+
+	store.err = nil
+	stats, err := s.newPurger(10).WithStore(store).PurgeProject(ctx, project, s.now.Add(-30*24*time.Hour))
+	s.Require().NoError(err)
+	s.Zero(stats.Chunks)
+	s.Equal([]snow.ID{project}, store.deleted)
+	s.Zero(s.count(`SELECT count(*) FROM projects WHERE id = $1`, project.Int64()))
 }
 
 func (s *purgeSuite) TestPurgeProject_RestoredProjectIsLeftAlone() {

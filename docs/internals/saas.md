@@ -111,21 +111,25 @@ enterprise implementation lives in `ee/storageusage` (postgres,
 quota is enforced; the free `cmd/nipad` ignores the setting and keeps
 running with no ledger, no quota and the routes 404): it bills
 every org to one owner user (lazily seeded from
-`organizations.created_by_user_id`), tracks per-project chunk links with
-cached project/org counters, and enforces `owner_quota` (NULL/0 =
+`organizations.created_by_user_id`), charges each project for its own chunk
+rows (`chunks.project_id`; chunks are per project, so the same bytes in two
+projects are charged to both) with cached project/org counters, and enforces `owner_quota` (NULL/0 =
 unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default
-15 GiB, or `SAAS_FREE_QUOTA_BYTES` in SaaS mode via `ledgerDefaultQuotaBytes`). `RecountOrg`
-rebuilds links and counters from the stored history and skips deleted
-projects (`ListUnbilledProjectIDsByOrg` covers deleted and BYO projects:
-links dropped, usage 0). `Project.Delete` calls `ReleaseProject` (attached by
+15 GiB, or `SAAS_FREE_QUOTA_BYTES` in SaaS mode via `ledgerDefaultQuotaBytes`). `Attribute`
+joins the confirm's transaction: under the owner advisory lock it charges the
+chunks the project has no row for yet, and the caller inserts those rows
+before the transaction commits, so a row is never visible before the quota
+accepted it. `RecountOrg` recomputes every counter as the sum of the
+project's chunk rows and skips deleted projects (`ListUnbilledProjectIDsByOrg`
+covers deleted and BYO projects: usage 0). `Project.Delete` calls `ReleaseProject` (attached by
 `BuildUsecases` through `Project.WithStorageLedger`) inside its audited
-write: under the owner advisory lock it drops the project's `project_chunks`,
-zeroes `project_usage`, subtracts the bytes from `org_usage` and returns them
+write: under the owner advisory lock it zeroes `project_usage` (the chunk
+rows stay until the purge), subtracts the bytes from `org_usage` and returns them
 for the `project.deleted` audit entry (`released_bytes`). `attribute`
 rejects a deleted project with 404 under the same lock, so an in-flight
 confirm or merge cannot re-charge it. `Project.Restore` calls
-`RestoreProject` (rebuild links from history, charge the difference, 402 when
-it does not fit). The purge of deleted projects past
+`RestoreProject` (recount the project's rows, charge the difference, 402
+when it does not fit). The purge of deleted projects past
 `STORAGE_PURGE_RETENTION_DAYS` is `ee/projectpurge` (see
 `docs/internals/server.md`); chunk GC: `docs/plans/STORAGE_RECLAIM.md`. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are

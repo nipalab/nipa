@@ -22,48 +22,27 @@ func NewPushRepository(db *sql.DB) *PushRepository {
 	return &PushRepository{db: db}
 }
 
-func (p *PushRepository) InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error {
-	q := sqlcSqlite.New(p.db)
-	return handleError(q.ChunkInsertOrIgnore(ctx, sqlcSqlite.ChunkInsertOrIgnoreParams{
-		Hash:      hash.Bytes(),
-		SizeBytes: sizeBytes,
-	}))
-}
-
-func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
-	q := sqlcSqlite.New(p.db)
-	if _, err := q.ChunkGetByHash(ctx, hash.Bytes()); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return false, handleError(err)
-	}
-	return true, nil
-}
-
-func (p *PushRepository) LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error {
-	q := sqlcSqlite.New(p.db)
-	return handleError(q.ProjectChunkUploadInsert(ctx, sqlcSqlite.ProjectChunkUploadInsertParams{
-		ProjectID: projectID.Int64(),
-		Hash:      hash.Bytes(),
-	}))
-}
-
-// InsertChunksIfNotExist records the metadata rows of chunks confirm verified,
-// in one statement per batch; existing rows and duplicates are left alone. It
-// joins the transaction the context carries, if any.
-func (p *PushRepository) InsertChunksIfNotExist(ctx context.Context, chunks []usecase.ChunkRef) error {
+// InsertChunksIfNotExist records the project's chunk rows for chunks confirm
+// (or a server-side write) verified, together with their upload markers
+// (project_chunk_uploads, which keep the garbage collector away from chunks
+// a push has not committed yet), in one statement per batch each. A chunk row
+// is the project's link to the content: rows that already exist are left
+// alone. It joins the transaction the context carries, if any.
+func (p *PushRepository) InsertChunksIfNotExist(ctx context.Context, projectID snow.ID, chunks []usecase.ChunkRef) error {
 	q := sqlcSqlite.New(dbtx.New(p.db))
-	return pushbatch.InsertChunkRows(ctx, chunks, func(ctx context.Context, payload []byte) error {
-		return handleError(q.ChunkInsertManyOrIgnore(ctx, string(payload)))
+	err := pushbatch.InsertChunkRows(ctx, chunks, func(ctx context.Context, payload []byte) error {
+		return handleError(q.ChunkInsertManyOrIgnore(ctx, sqlcSqlite.ChunkInsertManyOrIgnoreParams{
+			ProjectID: projectID.Int64(),
+			ChunkRows: string(payload),
+		}))
 	})
-}
-
-// LinkProjectChunks links the project to the chunks in one statement per
-// batch; links that already exist are left alone. It joins the transaction
-// the context carries, if any.
-func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
-	q := sqlcSqlite.New(dbtx.New(p.db))
+	if err != nil {
+		return err
+	}
+	hashes := make([]domain.Hash, 0, len(chunks))
+	for _, chunk := range chunks {
+		hashes = append(hashes, chunk.Hash)
+	}
 	return pushbatch.InsertHashes(ctx, hashes, func(ctx context.Context, payload []byte) error {
 		return handleError(q.ProjectChunkUploadInsertMany(ctx, sqlcSqlite.ProjectChunkUploadInsertManyParams{
 			ProjectID: projectID.Int64(),
@@ -72,56 +51,31 @@ func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.I
 	})
 }
 
-// KnownChunks reports which hashes have a chunk metadata row, whatever project
-// they are linked to.
-func (p *PushRepository) KnownChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash]struct{}, error) {
+// ProjectChunkSizes returns the stored size of every hash the project has a
+// chunk row for; other hashes are absent. It joins the transaction the
+// context carries, if any.
+func (p *PushRepository) ProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	q := sqlcSqlite.New(dbtx.New(p.db))
-	known := make(map[domain.Hash]struct{}, len(hashes))
+	sizes := make(map[domain.Hash]int64, len(hashes))
 	err := pushbatch.LookupBatches(hashes, func(batch [][]byte) error {
-		rows, err := q.ChunkKnownHashes(ctx, batch)
+		rows, err := q.ProjectChunkSizes(ctx, sqlcSqlite.ProjectChunkSizesParams{
+			ProjectID: projectID.Int64(),
+			Hashes:    batch,
+		})
 		if err != nil {
 			return handleError(err)
 		}
 		for _, row := range rows {
-			hash, err := domain.HashFromBytes(row)
+			hash, err := domain.HashFromBytes(row.Hash)
 			if err != nil {
 				return domain.NewErrorDatabase(err.Error())
 			}
-			known[hash] = struct{}{}
+			sizes[hash] = row.SizeBytes
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-	return known, nil
-}
-
-const linkedChunkBatch = 500
-
-func (p *PushRepository) LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
-	q := sqlcSqlite.New(p.db)
-	sizes := make(map[domain.Hash]int64, len(hashes))
-	for start := 0; start < len(hashes); start += linkedChunkBatch {
-		end := min(start+linkedChunkBatch, len(hashes))
-		batch := make([][]byte, 0, end-start)
-		for _, hash := range hashes[start:end] {
-			batch = append(batch, hash.Bytes())
-		}
-		rows, err := q.ProjectChunkLinkedSizes(ctx, sqlcSqlite.ProjectChunkLinkedSizesParams{
-			ProjectID: projectID.Int64(),
-			Hashes:    batch,
-		})
-		if err != nil {
-			return nil, handleError(err)
-		}
-		for _, row := range rows {
-			hash, err := domain.HashFromBytes(row.Hash)
-			if err != nil {
-				return nil, domain.NewErrorDatabase(err.Error())
-			}
-			sizes[hash] = row.SizeBytes
-		}
 	}
 	return sizes, nil
 }

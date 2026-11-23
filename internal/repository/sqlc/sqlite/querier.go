@@ -32,10 +32,7 @@ type Querier interface {
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
-	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
-	ChunkInsertManyOrIgnore(ctx context.Context, chunkRows interface{}) error
-	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
-	ChunkKnownHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
+	ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
@@ -220,8 +217,7 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
-	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
-	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)
 	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error
 	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
 	ProjectIssueTrackerGet(ctx context.Context, projectID int64) (ProjectIssueTracker, error)

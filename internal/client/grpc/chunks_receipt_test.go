@@ -24,7 +24,7 @@ func uploadForReceipts(t *testing.T, srv *chunkTestServer, addr string) *pb.Conf
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	require.NotNil(t, srv.lastConfirm)
-	require.Len(t, srv.lastConfirm.GetProofs(), 2)
+	require.Len(t, srv.lastConfirm.GetHashes(), 2)
 	return srv.lastConfirm
 }
 
@@ -35,23 +35,19 @@ func TestClient_UploadChunks_SendsTheProxyReceipt(t *testing.T) {
 
 	confirm := uploadForReceipts(t, srv, addr)
 
-	for _, proof := range confirm.GetProofs() {
-		require.Equal(t, "receipt-"+proof.GetHash(), proof.GetReceipt())
-		require.NotEmpty(t, proof.GetProof(), "the proof stays as the fallback")
-		require.NotEmpty(t, proof.GetChallenge())
+	require.Len(t, confirm.GetReceipts(), 2)
+	for _, receipt := range confirm.GetReceipts() {
+		require.Equal(t, "receipt-"+receipt.GetHash(), receipt.GetReceipt())
 	}
 }
 
-func TestClient_UploadChunks_WithoutReceiptsSendsProofsOnly(t *testing.T) {
+func TestClient_UploadChunks_WithoutReceiptsSendsHashesOnly(t *testing.T) {
 	srv := newChunkTestServer()
 	addr := startChunkTestServer(t, srv)
 
 	confirm := uploadForReceipts(t, srv, addr)
 
-	for _, proof := range confirm.GetProofs() {
-		require.Empty(t, proof.GetReceipt(), "an older server sends no receipt")
-		require.NotEmpty(t, proof.GetProof())
-	}
+	require.Empty(t, confirm.GetReceipts(), "the server reads direct uploads back")
 }
 
 func TestClient_UploadChunks_IgnoresReceiptsFromAbsoluteURLs(t *testing.T) {
@@ -62,18 +58,16 @@ func TestClient_UploadChunks_IgnoresReceiptsFromAbsoluteURLs(t *testing.T) {
 
 	confirm := uploadForReceipts(t, srv, addr)
 
-	for _, proof := range confirm.GetProofs() {
-		require.Empty(t, proof.GetReceipt(), "an object store URL never carries a server receipt")
-	}
+	require.Empty(t, confirm.GetReceipts(), "an object store URL never carries a server receipt")
 }
 
 func TestKeepReceipt(t *testing.T) {
-	proof := &pb.ChunkPossessionProof{}
-	keepReceipt(chunkTransfer{url: "/api/chunks/o/p/h", proof: proof}, "")
-	require.Empty(t, proof.GetReceipt())
+	receipt := new(string)
+	keepReceipt(chunkTransfer{url: "/api/chunks/o/p/h", receipt: receipt}, "")
+	require.Empty(t, *receipt)
 	keepReceipt(chunkTransfer{url: "/api/chunks/o/p/h"}, "r")
-	keepReceipt(chunkTransfer{url: "https://s3.example.com/k", proof: proof}, "r")
-	require.Empty(t, proof.GetReceipt())
-	keepReceipt(chunkTransfer{url: "/api/chunks/o/p/h", proof: proof}, "r")
-	require.Equal(t, "r", proof.GetReceipt())
+	keepReceipt(chunkTransfer{url: "https://s3.example.com/k", receipt: receipt}, "r")
+	require.Empty(t, *receipt)
+	keepReceipt(chunkTransfer{url: "/api/chunks/o/p/h", receipt: receipt}, "r")
+	require.Equal(t, "r", *receipt)
 }

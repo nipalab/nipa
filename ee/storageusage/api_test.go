@@ -142,24 +142,20 @@ func seedAPIOrgMember(t *testing.T, db *sql.DB, orgID, userID snow.ID, role stri
 	require.NoError(t, err)
 }
 
-func seedAPIChunk(t *testing.T, db *sql.DB, size int64) domain.Hash {
+// seedAPIChunk returns a fresh chunk hash; its row is written by the confirm.
+func seedAPIChunk(t *testing.T) domain.Hash {
 	t.Helper()
 	var hash domain.Hash
 	copy(hash[:], newTestHash())
-	_, err := db.ExecContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2)`,
-		hash[:], size,
-	)
-	require.NoError(t, err)
 	return hash
 }
 
 func (h *apiHarness) attribute(t *testing.T, projectID snow.ID, size int64) {
 	t.Helper()
-	hash := seedAPIChunk(t, h.db, size)
-	require.NoError(t, h.ledger.Attribute(context.Background(),
-		&domain.Organization{ID: 1}, &domain.Project{ID: projectID},
-		[]usecase.LedgerChunk{{Hash: hash, SizeBytes: size}}))
+	chunks := []usecase.LedgerChunk{{Hash: seedAPIChunk(t), SizeBytes: size}}
+	require.NoError(t, confirmChunks(context.Background(), h.db, func(ctx context.Context) error {
+		return h.ledger.Attribute(ctx, &domain.Organization{ID: 1}, &domain.Project{ID: projectID}, chunks)
+	}, projectID, chunks))
 }
 
 type orgStorageJSON struct {
@@ -438,6 +434,8 @@ func TestAPI_SetBillingOwnerStorageReportError(t *testing.T) {
 func TestAPI_RecountOrgStorage(t *testing.T) {
 	h := newAPIHarness(t)
 	h.attribute(t, 1, 512)
+	_, err := h.db.ExecContext(context.Background(), `UPDATE project_usage SET used_bytes = 7 WHERE project_id = 1`)
+	require.NoError(t, err)
 
 	status, _ := h.do(http.MethodPost, "/api/v1/admin/orgs/default/storage/recount", "user", nil)
 	require.Equal(t, http.StatusForbidden, status)
@@ -448,12 +446,12 @@ func TestAPI_RecountOrgStorage(t *testing.T) {
 	status, body := h.do(http.MethodPost, "/api/v1/admin/orgs/default/storage/recount", "super", nil)
 	var storage orgStorageJSON
 	h.decode(status, body, &storage)
-	require.Zero(t, storage.UsedBytes, "no commit history, the stale link is dropped")
+	require.Equal(t, int64(512), storage.UsedBytes, "the recount sums the project's chunk rows again")
 }
 
 func TestAPI_RecountOrgStorageDatabaseError(t *testing.T) {
 	h := newAPIHarness(t)
-	_, err := h.db.ExecContext(context.Background(), `DROP TABLE commits CASCADE`)
+	_, err := h.db.ExecContext(context.Background(), `DROP TABLE chunks CASCADE`)
 	require.NoError(t, err)
 
 	status, body := h.do(http.MethodPost, "/api/v1/admin/orgs/default/storage/recount", "super", nil)

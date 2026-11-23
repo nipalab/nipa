@@ -37,7 +37,8 @@ func NewChunkHandler(chunks *usecase.Chunk, projects chunkProjectResolver) *Chun
 // pins the exact size; the BLAKE3 hash is verified before storing. A stored
 // chunk is answered 204 with a receipt (chunkproof.ReceiptHeader) the client
 // passes to confirm instead of having the server read the chunk back. Nothing
-// is recorded in the database here: rows, quota and links wait for confirm.
+// is recorded in the database here: the project's rows and quota wait for
+// confirm.
 func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
 	hashHex := appCtx.PathParameter("hash")
 	params, err := chunkurl.ParseParams(appCtx.Request().URL.Query())

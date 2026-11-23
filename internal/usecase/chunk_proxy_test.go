@@ -27,18 +27,18 @@ type overwritingDirectStore struct {
 	existsCalls  int
 }
 
-func (s *overwritingDirectStore) Overwrite(_ context.Context, hash domain.Hash, data []byte) error {
+func (s *overwritingDirectStore) Overwrite(_ context.Context, projectID snow.ID, hash domain.Hash, data []byte) error {
 	if s.overwriteErr != nil {
 		return s.overwriteErr
 	}
 	s.overwrites++
-	s.data[hash] = data
+	s.data[objectKey{projectID, hash}] = data
 	return nil
 }
 
-func (s *overwritingDirectStore) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
+func (s *overwritingDirectStore) Exists(ctx context.Context, projectID snow.ID, hash domain.Hash) (bool, error) {
 	s.existsCalls++
-	return s.stubDirectChunkStore.Exists(ctx, hash)
+	return s.stubDirectChunkStore.Exists(ctx, projectID, hash)
 }
 
 func newOverwritingDirectStore() *overwritingDirectStore {
@@ -61,18 +61,15 @@ func TestChunk_Presign_UploadModes(t *testing.T) {
 			testProject.ID: {Store: nipa},
 			ownProject.ID:  {Store: byo, External: true},
 		}}
-		repo := NewMockchunkRepository(gomock.NewController(t))
-		linkEverything(repo, nipa)
-		uc := NewChunk(repo, nipa, ChunkTransferConfig{SigningKey: linkTestKey, PresignTTL: time.Hour, MaxPageSize: 10}).
+		uc := NewChunk(newFakeChunkRepo(), nipa, ChunkTransferConfig{SigningKey: testSigningKey, PresignTTL: time.Hour, MaxPageSize: 10}).
 			WithChunkStores(stores).WithUploadMode(mode)
 		uc.now = func() time.Time { return time.Unix(1700000000, 0) }
 
 		urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, project, refs, 10, "")
 		require.NoError(t, err)
 		require.Len(t, urls, 1)
-		require.NotEmpty(t, urls[0].ProofChallenge, "challenges are issued in every mode")
-		require.Zero(t, nipa.existsCalls+byo.existsCalls, "B4 still skips HEADs for unknown hashes")
-		require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, project.ID, hash, urls[0].ProofChallenge, uc.now()))
+		require.False(t, urls[0].AlreadyStored)
+		require.Zero(t, nipa.existsCalls+byo.existsCalls, "no HEAD for hashes without a row")
 		if strings.HasPrefix(urls[0].URL, "/") {
 			verifyChunkURL(t, uc, testOrg.Slug, project.Slug, urls[0].URL, chunkurl.OpUpload, int64(len(data)))
 		}
@@ -108,10 +105,10 @@ func TestChunk_StoreUploaded_IssuesAReceipt(t *testing.T) {
 
 	receipt, err := uc.StoreUploaded(ctx, testProject.ID, hash, data)
 	require.NoError(t, err)
-	size, err := chunkproof.VerifyReceipt(linkTestKey, testProject.ID, hash, receipt, uc.now().Add(time.Hour))
+	size, err := chunkproof.VerifyReceipt(testSigningKey, testProject.ID, hash, receipt, uc.now().Add(time.Hour))
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), size)
-	_, err = chunkproof.VerifyReceipt(linkTestKey, testProject.ID, hash, receipt, uc.now().Add(time.Hour+time.Second))
+	_, err = chunkproof.VerifyReceipt(testSigningKey, testProject.ID, hash, receipt, uc.now().Add(time.Hour+time.Second))
 	require.Error(t, err, "a receipt lives as long as a presigned URL")
 
 	// Content the local store already holds is not written again but is
@@ -126,7 +123,7 @@ func TestChunk_StoreUploaded_OverwritesWithoutExists(t *testing.T) {
 	data := []byte("proxied payload")
 	hash := chunker.Sum(data)
 	store := newOverwritingDirectStore()
-	store.data[hash] = []byte("garbage left by a direct upload")
+	store.data[ck(hash)] = []byte("garbage left by a direct upload")
 	guard := &recordingGuard{}
 	uc, _ := newLinkFixture(t, store)
 	uc.WithGCGuard(guard)
@@ -137,7 +134,7 @@ func TestChunk_StoreUploaded_OverwritesWithoutExists(t *testing.T) {
 	require.Equal(t, 1, store.overwrites)
 	require.Zero(t, store.existsCalls, "a proxied write to S3 is one request")
 	require.Zero(t, store.puts)
-	require.Equal(t, data, store.data[hash], "garbage at the key is replaced")
+	require.Equal(t, data, store.data[ck(hash)], "garbage at the key is replaced")
 	require.Equal(t, [][]domain.Hash{{hash}}, guard.protected, "the GC mark is cleared before the write")
 }
 
@@ -220,7 +217,7 @@ func TestChunk_WithProxyBufferDefaults(t *testing.T) {
 }
 
 // receiptFixture is a direct store that counts reads, as S3 in proxy mode.
-func receiptFixture(t *testing.T) (*Chunk, *MockchunkRepository, *openingDirectStore) {
+func receiptFixture(t *testing.T) (*Chunk, *fakeChunkRepo, *openingDirectStore) {
 	t.Helper()
 	store := &openingDirectStore{stubDirectChunkStore: &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}}
 	uc, repo := newLinkFixture(t, store)
@@ -235,38 +232,31 @@ func TestChunk_ConfirmUploads_ValidReceiptSkipsTheReadBack(t *testing.T) {
 	uc, repo, store := receiptFixture(t)
 	receipt, err := uc.StoreUploaded(ctx, testProject.ID, hash, data)
 	require.NoError(t, err)
-	proof := proofFor(t, uc, hash, data)
-	proof.Receipt = receipt
 
-	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
-	repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}).Return(nil)
-	repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
-
-	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proof})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, store.readCount(), "the server saw the bytes itself; nothing is read back")
+	require.Equal(t, [][]ChunkRef{{{Hash: hash, SizeBytes: int64(len(data))}}}, repo.inserts, "the receipt's size is recorded")
 }
 
-func TestChunk_ConfirmUploads_ReceiptAloneIsEnough(t *testing.T) {
+func TestChunk_ConfirmUploads_ReceiptForARecordedChunkIsIgnored(t *testing.T) {
 	ctx := context.Background()
 	data := []byte("proxied payload")
 	hash := chunker.Sum(data)
 	uc, repo, store := receiptFixture(t)
 	receipt, err := uc.StoreUploaded(ctx, testProject.ID, hash, data)
 	require.NoError(t, err)
+	repo.record(testProject.ID, hash, int64(len(data)))
 
-	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
-	repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), gomock.Any()).Return(nil)
-	repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
-
-	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{{Hash: hash, Receipt: receipt}})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, store.readCount())
+	require.Empty(t, repo.inserts, "the row already exists")
 }
 
-func TestChunk_ConfirmUploads_InvalidReceiptFallsBackToTheProof(t *testing.T) {
+func TestChunk_ConfirmUploads_InvalidReceiptFallsBackToTheReadBack(t *testing.T) {
 	data := []byte("proxied payload")
 	hash := chunker.Sum(data)
 	now := time.Unix(1700000000, 0)
@@ -274,39 +264,34 @@ func TestChunk_ConfirmUploads_InvalidReceiptFallsBackToTheProof(t *testing.T) {
 	otherProject := snow.ID(99)
 
 	receipts := map[string]string{
-		"other project": chunkproof.NewReceipt(linkTestKey, otherProject, hash, size, now.Add(time.Hour)),
-		"expired":       chunkproof.NewReceipt(linkTestKey, testProject.ID, hash, size, now.Add(-time.Second)),
+		"other project": chunkproof.NewReceipt(testSigningKey, otherProject, hash, size, now.Add(time.Hour)),
+		"expired":       chunkproof.NewReceipt(testSigningKey, testProject.ID, hash, size, now.Add(-time.Second)),
 		"wrong key":     chunkproof.NewReceipt("other key", testProject.ID, hash, size, now.Add(time.Hour)),
-		"other hash":    chunkproof.NewReceipt(linkTestKey, testProject.ID, domain.Hash{1}, size, now.Add(time.Hour)),
+		"other hash":    chunkproof.NewReceipt(testSigningKey, testProject.ID, domain.Hash{1}, size, now.Add(time.Hour)),
 		"garbage":       "not-a-receipt",
+		"empty":         "",
 	}
 	for name, receipt := range receipts {
-		t.Run(name+" with a proof is read back", func(t *testing.T) {
+		t.Run(name+" with the object is read back", func(t *testing.T) {
 			ctx := context.Background()
 			uc, repo, store := receiptFixture(t)
 			require.NoError(t, store.put(hash, data))
-			proof := proofFor(t, uc, hash, data)
-			proof.Receipt = receipt
-			repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
-			repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), []ChunkRef{{Hash: hash, SizeBytes: size}}).Return(nil)
-			repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
 
-			missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proof})
+			missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
 			require.NoError(t, err)
 			require.Empty(t, missing)
 			require.Equal(t, int64(1), store.readCount())
+			require.True(t, repo.has(testProject.ID, hash))
 		})
-		t.Run(name+" without a proof is missing", func(t *testing.T) {
+		t.Run(name+" without the object is missing", func(t *testing.T) {
 			ctx := context.Background()
 			uc, repo, store := receiptFixture(t)
-			require.NoError(t, store.put(hash, data))
-			repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
-			repo.EXPECT().LinkProjectChunks(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-			missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{{Hash: hash, Receipt: receipt}})
+			missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
 			require.NoError(t, err)
 			require.Equal(t, []domain.Hash{hash}, missing)
-			require.Zero(t, store.readCount())
+			require.Equal(t, int64(1), store.readCount())
+			require.Empty(t, repo.inserts)
 		})
 	}
 }
@@ -322,15 +307,13 @@ func TestChunk_ConfirmUploads_ReceiptNeverSkipsTheQuota(t *testing.T) {
 	require.NoError(t, err)
 	quota := domain.NewErrorQuotaExceeded("over quota")
 
-	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
-	repo.EXPECT().InsertChunksIfNotExist(gomock.Any(), gomock.Any()).Return(nil)
 	ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject, []LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}).Return(quota)
-	repo.EXPECT().LinkProjectChunks(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	_, err = uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{{Hash: hash, Receipt: receipt}})
+	_, err = uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkReceipt{{Hash: hash, Receipt: receipt}})
 	require.ErrorIs(t, err, quota)
 	var derr *domain.Error
 	require.ErrorAs(t, err, &derr)
 	require.Equal(t, 402, derr.Code)
 	require.Zero(t, store.readCount())
+	require.Empty(t, repo.inserts, "no row without the quota")
 }

@@ -54,14 +54,18 @@ WHERE d.project_id = sqlc.arg(project_id)
       LIMIT sqlc.arg('limit')::bigint
   );
 
--- name: PurgeProjectChunkLinks :execrows
-DELETE FROM project_chunks d
-WHERE d.project_id = sqlc.arg(project_id)
-  AND d.chunk_id IN (
-      SELECT pc.chunk_id FROM project_chunks pc
-      WHERE pc.project_id = sqlc.arg(project_id)
-      LIMIT sqlc.arg('limit')::bigint
-  );
+-- name: PurgeProjectChunkRows :execrows
+DELETE FROM chunks d
+WHERE d.id IN (
+    SELECT c.id FROM chunks c
+    WHERE c.project_id = sqlc.arg(project_id)
+      AND NOT EXISTS (SELECT 1 FROM file_chunks fc WHERE fc.chunk_id = c.id)
+    ORDER BY c.id
+    LIMIT sqlc.arg('limit')::bigint
+);
+
+-- name: IsProjectOnOwnStorage :one
+SELECT EXISTS (SELECT 1 FROM project_storage WHERE project_id = sqlc.arg(project_id))::BOOLEAN AS external;
 
 -- name: PurgeProjectRow :execrows
 DELETE FROM projects WHERE id = sqlc.arg(id) AND deleted = true;

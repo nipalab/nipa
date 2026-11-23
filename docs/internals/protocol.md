@@ -143,60 +143,60 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   per flat window so an old burst cannot hold the limit down. Completed jobs
   feed the tuner from `runChunks`; cancellations and final non-retryable
   failures do not. `defaultHTTPClient` pools 256 connections per host (the
-  larger maximum), so the transport never caps a limit the tuner chose. `ConfirmChunkUploads` measures the stored content
-  size server-side (never a client-supplied value) and writes the chunk
-  metadata rows, so `Push` can rely on them; linked chunks without a proof take
-  their size from the row in one batched `LinkedProjectChunkSizes` lookup.
-  Confirm streams each object it verifies (`storage.ChunkOpener.Open`, which
-  `LocalStore` and the S3 store implement; other stores fall back to `Get`)
-  through `io.LimitReader(MaxChunkSize+1)` into `chunkproof.Verifier`, which
-  computes the plain BLAKE3 hash and the challenge-seeded proof in one pass
-  (the proof format has one owner, `internal/chunkproof`); an object larger
-  than `chunker.MaxChunkSize()` counts as a hash mismatch (deleted, missing).
-  The challenge is checked first, so a forged, expired or misbound challenge
-  costs no store read. All confirms share one server-wide semaphore of
+  larger maximum), so the transport never caps a limit the tuner chose.
+  **Chunk protocol and per-project scope.** Dedup is per project: a chunk
+  belongs to exactly one project (`chunks.project_id`, `UNIQUE (project_id,
+  hash)`), two projects holding the same bytes store them twice, and the
+  project's chunk row is its link to the content (no possession proofs, no
+  challenges, no claim round). The three chunk RPCs carry `chunk_protocol`
+  (`chunkproof.Protocol`, 2) on request and response: the server answers an
+  older or missing version with `FailedPrecondition` and an "upgrade nipa"
+  hint (`internal/grpc/server/chunk.go` `checkChunkProtocol`), and the client
+  refuses a response without the current version (an older server) with a
+  409 and the hint "upgrade the nipa server" (`checkServerChunkProtocol`).
+  **Presign** (`PresignUploadURLs`) looks up the page's hashes in the
+  project's rows (one batched `ProjectChunkSizes`): no row = needs upload, no
+  store check (B4: a fresh push makes no existence checks); a row and the
+  object present (`Exists`, through a server-wide limit of 64 concurrent
+  checks, `presignExistsLimit`) = `already_stored`, no URL; a row but the
+  object lost = needs upload again; presign first protects the recorded
+  chunks from the GC (clears marks), so the client does not confirm them.
+  Every chunk that needs an upload gets a
+  URL; `url` is empty only with `already_stored`. **Confirm**
+  (`ConfirmUploads`) protects the batch from the GC and verifies every hash
+  (a recorded row does not vouch for its object, since presign re-issues an
+  upload when the object is gone; a row only keeps its size and charge):
+  a valid receipt (`ConfirmChunkUploadsRequest.receipts`, `ChunkReceipt{hash,
+  receipt}`, see below) means the server hashed the bytes itself, so its
+  signed size is used with no store read; anything else (direct uploads, an
+  invalid, expired or other-project receipt) is read back from the project's
+  own key, streamed (`storage.ChunkOpener.Open`, which `LocalStore` and the
+  S3 store implement; other stores fall back to `Get`) through
+  `io.LimitReader(MaxChunkSize+1)` into `chunkproof.Verifier`, which computes
+  the plain BLAKE3 hash; an object larger than `chunker.MaxChunkSize()` or
+  not matching its hash counts as missing and is deleted from a
+  `DirectTransferStore` (garbage at a create-only key would block the real
+  content). All confirms share one server-wide semaphore of
   `CHUNK_VERIFY_CONCURRENCY` read-backs (default 64, `<= 0` = default,
-  `Chunk.WithVerifyLimit` via `UsecaseDeps.Config`): one confirm may use the
-  whole budget, and read-back I/O and memory stay bounded however many
-  confirms arrive. Rows are then written in one batched
-  `InsertChunksIfNotExist`, then `ledger.Attribute` (quota, S5), then one
-  `LinkProjectChunks` statement per batch; both are `pushbatch` JSON
-  statements (`InsertChunkRows`/`InsertHashes`: deduplicated, sorted by hash
-  so concurrent postgres confirms take index locks in the same order, 1000
-  rows per statement, `ON CONFLICT DO NOTHING`) and join a context
-  transaction (`dbtx`). Presign (`existsKnown`) checks the store only for refs
-  that have a `chunks` row (one batched `KnownChunks` lookup): a hash the
-  server never confirmed gets an upload target and a challenge with no
-  `Exists`/HEAD, so a fresh push makes no existence checks; refs with a row
-  are still checked (a lost object is uploaded again, present content is
-  claimed), through a server-wide limit of 64 concurrent checks
-  (`presignExistsLimit`). An object that sits at a key without a row (an
-  upload whose confirm never ran, or garbage) makes the create-only PUT answer
-  412 (the free server's signed PUT dedupes instead), and confirm reads it
-  back: valid content is linked through the proof, garbage is deleted and
-  uploaded on the next attempt. A client runs at most `maxConcurrentConfirms` (3)
-  confirms at once across its upload windows (`Client.confirmSlots`, a
-  buffered channel; a waiter gives up when its context ends), so one window's
-  read-back overlaps the others' PUTs while the server's verification load per
-  client stays bounded (SQLite servers rely on `_txlock=immediate` +
-  `busy_timeout`). `UploadChunks` presigns, claims and confirms a window
-  in batches of `uploadBatch` (1000) chunks, so a window of many small files
-  never builds a presign or confirm message near the gRPC size limit. Chunks the project is already linked to come back with `already_stored` so
-  clients skip the transfer. A project may reference a chunk only after it proved it
-  holds the bytes (`internal/chunkproof`): `GetChunkUploadUrls` hands every
-  chunk the project is not linked to an HMAC-signed, project- and hash-bound
-  `proof_challenge`, the client answers with `BLAKE3(challenge || bytes)` in
-  `ConfirmChunkUploads.proofs`, and the server reads the stored object back,
-  checks it against its hash and the proof, and links the project in one batch
-  (`project_chunk_uploads`). The client claims with proofs first only the chunks
-  that came back without an upload URL (`url == ""`: the server holds the object
-  but the project is not linked), so that content is linked without being sent
-  again; a claimed chunk reported missing is presigned again on the next attempt
-  (up to `maxUploadAttempts`, 3). Chunks with a URL are PUT straight away and
-  proved in the final confirm: a 412 on the create-only PUT means the object was
-  stored meanwhile and the final confirm reads it back against the proof, and
-  garbage at the key is deleted there, reported missing and uploaded again on
-  the next attempt.
+  `Chunk.WithVerifyLimit` via `UsecaseDeps.Config`). Then, in one
+  transaction (`Chunk.WithTransactor`, the `dbtx` transactor), the ledger
+  attributes the new rows (`ledger.Attribute`, quota, S5) and the project's
+  rows are inserted (`InsertChunksIfNotExist`: chunk rows plus their
+  `project_chunk_uploads` markers, `pushbatch` JSON statements, deduplicated,
+  sorted by hash so concurrent postgres confirms take index locks in the same
+  order, 1000 rows per statement, `ON CONFLICT DO NOTHING`), so no row is
+  visible before the quota accepted it and a refused quota leaves none. The
+  recorded size is always measured by the server. A client runs at most
+  `maxConcurrentConfirms` (3) confirms at once across its upload windows
+  (`Client.confirmSlots`; a waiter gives up when its context ends), so one
+  window's read-back overlaps the others' PUTs while the server's
+  verification load per client stays bounded (SQLite servers rely on
+  `_txlock=immediate` + `busy_timeout`). `UploadChunks` presigns, PUTs and
+  confirms a window in batches of `uploadBatch` (1000) chunks, one confirm per
+  attempt (already-stored chunks are not confirmed: presign protected them and
+  a confirm would read them back); chunks reported missing are presigned and sent again (up to
+  `maxUploadAttempts`, 3). A 412 on a create-only PUT means the object was
+  stored meanwhile; the confirm reads it back.
   **Upload mode and receipts.** `CHUNK_UPLOAD_MODE` (`direct` default |
   `proxy`, validated at config load, `Chunk.WithUploadMode`) decides where a
   client PUTs to a `DirectTransferStore`: `direct` hands out the store's
@@ -204,42 +204,37 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   server path (`chunkurl.UploadPath`) instead. It applies to the server's own
   store only: an own-storage project (`ProjectStore.External`) always uploads
   direct, and a store without direct transfers (free `nipad`, local) always
-  uses the server path. Challenges are issued either way and B4 (`existsKnown`)
-  still decides the existence checks. `ChunkHandler.PutChunk` verifies the
-  signed URL and the exact `Content-Length`, reserves the signed size from a
-  server-wide byte budget (`CHUNK_PROXY_BUFFER_MIB`, default 128, `<= 0` =
-  default, `Chunk.WithProxyBuffer`/`ReserveUploadBuffer`, a weighted semaphore;
-  a body larger than the budget takes all of it, a request cancelled while
-  waiting gets 503) before reading the body into one buffer of that size
-  through `MaxBytesReader`, and gives it back once the store write returns or
-  the body is rejected. `Chunk.StoreUploaded` checks BLAKE3 before any write
-  (mismatch = 400, nothing written), clears a GC mark on the hash
-  (`ChunkGCGuard.Protect`, so a sweep cannot remove the object between the
-  write and the confirm that trusts the receipt), then writes: a store
-  implementing `storage.ChunkOverwriter` (S3) gets an unconditional
-  single-part `Overwrite` with no `Exists` first (one request; it replaces
-  garbage an earlier direct upload left at the key), other stores keep the
-  `Exists` skip. minio-go signs that PUT with `UNSIGNED-PAYLOAD` over https
-  (no second SHA-256 pass) and with the streaming payload signature over plain
-  http (`TestStore_PutPayloadSigning`). No row, link or quota is touched at
-  PUT. The 204 carries `X-Nipa-Chunk-Receipt` (`chunkproof.ReceiptHeader`):
-  `chunkproof.NewReceipt` is stateless, base64url(expiry ‖ size) plus an
-  HMAC-SHA256 under `CHUNK_URL_SIGNING_KEY` with its own domain label
-  `nipa-chunk-receipt:v1` (the challenge uses `nipa-chunk-proof:v1`, so
-  neither MAC stands in for the other) over project id, hash, the
-  server-measured size and the expiry (`CHUNK_PRESIGN_TTL_SECONDS`); both
-  blue/green colours share the key. The client (`putChunkOnce`/`keepReceipt`)
+  uses the server path. `ChunkHandler.PutChunk` verifies the signed URL and
+  the exact `Content-Length`, reserves the signed size from a server-wide byte
+  budget (`CHUNK_PROXY_BUFFER_MIB`, default 128, `<= 0` = default,
+  `Chunk.WithProxyBuffer`/`ReserveUploadBuffer`, a weighted semaphore; a body
+  larger than the budget takes all of it, a request cancelled while waiting
+  gets 503) before reading the body into one buffer of that size through
+  `MaxBytesReader`, and gives it back once the store write returns or the
+  body is rejected. `Chunk.StoreUploaded` checks BLAKE3 before any write
+  (mismatch = 400, nothing written), clears the GC mark of the project's row
+  (`ChunkGCGuard.Protect(project, hashes)`, so a sweep cannot remove the
+  object between the write and the confirm that trusts the receipt), then
+  writes the project's key: a store implementing `storage.ChunkOverwriter`
+  (S3) gets an unconditional single-part `Overwrite` with no `Exists` first
+  (one request; it replaces garbage an earlier direct upload left at the
+  key), other stores keep the `Exists` skip. minio-go signs that PUT with
+  `UNSIGNED-PAYLOAD` over https (no second SHA-256 pass) and with the
+  streaming payload signature over plain http (`TestStore_PutPayloadSigning`).
+  No row or quota is touched at PUT. The 204 carries `X-Nipa-Chunk-Receipt`
+  (`chunkproof.ReceiptHeader`): `chunkproof.NewReceipt` is stateless,
+  base64url(expiry ‖ size) plus an HMAC-SHA256 under `CHUNK_URL_SIGNING_KEY`
+  with its own domain label `nipa-chunk-receipt:v1` over project id, hash,
+  the server-measured size and the expiry (`CHUNK_PRESIGN_TTL_SECONDS`); both
+  blue/green colours share the key. The receipt no longer proves possession
+  (there is nothing to prove within one project); it only spares the
+  read-back and carries the size. The client (`putChunkOnce`/`keepReceipt`)
   keeps the header only from a 2xx on a relative server path, never from an
-  absolute store URL, and sends it as `ChunkPossessionProof.receipt` (field 4)
-  next to the proof in the final confirm. `confirmUploads` checks receipts
-  before the read-backs: one `VerifyReceipt` accepts for this project and hash
-  marks the chunk present with the receipt's size and no store read; an
-  invalid, expired or other-project receipt falls back to the proof
-  (read-back), and without a proof the chunk is missing. Rows, `ledger.Attribute`
-  and links follow unchanged, so receipts never skip the quota. Older clients
-  send no receipt (read-back), older servers send none (proof only).
-  Unproven hashes are reported missing, `ApplyPush` joins through the link table,
-  and server-generated merge content is linked via `AttributeProjectChunks`.
+  absolute store URL, and sends it in `ConfirmChunkUploadsRequest.receipts`.
+  Receipts never skip the rows, the ledger or the quota. Server-generated
+  merge content is stored with `Chunk.StoreForProject` (object only) and
+  recorded by `AttributeProjectChunks` (ledger, then rows, one transaction)
+  before `ApplyPushAll`.
   The client pushes through the client-streaming `PushStream` only (the unary
   `Push` stays for older clients; an older server answers `Unimplemented`,
   reported with an upgrade hint): `PushStreamHeader` first, then
@@ -317,10 +312,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   behind the Bearer filter — the signature is the capability. HTTP PUT pins the
   exact size (Content-Length check + `MaxBytesReader` + BLAKE3 verify) and only
   writes content (`Chunk.StoreUploaded`, no DB writes, avoiding SQLite lock
-  contention from concurrent PUTs); DB metadata and project links are written at
+  contention from concurrent PUTs); the project's chunk rows are written at
   confirm time. `ApplyPush` (both repositories) resolves every chunk a push
-  references in one project-scoped lookup before it writes anything (a chunk the
-  project is not linked to fails with `missing chunk data for <hash>`), then
+  references in one lookup of the project's own chunk rows before it writes
+  anything (a chunk the project has no row for fails with
+  `missing chunk data for <hash>`), then
   inserts the files and their chunk links in bulk through
   `internal/repository/pushbatch`: one JSON document per batch of 5000 files or
   20000 links, expanded by `json_each` on sqlite and `jsonb_array_elements` on
@@ -380,83 +376,92 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   host (`domain.HostForAddress`); `Auth`/`Session` normalize any address they
   receive so the transport may carry a scheme while `securestorage` never does.
 - **Chunk content backends**: `internal/storage.ChunkStore` (Put/Get/Size/
-  Exists/Close, content-addressed by BLAKE3, idempotent Put) is the single seam.
+  Exists/Close, keyed by project and BLAKE3 hash, idempotent Put; every
+  method takes the project id) is the single seam. Every backend lays chunks
+  out as `p/<project base36>/<hash[:2]>/<hash[2:]>` below its root or prefix
+  (`storage.ChunkKey`/`ParseChunkKey`/`ProjectPrefix`), so a project's
+  content is one prefix; the old global layout (`<hash[:2]>/<hash[2:]>`) is
+  not read (deploys wipe it, `docs/DEPLOY.md`). `storage.ProjectDeleter`
+  (`DeleteProject`, local `RemoveAll` of the project directory, S3 listing +
+  batched `RemoveObjects` of `p/<project>/`) serves the purge.
   Usecases reach it per project through `usecase.ChunkStores`
   (`chunk_stores.go`, `ForProject` → `ProjectStore{Store, External,
   ReadOnly}`; `UsecaseDeps.ChunkStores`, nil = `StaticStores(ChunkStore)`):
-  `Chunk` resolves once per presign/confirm/store/download (existence and
-  dedup are per store), `Branch` reads through `ProjectChunkReader` and stores
-  merge output with `Chunk.StoreForProject`, and `/api/chunks` resolves the
-  project from the signed slugs. `External` skips the storage ledger (chunk
-  rows and project links are still written); `ReadOnly` refuses upload
-  presign/confirm/store with 402 `own storage requires the Own storage
-  add-on`, and the same `Chunk.RequireWritable` gate (`WithStorageGate`)
-  refuses `Push.CheckTarget`/`Push.Push` and every branch landing
-  (`fastForward`, `MergeForMergeRequest`); reads stay open.
+  `Chunk` resolves once per presign/confirm/store/download, `Branch` reads
+  through `ProjectChunkReader` and stores merge output with
+  `Chunk.StoreForProject`, and `/api/chunks` resolves the project from the
+  signed slugs. `External` skips the storage ledger (chunk rows are still
+  written); `ReadOnly` refuses upload presign/confirm/store with 402 `own
+  storage requires the Own storage add-on`, and the same
+  `Chunk.RequireWritable` gate (`WithStorageGate`) refuses
+  `Push.CheckTarget`/`Push.Push` and every branch landing (`fastForward`,
+  `MergeForMergeRequest`); reads stay open.
   `storage.NewLocalStore` (`CHUNK_STORAGE=local`, `CHUNK_STORAGE_DIR`) is the
   free `cmd/nipad`'s only backend — `CHUNK_STORAGE=s3` there fails with a hint
   to use `nipad-ee`. The enterprise `ee/cmd/nipad` is S3-only: empty or `s3`
   selects `ee/storage/s3` (`CHUNK_S3_*`), anything else is a startup error. The
-  S3 store keys objects `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket
-  at startup (`Config.SkipProbe` skips it; `Config.Transport` carries every
-  request). `Store.Probe` checks every capability below on a throwaway
+  S3 store keys objects `<prefix>/p/<project>/<hash[:2]>/<hash[2:]>` (BYO
+  stores the same under their own prefix) and probes the bucket at startup
+  (`Config.SkipProbe` skips it; `Config.Transport` carries every request).
+  `Store.Probe` checks every capability below on a throwaway
   `<prefix>/.nipa-probe-<rand>` object and returns a `*ProbeError` naming the
   failed check. `internal/` must never import `ee/` — only `ee/cmd/*` does (the
   free `cmd/nipad` links no ee package). A store implementing
   `storage.DirectTransferStore` (the S3 store does) hands clients absolute
-  presigned backend URLs: downloads via `PresignedGetObject`, uploads via a
-  POST policy whose `content-length-range` pins the exact declared chunk size
-  (S3 rejects oversized bodies with EntityTooLarge); `usecase.Chunk`
-  type-switches on the capability, `PresignedChunkUrl` carries
-  `method`/`form_data`, and the client POSTs multipart with the file part last
-  (`Client.httpURL` passes absolute URLs through). Direct uploads are
-  presigned PUTs (not POST policies, which Cloudflare R2 does not implement) to
-  the shared key, signed with `If-None-Match: *` and the exact `Content-Length`:
-  the backend refuses (412) a write when the object exists, even when a target is
-  replayed, so a stored chunk can never be overwritten and one project cannot
-  corrupt content another relies on. The client sends the target's `headers`
-  and treats a 412 as "stored meanwhile". A chunk that already exists and has
-  a `chunks` row gets no upload target at all (`url` empty, only a
-  `proof_challenge`): the project claims it with the possession proof, which
-  costs no write. Content without a row is not looked up (see presign above),
-  so its target may meet an existing object and answer 412. Because direct
-  writes bypass the server, `ConfirmChunkUploads` hashes whatever it reads from
-  the shared key (for chunks the project is not linked to yet and for linked
-  ones the client supplies a proof for): an object that does not match its hash is deleted and
-  reported missing, and the client presigns and uploads that chunk again (up to
-  three attempts). The side effect is that a project writer who knows a hash
-  learns that its content exists (no target is issued for confirmed content; a
-  412 reveals at most an unconfirmed object). Backends must support
+  presigned backend URLs for the project's key: downloads via
+  `PresignedGetObject`; `usecase.Chunk` type-switches on the capability,
+  `PresignedChunkUrl` carries `method`/`form_data`, and the client POSTs
+  multipart with the file part last (`Client.httpURL` passes absolute URLs
+  through). Direct uploads are presigned PUTs (not POST policies, which
+  Cloudflare R2 does not implement) to the project's key, signed with
+  `If-None-Match: *` and the exact `Content-Length`: the backend refuses (412)
+  a write when the object exists, even when a target is replayed, so a stored
+  chunk can never be overwritten (S4). The client sends the target's
+  `headers` and treats a 412 as "stored meanwhile". Because direct writes
+  bypass the server, `ConfirmChunkUploads` hashes whatever it reads from the
+  project's key for chunks without a row: an object that does not match its
+  hash is deleted and reported missing, and the client presigns and uploads
+  that chunk again (up to three attempts). The existence check stays because
+  a project member could otherwise confirm a chunk nobody uploaded, which
+  would commit a reference to missing content. Backends must support
   conditional create on presigned PUT (AWS S3, MinIO, R2);
   `TestIntegration_S3CreateOnlyUploads` verifies it against a real backend when
   the `NIPA_S3_TEST_*` variables are set (R2: endpoint
   `https://<account>.r2.cloudflarestorage.com`, region `auto`).
 - **Chunk GC seam (`usecase.ChunkGCGuard`).** `Chunk.WithGCGuard` (nil in the
   free server; `UsecaseDeps.ChunkGCGuard`, set by `nipad-ee` unless
-  `CHUNK_GC_MODE=off`) runs `Protect(hashes)` at the start of
-  `ConfirmChunkUploads` (the whole batch) and in the server-side `upload`
-  (merge output) before `Exists`. The ee guard (`ee/chunkgc.Guard`) clears
-  `chunks.gc_marked_at`; that update waits for a sweep holding the row, so
-  content a sweep removed reads as missing and the client re-uploads it (the
-  three-attempt retry above) instead of a row and link being recorded for gone
-  content. Every link write (`LinkProjectChunk(s)`) happens after one of those
-  two calls. The collector itself (`ee/chunkgc.Collector`, every 6 h, one
-  instance via `pg_try_advisory_lock`): mark unreferenced chunks (no
-  `file_chunks`, `project_chunk_uploads` or `project_chunks` row) in id ranges;
-  adopt bucket objects older than the grace that have no `chunks` row
-  (`s3.Store.ListChunks`, `CHUNK_GC_ORPHAN_SCAN`) as marked rows; sweep rows
-  marked longer than `CHUNK_GC_GRACE_HOURS` (`FOR UPDATE SKIP LOCKED`, 100 per
-  transaction: delete the objects, then the rows; a failed object delete rolls
+  `CHUNK_GC_MODE=off`) runs `Protect(project, hashes)` at the start of
+  `ConfirmChunkUploads` (the whole batch), in `StoreUploaded` and in the
+  server-side `upload` (merge output) before `Exists`. The ee guard
+  (`ee/chunkgc.Guard`) clears `chunks.gc_marked_at` of the project's rows;
+  that update waits for a sweep holding the row, so content a sweep removed
+  reads as missing and the client re-uploads it (the three-attempt retry
+  above) instead of a row being recorded for gone content. Every row insert
+  happens after one of those calls. The collector itself
+  (`ee/chunkgc.Collector`, every 6 h, one instance via
+  `pg_try_advisory_lock`): mark chunk rows nothing in their own project
+  references (no `file_chunks` row and no `project_chunk_uploads` marker of
+  the row's project) in id ranges; adopt bucket objects older than the grace
+  that have no row for their `(project, hash)` (`s3.Store.ListChunks` parses
+  `p/<project>/...` keys, `CHUNK_GC_ORPHAN_SCAN`; objects of a project that
+  no longer exists are left alone) as marked rows; sweep rows marked longer
+  than `CHUNK_GC_GRACE_HOURS` (`FOR UPDATE SKIP LOCKED`, 100 per transaction:
+  delete the project's objects, then the rows; a failed object delete rolls
   the batch back). `CHUNK_GC_MODE=dry-run` (default) marks and reports
   (`nipa_chunk_gc_*{phase="dry_run"}`) but deletes and adopts nothing.
-  Own-storage (BYO) buckets are never touched. Plan and race analysis:
-  `docs/plans/STORAGE_RECLAIM.md`.
+  Own-storage (BYO) buckets are never touched. Project purge deletes the
+  project's rows and its `p/<project>/` prefix (`ee/projectpurge`,
+  `Purger.WithStore`). Plan and race analysis:
+  `docs/plans/STORAGE_RECLAIM.md` (written for global chunks; the reference
+  checks are now per project).
 - **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):
   presign/confirm skip all accounting and no quota applies. Cloud builds inject
   an `ee/` implementation at `ee/cmd/nipad` (same import pattern as `ee/storage/s3`);
-  it links chunks to projects, keeps per-project/org/owner counters and enforces
+  it charges each project for its own chunk rows (new rows only, checked
+  under the owner lock in the confirm's transaction), keeps
+  per-project/org/owner counters and enforces
   the owner's quota at both `GetChunkUploadUrls` (projected new bytes) and
   `ConfirmChunkUploads` (authoritative). Quota failures use
   `domain.NewErrorQuotaExceeded` (HTTP 402) and cross gRPC as

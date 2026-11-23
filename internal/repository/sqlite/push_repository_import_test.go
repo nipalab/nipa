@@ -39,8 +39,7 @@ func (f importFixture) linkChunk(t *testing.T, data string) (domain.Hash, int64,
 	t.Helper()
 	ch, sz, fh := chunkRow(t, data)
 	ctx := context.Background()
-	require.NoError(t, f.repo.InsertChunkIfNotExists(ctx, ch, sz))
-	require.NoError(t, f.repo.LinkProjectChunk(ctx, f.projectID, ch))
+	require.NoError(t, f.repo.InsertChunksIfNotExist(ctx, f.projectID, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	return ch, sz, fh
 }
 
@@ -276,7 +275,7 @@ func TestBranchRepositorySQLite_CommitsByOrigins(t *testing.T) {
 	require.NoError(t, err)
 
 	other := seedProject(t, sqlcSqlite.New(f.db), 1, "other-project")
-	require.NoError(t, f.repo.LinkProjectChunk(ctx, other, ch))
+	require.NoError(t, f.repo.InsertChunksIfNotExist(ctx, other, []usecase.ChunkRef{{Hash: ch, SizeBytes: sz}}))
 	_, err = f.repo.ApplyImport(ctx, rootImport(other, snow.ID(3), gitOrigin("c"), "c.txt", ch, sz, fh))
 	require.NoError(t, err)
 	sameOrigin, err := f.repo.ApplyImport(ctx, rootImport(other, snow.ID(4), gitOrigin("a"), "a.txt", ch, sz, fh))

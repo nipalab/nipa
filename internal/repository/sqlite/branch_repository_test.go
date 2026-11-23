@@ -467,7 +467,9 @@ func seedChunk(t *testing.T, db *sql.DB, fileID int64, index int) int64 {
 	t.Helper()
 
 	res, err := db.ExecContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES (?, ?)`,
+		// The tree readers join chunks by id only; the owning project does
+		// not matter here (sqlite does not enforce the foreign key).
+		`INSERT INTO chunks (project_id, hash, size_bytes) VALUES (1, ?, ?)`,
 		testHashBytes(), 100,
 	)
 	require.NoError(t, err)

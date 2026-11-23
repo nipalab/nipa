@@ -1,8 +1,9 @@
 // Package projectpurge removes deleted projects for good once their restore
 // window has passed: their history rows (commits, trees, files, file chunk
-// links), refs, merge requests and the project row, which frees the slug.
-// Chunk content is left to a later chunk GC: chunks are shared by content
-// across projects.
+// links), refs, merge requests, chunk rows and upload markers, the chunk
+// objects in the server's own store (one prefix delete: chunks belong to one
+// project) and the project row, which frees the slug. A project on its own
+// storage (BYO) keeps its objects: the customer's bucket is never touched.
 //
 // Enterprise Edition: see ee/LICENSE.
 package projectpurge
@@ -28,7 +29,7 @@ const (
 	// projectsPerRun bounds one run; the next run picks up the rest.
 	projectsPerRun = 50
 	// rowBatchFactor scales the batch for the cheap row-only statements
-	// (parent pointers, upload markers, chunk links).
+	// (parent pointers, upload markers, chunk rows).
 	rowBatchFactor = 50
 )
 
@@ -37,6 +38,12 @@ const (
 // a project deleted before deletes released anything is not billed forever.
 type Releaser interface {
 	ReleaseProject(ctx context.Context, projectID snow.ID) (int64, error)
+}
+
+// ProjectStore deletes every chunk object of one project from the server's own
+// store (storage.ProjectDeleter).
+type ProjectStore interface {
+	DeleteProject(ctx context.Context, projectID snow.ID) error
 }
 
 // Config tunes the purge.
@@ -53,6 +60,7 @@ type Stats struct {
 	ProjectID snow.ID
 	Commits   int64
 	Trees     int64
+	Chunks    int64
 }
 
 // Purger removes deleted projects past their retention. Every step runs in
@@ -64,6 +72,7 @@ type Purger struct {
 	transactor *dbtx.Transactor
 	audit      usecase.AuditRecorder
 	releaser   Releaser
+	store      ProjectStore
 	retention  time.Duration
 	batch      int64
 	now        func() time.Time
@@ -96,6 +105,14 @@ func (p *Purger) WithAudit(rec usecase.AuditRecorder) *Purger {
 // WithReleaser releases the project's attributed storage in the final step.
 func (p *Purger) WithReleaser(releaser Releaser) *Purger {
 	p.releaser = releaser
+	return p
+}
+
+// WithStore deletes the project's chunk objects from the server's own store
+// once its chunk rows are gone. Without one the objects stay (the chunk GC
+// does not adopt objects of a project that no longer exists).
+func (p *Purger) WithStore(store ProjectStore) *Purger {
+	p.store = store
 	return p
 }
 
@@ -193,13 +210,30 @@ func (p *Purger) PurgeProject(ctx context.Context, projectID snow.ID, cutoff tim
 	}); err != nil {
 		return stats, err
 	}
+	// Chunk rows once no file references them any more (the trees above
+	// took their file chunk links), then the objects: rows first, so a
+	// failed object delete leaves nothing pointing at missing content and
+	// the next run deletes the prefix again.
 	if err := p.drain(ctx, projectID, cutoff, func(ctx context.Context) (int64, error) {
-		return p.queries.PurgeProjectChunkLinks(ctx, sqlcPostgres.PurgeProjectChunkLinksParams{
+		n, err := p.queries.PurgeProjectChunkRows(ctx, sqlcPostgres.PurgeProjectChunkRowsParams{
 			ProjectID: id,
 			Limit:     p.batch * rowBatchFactor,
 		})
+		stats.Chunks += n
+		return n, err
 	}); err != nil {
 		return stats, err
+	}
+	if p.store != nil {
+		if _, err := p.step(ctx, projectID, cutoff, func(ctx context.Context) (int64, error) {
+			external, err := p.queries.IsProjectOnOwnStorage(ctx, id)
+			if err != nil || external {
+				return 0, err
+			}
+			return 0, p.store.DeleteProject(ctx, projectID)
+		}); err != nil {
+			return stats, err
+		}
 	}
 	// The release reads the project's usage counter, not its links, so it
 	// still gives back what a never-released project held.
@@ -243,7 +277,7 @@ func (p *Purger) PurgeProject(ctx context.Context, projectID snow.ID, cutoff tim
 	if err != nil {
 		return stats, err
 	}
-	slog.Info("project purged", "project_id", projectID.Base36(), "commits", stats.Commits, "trees", stats.Trees)
+	slog.Info("project purged", "project_id", projectID.Base36(), "commits", stats.Commits, "trees", stats.Trees, "chunks", stats.Chunks)
 	return stats, nil
 }
 

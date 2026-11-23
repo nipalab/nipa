@@ -8,6 +8,7 @@ import (
 	"github.com/nipalab/nipa/ee/projectpurge"
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/config"
+	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -22,7 +23,9 @@ func purgeRetention(cfg *config.Config) time.Duration {
 
 // newPurgeJob builds the background purge of deleted projects past their
 // retention; nil when STORAGE_PURGE_RETENTION_DAYS is 0.
-func newPurgeJob(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledger, audit usecase.AuditRecorder) (*projectpurge.Job, error) {
+// The project's chunk objects are deleted from chunkStore when it can delete
+// a project's prefix (storage.ProjectDeleter).
+func newPurgeJob(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledger, audit usecase.AuditRecorder, chunkStore storage.ChunkStore) (*projectpurge.Job, error) {
 	retention := purgeRetention(cfg)
 	if retention == 0 {
 		slog.Info("project purge disabled; deleted projects stay restorable")
@@ -38,6 +41,9 @@ func newPurgeJob(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledger
 	purger.WithAudit(audit)
 	if ledger != nil {
 		purger.WithReleaser(ledger)
+	}
+	if deleter, ok := chunkStore.(storage.ProjectDeleter); ok {
+		purger.WithStore(deleter)
 	}
 	slog.Info("project purge enabled", "retention_days", cfg.StoragePurgeRetentionDays)
 	return projectpurge.NewJob(purger, projectpurge.DefaultInterval), nil

@@ -43,8 +43,7 @@ func (s *PushRepositorySuite) TestApplyPushScale() {
 	files := make([]usecase.PushFileRow, 0, total)
 	for i := 0; i < total; i++ {
 		chunkHash, size, fileHash := chunkRow(s.T(), fmt.Sprintf("scale file %06d", i))
-		s.Require().NoError(repo.InsertChunkIfNotExists(ctx, chunkHash, size))
-		s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, chunkHash))
+		s.Require().NoError(repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: chunkHash, SizeBytes: size}}))
 		files = append(files, usecase.PushFileRow{
 			Name: fmt.Sprintf("f%06d.txt", i), Mode: 0o644, SizeBytes: size, Hash: fileHash,
 			TreeID: int64(i%dirs + 2), ChunkHashes: []domain.Hash{chunkHash},

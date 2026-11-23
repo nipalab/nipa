@@ -20,7 +20,7 @@ Nipa targets:
 | LFS pointers would be imported as 130-byte text files, which defeats the point for game repos | none |
 
 The new design keeps the **client-side reading of Git and the normal chunk
-transfer** (presign, possession proofs, quota and dedup all apply unchanged).
+transfer** (presign, per-project dedup, confirm and quota all apply unchanged).
 It adds a **dedicated server import path** that writes commits with explicit
 parents and origin metadata, and moves refs only at the end.
 

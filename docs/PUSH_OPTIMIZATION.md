@@ -13,11 +13,15 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
   chunks still go through `verifyPossession`.
 - Phase 1.3 landed earlier through `internal/repository/pushbatch`.
 - Later (push throughput, server read-back): presign checks `Exists` only for
-  hashes with a `chunks` row (`KnownChunks`), through a server-wide limit of
+  hashes with a `chunks` row, through a server-wide limit of
   64 instead of 16 per request; confirm streams its read-backs under the
-  server-wide `CHUNK_VERIFY_CONCURRENCY` limit and writes rows and links with
-  one batched statement each (`InsertChunksIfNotExist`, `LinkProjectChunks`).
+  server-wide `CHUNK_VERIFY_CONCURRENCY` limit and writes rows with
+  batched statements (`InsertChunksIfNotExist`).
   Details in `docs/internals/protocol.md`.
+- Later (per-project scope, chunk protocol 2): chunks belong to one project
+  (`UNIQUE (project_id, hash)`, keys `p/<project>/...`); possession proofs,
+  challenges and the claim round are gone, so a push makes one confirm per
+  upload attempt. Presign checks `Exists` only for the project's own rows.
 - Later (push throughput, proxy uploads): `CHUNK_UPLOAD_MODE=proxy` sends
   uploads to the server's own S3/R2 store through the signed PUT path, which
   hashes the bytes, overwrites the object and returns a signed receipt;

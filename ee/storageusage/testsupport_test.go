@@ -25,7 +25,9 @@ import (
 
 	postgresmigrations "github.com/nipalab/nipa/ee/db/migrations/postgres"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 var (
@@ -161,18 +163,61 @@ func (s *ledgerSuite) seedProject(orgID snow.ID) snow.ID {
 	return id
 }
 
-func (s *ledgerSuite) seedChunk(size int64) (domain.Hash, int64) {
-	s.T().Helper()
-	n := testHashCounter.Add(1)
+// seedChunk returns a fresh chunk hash; like a confirm, s.confirm records its
+// row once the ledger accepted it.
+func (s *ledgerSuite) seedChunk(int64) domain.Hash {
 	var hash domain.Hash
-	binary.LittleEndian.PutUint64(hash[:], uint64(n))
+	copy(hash[:], newTestHash())
+	return hash
+}
+
+// seedRow records a chunk row of the project directly, without the ledger
+// (content the project holds but was never charged, or history for recount).
+func (s *ledgerSuite) seedRow(projectID snow.ID, size int64) (domain.Hash, int64) {
+	s.T().Helper()
+	hash := s.seedChunk(size)
 	var id int64
 	err := s.db.QueryRowContext(context.Background(),
-		`INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2) RETURNING id`,
-		hash[:], size,
+		`INSERT INTO chunks (project_id, hash, size_bytes) VALUES ($1, $2, $3) RETURNING id`,
+		projectID.Int64(), hash[:], size,
 	).Scan(&id)
 	s.Require().NoError(err)
 	return hash, id
+}
+
+// confirm records chunks the way usecase.Chunk confirms them: the ledger
+// attributes them and the project's rows are inserted after it, in one
+// transaction.
+func (s *ledgerSuite) confirm(ledger *Ledger, ctx context.Context, org *domain.Organization, project *domain.Project, chunks []usecase.LedgerChunk) error {
+	return confirmChunks(ctx, s.db, func(ctx context.Context) error {
+		return ledger.Attribute(ctx, org, project, chunks)
+	}, project.ID, chunks)
+}
+
+// confirmProject is confirm for server-produced chunks (merge output).
+func (s *ledgerSuite) confirmProject(ledger *Ledger, ctx context.Context, projectID snow.ID, chunks []usecase.LedgerChunk) error {
+	return confirmChunks(ctx, s.db, func(ctx context.Context) error {
+		return ledger.AttributeProjectChunks(ctx, projectID, chunks)
+	}, projectID, chunks)
+}
+
+// confirmChunks runs attribute and then inserts the project's chunk rows in
+// one transaction, like usecase.Chunk.recordChunks over the repositories.
+func confirmChunks(ctx context.Context, db *sql.DB, attribute func(ctx context.Context) error, projectID snow.ID, chunks []usecase.LedgerChunk) error {
+	return dbtx.NewTransactor(db).WithinTx(ctx, func(ctx context.Context) error {
+		if err := attribute(ctx); err != nil {
+			return err
+		}
+		conn := dbtx.New(db)
+		for _, chunk := range chunks {
+			if _, err := conn.ExecContext(ctx,
+				`INSERT INTO chunks (project_id, hash, size_bytes) VALUES ($1, $2, $3) ON CONFLICT (project_id, hash) DO NOTHING`,
+				projectID.Int64(), chunk.Hash[:], chunk.SizeBytes); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *ledgerSuite) orgUsed(orgID snow.ID) int64 {
@@ -201,7 +246,7 @@ func (s *ledgerSuite) linkCount(projectID snow.ID) int {
 	s.T().Helper()
 	var count int
 	err := s.db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM project_chunks WHERE project_id = $1`,
+		`SELECT COUNT(*) FROM chunks WHERE project_id = $1`,
 		projectID.Int64(),
 	).Scan(&count)
 	s.Require().NoError(err)
@@ -277,13 +322,4 @@ func (s *ledgerSuite) seedCommit(projectID snow.ID, treeID int64) snow.ID {
 	)
 	s.Require().NoError(err)
 	return id
-}
-
-func (s *ledgerSuite) seedLink(projectID snow.ID, chunkID, size int64) {
-	s.T().Helper()
-	_, err := s.db.ExecContext(context.Background(),
-		`INSERT INTO project_chunks (project_id, chunk_id, size_bytes) VALUES ($1, $2, $3)`,
-		projectID.Int64(), chunkID, size,
-	)
-	s.Require().NoError(err)
 }

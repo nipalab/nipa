@@ -82,6 +82,15 @@ SQL lives in `ee/repository/postgres/queries/storage_usage.sql` (generated into
 The five tables are part of the consolidated `000001_init_schema` migration
 (development-phase policy: no new migration pair yet):
 
+> **Update (per-project chunks, chunk protocol 2):** `project_chunks` below
+> was dropped by postgres `000020_per_project_chunks`. Chunks now belong to
+> one project (`chunks.project_id`, `UNIQUE (project_id, hash)`), so the
+> chunk row is the project's link and the ledger charges a project for its
+> own rows: `Attribute` counts the chunks without a row under the owner lock
+> and the confirm inserts the rows in the same transaction; release zeroes
+> the counter, restore and recount sum the rows. See
+> `docs/internals/saas.md` and `docs/internals/protocol.md`.
+
 ```sql
 CREATE TABLE org_billing_owner (
     org_id     BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,

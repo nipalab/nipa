@@ -13,6 +13,8 @@ import (
 	"github.com/nipalab/nipa/ee/projectpurge"
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
 )
 
 // TestEnterpriseDeleteProjectReleasesStorage drives the real wiring: deleting
@@ -166,10 +168,13 @@ func TestEnterpriseRestoreAndPurgeProject(t *testing.T) {
 	require.Equal(t, afterDelete, used(), "the other project keeps its usage")
 }
 
-// TestEnterpriseChunkGCReclaimsPurgedContent closes the loop: content only a
-// purged project referenced is deleted from the bucket by the collector, and
-// pushing the same content again later uploads it afresh.
-func TestEnterpriseChunkGCReclaimsPurgedContent(t *testing.T) {
+// TestEnterprisePurgeReclaimsTheProjectsContent closes the loop with
+// per-project chunks: two projects push the same content and get two objects;
+// purging one deletes its rows and its p/<project>/ prefix, the other
+// project's copy and clone are untouched, a chunk GC run finds nothing of the
+// purged project left to collect, and pushing the same content to a new
+// project uploads it afresh.
+func TestEnterprisePurgeReclaimsTheProjectsContent(t *testing.T) {
 	ctx := context.Background()
 
 	dbConn, err := eedb.Open(testPGDSN)
@@ -179,6 +184,8 @@ func TestEnterpriseChunkGCReclaimsPurgedContent(t *testing.T) {
 
 	store := newS3ChunkStore(t)
 	objects, ok := store.(chunkgc.ObjectStore)
+	require.True(t, ok)
+	deleter, ok := store.(storage.ProjectDeleter)
 	require.True(t, ok)
 	ledger := storageusage.NewLedger(dbConn, storageusage.Config{})
 	host, uc := startEnterpriseServerWith(t, dbConn, store, mustSnowNode(t, 0), serverOptions{
@@ -192,11 +199,13 @@ func TestEnterpriseChunkGCReclaimsPurgedContent(t *testing.T) {
 	require.NoError(t, err)
 	gone, err := uc.Project.Create(admin, org.ID, "Gone", "", "gone", nil)
 	require.NoError(t, err)
-	_, err = uc.Project.Create(admin, org.ID, "Later", "", "later", nil)
+	kept, err := uc.Project.Create(admin, org.ID, "Kept", "", "kept", nil)
+	require.NoError(t, err)
+	later, err := uc.Project.Create(admin, org.ID, "Later", "", "later", nil)
 	require.NoError(t, err)
 
 	repo, pusher := connectClient(t, host)
-	content := "content only the purged project held " + suffix + "\n"
+	content := "content two projects hold " + suffix + "\n"
 	push := func(slug string) {
 		url := "http://" + host + "/" + org.Slug + "/" + slug
 		target := filepath.Join(t.TempDir(), slug)
@@ -206,41 +215,65 @@ func TestEnterpriseChunkGCReclaimsPurgedContent(t *testing.T) {
 		require.NoError(t, pusher.Run(ctx, target, "add asset"))
 	}
 	push("gone")
+	push("kept")
 
-	var hashes []domain.Hash
-	rows, err := dbConn.QueryContext(ctx, `SELECT hash FROM project_chunk_uploads WHERE project_id = $1`, gone.ID.Int64())
-	require.NoError(t, err)
-	for rows.Next() {
-		var raw []byte
-		require.NoError(t, rows.Scan(&raw))
-		var hash domain.Hash
-		copy(hash[:], raw)
-		hashes = append(hashes, hash)
+	hashesOf := func(projectID snow.ID) []domain.Hash {
+		rows, err := dbConn.QueryContext(ctx, `SELECT hash FROM chunks WHERE project_id = $1`, projectID.Int64())
+		require.NoError(t, err)
+		defer func() { _ = rows.Close() }()
+		var hashes []domain.Hash
+		for rows.Next() {
+			var raw []byte
+			require.NoError(t, rows.Scan(&raw))
+			var hash domain.Hash
+			copy(hash[:], raw)
+			hashes = append(hashes, hash)
+		}
+		require.NoError(t, rows.Err())
+		return hashes
 	}
-	require.NoError(t, rows.Close())
+	hashes := hashesOf(gone.ID)
 	require.NotEmpty(t, hashes)
+	require.ElementsMatch(t, hashes, hashesOf(kept.ID), "the same content is one row per project")
+	for _, hash := range hashes {
+		for _, project := range []snow.ID{gone.ID, kept.ID} {
+			exists, err := store.Exists(ctx, project, hash)
+			require.NoError(t, err)
+			require.True(t, exists, "each project holds its own object")
+		}
+	}
 
 	require.NoError(t, uc.Project.Delete(admin, gone.ID))
 	purger, err := projectpurge.New(dbConn, projectpurge.Config{Retention: time.Nanosecond})
 	require.NoError(t, err)
-	_, err = purger.WithReleaser(ledger).PurgeProject(ctx, gone.ID, time.Now().Add(time.Second))
+	stats, err := purger.WithReleaser(ledger).WithStore(deleter).PurgeProject(ctx, gone.ID, time.Now().Add(time.Second))
 	require.NoError(t, err)
+	require.Equal(t, int64(len(hashes)), stats.Chunks)
+	require.Empty(t, hashesOf(gone.ID), "the purge deletes the project's rows")
+	for _, hash := range hashes {
+		exists, err := store.Exists(ctx, gone.ID, hash)
+		require.NoError(t, err)
+		require.False(t, exists, "the purge deletes the project's prefix")
+		exists, err = store.Exists(ctx, kept.ID, hash)
+		require.NoError(t, err)
+		require.True(t, exists, "the other project's copy stays")
+	}
 
-	collector, err := chunkgc.New(dbConn, objects, chunkgc.Config{Mode: chunkgc.ModeOn, Grace: time.Millisecond})
+	collector, err := chunkgc.New(dbConn, objects, chunkgc.Config{Mode: chunkgc.ModeOn, Grace: time.Millisecond, OrphanScan: true})
 	require.NoError(t, err)
 	_, err = collector.Run(ctx)
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
-	report, err := collector.Run(ctx)
+	_, err = collector.Run(ctx)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, report.Deleted, int64(len(hashes)))
-	for _, hash := range hashes {
-		exists, err := store.Exists(ctx, hash)
-		require.NoError(t, err)
-		require.False(t, exists, "the bucket no longer holds %s", hash)
-	}
+	require.ElementsMatch(t, hashes, hashesOf(kept.ID), "GC keeps the kept project's referenced rows")
+
+	keptCheckout := filepath.Join(t.TempDir(), "kept-checkout")
+	require.NoError(t, repo.Clone(ctx, "http://"+host+"/"+org.Slug+"/kept", host, org.Slug, "kept", "", nil, keptCheckout))
+	require.Equal(t, content, readFile(t, keptCheckout, "asset.txt"))
 
 	push("later")
+	require.ElementsMatch(t, hashes, hashesOf(later.ID), "the same content is uploaded again for a new project")
 	checkout := filepath.Join(t.TempDir(), "later-checkout")
 	url := "http://" + host + "/" + org.Slug + "/later"
 	require.NoError(t, repo.Clone(ctx, url, host, org.Slug, "later", "", nil, checkout))

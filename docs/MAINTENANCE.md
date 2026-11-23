@@ -423,7 +423,7 @@ The new host (or the new DSN) must use the same values for:
 |---|---|
 | `JWT_KEY` | access tokens, refresh session tags and the OAuth state key; changing it signs everyone out |
 | `MFA_ENCRYPTION_KEY` | stored TOTP secrets; changing it disables every enrolled second factor |
-| `CHUNK_URL_SIGNING_KEY` | chunk URLs and possession-proof challenges in flight |
+| `CHUNK_URL_SIGNING_KEY` | chunk URLs and proxied-upload receipts in flight |
 | `PUBLIC_BASE_URL`, `EMAIL_BASE_URL` | SSH key login is bound to the public origin; email links |
 | `CHUNK_STORAGE*`, `CHUNK_S3_*` | where the chunks live (`nipad-ee` keeps the same bucket) |
 | `OAUTH_*`, `PADDLE_*`, `BILLING_*`, `SAAS_*`, `EMAIL_*` | social login callbacks, billing webhooks and prices, onboarding, mail |

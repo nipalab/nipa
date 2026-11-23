@@ -17,6 +17,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -30,29 +31,29 @@ type proxyCountingStore struct {
 	presigns   atomic.Int64
 }
 
-func (s *proxyCountingStore) Get(ctx context.Context, hash domain.Hash) ([]byte, error) {
+func (s *proxyCountingStore) Get(ctx context.Context, projectID snow.ID, hash domain.Hash) ([]byte, error) {
 	s.reads.Add(1)
-	return s.Store.Get(ctx, hash)
+	return s.Store.Get(ctx, projectID, hash)
 }
 
-func (s *proxyCountingStore) Open(ctx context.Context, hash domain.Hash) (io.ReadCloser, error) {
+func (s *proxyCountingStore) Open(ctx context.Context, projectID snow.ID, hash domain.Hash) (io.ReadCloser, error) {
 	s.reads.Add(1)
-	return s.Store.Open(ctx, hash)
+	return s.Store.Open(ctx, projectID, hash)
 }
 
-func (s *proxyCountingStore) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
+func (s *proxyCountingStore) Exists(ctx context.Context, projectID snow.ID, hash domain.Hash) (bool, error) {
 	s.exists.Add(1)
-	return s.Store.Exists(ctx, hash)
+	return s.Store.Exists(ctx, projectID, hash)
 }
 
-func (s *proxyCountingStore) Overwrite(ctx context.Context, hash domain.Hash, data []byte) error {
+func (s *proxyCountingStore) Overwrite(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) error {
 	s.overwrites.Add(1)
-	return s.Store.Overwrite(ctx, hash, data)
+	return s.Store.Overwrite(ctx, projectID, hash, data)
 }
 
-func (s *proxyCountingStore) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
+func (s *proxyCountingStore) PresignUpload(ctx context.Context, projectID snow.ID, hash domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
 	s.presigns.Add(1)
-	return s.Store.PresignUpload(ctx, hash, size, expires)
+	return s.Store.PresignUpload(ctx, projectID, hash, size, expires)
 }
 
 // TestEnterpriseProxyUploads pushes through MinIO with CHUNK_UPLOAD_MODE=proxy:
@@ -88,7 +89,8 @@ func TestEnterpriseProxyUploads(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chunks, 1)
 	poisonedHash, poisonedData := chunks[0].Hash, chunks[0].Data
-	require.NoError(t, store.Put(ctx, poisonedHash, []byte("garbage left by a direct upload")))
+	project := defaultProjectID(t, dbConn)
+	require.NoError(t, store.Put(ctx, project, poisonedHash, []byte("garbage left by a direct upload")))
 
 	writeFile(t, target, "fresh.txt", fresh)
 	writeFile(t, target, "poisoned.txt", poisoned)
@@ -105,7 +107,7 @@ func TestEnterpriseProxyUploads(t *testing.T) {
 	require.Zero(t, store.presigns.Load(), "no direct upload URL is handed out in proxy mode")
 	require.Positive(t, store.overwrites.Load())
 
-	got, err := store.Store.Get(ctx, poisonedHash)
+	got, err := store.Store.Get(ctx, project, poisonedHash)
 	require.NoError(t, err)
 	require.Equal(t, poisonedData, got, "the proxied write replaced the garbage")
 

@@ -1,6 +1,8 @@
 package chunkproof
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"strings"
@@ -42,12 +44,11 @@ func TestVerifyReceiptRejects(t *testing.T) {
 	receipt := NewReceipt("key", snow.ID(7), hash, 4096, now.Add(time.Hour))
 	encoded, sig, _ := strings.Cut(receipt, ".")
 
-	challenge, err := NewChallenge("key", snow.ID(7), hash, now.Add(time.Hour))
-	require.NoError(t, err)
-	// A receipt-shaped payload carrying the challenge domain's MAC: the same
-	// key signs both, so only the domain label tells them apart.
-	challengeMAC := encodeReceiptPayload(now.Add(time.Hour), 4096)
-	challengeMAC += "." + sign("key", snow.ID(7), hash, challengeMAC)
+	// A receipt-shaped payload carrying another domain's MAC: the same key
+	// signs other things (chunk URLs), so only the domain label tells them
+	// apart.
+	otherMAC := encodeReceiptPayload(now.Add(time.Hour), 4096)
+	otherMAC += "." + signWithDomain("nipa-chunk-other:v1", "key", snow.ID(7), hash, otherMAC)
 	// A bigger size under the original MAC.
 	resized := encodeReceiptPayload(now.Add(time.Hour), 1<<20) + "." + sig
 	// A later expiry under the original MAC.
@@ -65,8 +66,7 @@ func TestVerifyReceiptRejects(t *testing.T) {
 		"tampered signature":          encoded + "." + strings.Repeat("A", len(sig)),
 		"tampered size":               resized,
 		"tampered expiry":             extended,
-		"challenge used as receipt":   challenge,
-		"challenge MAC as receipt":    challengeMAC,
+		"other domain MAC as receipt": otherMAC,
 		"receipt with trailing bytes": receipt + "x",
 	}
 	for name, candidate := range cases {
@@ -87,14 +87,6 @@ func TestVerifyReceiptRejects(t *testing.T) {
 			require.Zero(t, size)
 		})
 	}
-}
-
-func TestReceiptIsNotAChallenge(t *testing.T) {
-	now := time.Unix(1700000000, 0)
-	hash := chunker.Sum([]byte("payload"))
-	receipt := NewReceipt("key", snow.ID(7), hash, 4096, now.Add(time.Hour))
-
-	require.ErrorIs(t, VerifyChallenge("key", snow.ID(7), hash, receipt, now), ErrInvalidChallenge)
 }
 
 func TestVerifyReceiptRejectsBadPayloads(t *testing.T) {
@@ -163,4 +155,20 @@ func FuzzReceiptRoundTrip(f *testing.F) {
 		_, err = VerifyReceipt("key", snow.ID(project+1), hash, receipt, now)
 		require.ErrorIs(t, err, ErrInvalidReceipt)
 	})
+}
+
+func signWithDomain(label, key string, projectID snow.ID, hash domain.Hash, encoded string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(label))
+	var id [8]byte
+	binary.BigEndian.PutUint64(id[:], uint64(projectID.Int64()))
+	mac.Write(id[:])
+	mac.Write(hash[:])
+	mac.Write([]byte(encoded))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func TestSignWithDomainMatchesReceiptLabel(t *testing.T) {
+	hash := chunker.Sum([]byte("payload"))
+	require.Equal(t, signReceipt("key", snow.ID(7), hash, "abc"), signWithDomain(receiptDomain, "key", snow.ID(7), hash, "abc"))
 }

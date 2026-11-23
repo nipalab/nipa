@@ -12,10 +12,10 @@ func (s *ledgerSuite) TestAttribute_LinksAndCountsExactlyOnce() {
 	ctx := context.Background()
 	org := snow.ID(1)
 	project := snow.ID(1)
-	hash, _ := s.seedChunk(100)
+	hash := s.seedChunk(100)
 
 	chunk := usecase.LedgerChunk{Hash: hash, SizeBytes: 100}
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{chunk}))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{chunk}))
 
 	s.Equal(int64(100), s.orgUsed(org))
 	s.Equal(int64(100), s.projectUsed(project))
@@ -25,7 +25,7 @@ func (s *ledgerSuite) TestAttribute_LinksAndCountsExactlyOnce() {
 	s.NoError(err)
 	s.Equal(map[domain.Hash]int64{hash: 100}, sizes)
 
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{chunk}))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{chunk}))
 	s.Equal(int64(100), s.orgUsed(org))
 	s.Equal(int64(100), s.projectUsed(project))
 	s.Equal(1, s.linkCount(project))
@@ -36,11 +36,11 @@ func (s *ledgerSuite) TestAttribute_LargeBatch() {
 	const n = 300
 	chunks := make([]usecase.LedgerChunk, 0, n)
 	for i := 0; i < n; i++ {
-		hash, _ := s.seedChunk(10)
+		hash := s.seedChunk(10)
 		chunks = append(chunks, usecase.LedgerChunk{Hash: hash, SizeBytes: 10})
 	}
 
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: 1}, &domain.Project{ID: 1}, chunks))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: 1}, &domain.Project{ID: 1}, chunks))
 	s.Equal(int64(n*10), s.orgUsed(snow.ID(1)))
 	s.Equal(n, s.linkCount(snow.ID(1)))
 }
@@ -50,9 +50,9 @@ func (s *ledgerSuite) TestAttribute_QuotaRejectsAndRollsBack() {
 	ledger := NewLedger(s.db, Config{DefaultQuotaBytes: 50})
 	org := snow.ID(1)
 	project := snow.ID(1)
-	hash, _ := s.seedChunk(100)
+	hash := s.seedChunk(100)
 
-	err := ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}})
+	err := s.confirm(ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}})
 	s.True(isQuotaExceeded(err), "expected a 402 quota error, got %v", err)
 	s.Equal(0, s.linkCount(project))
 	s.Equal(int64(0), s.orgUsed(org))
@@ -60,7 +60,7 @@ func (s *ledgerSuite) TestAttribute_QuotaRejectsAndRollsBack() {
 
 	quota := int64(1000)
 	s.NoError(ledger.SetComputedQuota(ctx, snow.ID(1), quota))
-	s.NoError(ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
+	s.NoError(s.confirm(ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
 	s.Equal(int64(100), s.orgUsed(org))
 	s.Equal(int64(100), s.projectUsed(project))
 }
@@ -72,11 +72,11 @@ func (s *ledgerSuite) TestAttribute_ProjectAndOrgShareOneQuota() {
 	projectA := snow.ID(1)
 	projectB := s.seedProject(org)
 
-	hashA, _ := s.seedChunk(100)
-	hashB, _ := s.seedChunk(100)
-	s.NoError(ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: projectA}, []usecase.LedgerChunk{{Hash: hashA, SizeBytes: 100}}))
+	hashA := s.seedChunk(100)
+	hashB := s.seedChunk(100)
+	s.NoError(s.confirm(ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: projectA}, []usecase.LedgerChunk{{Hash: hashA, SizeBytes: 100}}))
 
-	err := ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: projectB}, []usecase.LedgerChunk{{Hash: hashB, SizeBytes: 100}})
+	err := s.confirm(ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: projectB}, []usecase.LedgerChunk{{Hash: hashB, SizeBytes: 100}})
 	s.True(isQuotaExceeded(err), "the owner's quota covers all their orgs and projects")
 }
 
@@ -106,12 +106,12 @@ func (s *ledgerSuite) TestBillingOwner_SeedsFromCreator() {
 	owner := s.seedUser("creator")
 	org := s.seedOrg(owner)
 	project := s.seedProject(org)
-	hash, _ := s.seedChunk(10)
+	hash := s.seedChunk(10)
 
 	_, seeded := s.billingOwner(org)
 	s.False(seeded, "the mapping is seeded lazily")
 
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 10}}))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 10}}))
 
 	mapped, ok := s.billingOwner(org)
 	s.True(ok)
@@ -130,9 +130,9 @@ func (s *ledgerSuite) TestSetBillingOwner_TransfersAggregate() {
 	ownerB := s.seedUser("owner-b")
 	org := s.seedOrg(ownerA)
 	project := s.seedProject(org)
-	hash, _ := s.seedChunk(100)
+	hash := s.seedChunk(100)
 
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
 	s.NoError(s.ledger.SetBillingOwner(ctx, org, ownerB))
 
 	summaryA, err := s.ledger.OwnerStorage(ctx, ownerA)
@@ -199,11 +199,11 @@ func (s *ledgerSuite) TestOrgStorage_ReportsQuotaAndBreakdown() {
 	ctx := context.Background()
 	org := snow.ID(1)
 	project := snow.ID(1)
-	hash, _ := s.seedChunk(100)
+	hash := s.seedChunk(100)
 
 	quota := int64(500)
 	s.NoError(s.ledger.SetComputedQuota(ctx, snow.ID(1), quota))
-	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
+	s.NoError(s.confirm(s.ledger, ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
 
 	summary, err := s.ledger.OrgStorage(ctx, org)
 	s.NoError(err)
@@ -223,42 +223,62 @@ func (s *ledgerSuite) TestOrgStorage_ReportsQuotaAndBreakdown() {
 
 func (s *ledgerSuite) TestAttributeProjectChunks_ResolvesOrg() {
 	ctx := context.Background()
-	hash, _ := s.seedChunk(50)
+	hash := s.seedChunk(50)
 
-	s.NoError(s.ledger.AttributeProjectChunks(ctx, snow.ID(1), []usecase.LedgerChunk{{Hash: hash, SizeBytes: 50}}))
+	s.NoError(s.confirmProject(s.ledger, ctx, snow.ID(1), []usecase.LedgerChunk{{Hash: hash, SizeBytes: 50}}))
 	s.Equal(int64(50), s.orgUsed(snow.ID(1)))
 	s.Equal(int64(50), s.projectUsed(snow.ID(1)))
 }
 
-func (s *ledgerSuite) TestAttribute_MissingChunkMetadataErrors() {
+// TestAttribute_ChargesOnlyChunksWithoutARow checks the per-project rule:
+// a chunk the project already has a row for is not charged again, a chunk of
+// the same hash in another project is (two projects, two copies), and a hash
+// repeated within one batch counts once.
+func (s *ledgerSuite) TestAttribute_ChargesOnlyChunksWithoutARow() {
 	ctx := context.Background()
-	var hash domain.Hash
-	hash[31] = 1
-	s.Equal(500, errorCode(s.ledger.Attribute(ctx, &domain.Organization{ID: 1}, &domain.Project{ID: 1}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 1}})))
+	org := &domain.Organization{ID: 1}
+	project := &domain.Project{ID: 1}
+	other := &domain.Project{ID: s.seedProject(org.ID)}
+	recorded, _ := s.seedRow(project.ID, 10)
+	fresh := s.seedChunk(20)
+
+	s.NoError(s.confirm(s.ledger, ctx, org, project, []usecase.LedgerChunk{
+		{Hash: recorded, SizeBytes: 10}, {Hash: fresh, SizeBytes: 20}, {Hash: fresh, SizeBytes: 20},
+	}))
+	s.Equal(int64(20), s.projectUsed(project.ID), "the recorded chunk is not charged")
+	s.Equal(2, s.linkCount(project.ID))
+
+	s.NoError(s.confirm(s.ledger, ctx, org, other, []usecase.LedgerChunk{{Hash: fresh, SizeBytes: 20}}))
+	s.Equal(int64(20), s.projectUsed(other.ID), "the same bytes in another project are its own")
+	s.Equal(int64(40), s.orgUsed(org.ID))
 }
 
-func (s *ledgerSuite) TestRecountOrg_RebuildsFromHistory() {
+// TestRecountOrg_RebuildsFromRows recounts a project's usage from its chunk
+// rows: physical bytes are the project's bytes, referenced by a commit or
+// not (unreferenced rows are the chunk GC's to remove).
+func (s *ledgerSuite) TestRecountOrg_RebuildsFromRows() {
 	ctx := context.Background()
 	org := snow.ID(1)
 	project := snow.ID(1)
 
 	rootID := s.seedTreeNode(nil)
 	childID := s.seedTreeNode(&rootID)
-	keepHash, keepID := s.seedChunk(10)
-	nestedHash, nestedID := s.seedChunk(20)
-	staleHash, staleID := s.seedChunk(999)
+	keepHash, keepID := s.seedRow(project, 10)
+	nestedHash, nestedID := s.seedRow(project, 20)
+	strayHash, _ := s.seedRow(project, 999)
 	s.seedFile(rootID, keepID)
 	s.seedFile(childID, nestedID)
 	s.seedCommit(project, rootID)
-	s.seedLink(project, staleID, 999)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO project_usage (project_id, used_bytes) VALUES ($1, 5)`, project.Int64())
+	s.Require().NoError(err)
 
 	s.NoError(s.ledger.RecountOrg(ctx, org))
 
-	sizes, err := s.ledger.AttributedSizes(ctx, project, []domain.Hash{keepHash, nestedHash, staleHash})
+	sizes, err := s.ledger.AttributedSizes(ctx, project, []domain.Hash{keepHash, nestedHash, strayHash})
 	s.NoError(err)
-	s.Equal(map[domain.Hash]int64{keepHash: 10, nestedHash: 20}, sizes)
-	s.Equal(int64(30), s.projectUsed(project))
-	s.Equal(int64(30), s.orgUsed(org))
+	s.Equal(map[domain.Hash]int64{keepHash: 10, nestedHash: 20, strayHash: 999}, sizes)
+	s.Equal(int64(1029), s.projectUsed(project))
+	s.Equal(int64(1029), s.orgUsed(org))
 }
 
 func (s *ledgerSuite) TestOrgStorage_DoesNotSeedTheOwnerMapping() {
@@ -293,17 +313,12 @@ func (s *ledgerSuite) TestRecountOrg_SkipsExternalProjects() {
 	nipaProject := snow.ID(1)
 	external := s.seedProject(org)
 
-	rootID := s.seedTreeNode(nil)
-	_, keepID := s.seedChunk(10)
-	_, byoID := s.seedChunk(40)
-	s.seedFile(rootID, keepID)
-	s.seedCommit(nipaProject, rootID)
-	byoRoot := s.seedTreeNode(nil)
-	s.seedFile(byoRoot, byoID)
-	s.seedCommit(external, byoRoot)
-	s.seedLink(external, byoID, 40)
+	s.seedRow(nipaProject, 10)
+	s.seedRow(external, 40)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO project_usage (project_id, used_bytes) VALUES ($1, 40)`, external.Int64())
+	s.Require().NoError(err)
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO storage_servers (id, owner_user_id, name, endpoint, bucket, access_key_id, secret_sealed)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO storage_servers (id, owner_user_id, name, endpoint, bucket, access_key_id, secret_sealed)
 		VALUES (77, 1, 'byo', 'https://s3.example.com', 'b', 'a', '\x00')`)
 	s.Require().NoError(err)
 	_, err = s.db.ExecContext(ctx, `INSERT INTO project_storage (project_id, storage_server_id) VALUES ($1, 77)`, external.Int64())
@@ -312,7 +327,7 @@ func (s *ledgerSuite) TestRecountOrg_SkipsExternalProjects() {
 	s.NoError(s.ledger.RecountOrg(ctx, org))
 	s.Equal(int64(10), s.orgUsed(org))
 	s.Equal(int64(0), s.projectUsed(external))
-	s.Equal(0, s.linkCount(external))
+	s.Equal(1, s.linkCount(external), "own-storage rows stay, they are just never charged")
 
 	summary, err := s.ledger.OrgStorage(ctx, org)
 	s.Require().NoError(err)

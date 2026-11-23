@@ -1,12 +1,3 @@
--- name: ChunkInsertOrIgnore :exec
-INSERT INTO chunks (hash, size_bytes) VALUES (sqlc.arg(hash), sqlc.arg(size_bytes)) ON CONFLICT(hash) DO NOTHING;
-
--- name: ChunkGetByHash :one
-SELECT *
-FROM chunks
-WHERE hash = sqlc.arg(hash)
-LIMIT 1;
-
 -- name: TreeNodeInsert :one
 INSERT INTO tree_nodes (hash, name, mode, parent_tree_id) VALUES (sqlc.arg(hash), sqlc.arg(name), sqlc.arg(mode), sqlc.arg(parent_tree_id))
 RETURNING id;
@@ -31,21 +22,15 @@ UPDATE branches
 SET commit_id = sqlc.arg(commit_id), updated_at = now()
 WHERE id = sqlc.arg(id) AND deleted = FALSE;
 
--- name: ProjectChunkUploadInsert :exec
-INSERT INTO project_chunk_uploads (project_id, hash) VALUES (sqlc.arg(project_id), sqlc.arg(hash))
-ON CONFLICT (project_id, hash) DO NOTHING;
-
--- name: ProjectChunkLinkedSizes :many
-SELECT c.hash, c.size_bytes
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE u.project_id = sqlc.arg(project_id) AND c.hash = ANY(sqlc.arg(hashes)::bytea[]);
+-- name: ProjectChunkSizes :many
+SELECT hash, size_bytes
+FROM chunks
+WHERE project_id = sqlc.arg(project_id) AND hash = ANY(sqlc.arg(hashes)::bytea[]);
 
 -- name: ChunkListByHashesForProject :many
-SELECT c.id, c.hash
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE u.project_id = sqlc.arg(project_id) AND c.hash = ANY(sqlc.arg(hashes)::bytea[]);
+SELECT id, hash
+FROM chunks
+WHERE project_id = sqlc.arg(project_id) AND hash = ANY(sqlc.arg(hashes)::bytea[]);
 
 -- name: FileInsertMany :many
 INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding)
@@ -61,18 +46,13 @@ FROM jsonb_array_elements(sqlc.arg(links)::jsonb) AS r
 ON CONFLICT (file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
 
 -- name: ChunkInsertManyOrIgnore :exec
-INSERT INTO chunks (hash, size_bytes)
-SELECT decode(r->>0, 'hex'), (r->>1)::bigint
+INSERT INTO chunks (project_id, hash, size_bytes)
+SELECT sqlc.arg(project_id)::bigint, decode(r->>0, 'hex'), (r->>1)::bigint
 FROM jsonb_array_elements(sqlc.arg(chunk_rows)::jsonb) AS r
-ON CONFLICT (hash) DO NOTHING;
+ON CONFLICT (project_id, hash) DO NOTHING;
 
 -- name: ProjectChunkUploadInsertMany :exec
 INSERT INTO project_chunk_uploads (project_id, hash)
 SELECT sqlc.arg(project_id)::bigint, decode(h, 'hex')
 FROM jsonb_array_elements_text(sqlc.arg(hashes)::jsonb) AS h
 ON CONFLICT (project_id, hash) DO NOTHING;
-
--- name: ChunkKnownHashes :many
-SELECT hash
-FROM chunks
-WHERE hash = ANY(sqlc.arg(hashes)::bytea[]);

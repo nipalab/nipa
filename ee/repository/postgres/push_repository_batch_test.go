@@ -54,8 +54,7 @@ func (s *PushRepositorySuite) TestBatchedPushCrossesBatchBoundaries() {
 	for i := range pool {
 		hash, size, _ := chunkRow(t, fmt.Sprintf("pool chunk %04d", i))
 		pool[i] = hash
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
-		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
+		require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: hash, SizeBytes: size}}))
 	}
 
 	type expectation struct {
@@ -117,8 +116,7 @@ func (s *PushRepositorySuite) TestBatchedPushKeepsAwkwardFieldValues() {
 		hash domain.Hash
 		size int64
 	}{{a, sizeA}, {b, sizeB}} {
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, h.hash, h.size))
-		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, h.hash))
+		require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: h.hash, SizeBytes: h.size}}))
 	}
 
 	zeroHash := domain.Hash{}
@@ -167,14 +165,15 @@ func (s *PushRepositorySuite) TestBatchedPushRejectsMissingChunkInLaterBatch() {
 
 	const total = 1100
 	chunks := make([]domain.Hash, total)
+	var rows []usecase.ChunkRef
 	for i := range chunks {
 		hash, size, _ := chunkRow(t, fmt.Sprintf("late %04d", i))
 		chunks[i] = hash
-		require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
 		if i != total-1 {
-			require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
+			rows = append(rows, usecase.ChunkRef{Hash: hash, SizeBytes: size})
 		}
 	}
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, rows))
 	files := make([]usecase.PushFileRow, 0, total)
 	for i, hash := range chunks {
 		files = append(files, usecase.PushFileRow{
@@ -202,8 +201,7 @@ func (s *PushRepositorySuite) TestBatchedPushRequiresTheProjectsOwnChunkLink() {
 	other := seedProject(t, s.q, 1, "other-project")
 
 	hash, size, fileHash := chunkRow(t, "someone else's chunk")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
-	require.NoError(t, repo.LinkProjectChunk(ctx, other, hash))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, other, []usecase.ChunkRef{{Hash: hash, SizeBytes: size}}))
 
 	files := []usecase.PushFileRow{{Name: "stolen.bin", Mode: 0o644, SizeBytes: size, Hash: fileHash, TreeID: 2, ChunkHashes: []domain.Hash{hash}}}
 	err := repo.ApplyPush(ctx, batchRequest(projectID, branchID, 5004, batchNodes(1), files))
@@ -219,8 +217,7 @@ func (s *PushRepositorySuite) TestBatchedPushRollsBackOnDuplicateFileName() {
 	before := getBranch(t, branchRepo, projectID, branchID)
 
 	hash, size, fileHash := chunkRow(t, "duplicate name chunk")
-	require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
-	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
+	require.NoError(t, repo.InsertChunksIfNotExist(ctx, projectID, []usecase.ChunkRef{{Hash: hash, SizeBytes: size}}))
 	twin := usecase.PushFileRow{Name: "same.txt", Mode: 0o644, SizeBytes: size, Hash: fileHash, TreeID: 2, ChunkHashes: []domain.Hash{hash}}
 
 	err := repo.ApplyPush(ctx, batchRequest(projectID, branchID, 5005, batchNodes(1), []usecase.PushFileRow{twin, twin}))

@@ -15,6 +15,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -65,7 +66,7 @@ func TestChunkHandler_PutChunkRejectionsWriteNothing(t *testing.T) {
 
 			require.Equal(t, tc.want, appCtx.statusCode)
 			require.Empty(t, recorder.Header().Get(chunkproof.ReceiptHeader))
-			exists, err := env.chunkStore.Exists(context.Background(), hash)
+			exists, err := env.chunkStore.Exists(context.Background(), defaultProjectID(t, env), hash)
 			require.NoError(t, err)
 			require.False(t, exists)
 		})
@@ -77,11 +78,12 @@ func TestChunkHandler_PutChunkRejectionsWriteNothing(t *testing.T) {
 type gatedStore struct {
 	*storage.LocalStore
 	gate     chan struct{}
+	project  snow.ID
 	inFlight atomic.Int64
 	peak     atomic.Int64
 }
 
-func (s *gatedStore) Put(ctx context.Context, hash domain.Hash, data []byte) error {
+func (s *gatedStore) Put(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) error {
 	n := s.inFlight.Add(1)
 	defer s.inFlight.Add(-1)
 	for {
@@ -91,7 +93,7 @@ func (s *gatedStore) Put(ctx context.Context, hash domain.Hash, data []byte) err
 		}
 	}
 	<-s.gate
-	return s.LocalStore.Put(ctx, hash, data)
+	return s.LocalStore.Put(ctx, projectID, hash, data)
 }
 
 func newGatedHandler(t *testing.T, budget int64) (*ChunkHandler, *gatedStore) {
@@ -99,7 +101,7 @@ func newGatedHandler(t *testing.T, budget int64) (*ChunkHandler, *gatedStore) {
 	env := newHandlerTestEnv(t)
 	local, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	store := &gatedStore{LocalStore: local, gate: make(chan struct{})}
+	store := &gatedStore{LocalStore: local, gate: make(chan struct{}), project: defaultProjectID(t, env)}
 	chunks := usecase.NewChunk(nil, store, usecase.ChunkTransferConfig{
 		SigningKey: testChunkSigningKey,
 		PresignTTL: time.Hour,
@@ -185,7 +187,7 @@ func TestChunkHandler_PutChunkByteBudgetReleasedOnErrorAndCancel(t *testing.T) {
 	cancel()
 	cancelled := <-waiting
 	require.Equal(t, http.StatusServiceUnavailable, cancelled.statusCode)
-	exists, err := store.Exists(context.Background(), chunker.Sum(other))
+	exists, err := store.Exists(context.Background(), store.project, chunker.Sum(other))
 	require.NoError(t, err)
 	require.False(t, exists)
 

@@ -36,10 +36,7 @@ type Querier interface {
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
-	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
-	ChunkInsertManyOrIgnore(ctx context.Context, chunkRows json.RawMessage) error
-	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
-	ChunkKnownHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
+	ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	ClearOwnerQuotaOverride(ctx context.Context, userID int64) error
@@ -67,7 +64,6 @@ type Querier interface {
 	DeleteOrgStorageDefault(ctx context.Context, orgID int64) (int64, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
-	DeleteProjectChunks(ctx context.Context, projectID int64) error
 	DeleteStorageServer(ctx context.Context, id int64) (int64, error)
 	DetachProjectCommitParents(ctx context.Context, arg DetachProjectCommitParentsParams) (int64, error)
 	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
@@ -86,7 +82,7 @@ type Querier interface {
 	EmailVerificationGetByToken(ctx context.Context, tokenHash string) (EmailVerificationGetByTokenRow, error)
 	EmailVerificationUpsert(ctx context.Context, arg EmailVerificationUpsertParams) error
 	EnsureBillingOwner(ctx context.Context, arg EnsureBillingOwnerParams) (int64, error)
-	ExistingChunkHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
+	ExistingProjectChunks(ctx context.Context, arg ExistingProjectChunksParams) ([]ExistingProjectChunksRow, error)
 	FileChunkInsertMany(ctx context.Context, links json.RawMessage) error
 	FileInsertMany(ctx context.Context, fileRows json.RawMessage) ([]FileInsertManyRow, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
@@ -110,7 +106,6 @@ type Querier interface {
 	GetBillingEvent(ctx context.Context, eventID string) (BillingEvent, error)
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	GetBillingUser(ctx context.Context, id int64) (GetBillingUserRow, error)
-	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
 	GetDeletedProjectByOrgIDAndID(ctx context.Context, arg GetDeletedProjectByOrgIDAndIDParams) (Project, error)
 	GetLiveSubscription(ctx context.Context, userID int64) (BillingSubscription, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
@@ -139,10 +134,10 @@ type Querier interface {
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	InsertBillingAccount(ctx context.Context, arg InsertBillingAccountParams) error
 	InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (int64, error)
-	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	InsertProjectStorage(ctx context.Context, arg InsertProjectStorageParams) error
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
 	IsProjectExternal(ctx context.Context, projectID int64) (bool, error)
+	IsProjectOnOwnStorage(ctx context.Context, projectID int64) (bool, error)
 	IssueJobClaimDue(ctx context.Context, arg IssueJobClaimDueParams) ([]IssueTrackerJob, error)
 	IssueJobCountByState(ctx context.Context) ([]IssueJobCountByStateRow, error)
 	IssueJobDefer(ctx context.Context, arg IssueJobDeferParams) (int64, error)
@@ -287,8 +282,7 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
-	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
-	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)
 	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error
 	ProjectIssueTrackerDelete(ctx context.Context, projectID int64) (int64, error)
 	ProjectIssueTrackerGet(ctx context.Context, projectID int64) (ProjectIssueTracker, error)
@@ -298,7 +292,7 @@ type Querier interface {
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
 	PurgeProjectBranches(ctx context.Context, projectID int64) (int64, error)
-	PurgeProjectChunkLinks(ctx context.Context, arg PurgeProjectChunkLinksParams) (int64, error)
+	PurgeProjectChunkRows(ctx context.Context, arg PurgeProjectChunkRowsParams) (int64, error)
 	PurgeProjectChunkUploads(ctx context.Context, arg PurgeProjectChunkUploadsParams) (int64, error)
 	PurgeProjectCommitBatch(ctx context.Context, arg PurgeProjectCommitBatchParams) ([]int64, error)
 	PurgeProjectFileLocks(ctx context.Context, projectID int64) (int64, error)
@@ -306,13 +300,13 @@ type Querier interface {
 	PurgeProjectRow(ctx context.Context, id int64) (int64, error)
 	PurgeProjectTags(ctx context.Context, projectID int64) (int64, error)
 	PurgeTreeRoots(ctx context.Context, treeIds []int64) (int64, error)
-	RebuildProjectChunks(ctx context.Context, projectID int64) error
 	RefreshSessionCreate(ctx context.Context, arg RefreshSessionCreateParams) (int64, error)
 	RefreshSessionDelete(ctx context.Context, id int64) (int64, error)
 	RefreshSessionGet(ctx context.Context, id int64) (RefreshToken, error)
 	RefreshSessionRotate(ctx context.Context, arg RefreshSessionRotateParams) (int64, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
+	ResetProjectUsage(ctx context.Context, projectID int64) error
 	RestoreProject(ctx context.Context, arg RestoreProjectParams) (int64, error)
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
@@ -382,7 +376,7 @@ type Querier interface {
 	TreeNodeMaxID(ctx context.Context) (int64, error)
 	TreeNodeSetHash(ctx context.Context, arg TreeNodeSetHashParams) error
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
-	UnmarkChunks(ctx context.Context, hashes [][]byte) (int64, error)
+	UnmarkChunks(ctx context.Context, arg UnmarkChunksParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateStorageServer(ctx context.Context, arg UpdateStorageServerParams) (StorageServer, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error

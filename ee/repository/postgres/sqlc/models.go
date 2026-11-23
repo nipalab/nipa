@@ -92,6 +92,7 @@ type Chunk struct {
 	SizeBytes  int64        `json:"size_bytes"`
 	CreatedAt  sql.NullTime `json:"created_at"`
 	GcMarkedAt sql.NullTime `json:"gc_marked_at"`
+	ProjectID  int64        `json:"project_id"`
 }
 
 type Commit struct {
@@ -442,12 +443,6 @@ type Project struct {
 	UpdatedAt   time.Time    `json:"updated_at"`
 	Deleted     bool         `json:"deleted"`
 	DeletedAt   sql.NullTime `json:"deleted_at"`
-}
-
-type ProjectChunk struct {
-	ProjectID int64 `json:"project_id"`
-	ChunkID   int64 `json:"chunk_id"`
-	SizeBytes int64 `json:"size_bytes"`
 }
 
 type ProjectChunkUpload struct {

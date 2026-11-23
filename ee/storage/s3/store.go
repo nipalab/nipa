@@ -1,8 +1,9 @@
 // Package s3 implements the Nipa Enterprise Edition chunk content backend
 // backed by S3-compatible object storage (AWS S3, MinIO, Ceph, R2). Content is
-// keyed by its BLAKE3 hash and sharded like the local backend:
+// keyed by project and BLAKE3 hash and sharded like the local backend
+// (storage.ChunkKey), so a project's content is one prefix:
 //
-//	<prefix>/<hash[:2]>/<hash[2:]>
+//	<prefix>/p/<project base36>/<hash[:2]>/<hash[2:]>
 //
 // Enterprise Edition: see ee/LICENSE.
 package s3
@@ -25,6 +26,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -32,6 +34,7 @@ var _ storage.ChunkStore = (*Store)(nil)
 var _ storage.DirectTransferStore = (*Store)(nil)
 var _ storage.ChunkOpener = (*Store)(nil)
 var _ storage.ChunkOverwriter = (*Store)(nil)
+var _ storage.ProjectDeleter = (*Store)(nil)
 
 // maxPresignTTL is the longest expiry SigV4 presigned requests support.
 const maxPresignTTL = 7 * 24 * time.Hour
@@ -113,7 +116,7 @@ func (s *Store) checkBucket(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+func (s *Store) Put(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.put_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(data)),
@@ -121,20 +124,20 @@ func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) (err err
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	exists, err := s.Exists(ctx, hash)
+	exists, err := s.Exists(ctx, projectID, hash)
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	return s.putObject(ctx, hash, data)
+	return s.putObject(ctx, projectID, hash, data)
 }
 
 // Overwrite writes chunk content the server verified itself without checking
 // for an existing object first (one request instead of two). It replaces any
 // garbage a direct upload left at the key.
-func (s *Store) Overwrite(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+func (s *Store) Overwrite(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.put_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(data)),
@@ -143,15 +146,15 @@ func (s *Store) Overwrite(ctx context.Context, hash domain.Hash, data []byte) (e
 		attribute.Bool("nipa.storage.overwrite", true))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	return s.putObject(ctx, hash, data)
+	return s.putObject(ctx, projectID, hash, data)
 }
 
 // putObject is one single-part PUT with the exact size (chunks are at most
 // 16 MiB, minio's multipart threshold). minio-go signs it with
 // UNSIGNED-PAYLOAD over https, so the body is not SHA-256 hashed a second
 // time; over plain http it keeps the streaming SigV4 payload signature.
-func (s *Store) putObject(ctx context.Context, hash domain.Hash, data []byte) error {
-	_, err := s.client.PutObject(ctx, s.bucket, s.key(hash), bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
+func (s *Store) putObject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) error {
+	_, err := s.client.PutObject(ctx, s.bucket, s.key(projectID, hash), bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType:      "application/octet-stream",
 		DisableMultipart: true,
 	})
@@ -161,14 +164,14 @@ func (s *Store) putObject(ctx context.Context, hash domain.Hash, data []byte) er
 	return nil
 }
 
-func (s *Store) Get(ctx context.Context, hash domain.Hash) (data []byte, err error) {
+func (s *Store) Get(ctx context.Context, projectID snow.ID, hash domain.Hash) (data []byte, err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.get_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	object, err := s.client.GetObject(ctx, s.bucket, s.key(hash), minio.GetObjectOptions{})
+	object, err := s.client.GetObject(ctx, s.bucket, s.key(projectID, hash), minio.GetObjectOptions{})
 	if err != nil {
 		return nil, s.mapError(err, hash)
 	}
@@ -186,13 +189,13 @@ func (s *Store) Get(ctx context.Context, hash domain.Hash) (data []byte, err err
 // a missing object is reported here as a domain NotFound error. The
 // storage.s3.get_object span lasts until the reader is closed and records a
 // failed read.
-func (s *Store) Open(ctx context.Context, hash domain.Hash) (io.ReadCloser, error) {
+func (s *Store) Open(ctx context.Context, projectID snow.ID, hash domain.Hash) (io.ReadCloser, error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.get_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 
-	body, _, _, err := minio.Core{Client: s.client}.GetObject(ctx, s.bucket, s.key(hash), minio.GetObjectOptions{})
+	body, _, _, err := minio.Core{Client: s.client}.GetObject(ctx, s.bucket, s.key(projectID, hash), minio.GetObjectOptions{})
 	if err != nil {
 		err = s.mapError(err, hash)
 		obs.FinishSpan(span, err)
@@ -232,22 +235,22 @@ func (r *objectReader) Close() error {
 	return err
 }
 
-func (s *Store) Size(ctx context.Context, hash domain.Hash) (size int64, err error) {
+func (s *Store) Size(ctx context.Context, projectID snow.ID, hash domain.Hash) (size int64, err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.stat_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	info, err := s.client.StatObject(ctx, s.bucket, s.key(hash), minio.StatObjectOptions{})
+	info, err := s.client.StatObject(ctx, s.bucket, s.key(projectID, hash), minio.StatObjectOptions{})
 	if err != nil {
 		return 0, s.mapError(err, hash)
 	}
 	return info.Size, nil
 }
 
-func (s *Store) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
-	_, err := s.client.StatObject(ctx, s.bucket, s.key(hash), minio.StatObjectOptions{})
+func (s *Store) Exists(ctx context.Context, projectID snow.ID, hash domain.Hash) (bool, error) {
+	_, err := s.client.StatObject(ctx, s.bucket, s.key(projectID, hash), minio.StatObjectOptions{})
 	if err != nil {
 		if isNotFound(err) {
 			return false, nil
@@ -263,7 +266,7 @@ func (s *Store) Close() error {
 
 // PresignDownload returns an absolute URL the client can GET the chunk from.
 // Expiries beyond SigV4's 7-day limit are clamped.
-func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (presignedURL string, err error) {
+func (s *Store) PresignDownload(ctx context.Context, projectID snow.ID, hash domain.Hash, expires time.Duration) (presignedURL string, err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_download",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
@@ -273,7 +276,7 @@ func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires t
 	if expires > maxPresignTTL {
 		expires = maxPresignTTL
 	}
-	presigned, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(hash), expires, nil)
+	presigned, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(projectID, hash), expires, nil)
 	if err != nil {
 		return "", fmt.Errorf("s3: presign download for chunk %s: %w", hash, err)
 	}
@@ -286,7 +289,7 @@ func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires t
 // exists, even when the target is replayed within its lifetime, and refuses a
 // body of any other size. A POST policy would not work here: it cannot express
 // create-only and some backends (Cloudflare R2) do not implement it at all.
-func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (target storage.UploadTarget, err error) {
+func (s *Store) PresignUpload(ctx context.Context, projectID snow.ID, hash domain.Hash, size int64, expires time.Duration) (target storage.UploadTarget, err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_upload",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int64(obs.AttrChunkSize, size),
@@ -297,7 +300,7 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 	if size <= 0 {
 		return storage.UploadTarget{}, fmt.Errorf("s3: invalid chunk size %d", size)
 	}
-	target, err = s.presignPut(ctx, s.key(hash), size, expires)
+	target, err = s.presignPut(ctx, s.key(projectID, hash), size, expires)
 	if err != nil {
 		return storage.UploadTarget{}, fmt.Errorf("s3: presign upload for chunk %s: %w", hash, err)
 	}
@@ -322,14 +325,14 @@ func (s *Store) presignPut(ctx context.Context, key string, size int64, expires 
 }
 
 // DeleteChunk removes chunk content so a client can upload it again.
-func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) (err error) {
+func (s *Store) DeleteChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_object",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	if err := s.client.RemoveObject(ctx, s.bucket, s.key(hash), minio.RemoveObjectOptions{}); err != nil {
+	if err := s.client.RemoveObject(ctx, s.bucket, s.key(projectID, hash), minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("s3: delete chunk %s: %w", hash, err)
 	}
 	return nil
@@ -337,14 +340,15 @@ func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) (err error) {
 
 // StoredChunk is one chunk object found by ListChunks.
 type StoredChunk struct {
+	ProjectID    snow.ID
 	Hash         domain.Hash
 	SizeBytes    int64
 	LastModified time.Time
 }
 
 // ListChunks calls fn for every chunk object under the store's prefix, in key
-// order. Keys that are not chunk keys (another tool's objects under the same
-// prefix) are skipped. It stops at the first error fn returns.
+// order. Keys that are not per-project chunk keys (another tool's objects
+// under the same prefix, the old global layout) are skipped. It stops at the first error fn returns.
 func (s *Store) ListChunks(ctx context.Context, fn func(StoredChunk) error) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.list_objects",
 		attribute.String(obs.AttrBackend, "s3"),
@@ -361,28 +365,57 @@ func (s *Store) ListChunks(ctx context.Context, fn func(StoredChunk) error) (err
 		if object.Err != nil {
 			return fmt.Errorf("s3: list chunks: %w", object.Err)
 		}
-		hash, ok := parseChunkKey(strings.TrimPrefix(object.Key, prefix))
+		projectID, hash, ok := storage.ParseChunkKey(strings.TrimPrefix(object.Key, prefix))
 		if !ok {
 			continue
 		}
-		if err := fn(StoredChunk{Hash: hash, SizeBytes: object.Size, LastModified: object.LastModified}); err != nil {
+		if err := fn(StoredChunk{ProjectID: projectID, Hash: hash, SizeBytes: object.Size, LastModified: object.LastModified}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// parseChunkKey reverses key below the prefix: "<hash[:2]>/<hash[2:]>".
-func parseChunkKey(key string) (domain.Hash, bool) {
-	shard, rest, ok := strings.Cut(key, "/")
-	if !ok || len(shard) != 2 || strings.Contains(rest, "/") {
-		return domain.Hash{}, false
+// DeleteProject removes every object below the project's key prefix
+// (p/<project>/), in batched multi-object deletes. It implements
+// storage.ProjectDeleter; a project without content is not an error.
+func (s *Store) DeleteProject(ctx context.Context, projectID snow.ID) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_prefix",
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	prefix := s.withPrefix(storage.ProjectPrefix(projectID)) + "/"
+	objects := make(chan minio.ObjectInfo)
+	var listErr error
+	go func() {
+		defer close(objects)
+		for object := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+			if object.Err != nil {
+				listErr = object.Err
+				return
+			}
+			select {
+			case objects <- object:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	for result := range s.client.RemoveObjects(ctx, s.bucket, objects, minio.RemoveObjectsOptions{}) {
+		if result.Err != nil && !isNotFound(result.Err) {
+			cancel()
+			for range objects {
+			}
+			return fmt.Errorf("s3: delete project %s object %s: %w", projectID.Base36(), result.ObjectName, result.Err)
+		}
 	}
-	hash, err := domain.ParseHashHex(shard + rest)
-	if err != nil {
-		return domain.Hash{}, false
+	if listErr != nil {
+		return fmt.Errorf("s3: list project %s: %w", projectID.Base36(), listErr)
 	}
-	return hash, true
+	return nil
 }
 
 func (s *Store) mapError(err error, hash domain.Hash) error {
@@ -392,13 +425,15 @@ func (s *Store) mapError(err error, hash domain.Hash) error {
 	return fmt.Errorf("s3: chunk %s: %w", hash, err)
 }
 
-func (s *Store) key(hash domain.Hash) string {
-	hex := hash.String()
-	base := hex[:2] + "/" + hex[2:]
+func (s *Store) key(projectID snow.ID, hash domain.Hash) string {
+	return s.withPrefix(storage.ChunkKey(projectID, hash))
+}
+
+func (s *Store) withPrefix(key string) string {
 	if s.prefix == "" {
-		return base
+		return key
 	}
-	return s.prefix + "/" + base
+	return s.prefix + "/" + key
 }
 
 func isNotFound(err error) bool {

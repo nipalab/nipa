@@ -29,86 +29,27 @@ func (q *Queries) BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommit
 	return err
 }
 
-const chunkGetByHash = `-- name: ChunkGetByHash :one
-SELECT id, hash, size_bytes, created_at, gc_marked_at
-FROM chunks
-WHERE hash = $1
-LIMIT 1
-`
-
-func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error) {
-	row := q.db.QueryRowContext(ctx, chunkGetByHash, hash)
-	var i Chunk
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.SizeBytes,
-		&i.CreatedAt,
-		&i.GcMarkedAt,
-	)
-	return i, err
-}
-
 const chunkInsertManyOrIgnore = `-- name: ChunkInsertManyOrIgnore :exec
-INSERT INTO chunks (hash, size_bytes)
-SELECT decode(r->>0, 'hex'), (r->>1)::bigint
-FROM jsonb_array_elements($1::jsonb) AS r
-ON CONFLICT (hash) DO NOTHING
+INSERT INTO chunks (project_id, hash, size_bytes)
+SELECT $1::bigint, decode(r->>0, 'hex'), (r->>1)::bigint
+FROM jsonb_array_elements($2::jsonb) AS r
+ON CONFLICT (project_id, hash) DO NOTHING
 `
 
-func (q *Queries) ChunkInsertManyOrIgnore(ctx context.Context, chunkRows json.RawMessage) error {
-	_, err := q.db.ExecContext(ctx, chunkInsertManyOrIgnore, chunkRows)
+type ChunkInsertManyOrIgnoreParams struct {
+	ProjectID int64           `json:"project_id"`
+	ChunkRows json.RawMessage `json:"chunk_rows"`
+}
+
+func (q *Queries) ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error {
+	_, err := q.db.ExecContext(ctx, chunkInsertManyOrIgnore, arg.ProjectID, arg.ChunkRows)
 	return err
-}
-
-const chunkInsertOrIgnore = `-- name: ChunkInsertOrIgnore :exec
-INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2) ON CONFLICT(hash) DO NOTHING
-`
-
-type ChunkInsertOrIgnoreParams struct {
-	Hash      []byte `json:"hash"`
-	SizeBytes int64  `json:"size_bytes"`
-}
-
-func (q *Queries) ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error {
-	_, err := q.db.ExecContext(ctx, chunkInsertOrIgnore, arg.Hash, arg.SizeBytes)
-	return err
-}
-
-const chunkKnownHashes = `-- name: ChunkKnownHashes :many
-SELECT hash
-FROM chunks
-WHERE hash = ANY($1::bytea[])
-`
-
-func (q *Queries) ChunkKnownHashes(ctx context.Context, hashes [][]byte) ([][]byte, error) {
-	rows, err := q.db.QueryContext(ctx, chunkKnownHashes, pq.Array(hashes))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items [][]byte
-	for rows.Next() {
-		var hash []byte
-		if err := rows.Scan(&hash); err != nil {
-			return nil, err
-		}
-		items = append(items, hash)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const chunkListByHashesForProject = `-- name: ChunkListByHashesForProject :many
-SELECT c.id, c.hash
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE u.project_id = $1 AND c.hash = ANY($2::bytea[])
+SELECT id, hash
+FROM chunks
+WHERE project_id = $1 AND hash = ANY($2::bytea[])
 `
 
 type ChunkListByHashesForProjectParams struct {
@@ -248,32 +189,31 @@ func (q *Queries) FileSetTree(ctx context.Context, arg FileSetTreeParams) error 
 	return err
 }
 
-const projectChunkLinkedSizes = `-- name: ProjectChunkLinkedSizes :many
-SELECT c.hash, c.size_bytes
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE u.project_id = $1 AND c.hash = ANY($2::bytea[])
+const projectChunkSizes = `-- name: ProjectChunkSizes :many
+SELECT hash, size_bytes
+FROM chunks
+WHERE project_id = $1 AND hash = ANY($2::bytea[])
 `
 
-type ProjectChunkLinkedSizesParams struct {
+type ProjectChunkSizesParams struct {
 	ProjectID int64    `json:"project_id"`
 	Hashes    [][]byte `json:"hashes"`
 }
 
-type ProjectChunkLinkedSizesRow struct {
+type ProjectChunkSizesRow struct {
 	Hash      []byte `json:"hash"`
 	SizeBytes int64  `json:"size_bytes"`
 }
 
-func (q *Queries) ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error) {
-	rows, err := q.db.QueryContext(ctx, projectChunkLinkedSizes, arg.ProjectID, pq.Array(arg.Hashes))
+func (q *Queries) ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error) {
+	rows, err := q.db.QueryContext(ctx, projectChunkSizes, arg.ProjectID, pq.Array(arg.Hashes))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ProjectChunkLinkedSizesRow
+	var items []ProjectChunkSizesRow
 	for rows.Next() {
-		var i ProjectChunkLinkedSizesRow
+		var i ProjectChunkSizesRow
 		if err := rows.Scan(&i.Hash, &i.SizeBytes); err != nil {
 			return nil, err
 		}
@@ -286,21 +226,6 @@ func (q *Queries) ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkL
 		return nil, err
 	}
 	return items, nil
-}
-
-const projectChunkUploadInsert = `-- name: ProjectChunkUploadInsert :exec
-INSERT INTO project_chunk_uploads (project_id, hash) VALUES ($1, $2)
-ON CONFLICT (project_id, hash) DO NOTHING
-`
-
-type ProjectChunkUploadInsertParams struct {
-	ProjectID int64  `json:"project_id"`
-	Hash      []byte `json:"hash"`
-}
-
-func (q *Queries) ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error {
-	_, err := q.db.ExecContext(ctx, projectChunkUploadInsert, arg.ProjectID, arg.Hash)
-	return err
 }
 
 const projectChunkUploadInsertMany = `-- name: ProjectChunkUploadInsertMany :exec

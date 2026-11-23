@@ -3,6 +3,7 @@ package s3
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -23,8 +24,12 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
+
+// testProject owns the chunks of these tests; keys live under p/<base36>/.
+const testProject snow.ID = 7
 
 type fakeS3 struct {
 	mu       sync.Mutex
@@ -178,6 +183,10 @@ func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bo
 		f.serveList(w, r, bucketOK)
 		return
 	}
+	if r.Method == http.MethodPost && r.URL.Query().Has("delete") {
+		f.serveMultiDelete(w, r)
+		return
+	}
 	if r.Method != http.MethodHead {
 		writeS3Error(w, http.StatusMethodNotAllowed, "MethodNotAllowed")
 		return
@@ -219,6 +228,34 @@ func (f *fakeS3) serveList(w http.ResponseWriter, r *http.Request, bucketOK bool
 			key, f.listTime.UTC().Format("2006-01-02T15:04:05.000Z"), sizes[key])
 	}
 	body.WriteString("</ListBucketResult>")
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = io.WriteString(w, body.String())
+}
+
+// serveMultiDelete answers DeleteObjects: every listed key is removed, or
+// reported as an AccessDenied error per key when deletes fail.
+func (f *fakeS3) serveMultiDelete(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Objects []struct {
+			Key string `xml:"Key"`
+		} `xml:"Object"`
+	}
+	if err := xml.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeS3Error(w, http.StatusBadRequest, "MalformedXML")
+		return
+	}
+	var body strings.Builder
+	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?><DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	f.mu.Lock()
+	for _, object := range request.Objects {
+		if f.failDelete.Load() {
+			fmt.Fprintf(&body, "<Error><Key>%s</Key><Code>AccessDenied</Code><Message>denied</Message></Error>", object.Key)
+			continue
+		}
+		delete(f.buckets["test-bucket"], object.Key)
+	}
+	f.mu.Unlock()
+	body.WriteString("</DeleteResult>")
 	w.Header().Set("Content-Type", "application/xml")
 	_, _ = io.WriteString(w, body.String())
 }
@@ -309,9 +346,9 @@ func TestStore_PutGetRoundTrip(t *testing.T) {
 
 	data := []byte("hello s3 storage")
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 
-	got, err := store.Get(ctx, hash)
+	got, err := store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 }
@@ -323,7 +360,7 @@ func TestStore_PutIsIdempotent(t *testing.T) {
 	data := []byte("same content")
 	hash := chunker.Sum(data)
 	for i := 0; i < 3; i++ {
-		require.NoError(t, store.Put(ctx, hash, data))
+		require.NoError(t, store.Put(ctx, testProject, hash, data))
 	}
 
 	fake.mu.Lock()
@@ -337,13 +374,13 @@ func TestStore_Exists(t *testing.T) {
 
 	present := chunker.Sum([]byte("present"))
 	missing := chunker.Sum([]byte("missing"))
-	require.NoError(t, store.Put(ctx, present, []byte("present")))
+	require.NoError(t, store.Put(ctx, testProject, present, []byte("present")))
 
-	ok, err := store.Exists(ctx, present)
+	ok, err := store.Exists(ctx, testProject, present)
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	ok, err = store.Exists(ctx, missing)
+	ok, err = store.Exists(ctx, testProject, missing)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
@@ -354,13 +391,13 @@ func TestStore_Size(t *testing.T) {
 
 	data := []byte("size me")
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 
-	size, err := store.Size(ctx, hash)
+	size, err := store.Size(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), size)
 
-	_, err = store.Size(ctx, chunker.Sum([]byte("missing")))
+	_, err = store.Size(ctx, testProject, chunker.Sum([]byte("missing")))
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
 }
@@ -368,7 +405,7 @@ func TestStore_Size(t *testing.T) {
 func TestStore_GetMissingReturnsNotFound(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.Get(context.Background(), chunker.Sum([]byte("nope")))
+	_, err := store.Get(context.Background(), testProject, chunker.Sum([]byte("nope")))
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
 }
@@ -383,21 +420,21 @@ func TestStore_KeyLayout(t *testing.T) {
 
 	data := []byte("sharded")
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(context.Background(), hash, data))
+	require.NoError(t, store.Put(context.Background(), testProject, hash, data))
 
-	want := "tenant-a/chunks/" + hash.String()[:2] + "/" + hash.String()[2:]
+	want := "tenant-a/chunks/p/" + testProject.Base36() + "/" + hash.String()[:2] + "/" + hash.String()[2:]
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	_, ok := fake.buckets["test-bucket"][want]
 	require.True(t, ok)
-	require.Equal(t, want, store.key(hash))
+	require.Equal(t, want, store.key(testProject, hash))
 }
 
 func TestStore_PutError(t *testing.T) {
 	store, fake := newTestStore(t)
 	fake.failPut.Store(true)
 
-	err := store.Put(context.Background(), chunker.Sum([]byte("x")), []byte("x"))
+	err := store.Put(context.Background(), testProject, chunker.Sum([]byte("x")), []byte("x"))
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 }
@@ -408,22 +445,22 @@ func TestStore_HeadError(t *testing.T) {
 	ctx := context.Background()
 	hash := chunker.Sum([]byte("x"))
 
-	_, err := store.Exists(ctx, hash)
+	_, err := store.Exists(ctx, testProject, hash)
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 
-	_, err = store.Size(ctx, hash)
+	_, err = store.Size(ctx, testProject, hash)
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 
-	require.Error(t, store.Put(ctx, hash, []byte("x")))
+	require.Error(t, store.Put(ctx, testProject, hash, []byte("x")))
 }
 
 func TestStore_GetError(t *testing.T) {
 	store, fake := newTestStore(t)
 	fake.failGet.Store(true)
 
-	_, err := store.Get(context.Background(), chunker.Sum([]byte("x")))
+	_, err := store.Get(context.Background(), testProject, chunker.Sum([]byte("x")))
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 }
@@ -439,15 +476,15 @@ func TestStore_PresignDownload(t *testing.T) {
 
 	data := []byte("presign me")
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 
-	raw, err := store.PresignDownload(ctx, hash, time.Hour)
+	raw, err := store.PresignDownload(ctx, testProject, hash, time.Hour)
 	require.NoError(t, err)
 
 	parsed, err := url.Parse(raw)
 	require.NoError(t, err)
 	require.True(t, parsed.IsAbs())
-	require.Equal(t, "/test-bucket/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path)
+	require.Equal(t, "/test-bucket/p/"+testProject.Base36()+"/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path)
 	require.Equal(t, "3600", parsed.Query().Get("X-Amz-Expires"))
 	require.NotEmpty(t, parsed.Query().Get("X-Amz-Signature"))
 
@@ -463,7 +500,7 @@ func TestStore_PresignDownload(t *testing.T) {
 func TestStore_PresignDownloadClampsTTL(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	raw, err := store.PresignDownload(context.Background(), chunker.Sum([]byte("x")), 30*24*time.Hour)
+	raw, err := store.PresignDownload(context.Background(), testProject, chunker.Sum([]byte("x")), 30*24*time.Hour)
 	require.NoError(t, err)
 
 	parsed, err := url.Parse(raw)
@@ -474,7 +511,7 @@ func TestStore_PresignDownloadClampsTTL(t *testing.T) {
 func TestStore_PresignDownloadInvalidTTL(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.PresignDownload(context.Background(), chunker.Sum([]byte("x")), 0)
+	_, err := store.PresignDownload(context.Background(), testProject, chunker.Sum([]byte("x")), 0)
 	require.Error(t, err)
 	require.False(t, domain.IsErrorNotFound(err))
 }
@@ -484,14 +521,14 @@ func TestStore_PresignUpload(t *testing.T) {
 	data := []byte("upload me")
 	hash := chunker.Sum(data)
 
-	target, err := store.PresignUpload(context.Background(), hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(context.Background(), testProject, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"If-None-Match": "*"}, target.Headers)
 
 	parsed, err := url.Parse(target.URL)
 	require.NoError(t, err)
 	require.True(t, parsed.IsAbs())
-	require.Equal(t, "/test-bucket/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path, "uploads target the shared key")
+	require.Equal(t, "/test-bucket/p/"+testProject.Base36()+"/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path, "uploads target the project's key")
 	signed := strings.Split(parsed.Query().Get("X-Amz-SignedHeaders"), ";")
 	require.Contains(t, signed, "if-none-match", "create-only is part of the signature")
 	require.Contains(t, signed, "content-length", "the exact size is part of the signature")
@@ -502,7 +539,7 @@ func TestStore_PresignUpload(t *testing.T) {
 func TestStore_PresignUploadClampsTTL(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	target, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
+	target, err := store.PresignUpload(context.Background(), testProject, chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
 	require.NoError(t, err)
 
 	parsed, err := url.Parse(target.URL)
@@ -513,9 +550,9 @@ func TestStore_PresignUploadClampsTTL(t *testing.T) {
 func TestStore_PresignUploadInvalidInput(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 0, time.Hour)
+	_, err := store.PresignUpload(context.Background(), testProject, chunker.Sum([]byte("x")), 0, time.Hour)
 	require.Error(t, err)
-	_, err = store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 1, 0)
+	_, err = store.PresignUpload(context.Background(), testProject, chunker.Sum([]byte("x")), 1, 0)
 	require.Error(t, err)
 }
 
@@ -525,14 +562,14 @@ func TestStore_PresignUploadIsCreateOnly(t *testing.T) {
 
 	data := []byte("direct upload payload")
 	hash := chunker.Sum(data)
-	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(ctx, testProject, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 
 	first := putUploadTarget(t, target, data)
 	defer func() { _ = first.Body.Close() }()
 	require.Equal(t, http.StatusOK, first.StatusCode)
 
-	got, err := store.Get(ctx, hash)
+	got, err := store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 
@@ -540,7 +577,7 @@ func TestStore_PresignUploadIsCreateOnly(t *testing.T) {
 	defer func() { _ = replay.Body.Close() }()
 	require.Equal(t, http.StatusPreconditionFailed, replay.StatusCode, "a replayed target cannot overwrite the object")
 
-	got, err = store.Get(ctx, hash)
+	got, err = store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 }
@@ -551,14 +588,14 @@ func TestStore_DeleteChunk(t *testing.T) {
 
 	data := []byte("delete me")
 	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
-	require.NoError(t, store.DeleteChunk(ctx, hash))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
+	require.NoError(t, store.DeleteChunk(ctx, testProject, hash))
 
-	exists, err := store.Exists(ctx, hash)
+	exists, err := store.Exists(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.False(t, exists)
 
-	require.NoError(t, store.DeleteChunk(ctx, chunker.Sum([]byte("absent"))))
+	require.NoError(t, store.DeleteChunk(ctx, testProject, chunker.Sum([]byte("absent"))))
 }
 
 func putUploadTarget(t *testing.T, target storage.UploadTarget, data []byte) *http.Response {
@@ -644,28 +681,28 @@ func TestIntegration_S3Compatible(t *testing.T) {
 	data := []byte("nipa s3 integration " + strings.Repeat("x", 1024))
 	hash := chunker.Sum(data)
 
-	exists, err := store.Exists(ctx, hash)
+	exists, err := store.Exists(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.False(t, exists)
 
-	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.Put(ctx, testProject, hash, data))
 	t.Cleanup(func() {
-		_ = store.client.RemoveObject(context.Background(), store.bucket, store.key(hash), minio.RemoveObjectOptions{})
+		_ = store.client.RemoveObject(context.Background(), store.bucket, store.key(testProject, hash), minio.RemoveObjectOptions{})
 	})
 
-	got, err := store.Get(ctx, hash)
+	got, err := store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 
-	size, err := store.Size(ctx, hash)
+	size, err := store.Size(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(data)), size)
 
-	exists, err = store.Exists(ctx, hash)
+	exists, err = store.Exists(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.True(t, exists)
 
-	raw, err := store.PresignDownload(ctx, hash, time.Hour)
+	raw, err := store.PresignDownload(ctx, testProject, hash, time.Hour)
 	require.NoError(t, err)
 	res, err := http.Get(raw)
 	require.NoError(t, err)
@@ -692,9 +729,9 @@ func TestIntegration_S3CreateOnlyUploads(t *testing.T) {
 	unique := fmt.Sprintf("nipa create-only %d", time.Now().UnixNano())
 	data := []byte(unique + strings.Repeat("y", 512))
 	hash := chunker.Sum(data)
-	t.Cleanup(func() { _ = store.DeleteChunk(context.Background(), hash) })
+	t.Cleanup(func() { _ = store.DeleteChunk(context.Background(), testProject, hash) })
 
-	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(ctx, testProject, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 
 	wrongSize := putUploadTarget(t, target, append(append([]byte{}, data...), 'x'))
@@ -708,14 +745,14 @@ func TestIntegration_S3CreateOnlyUploads(t *testing.T) {
 	defer func() { _ = unconditional.Body.Close() }()
 	require.GreaterOrEqual(t, unconditional.StatusCode, 400, "dropping the signed If-None-Match header is refused")
 
-	exists, err := store.Exists(ctx, hash)
+	exists, err := store.Exists(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.False(t, exists, "rejected writes leave nothing behind")
 
 	first := putUploadTarget(t, target, data)
 	defer func() { _ = first.Body.Close() }()
 	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, first.StatusCode)
-	got, err := store.Get(ctx, hash)
+	got, err := store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 
@@ -723,13 +760,13 @@ func TestIntegration_S3CreateOnlyUploads(t *testing.T) {
 	defer func() { _ = replay.Body.Close() }()
 	require.Equal(t, http.StatusPreconditionFailed, replay.StatusCode, "a replayed target must not overwrite")
 
-	fresh, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	fresh, err := store.PresignUpload(ctx, testProject, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 	again := putUploadTarget(t, fresh, bytes.Repeat([]byte("z"), len(data)))
 	defer func() { _ = again.Body.Close() }()
 	require.Equal(t, http.StatusPreconditionFailed, again.StatusCode, "a new target for an existing key must not overwrite either")
 
-	got, err = store.Get(ctx, hash)
+	got, err = store.Get(ctx, testProject, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got, "the original bytes survive every overwrite attempt")
 }
@@ -771,23 +808,32 @@ func TestStore_ListChunks(t *testing.T) {
 	ctx := context.Background()
 
 	a, b := []byte("first chunk"), []byte("second chunk, longer")
-	require.NoError(t, store.Put(ctx, chunker.Sum(a), a))
-	require.NoError(t, store.Put(ctx, chunker.Sum(b), b))
+	const other snow.ID = 8
+	require.NoError(t, store.Put(ctx, testProject, chunker.Sum(a), a))
+	require.NoError(t, store.Put(ctx, testProject, chunker.Sum(b), b))
+	require.NoError(t, store.Put(ctx, other, chunker.Sum(a), a))
+	hex := chunker.Sum(a).String()
 	fake.mu.Lock()
 	fake.buckets["test-bucket"]["tenant/probe.txt"] = []byte("not a chunk")
 	fake.buckets["test-bucket"]["tenant/zz/not-hex"] = []byte("x")
+	fake.buckets["test-bucket"]["tenant/"+hex[:2]+"/"+hex[2:]] = a // the old global layout
 	fake.buckets["test-bucket"]["other/ab/cd"] = []byte("outside the prefix")
 	fake.mu.Unlock()
 
-	found := map[domain.Hash]StoredChunk{}
+	type key struct {
+		project snow.ID
+		hash    domain.Hash
+	}
+	found := map[key]StoredChunk{}
 	require.NoError(t, store.ListChunks(ctx, func(chunk StoredChunk) error {
-		found[chunk.Hash] = chunk
+		found[key{chunk.ProjectID, chunk.Hash}] = chunk
 		return nil
 	}))
-	require.Len(t, found, 2)
-	require.Equal(t, int64(len(a)), found[chunker.Sum(a)].SizeBytes)
-	require.Equal(t, int64(len(b)), found[chunker.Sum(b)].SizeBytes)
-	require.Equal(t, fake.listTime, found[chunker.Sum(a)].LastModified.UTC())
+	require.Len(t, found, 3)
+	require.Equal(t, int64(len(a)), found[key{testProject, chunker.Sum(a)}].SizeBytes)
+	require.Equal(t, int64(len(b)), found[key{testProject, chunker.Sum(b)}].SizeBytes)
+	require.Equal(t, int64(len(a)), found[key{other, chunker.Sum(a)}].SizeBytes, "the same hash in another project is another object")
+	require.Equal(t, fake.listTime, found[key{testProject, chunker.Sum(a)}].LastModified.UTC())
 
 	stop := errors.New("stop")
 	require.ErrorIs(t, store.ListChunks(ctx, func(StoredChunk) error { return stop }), stop)
@@ -796,14 +842,47 @@ func TestStore_ListChunks(t *testing.T) {
 	require.Error(t, store.ListChunks(ctx, func(StoredChunk) error { return nil }))
 }
 
-func TestParseChunkKey(t *testing.T) {
-	hash := chunker.Sum([]byte("k"))
-	hex := hash.String()
-	got, ok := parseChunkKey(hex[:2] + "/" + hex[2:])
-	require.True(t, ok)
-	require.Equal(t, hash, got)
-	for _, key := range []string{"", "ab", "abc/" + hex[2:], hex[:2] + "/x/" + hex[2:], hex[:2] + "/zz"} {
-		_, ok := parseChunkKey(key)
-		require.False(t, ok, key)
+func TestStore_DeleteProject(t *testing.T) {
+	fake, server := newFakeS3(t)
+	cfg := testConfig(server)
+	cfg.Prefix = "tenant"
+	store, err := New(context.Background(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+
+	const other snow.ID = 8
+	// testProject ("7") and lookalike ("71" in base36) share a prefix; the trailing
+	// slash keeps the delete inside project 7.
+	const lookalike snow.ID = 7*36 + 1
+	var hashes []domain.Hash
+	for i := 0; i < 5; i++ {
+		data := []byte(fmt.Sprintf("chunk %d", i))
+		hash := chunker.Sum(data)
+		hashes = append(hashes, hash)
+		require.NoError(t, store.Put(ctx, testProject, hash, data))
+		require.NoError(t, store.Put(ctx, other, hash, data))
 	}
+	require.NoError(t, store.Put(ctx, lookalike, hashes[0], []byte("chunk 0")))
+
+	require.NoError(t, store.DeleteProject(ctx, testProject))
+	for _, hash := range hashes {
+		exists, err := store.Exists(ctx, testProject, hash)
+		require.NoError(t, err)
+		require.False(t, exists)
+		exists, err = store.Exists(ctx, other, hash)
+		require.NoError(t, err)
+		require.True(t, exists, "another project's objects stay")
+	}
+	exists, err := store.Exists(ctx, lookalike, hashes[0])
+	require.NoError(t, err)
+	require.True(t, exists, "a project whose id shares the prefix stays")
+
+	require.NoError(t, store.DeleteProject(ctx, testProject), "an empty prefix is not an error")
+
+	fake.failDelete.Store(true)
+	require.Error(t, store.DeleteProject(ctx, other))
+	fake.failDelete.Store(false)
+	fake.failList.Store(true)
+	require.Error(t, store.DeleteProject(ctx, other))
 }
