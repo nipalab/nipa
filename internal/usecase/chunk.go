@@ -520,6 +520,14 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	if err != nil {
 		return nil, "", err
 	}
+	// Recorded chunks are protected from GC before they are checked: confirm
+	// does not see the ones the store already holds (the client skips them),
+	// so a mark would otherwise survive until the push that references them.
+	// Protect waits for a sweep holding a row, so a swept chunk then reads as
+	// missing and is uploaded again.
+	if err := c.protect(ctx, project.ID, recordedHashes(pageHashes, recorded)...); err != nil {
+		return nil, "", err
+	}
 	exists, err := c.existsRecorded(ctx, resolved.Store, project.ID, page, recorded)
 	if err != nil {
 		return nil, "", err
@@ -537,6 +545,17 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 		urls = append(urls, ChunkURL{Hash: ref.Hash, URL: target.URL, Headers: target.Headers})
 	}
 	return urls, next, nil
+}
+
+// recordedHashes returns the hashes the project has a chunk row for.
+func recordedHashes(hashes []domain.Hash, recorded map[domain.Hash]int64) []domain.Hash {
+	out := make([]domain.Hash, 0, len(recorded))
+	for _, hash := range hashes {
+		if _, ok := recorded[hash]; ok {
+			out = append(out, hash)
+		}
+	}
+	return out
 }
 
 // existsRecorded checks the store only for refs the project has a chunk row

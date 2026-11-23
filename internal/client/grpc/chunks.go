@@ -116,13 +116,13 @@ func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient,
 			if !ok {
 				return nil, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
 			}
-			// Already stored chunks are confirmed too: that clears a garbage
-			// mark on them before the push that references them lands.
-			confirmHashes = append(confirmHashes, hash.String())
+			// Already stored chunks are not confirmed: presign protected them
+			// from GC, and a confirm would make the server read them back.
 			if u.GetAlreadyStored() {
 				skipped[hash] = struct{}{}
 				continue
 			}
+			confirmHashes = append(confirmHashes, hash.String())
 			if u.GetUrl() == "" {
 				return nil, domain.NewUserError(fmt.Sprintf("server sent no upload URL for chunk %s", hash))
 			}

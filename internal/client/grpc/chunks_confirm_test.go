@@ -56,8 +56,8 @@ func TestClient_UploadChunks_OneConfirmPerAttempt(t *testing.T) {
 
 	confirms := srv.confirmLog()
 	require.Len(t, confirms, 1, "no claim round: one confirm after the PUTs")
-	require.ElementsMatch(t, []string{h1.String(), h2.String(), stored.String()}, confirms[0].GetHashes(),
-		"already stored chunks are confirmed too, which clears their GC marks")
+	require.ElementsMatch(t, []string{h1.String(), h2.String()}, confirms[0].GetHashes(),
+		"already stored chunks are not confirmed: the server would read them back for nothing")
 	require.Zero(t, srv.putsFor(stored.String()))
 }
 

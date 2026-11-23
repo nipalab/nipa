@@ -81,3 +81,35 @@ func TestChunk_GCGuardErrorStopsConfirm(t *testing.T) {
 	_, err := uc.ConfirmUploads(context.Background(), testOrg, testProject, []domain.Hash{chunker.Sum([]byte("x"))}, nil)
 	require.ErrorIs(t, err, errGuard)
 }
+
+func TestChunk_GCGuardProtectsRecordedChunksAtPresign(t *testing.T) {
+	ctx := context.Background()
+	uc, repo, store := newChunkFixture(t)
+	guard := &recordingGuard{}
+	uc.WithGCGuard(guard)
+
+	data := []byte("recorded")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, testProject.ID, hash, data))
+	repo.record(testProject.ID, hash, int64(len(data)))
+	fresh := chunker.Sum([]byte("fresh"))
+
+	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
+		{Hash: hash, SizeBytes: int64(len(data))}, {Hash: fresh, SizeBytes: 5},
+	}, 10, "")
+	require.NoError(t, err)
+	require.True(t, urls[0].AlreadyStored)
+	require.Equal(t, [][]domain.Hash{{hash}}, guard.protected, "only recorded chunks are protected")
+}
+
+func TestChunk_GCGuardErrorStopsPresign(t *testing.T) {
+	ctx := context.Background()
+	uc, repo, _ := newChunkFixture(t)
+	errGuard := domain.NewErrorDatabase("db down")
+	uc.WithGCGuard(&recordingGuard{err: errGuard})
+	hash := chunker.Sum([]byte("x"))
+	repo.record(testProject.ID, hash, 1)
+
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
+	require.ErrorIs(t, err, errGuard)
+}

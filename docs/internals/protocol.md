@@ -159,7 +159,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   store check (B4: a fresh push makes no existence checks); a row and the
   object present (`Exists`, through a server-wide limit of 64 concurrent
   checks, `presignExistsLimit`) = `already_stored`, no URL; a row but the
-  object lost = needs upload again. Every chunk that needs an upload gets a
+  object lost = needs upload again; presign first protects the recorded
+  chunks from the GC (clears marks), so the client does not confirm them.
+  Every chunk that needs an upload gets a
   URL; `url` is empty only with `already_stored`. **Confirm**
   (`ConfirmUploads`) protects the batch from the GC and verifies every hash
   (a recorded row does not vouch for its object, since presign re-issues an
@@ -191,8 +193,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   verification load per client stays bounded (SQLite servers rely on
   `_txlock=immediate` + `busy_timeout`). `UploadChunks` presigns, PUTs and
   confirms a window in batches of `uploadBatch` (1000) chunks, one confirm per
-  attempt (already-stored chunks are confirmed too, which clears their GC
-  marks); chunks reported missing are presigned and sent again (up to
+  attempt (already-stored chunks are not confirmed: presign protected them and
+  a confirm would read them back); chunks reported missing are presigned and sent again (up to
   `maxUploadAttempts`, 3). A 412 on a create-only PUT means the object was
   stored meanwhile; the confirm reads it back.
   **Upload mode and receipts.** `CHUNK_UPLOAD_MODE` (`direct` default |
