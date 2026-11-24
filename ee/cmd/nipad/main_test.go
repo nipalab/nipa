@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/registration"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/ee/storageusage"
@@ -201,4 +202,20 @@ func TestValidateChunkPacks(t *testing.T) {
 	require.NoError(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeProxy}, packs))
 	require.ErrorContains(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeDirect}, packs), "CHUNK_UPLOAD_MODE")
 	require.ErrorContains(t, validateChunkPacks(&config.Config{ChunkPacks: config.ChunkPacksOn, ChunkUploadMode: config.ChunkUploadModeProxy}, local), "holds packs")
+}
+
+func TestDatabasePool(t *testing.T) {
+	pool := databasePool(&config.Config{
+		DatabaseMaxOpenConns:           64,
+		DatabaseMaxIdleConns:           16,
+		DatabaseConnMaxLifetimeSeconds: 1800,
+		DatabaseConnMaxIdleTimeSeconds: 300,
+	})
+	require.Equal(t, eedb.PoolConfig{
+		MaxOpenConns:    64,
+		MaxIdleConns:    16,
+		ConnMaxLifetime: 30 * time.Minute,
+		ConnMaxIdleTime: 5 * time.Minute,
+	}, pool)
+	require.Equal(t, eedb.PoolConfig{}, databasePool(&config.Config{}), "an empty config leaves defaulting to ee/db")
 }

@@ -103,6 +103,35 @@ difference is `MergeRequestCreate`: it allocates the per-project number while
 holding `SELECT ... FOR UPDATE` on the project row (the sqlite single writer
 made the old `MAX(number)+1` race invisible).
 
+## Connection pool
+
+`ee/db.Open(dsn, PoolConfig)` always bounds the `database/sql` pool. The
+serving pool of `nipad-ee` comes from config (`databasePool` in
+`ee/cmd/nipad/main.go`); the free sqlite `nipad` ignores these keys.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `DATABASE_MAX_OPEN_CONNS` | `32` | Max open connections per instance. Zero or negative falls back to 32, never unlimited. |
+| `DATABASE_MAX_IDLE_CONNS` | `0` | Max idle connections kept for reuse. `0` (or more than max open) means the same as max open. |
+| `DATABASE_CONN_MAX_LIFETIME_SECONDS` | `1800` | A connection is replaced after this long. `0` disables. |
+| `DATABASE_CONN_MAX_IDLE_TIME_SECONDS` | `300` | An idle connection is closed after this long. `0` disables. |
+
+- Keep idle equal to open unless there is a reason not to. With the Go
+  defaults (2 idle, unlimited open) a 64-client clone load test opened ~35,000
+  postgres sessions in 120 s for ~38,000 requests and server memory grew to
+  ~1.4 GiB; with 64 open / 64 idle it stayed flat at ~82 MiB and finished 24%
+  more clones.
+- `DATABASE_MAX_OPEN_CONNS` × the number of `nipad-ee` pods (count both
+  colors during a blue/green flip), plus headroom for migrations, admin
+  commands and `psql`, must stay under postgres `max_connections`. Behind a
+  pooler such as PgBouncer, size against its per-database limit instead.
+- When the pool is exhausted requests queue for a connection rather than
+  fail; watch `nipa_db_pool_wait_count_total` /
+  `nipa_db_pool_wait_seconds_total` and `nipa_db_pool_in_use_connections`
+  against the limit (`docs/OBSERVABILITY.md`) before raising it.
+- One-shot commands (`ee/cmd/migrate`, `nipad-ee maintenance`) use the fixed
+  `ee/db.AdminPoolConfig()` (4 connections) and ignore the settings above.
+
 ## Migrations
 
 - `nipad-ee` applies pending migrations at startup (`ee/db.MigrateUp`).

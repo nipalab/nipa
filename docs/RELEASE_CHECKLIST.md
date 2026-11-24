@@ -152,8 +152,8 @@ See `docs/PERFORMANCE.md` for scenarios, metric names and the capacity notes;
 - [ ] **Free-edition envelope measured.** `tests/load -scenario push` finds the
   max clean concurrency on SQLite; the recommended team/repo-size ceiling is
   documented in the README (`docs/PERFORMANCE.md` §free-edition envelope).
-- [ ] **Postgres pool sized.** Open item: the pool is untuned (no
-  `SetMaxOpenConns` above tests). Add `DB_POOL_*` knobs, size per pod so
+- [ ] **Postgres pool sized.** The pool is bounded by
+  `DATABASE_MAX_OPEN_CONNS` (default 32, `docs/POSTGRES.md`); size it per pod so
   `pods × max_open + headroom < max_connections`, and verify with
   `nipa_db_pool_wait_*` deltas; otherwise treat pod count as unmeasured.
 - [ ] **SLOs ratified.** The proposal table in `docs/PERFORMANCE.md` is

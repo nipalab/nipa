@@ -18,7 +18,7 @@ import (
 
 func TestEnterpriseFrozenOnReadOnlyDatabase(t *testing.T) {
 	ctx := context.Background()
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -47,7 +47,7 @@ func TestEnterpriseFrozenOnReadOnlyDatabase(t *testing.T) {
 	if strings.Contains(testPGDSN, "?") {
 		separator = "&"
 	}
-	readOnly, err := eedb.Open(testPGDSN + separator + "default_transaction_read_only=on")
+	readOnly, err := eedb.Open(testPGDSN+separator+"default_transaction_read_only=on", eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = readOnly.Close() })
 	frozenHost, frozenUc := startEnterpriseServerWithUsecases(t, readOnly, chunks, mustSnowNode(t, 21), nil)

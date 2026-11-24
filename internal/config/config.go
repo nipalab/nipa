@@ -13,6 +13,10 @@ import (
 
 type Config struct {
 	DatabaseDSN                     string  `mapstructure:"DATABASE_DSN"`
+	DatabaseMaxOpenConns            int     `mapstructure:"DATABASE_MAX_OPEN_CONNS"`
+	DatabaseMaxIdleConns            int     `mapstructure:"DATABASE_MAX_IDLE_CONNS"`
+	DatabaseConnMaxLifetimeSeconds  int     `mapstructure:"DATABASE_CONN_MAX_LIFETIME_SECONDS"`
+	DatabaseConnMaxIdleTimeSeconds  int     `mapstructure:"DATABASE_CONN_MAX_IDLE_TIME_SECONDS"`
 	ServerAddress                   string  `mapstructure:"SERVER_ADDRESS"`
 	ServerPort                      int     `mapstructure:"SERVER_PORT"`
 	ShutdownTimeoutSeconds          int     `mapstructure:"SHUTDOWN_TIMEOUT_SECONDS"`
@@ -176,6 +180,10 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_STORE_WRITE_CONCURRENCY", DefaultChunkStoreWriteConcurrency)
 	v.SetDefault("PUSH_MAX_FILES", 2_000_000)
 	v.SetDefault("CHUNK_VISIBILITY_CACHE_HASHES", 2_000_000)
+	v.SetDefault("DATABASE_MAX_OPEN_CONNS", DefaultDatabaseMaxOpenConns)
+	v.SetDefault("DATABASE_MAX_IDLE_CONNS", 0)
+	v.SetDefault("DATABASE_CONN_MAX_LIFETIME_SECONDS", DefaultDatabaseConnMaxLifetimeSeconds)
+	v.SetDefault("DATABASE_CONN_MAX_IDLE_TIME_SECONDS", DefaultDatabaseConnMaxIdleTimeSeconds)
 	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)
 	v.SetDefault("HTTP_READ_HEADER_TIMEOUT_SECONDS", DefaultHTTPReadHeaderTimeoutSeconds)
 	v.SetDefault("HTTP_IDLE_TIMEOUT_SECONDS", DefaultHTTPIdleTimeoutSeconds)

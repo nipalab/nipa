@@ -38,7 +38,7 @@ func ownStorageEvent(eventID, eventType, subID, status string, ownStorage bool, 
 func TestEnterpriseBYOStorageOwnStorageAddOn(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))

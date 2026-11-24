@@ -56,7 +56,7 @@ func TestMigrateSuite(t *testing.T) {
 }
 
 func (s *MigrateSuite) SetupTest() {
-	conn, err := Open(testDSN)
+	conn, err := Open(testDSN, PoolConfig{})
 	s.Require().NoError(err)
 	s.conn = conn
 }
