@@ -217,10 +217,11 @@ every update. No record (older clone, tree saved by merge/revert) always means
 the full path. The record is written by `SaveSyncedTree(tree, commitID,
 sparse)` in every flow that saves a manifest fetched with `cfg.Sparse`: clone,
 `Run`, `runDetached`, `Switch`, `SwitchTag` and the post-push save (commit =
-the pushed commit). Merge and revert keep plain `SaveTree`, which drops the
+the pushed commit; `localrepo.ApplyPush` writes the same record when the push
+is applied locally, see below). Merge and revert keep plain `SaveTree`, which drops the
 record, because their trees are fetched unscoped or built locally. The commit
 id is part of the record (not just the sparse set) because the local commit
-can move without the stored tree: push saves its commit before it refetches
+can move without the stored tree: push saves its commit before it saves
 the tree, and `Switch`/`SwitchTag` save the tree before config and commit, so
 an interrupted run leaves commit and record disagreeing and the next update
 syncs fully. Consequence, by design: the early exit does not restore a tracked
@@ -234,6 +235,33 @@ anything drops the record first (`ClearSyncedTree`, via the optional
 and before the first write), so a sync that fails or is killed part way,
 forced or not, leaves no record and the next update syncs fully instead of
 exiting early on a half-written working copy.
+
+Post-push tree save (`Push.saveLandedTree`, span `push.tree`): after the
+server accepted the push and `SaveCommit` pinned the new commit, the stored
+tree is brought to the new head without fetching its manifest. The server
+only accepts a push onto the branch head, so the new tree is the base tree
+plus the pushed files minus the removed paths, and `localrepo.ApplyPush`
+(`docs/internals/localrepo.md`) derives it from the stored rows and checks its
+root against `PushResult.TreeHash`. The manifest is still fetched
+(`GetTreeNodeManifest` + `SaveSyncedTree`, the only path before) in exactly
+these cases, silently (`slog.Debug` with the expected and computed hashes;
+span attributes `nipa.push.tree_sync` = `local`/`refetch` and
+`nipa.push.tree_sync_reason`): `sparse`, a sparse checkout (`cfg.Sparse` not
+empty) never applies locally; `base`, the synced-tree record does not name the
+base commit the push was sent with as a full checkout (older clone, crash
+between `SaveCommit` and the tree save, a tree `SaveTree`d by a conflicted
+merge/revert or `--no-commit`), or, with no base commit, anything is stored;
+`mismatch`, the computed root differs from the server's (a permission-filtered
+manifest, a server tree still carrying legacy pre-mode directory hashes, any
+disagreement); `error`/`config`, the apply or the config read failed. The
+commit already landed, so no failure of the local apply fails the push: only
+the manifest fetch and its save can. Callers: plain `nipa push`, clean
+reverts (each target of a sequence) and clean three-way merges push a delta
+onto a synced head and apply locally; the push that resolves a conflicted
+merge or revert falls back (`base`). `ClearStaged` and the pin release follow
+either path. A crash between `SaveCommit` and the tree save leaves the
+record naming the old commit, so the next update syncs fully and the next
+push falls back.
 
 Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
 `syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`

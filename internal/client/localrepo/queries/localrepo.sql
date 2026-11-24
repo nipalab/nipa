@@ -137,3 +137,25 @@ SELECT path, size_bytes, is_binary
 FROM files
 WHERE path LIKE sqlc.arg(pattern) ESCAPE '\'
 LIMIT sqlc.arg(max_rows);
+
+-- name: TreeNodeGet :one
+SELECT path, parent_path, hash, mode
+FROM tree_nodes
+WHERE path = sqlc.arg(path)
+LIMIT 1;
+
+-- name: TreeNodeChildHashes :many
+SELECT path, hash
+FROM tree_nodes
+WHERE parent_path = sqlc.arg(parent_path) AND path <> parent_path
+ORDER BY path;
+
+-- name: FileHashesByTree :many
+SELECT path, hash, mode
+FROM files
+WHERE tree_path = sqlc.arg(tree_path)
+ORDER BY path;
+
+-- name: StatCacheDelete :exec
+DELETE FROM stat_cache
+WHERE path = sqlc.arg(path);

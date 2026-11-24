@@ -55,6 +55,8 @@ type stubPushClient struct {
 	verifyChunks   bool
 	manifest       *serverDomain.TreeNode
 	manifestErr    error
+	manifestCalls  int
+	manifestPaths  [][]string
 }
 
 func (s *stubPushClient) Connect(_ context.Context, host string) error {
@@ -113,7 +115,9 @@ func (s *stubPushClient) UploadChunks(ctx context.Context, _ domain.ChunkScope, 
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
-func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
+func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, paths []string) (*serverDomain.TreeNode, error) {
+	s.manifestCalls++
+	s.manifestPaths = append(s.manifestPaths, paths)
 	return s.manifest, s.manifestErr
 }
 
@@ -173,7 +177,15 @@ func TestPush_Run_Success(t *testing.T) {
 	require.Equal(t, client.uploadedChunks[0].Data, local.storedChunks[chunks[0].Hash],
 		"uploaded chunks must be cached locally so nipa diff can rebuild the old side")
 
-	require.NotNil(t, local.tree, "working copy snapshot must be refreshed from the server after push")
+	require.Zero(t, client.manifestCalls, "a full checkout applies the push locally instead of fetching the manifest")
+	require.Nil(t, local.tree)
+	require.Len(t, local.appliedPushes, 1)
+	applied := local.appliedPushes[0]
+	require.Equal(t, client.pushFiles, applied.Files)
+	require.Empty(t, applied.Removed)
+	require.Empty(t, applied.BaseCommitID, "an empty branch has no base commit")
+	require.Equal(t, snow.ID(1).Base36(), applied.CommitID)
+	require.Equal(t, fileHash, applied.TreeHash, "the root hash to check against comes from the push response")
 	require.True(t, local.clearedStaged, "staged markers are cleared only after a fully successful push")
 	require.Equal(t, snow.ID(1).Base36(), local.savedCommitID, "the pushed commit id must be pinned locally")
 	require.Equal(t, fileHash.String(), local.savedCommitHash, "the pushed commit hash must be pinned locally")
@@ -484,6 +496,8 @@ func TestPush_Run_Error_ManifestRefreshFails(t *testing.T) {
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot:   &domain.Snapshot{},
 		staged:     []string{"a.txt"},
+		// The manifest is only fetched when the push cannot be applied locally.
+		applyPushErr: domain.ErrPushApplyBase,
 	}
 	client := &stubPushClient{manifestErr: unexpected}
 	pusher := newTestPush(t, local, client)
@@ -504,6 +518,8 @@ func TestPush_Run_Error_SaveTreeFails(t *testing.T) {
 		snapshot:   &domain.Snapshot{},
 		staged:     []string{"a.txt"},
 		treeErr:    unexpected,
+		// Saving the manifest only happens on the fallback path.
+		applyPushErr: domain.ErrPushApplyBase,
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	pusher := newTestPush(t, local, client)

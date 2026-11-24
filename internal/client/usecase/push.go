@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -35,6 +36,7 @@ type pushLocalRepo interface {
 	ListStaged() ([]string, error)
 	ClearStaged() error
 	SaveSyncedTree(root *serverDomain.TreeNode, commitID string, sparse []string) error
+	ApplyPush(in domain.PushApply) error
 	SaveCommit(commitID, commitHash string) error
 	StoreChunks(chunks []*serverDomain.ChunkData) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
@@ -334,17 +336,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	)
 	obs.FinishSpan(commitSpan, nil)
 
-	var sparse []string
-	if cfg, err := p.localRepo.LoadConfig(); err == nil && cfg != nil {
-		sparse = cfg.Sparse
-	}
-	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, sparse)
-	if err != nil {
-		return nil, err
-	}
-	// The manifest is the branch head's, read right after this push made its
-	// commit the head, with the sparse set the config holds.
-	if err := p.localRepo.SaveSyncedTree(rootTree, result.CommitID.Base36(), sparse); err != nil {
+	if err := p.saveLandedTree(ctx, nipaUrl, branch, baseCommitID, result, files, removed); err != nil {
 		return nil, err
 	}
 	if err := p.localRepo.ClearStaged(); err != nil {
@@ -356,6 +348,77 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		}
 	}
 	return result, nil
+}
+
+// Values of the nipa.push.tree_sync span attribute: how the stored tree was
+// brought to the pushed commit.
+const (
+	treeSyncLocal   = "local"
+	treeSyncRefetch = "refetch"
+)
+
+// saveLandedTree makes the stored tree the tree of the commit the push just
+// created. A full checkout applies the push to the stored rows
+// (localrepo.ApplyPush), which checks the result against the root hash in the
+// push response; a sparse checkout, a stored tree that is not the push base
+// and a root hash that does not match all save the new head's manifest
+// instead, as every push did before. The commit already landed, so a failed
+// local apply never fails the push: the manifest fetch decides.
+func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, branch, baseCommitID string, result *serverDomain.PushResult, files []*serverDomain.PushFile, removed []string) (err error) {
+	ctx, span := obs.StartSpan(ctx, "push.tree")
+	defer func() { obs.FinishSpan(span, err) }()
+
+	commitID := result.CommitID.Base36()
+	var sparse []string
+	reason := "config"
+	cfg, cfgErr := p.localRepo.LoadConfig()
+	if cfgErr == nil && cfg != nil {
+		sparse = cfg.Sparse
+		reason = "sparse"
+		if len(sparse) == 0 {
+			applyErr := p.localRepo.ApplyPush(domain.PushApply{
+				Files:        files,
+				Removed:      removed,
+				BaseCommitID: baseCommitID,
+				CommitID:     commitID,
+				TreeHash:     result.TreeHash,
+			})
+			if applyErr == nil {
+				span.SetAttributes(attribute.String("nipa.push.tree_sync", treeSyncLocal))
+				return nil
+			}
+			reason = applyFallbackReason(applyErr, result.TreeHash)
+		}
+	}
+	span.SetAttributes(
+		attribute.String("nipa.push.tree_sync", treeSyncRefetch),
+		attribute.String("nipa.push.tree_sync_reason", reason),
+	)
+	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, sparse)
+	if err != nil {
+		return err
+	}
+	// The manifest is the branch head's, read right after this push made its
+	// commit the head, with the sparse set the config holds.
+	return p.localRepo.SaveSyncedTree(rootTree, commitID, sparse)
+}
+
+// applyFallbackReason names why a local apply gave way to the manifest fetch
+// and logs it; the user never sees it.
+func applyFallbackReason(err error, expected serverDomain.Hash) string {
+	var mismatch *domain.PushApplyMismatchError
+	switch {
+	case errors.As(err, &mismatch):
+		slog.Debug("pushed tree hash differs from the locally applied one; fetching the manifest",
+			"expected", mismatch.Expected.String(), "computed", mismatch.Computed.String())
+		return "mismatch"
+	case errors.Is(err, domain.ErrPushApplyBase):
+		slog.Debug("stored tree is not the push base; fetching the manifest", "expected", expected.String())
+		return "base"
+	default:
+		slog.Debug("applying the push locally failed; fetching the manifest", "expected", expected.String(), "error", err)
+		return "error"
+	}
 }
 
 // landedPins returns the exact-path pins a push landed; directory pins stay.
