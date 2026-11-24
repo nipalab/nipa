@@ -61,7 +61,7 @@ func eeStreamImport(t *testing.T, c *clientgrpc.Client, commits []*clientgrpc.Im
 
 func TestEnterpriseGitImport(t *testing.T) {
 	ctx := context.Background()
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -117,7 +117,7 @@ func TestEnterpriseGitImport(t *testing.T) {
 
 func TestEnterpriseGitImportQuotaEstimate(t *testing.T) {
 	ctx := context.Background()
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))

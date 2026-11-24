@@ -13,7 +13,33 @@ const (
 	DefaultHTTPReadHeaderTimeoutSeconds = 30
 	DefaultHTTPIdleTimeoutSeconds       = 300
 	DefaultMaintenancePollSeconds       = 5
+
+	// DefaultDatabaseMaxOpenConns caps the postgres connection pool of
+	// nipad-ee. It is also what ee/db falls back to for a non-positive limit,
+	// so the pool is never unbounded.
+	DefaultDatabaseMaxOpenConns           = 32
+	DefaultDatabaseConnMaxLifetimeSeconds = 1800
+	DefaultDatabaseConnMaxIdleTimeSeconds = 300
 )
+
+// DatabaseConnMaxLifetime is how long a pooled postgres connection may be
+// reused before it is replaced. Zero or negative means no limit.
+func (c *Config) DatabaseConnMaxLifetime() time.Duration {
+	return nonNegativeSeconds(c.DatabaseConnMaxLifetimeSeconds)
+}
+
+// DatabaseConnMaxIdleTime is how long a pooled postgres connection may sit
+// idle before it is closed. Zero or negative means no limit.
+func (c *Config) DatabaseConnMaxIdleTime() time.Duration {
+	return nonNegativeSeconds(c.DatabaseConnMaxIdleTimeSeconds)
+}
+
+func nonNegativeSeconds(v int) time.Duration {
+	if v <= 0 {
+		return 0
+	}
+	return time.Duration(v) * time.Second
+}
 
 // MaintenancePollInterval is how often the stored maintenance windows and the
 // MAINTENANCE_FILE override are reloaded. Values below one second become one.

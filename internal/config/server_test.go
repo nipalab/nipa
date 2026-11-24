@@ -135,3 +135,34 @@ func TestLoadConfig_Maintenance(t *testing.T) {
 		require.Equal(t, time.Second, (&Config{MaintenancePollSeconds: secs}).MaintenancePollInterval())
 	}
 }
+
+func TestLoadConfig_DatabasePoolDefaults(t *testing.T) {
+	clearConfigEnv(t)
+	cfg := loadWithMinimalYAML(t)
+	require.Equal(t, 32, cfg.DatabaseMaxOpenConns)
+	require.Zero(t, cfg.DatabaseMaxIdleConns, "0 means the same as max open")
+	require.Equal(t, 1800, cfg.DatabaseConnMaxLifetimeSeconds)
+	require.Equal(t, 300, cfg.DatabaseConnMaxIdleTimeSeconds)
+	require.Equal(t, 30*time.Minute, cfg.DatabaseConnMaxLifetime())
+	require.Equal(t, 5*time.Minute, cfg.DatabaseConnMaxIdleTime())
+}
+
+func TestLoadConfig_DatabasePoolFromEnv(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("DATABASE_MAX_OPEN_CONNS", "64")
+	t.Setenv("DATABASE_MAX_IDLE_CONNS", "16")
+	t.Setenv("DATABASE_CONN_MAX_LIFETIME_SECONDS", "600")
+	t.Setenv("DATABASE_CONN_MAX_IDLE_TIME_SECONDS", "0")
+
+	cfg := loadWithMinimalYAML(t)
+	require.Equal(t, 64, cfg.DatabaseMaxOpenConns)
+	require.Equal(t, 16, cfg.DatabaseMaxIdleConns)
+	require.Equal(t, 10*time.Minute, cfg.DatabaseConnMaxLifetime())
+	require.Zero(t, cfg.DatabaseConnMaxIdleTime(), "0 disables the idle timeout")
+}
+
+func TestDatabaseConnDurationsIgnoreNegatives(t *testing.T) {
+	cfg := &Config{DatabaseConnMaxLifetimeSeconds: -1, DatabaseConnMaxIdleTimeSeconds: -5}
+	require.Zero(t, cfg.DatabaseConnMaxLifetime())
+	require.Zero(t, cfg.DatabaseConnMaxIdleTime())
+}

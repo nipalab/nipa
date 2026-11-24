@@ -405,7 +405,7 @@ func connectClient(t *testing.T, host string, opts ...clientgrpc.ClientOption) (
 func TestEnterpriseClonePushTag(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -456,7 +456,7 @@ func TestEnterpriseClonePushTag(t *testing.T) {
 func TestEnterpriseTwoInstanceNodeLease(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -534,7 +534,7 @@ func TestEnterpriseTwoInstanceNodeLease(t *testing.T) {
 func TestEnterpriseStorageQuota(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))

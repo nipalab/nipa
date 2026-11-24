@@ -125,7 +125,7 @@ func main() {
 		panic(fmt.Errorf("setup tracing: %w", err))
 	}
 
-	dbConn, err := eedb.Open(cfg.DatabaseDSN)
+	dbConn, err := eedb.Open(cfg.DatabaseDSN, databasePool(cfg))
 	if err != nil {
 		panic(err)
 	}
@@ -406,10 +406,20 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	return options
 }
 
+// databasePool is the serving connection pool from the DATABASE_* settings.
+func databasePool(cfg *config.Config) eedb.PoolConfig {
+	return eedb.PoolConfig{
+		MaxOpenConns:    cfg.DatabaseMaxOpenConns,
+		MaxIdleConns:    cfg.DatabaseMaxIdleConns,
+		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime(),
+		ConnMaxIdleTime: cfg.DatabaseConnMaxIdleTime(),
+	}
+}
+
 // openMaintenanceDB opens the database for `nipad-ee maintenance` without
 // migrating it.
 func openMaintenanceDB(cfg *config.Config) (usecase.Repositories, *sql.DB, error) {
-	conn, err := eedb.Open(cfg.DatabaseDSN)
+	conn, err := eedb.Open(cfg.DatabaseDSN, eedb.AdminPoolConfig())
 	if err != nil {
 		return usecase.Repositories{}, nil, err
 	}

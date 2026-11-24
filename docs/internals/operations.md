@@ -362,6 +362,9 @@ returns only after the drain finished (`serveUntilShutdown`): `Serve` returns
 the moment the listener closes, so returning then would exit the process
 mid-request. Both colors may run
 concurrently during a flip:
+each holds its own postgres pool (`DATABASE_MAX_OPEN_CONNS`, default 32, idle =
+open; `ee/db.PoolConfig`, `docs/POSTGRES.md`), so postgres `max_connections`
+must cover both,
 snowflake node ids are leased from postgres (never pin `SNOWFLAKE_NODE_ID`),
 email deliveries are claimed atomically, but webhooks can double-deliver in the
 overlap window (consumers must be idempotent). Migrations must stay forward

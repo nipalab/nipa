@@ -20,7 +20,7 @@ func main() {
 		log.Fatal("postgres DSN is required")
 	}
 
-	db, err := eedb.Open(*dsn)
+	db, err := eedb.Open(*dsn, eedb.AdminPoolConfig())
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}

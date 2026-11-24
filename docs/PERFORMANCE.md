@@ -35,7 +35,7 @@ release run.
 | Transfer tuning | Client adaptive limiters per direction: uploads 16 → range [4, 64], downloads 64 → range [4, 256]; hold on flat throughput, cut on errors or a drop below 70% of the recent best; pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` and `NIPA_DOWNLOAD_WORKERS` / `downloadWorkers` (`internal/client/grpc/transfer.go`) |
 | Big-repo hygiene | `SaveTree` diffs against the stored rows and writes only the difference (~20 ms for 10k files and 5 changes, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
-| Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
+| Postgres pool | Bounded by `DATABASE_MAX_OPEN_CONNS` (default 32, idle = open) and `DATABASE_CONN_MAX_LIFETIME_SECONDS`/`_IDLE_TIME_SECONDS` (`docs/POSTGRES.md`); per-deployment sizing still to be measured |
 | Rate limiting | Token buckets per IP / account / user, memory or Redis store (`docs/RATE_LIMIT.md`) |
 
 ## Benchmarks
@@ -141,10 +141,10 @@ is the pod-sizing input.
   (`ee/nodelease`, `SNOWFLAKE_LEASE_TTL_SECONDS`) so pods can be added or
   replaced freely. Storage and quota accounting live in postgres
   (`ee/storageusage`).
-- **Postgres pool sizing is an open item.** The pool is untuned today
-  (stdlib default = unlimited connections). Before beta, add
-  `DB_POOL_MAX_OPEN`/`DB_POOL_MAX_IDLE`/`DB_POOL_CONN_MAX_LIFETIME` knobs and
-  size per pod so `pods × max_open + headroom < max_connections`; the
+- **Postgres pool sizing is an open item.** The pool is bounded
+  (`DATABASE_MAX_OPEN_CONNS`, default 32, idle = open; `docs/POSTGRES.md`)
+  but the default is not yet tuned per deployment. Before beta, size it per
+  pod so `pods × max_open + headroom < max_connections`; the
   `nipa_db_pool_*` gauges and `tests/load` pool-wait deltas verify the setting.
 - **S3.** The enterprise store hands clients absolute presigned URLs
   (`DirectTransferStore`), so upload/download bytes bypass the server; pods

@@ -466,7 +466,7 @@ server version.
   chunk transfers and gRPC streams are never cut.
 - **Capacity:** two color instances can be live briefly during a flip, so size
   the postgres connection limit for `2 × pool + headroom` (the pool is
-  currently untuned; see `docs/PERFORMANCE.md`).
+  `DATABASE_MAX_OPEN_CONNS`, default 32; see `docs/POSTGRES.md`).
 - **Maintenance windows:** `nipad-ee maintenance set read_only|full|frozen`
   from `/etc/nipa` (`cd /etc/nipa && sudo -u nipa /opt/nipa/<color>/nipad-ee
   maintenance status`), the admin page or the org and project settings.

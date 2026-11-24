@@ -23,7 +23,7 @@ import (
 func TestEnterpriseDeleteProjectReleasesStorage(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -92,7 +92,7 @@ func TestEnterpriseDeleteProjectReleasesStorage(t *testing.T) {
 func TestEnterpriseRestoreAndPurgeProject(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
@@ -177,7 +177,7 @@ func TestEnterpriseRestoreAndPurgeProject(t *testing.T) {
 func TestEnterprisePurgeReclaimsTheProjectsContent(t *testing.T) {
 	ctx := context.Background()
 
-	dbConn, err := eedb.Open(testPGDSN)
+	dbConn, err := eedb.Open(testPGDSN, eedb.PoolConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
