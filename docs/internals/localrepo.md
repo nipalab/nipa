@@ -36,8 +36,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     the concatenated 32-byte hashes of the file's chunks (metadata only, no
     content); `encoding` is `raw` or `zstd` and refers to the stored chunk bytes.
   - `meta(key PK, value)` — stores `tree_hash`, the pinned `commit_id` /
-    `commit_hash`, and the pending `merge_state` / `revert_state` /
-    `shelf_state` JSON.
+    `commit_hash`, the pending `merge_state` / `revert_state` /
+    `shelf_state` JSON, and `synced_tree`
+    (`{"commit":"<base36 id>","sparse":["a","b"]}`, sparse sorted and deduped,
+    `[]` for a full checkout): which commit's tree the stored rows hold and the
+    sparse set it was fetched with (`synced.go`).
   - `staged_files(path PK, staged_at)`.
   - `pinned_paths(path PK, pinned_at)` — lock pins (`PinPaths`/`UnpinPaths`/
     `ListPins`), stored normalized like snapshot paths
@@ -109,6 +112,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   changes reads the stored rows and writes ~5 files plus their ancestor nodes
   (~20 ms), not the whole table. `Snapshot()` returns every `files` row. The same transaction drops `stat_cache` rows whose path left `files`.
   `meta_tree_hash` is re-set each save. `SaveTree(nil)` deletes every row.
+  `SaveSyncedTree(root, commitID, sparse)` is `SaveTree` plus the `synced_tree`
+  record in the same transaction; plain `SaveTree` (and an empty `commitID`)
+  deletes the record, so it can only ever describe the rows it was written
+  with. `LoadSyncedTree` returns nil for a missing or unreadable record, which
+  `Update` reads as "unknown, do the full sync" (`docs/internals/client.md`).
   Cached objects are never touched by `SaveTree`; only the GC above removes them.
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a
   tracked file whose `(size, mtime)` match a fresh fingerprint (`mtime < cached_at`)

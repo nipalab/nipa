@@ -11,6 +11,13 @@ type LocalCommit struct {
 	CommitHash string `json:"commit_hash,omitempty"`
 }
 
+// SyncedTree says which commit's tree the local snapshot holds and the sparse
+// set (sorted, empty for a full checkout) it was fetched with.
+type SyncedTree struct {
+	CommitID string
+	Sparse   []string
+}
+
 type CommitDetail struct {
 	ID        string
 	Hash      string

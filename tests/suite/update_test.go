@@ -47,6 +47,53 @@ var _ = Describe("nipa update", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(after.ModTime()).To(Equal(before.ModTime()))
 		Expect(readText(dir, "file.txt")).To(Equal("v1\n"))
+		Expect(res.Output()).To(ContainSubstring("Already up to date."))
+	})
+
+	It("leaves a deleted tracked file alone when up to date and restores it with --force", func() {
+		project := newProject("update-noop-deleted")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"file.txt":  []byte("v1\n"),
+			"other.txt": []byte("o1\n"),
+		}, "seed")
+
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(os.Remove(filepath.Join(dir, "file.txt"))).To(Succeed())
+
+		res := runNipa(dir, "update")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("Already up to date."))
+		Expect(fileExists(dir, "file.txt")).To(BeFalse(), "an up-to-date update does not scan the working copy")
+
+		res = runNipa(dir, "update", "--force")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).NotTo(ContainSubstring("Already up to date."))
+		Expect(readText(dir, "file.txt")).To(Equal("v1\n"))
+		Expect(readText(dir, "other.txt")).To(Equal("o1\n"))
+		assertCleanStatus(dir)
+	})
+
+	It("is a no-op right after a push and picks up later commits", func() {
+		project := newProject("update-noop-push")
+		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v1\n")}, "seed")
+
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		writeText(dir, "mine.txt", "mine\n")
+		Expect(runNipa(dir, "add", "mine.txt").ExitCode).To(Equal(0))
+		push := runNipa(dir, "push", "-m", "add mine")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+
+		res := runNipa(dir, "update")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("Already up to date."))
+
+		seedRepo(orgSlug, project, map[string][]byte{"file.txt": []byte("v2\n")}, "remote update")
+		res = runNipa(dir, "update")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).NotTo(ContainSubstring("Already up to date."))
+		Expect(readText(dir, "file.txt")).To(Equal("v2\n"))
+		Expect(readText(dir, "mine.txt")).To(Equal("mine\n"))
+		assertCleanStatus(dir)
 	})
 
 	It("removes files deleted on the server", func() {

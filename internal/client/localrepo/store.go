@@ -74,7 +74,16 @@ func (l *LocalRepo) Close() error {
 	return err
 }
 
+// SaveTree replaces the stored tree. It drops the synced-tree record, because
+// it cannot tell which commit or sparse set the tree belongs to; a caller that
+// knows both uses SaveSyncedTree.
 func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
+	return l.saveTree(root, func(ctx context.Context, q *sqlcLocalrepo.Queries) error {
+		return q.MetaDelete(ctx, syncedTreeKey)
+	})
+}
+
+func (l *LocalRepo) saveTree(root *domain.TreeNode, record func(ctx context.Context, q *sqlcLocalrepo.Queries) error) error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
@@ -107,6 +116,9 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 	// Stat rows follow the tracked set: paths gone from the snapshot are no
 	// longer consulted by status, so drop them in the same transaction.
 	if err := q.StatCacheSweep(ctx); err != nil {
+		return err
+	}
+	if err := record(ctx, q); err != nil {
 		return err
 	}
 	return tx.Commit()

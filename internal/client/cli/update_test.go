@@ -13,6 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type fakeUpdateClient struct {
@@ -26,6 +27,8 @@ type fakeUpdateClient struct {
 	downloaded  []serverDomain.Hash
 	branchErr   error
 	manifestErr error
+	head        *snow.ID
+	manifests   int
 
 	tagInfo      *domain.Tag
 	tagErr       error
@@ -44,11 +47,12 @@ func (f *fakeUpdateClient) GetBranchByName(_ context.Context, org, project, name
 	if f.branchErr != nil {
 		return nil, f.branchErr
 	}
-	return &serverDomain.Branch{Name: name}, nil
+	return &serverDomain.Branch{Name: name, CommitID: f.head}, nil
 }
 
 func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
 	f.org, f.project, f.branch = org, project, branch
+	f.manifests++
 	f.path = ""
 	if len(paths) > 0 {
 		f.path = paths[0]
@@ -262,4 +266,46 @@ func TestSetupSwitchCmd_RefusesToOverwriteLocalEditsWithoutForce(t *testing.T) {
 			requireFileContent(t, root, "a.txt", "content from the server")
 		})
 	}
+}
+
+func TestSetupUpdateCmd_AlreadyUpToDate(t *testing.T) {
+	root := setupRepo(t, "main")
+	content := "tracked content"
+	chunks := chunksOf(t, content)
+	head := snow.ID(42)
+	client := &fakeUpdateClient{
+		head:      &head,
+		chunkData: chunkDataMap(t, content),
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len(content)),
+				Hash:      chunker.FileHash([]serverDomain.Hash{chunks[0].Hash}),
+				Chunks:    chunks,
+			}},
+		},
+	}
+	cli := newUpdateCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupUpdateCmd())
+	require.NoError(t, err)
+	require.NotContains(t, out, "Already up to date.")
+	require.Equal(t, 1, client.manifests)
+
+	require.NoError(t, os.Remove(filepath.Join(root, "a.txt")))
+	out, err = runCmdInDir(t, root, cli.setupUpdateCmd())
+	require.NoError(t, err)
+	require.Equal(t, "Already up to date.\n", out)
+	require.Equal(t, 1, client.manifests, "an up-to-date working copy fetches no manifest")
+	require.NoFileExists(t, filepath.Join(root, "a.txt"), "the no-op does not look at the working copy")
+
+	out, err = runCmdInDir(t, root, cli.setupUpdateCmd(), "--force")
+	require.NoError(t, err)
+	require.NotContains(t, out, "Already up to date.")
+	require.Equal(t, 2, client.manifests)
+	got, err := os.ReadFile(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, content, string(got), "a forced update restores the deleted file")
 }

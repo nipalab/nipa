@@ -27,6 +27,7 @@ type stubUpdateClient struct {
 	branchLookup     string
 	manifest         *serverDomain.TreeNode
 	manifestErr      error
+	manifestCalls    int
 	downloadHashes   []serverDomain.Hash
 	downloadData     map[serverDomain.Hash][]byte
 	downloadErr      error
@@ -37,6 +38,8 @@ type stubUpdateClient struct {
 	commitTreeLookup  string
 	commitManifest    *serverDomain.TreeNode
 	commitManifestErr error
+
+	commitManifestCalls int
 }
 
 func (s *stubUpdateClient) Connect(_ context.Context, host string) error {
@@ -51,6 +54,7 @@ func (s *stubUpdateClient) GetBranchByName(_ context.Context, org, project, name
 
 func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
 	s.org, s.project, s.branch = org, project, branch
+	s.manifestCalls++
 	s.treePath = ""
 	if len(paths) > 0 {
 		s.treePath = paths[0]
@@ -60,6 +64,7 @@ func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 
 func (s *stubUpdateClient) GetCommitTreeManifest(_ context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
 	s.org, s.project, s.commitTreeLookup = org, project, commitID
+	s.commitManifestCalls++
 	s.treePath = ""
 	if len(paths) > 0 {
 		s.treePath = paths[0]

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,7 +73,15 @@ type updateLocalRepo interface {
 	OpenChunk(hash domain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash domain.Hash) ([]byte, error)
 	SaveStatEntries(entries map[string]clientDomain.StatEntry) error
-	SaveTree(root *domain.TreeNode) error
+	SaveSyncedTree(root *domain.TreeNode, commitID string, sparse []string) error
+	LoadSyncedTree() (*clientDomain.SyncedTree, error)
+}
+
+// UpdateResult says what an update did.
+type UpdateResult struct {
+	// UpToDate is set when the working copy already held the target commit
+	// with the configured sparse set, so nothing was fetched or written.
+	UpToDate bool
 }
 
 type Update struct {
@@ -104,26 +113,42 @@ func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Upda
 	}
 }
 
-func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) (err error) {
+// Run is RunResult for callers that do not report what the update did.
+func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) error {
+	_, err := u.RunResult(ctx, root, progress...)
+	return err
+}
+
+// RunResult brings the working copy to the branch head (or, detached, to the
+// checked-out commit). When the stored tree already is that commit's tree,
+// fetched with the configured sparse set, and the update is not forced, it
+// returns UpToDate without fetching the manifest, scanning the working copy
+// or pruning the cache: a tracked file deleted from disk is then not restored,
+// which is what a forced update is for.
+func (u *Update) RunResult(ctx context.Context, root string, progress ...DownloadProgress) (result UpdateResult, err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.update")
 	defer func() { obs.FinishSpan(span, err) }()
-	defer func() { pruneAfterSuccess(u.localRepo, err) }()
+	defer func() {
+		if !result.UpToDate {
+			pruneAfterSuccess(u.localRepo, err)
+		}
+	}()
 
 	if err := u.localRepo.Init(root); err != nil {
-		return err
+		return result, err
 	}
 	unlock, err := lockShared(u.localRepo)
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer unlock()
 	cfg, err := u.localRepo.LoadConfig()
 	if err != nil {
-		return err
+		return result, err
 	}
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
 	if err != nil {
-		return err
+		return result, err
 	}
 	span.SetAttributes(
 		attribute.String(obs.AttrOrg, nu.Org),
@@ -131,10 +156,10 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		attribute.String(obs.AttrBranch, cfg.Branch),
 	)
 	if err := u.client.Connect(ctx, nu.Origin); err != nil {
-		return err
+		return result, err
 	}
 	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
-		return err
+		return result, err
 	}
 	if cfg.Head != nil {
 		return u.runDetached(ctx, root, cfg, nu, progress...)
@@ -142,11 +167,27 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 
 	headCommitID, err := u.branchHead(ctx, nu, cfg.Branch)
 	if err != nil {
-		return err
+		return result, err
+	}
+	if headCommitID != "" && !u.force {
+		localCommit, err := u.localRepo.LoadCommit()
+		if err != nil {
+			return result, err
+		}
+		if localCommit != nil && localCommit.CommitID == headCommitID {
+			upToDate, err := u.syncedAt(headCommitID, cfg.Sparse)
+			if err != nil {
+				return result, err
+			}
+			if upToDate {
+				span.SetAttributes(attribute.Bool("nipa.update.up_to_date", true))
+				return UpdateResult{UpToDate: true}, nil
+			}
+		}
 	}
 	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, cfg.Sparse)
 	if err != nil {
-		return err
+		return result, err
 	}
 	scope := clientDomain.ChunkScope{
 		Org:       nu.Org,
@@ -155,28 +196,66 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		Paths:     cfg.Sparse,
 	}
 	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return err
+		return result, err
 	}
-	if err := u.localRepo.SaveTree(tree); err != nil {
-		return err
+	if err := u.localRepo.SaveSyncedTree(tree, headCommitID, cfg.Sparse); err != nil {
+		return result, err
 	}
 	if headCommitID == "" {
-		return nil
+		return result, nil
 	}
-	return u.localRepo.SaveCommit(headCommitID, "")
+	return result, u.localRepo.SaveCommit(headCommitID, "")
 }
 
-func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain.Config, nu *clientDomain.NipaUrl, progress ...DownloadProgress) error {
+// syncedAt reports whether the stored tree is recorded as commitID's tree
+// fetched with the sparse set. No record means unknown, so false.
+func (u *Update) syncedAt(commitID string, sparse []string) (bool, error) {
+	synced, err := u.localRepo.LoadSyncedTree()
+	if err != nil || synced == nil {
+		return false, err
+	}
+	return synced.CommitID == commitID && sameSparseSet(synced.Sparse, sparse), nil
+}
+
+// sameSparseSet compares two sparse sets ignoring order, duplicates and empty
+// entries; two empty sets (full checkouts) are equal.
+func sameSparseSet(a, b []string) bool {
+	canonical := func(paths []string) []string {
+		out := make([]string, 0, len(paths))
+		for _, p := range paths {
+			if p != "" {
+				out = append(out, p)
+			}
+		}
+		slices.Sort(out)
+		return slices.Compact(out)
+	}
+	return slices.Equal(canonical(a), canonical(b))
+}
+
+func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain.Config, nu *clientDomain.NipaUrl, progress ...DownloadProgress) (UpdateResult, error) {
+	var result UpdateResult
 	localCommit, err := u.localRepo.LoadCommit()
 	if err != nil {
-		return err
+		return result, err
 	}
 	if localCommit == nil || localCommit.CommitID == "" {
-		return clientDomain.NewUserError("no commit checked out; run nipa switch to a branch first")
+		return result, clientDomain.NewUserError("no commit checked out; run nipa switch to a branch first")
+	}
+	if !u.force {
+		// A commit's tree never changes, so the checked-out commit synced with
+		// the same sparse set leaves nothing to fetch.
+		upToDate, err := u.syncedAt(localCommit.CommitID, cfg.Sparse)
+		if err != nil {
+			return result, err
+		}
+		if upToDate {
+			return UpdateResult{UpToDate: true}, nil
+		}
 	}
 	tree, err := u.client.GetCommitTreeManifest(ctx, nu.Org, nu.Project, localCommit.CommitID, cfg.Sparse)
 	if err != nil {
-		return err
+		return result, err
 	}
 	scope := clientDomain.ChunkScope{
 		Org:       nu.Org,
@@ -185,12 +264,12 @@ func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain
 		Paths:     cfg.Sparse,
 	}
 	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return err
+		return result, err
 	}
-	if err := u.localRepo.SaveTree(tree); err != nil {
-		return err
+	if err := u.localRepo.SaveSyncedTree(tree, localCommit.CommitID, cfg.Sparse); err != nil {
+		return result, err
 	}
-	return u.localRepo.SaveCommit(localCommit.CommitID, localCommit.CommitHash)
+	return result, u.localRepo.SaveCommit(localCommit.CommitID, localCommit.CommitHash)
 }
 
 func (u *Update) branchHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) (string, error) {
@@ -314,7 +393,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
-	if err := u.localRepo.SaveTree(tree); err != nil {
+	if err := u.localRepo.SaveSyncedTree(tree, headCommitID, cfg.Sparse); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch, Sparse: cfg.Sparse}); err != nil {
@@ -383,7 +462,7 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
 		return err
 	}
-	if err := u.localRepo.SaveTree(tree); err != nil {
+	if err := u.localRepo.SaveSyncedTree(tree, tag.CommitID, cfg.Sparse); err != nil {
 		return err
 	}
 	cfg.Head = &clientDomain.HeadRef{Kind: clientDomain.HeadKindTag, Name: tag.Name}
