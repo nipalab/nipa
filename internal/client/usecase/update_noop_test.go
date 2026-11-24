@@ -390,3 +390,98 @@ func TestRepo_Clone_RecordsSyncedTree(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &domain.SyncedTree{CommitID: noopHead.Base36(), Sparse: []string{"src"}}, local.syncedTree)
 }
+
+// clearTrackingRepo counts synced-tree record drops and can fail them.
+type clearTrackingRepo struct {
+	*localrepo.LocalRepo
+	clears   int
+	clearErr error
+}
+
+func (c *clearTrackingRepo) ClearSyncedTree() error {
+	c.clears++
+	if c.clearErr != nil {
+		return c.clearErr
+	}
+	return c.LocalRepo.ClearSyncedTree()
+}
+
+// realSyncedRepo is a real local repository synced once to noopHead with a
+// single tracked file, a.txt.
+func realSyncedRepo(t *testing.T) (string, *clearTrackingRepo, *stubUpdateClient, *Update) {
+	t.Helper()
+	root := t.TempDir()
+	lr := &clearTrackingRepo{LocalRepo: localrepo.NewLocalRepo()}
+	t.Cleanup(func() { _ = lr.Close() })
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: noopURL, Branch: "main"}))
+
+	fileHash, chunks, stored, encoding := testEncodedFile(t, "a.txt", "tracked content")
+	client := &stubUpdateClient{
+		branchInfo: &serverDomain.Branch{Name: "main", CommitID: &noopHead},
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			Hash: serverDomain.Hash{1},
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      2,
+				SizeBytes: int64(len("tracked content")),
+				Encoding:  encoding,
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: stored,
+	}
+	updater := newTestUpdate(t, lr, client)
+	result, err := updater.RunResult(context.Background(), root)
+	require.NoError(t, err)
+	require.False(t, result.UpToDate)
+	require.Equal(t, 1, lr.clears, "the first sync writes a.txt")
+	return root, lr, client, updater
+}
+
+// A forced update that fails part way must not leave the old record behind:
+// the next plain update then finishes the sync instead of exiting early.
+func TestUpdate_Run_FailedForcedSyncDoesNotExitEarlyNext(t *testing.T) {
+	root, lr, client, updater := realSyncedRepo(t)
+
+	require.NoError(t, os.Remove(filepath.Join(root, "a.txt")))
+	_, _, err := lr.PruneObjects(map[serverDomain.Hash]struct{}{})
+	require.NoError(t, err)
+	client.downloadErr = errors.New("connection reset")
+	_, err = updater.WithForce(true).RunResult(context.Background(), root)
+	require.ErrorContains(t, err, "connection reset")
+	synced, err := lr.LoadSyncedTree()
+	require.NoError(t, err)
+	require.Nil(t, synced, "the record must be gone once the sync started writing")
+
+	client.downloadErr = nil
+	result, err := updater.RunResult(context.Background(), root)
+	require.NoError(t, err)
+	require.False(t, result.UpToDate)
+	require.Equal(t, "tracked content", string(readRepoFile(t, root, "a.txt")))
+	synced, err = lr.LoadSyncedTree()
+	require.NoError(t, err)
+	require.Equal(t, &domain.SyncedTree{CommitID: noopHead.Base36(), Sparse: []string{}}, synced)
+}
+
+func TestUpdate_Run_SyncWithNothingToWriteKeepsRecord(t *testing.T) {
+	root, lr, _, updater := realSyncedRepo(t)
+
+	result, err := updater.WithForce(true).RunResult(context.Background(), root)
+	require.NoError(t, err)
+	require.False(t, result.UpToDate)
+	require.Equal(t, 1, lr.clears, "a forced sync that writes nothing leaves the record alone")
+}
+
+func TestUpdate_Run_ClearSyncedTreeErrorStopsSync(t *testing.T) {
+	root, lr, client, updater := realSyncedRepo(t)
+
+	require.NoError(t, os.Remove(filepath.Join(root, "a.txt")))
+	lr.clearErr = errors.New("disk full")
+	_, err := updater.WithForce(true).RunResult(context.Background(), root)
+	require.ErrorContains(t, err, "disk full")
+	require.Equal(t, 2, client.manifestCalls)
+	require.NoFileExists(t, filepath.Join(root, "a.txt"), "nothing is written once the record cannot be dropped")
+}

@@ -51,6 +51,18 @@ func (l *LocalRepo) SaveSyncedTree(root *domain.TreeNode, commitID string, spars
 	})
 }
 
+// ClearSyncedTree drops the synced-tree record, leaving the stored tree rows
+// alone. A sync calls it before it writes to the working copy: until the sync
+// saves its tree, the working copy no longer matches what the record says, so
+// an update interrupted or failed mid-write must not let the next one exit
+// early.
+func (l *LocalRepo) ClearSyncedTree() error {
+	if l.db == nil {
+		return errors.New("local repo not initialized")
+	}
+	return sqlcLocalrepo.New(l.db).MetaDelete(context.Background(), syncedTreeKey)
+}
+
 // LoadSyncedTree returns the synced-tree record, or nil when the stored tree
 // was not saved by SaveSyncedTree (or the record is unreadable): callers must
 // then assume nothing about what the stored tree holds.

@@ -472,6 +472,24 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	return u.localRepo.SaveCommit(tag.CommitID, "")
 }
 
+// syncedTreeClearer is implemented by repositories that keep a synced-tree
+// record (the update early exit's evidence that the working copy holds a
+// commit's tree).
+type syncedTreeClearer interface {
+	ClearSyncedTree() error
+}
+
+// clearSyncedTree drops the synced-tree record before a sync writes to the
+// working copy, so a sync that fails or is killed part way leaves no record
+// claiming the working copy is complete; the caller saves a new one once the
+// sync succeeded.
+func clearSyncedTree(lr any) error {
+	if c, ok := lr.(syncedTreeClearer); ok {
+		return c.ClearSyncedTree()
+	}
+	return nil
+}
+
 type syncOptions struct {
 	// keepLocalChanges refuses the sync, before anything is written, when it
 	// would replace a locally changed or untracked working file.
@@ -562,6 +580,11 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 	}
 	if len(conflicts) > 0 {
 		return localChangesError(conflicts)
+	}
+	if len(jobFiles) > 0 || len(removals) > 0 {
+		if err := clearSyncedTree(lr); err != nil {
+			return err
+		}
 	}
 
 	missing, err := lr.MissingChunks(want)

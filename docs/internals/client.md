@@ -225,8 +225,15 @@ the tree, and `Switch`/`SwitchTag` save the tree before config and commit, so
 an interrupted run leaves commit and record disagreeing and the next update
 syncs fully. Consequence, by design: the early exit does not restore a tracked
 file deleted from disk; `--force` (or `nipa restore`) does. The CLI prints
-`Already up to date.`; `sparse-checkout`, MCP and the daemon (always forced,
-so never early) call `Run` and stay silent.
+`Already up to date.`; `sparse-checkout`, the MCP `update` tool and the
+daemon call `Run` and stay silent. MCP passes its `force` input through
+(`WithForce(in.Force)`), so an unforced MCP update can exit early too; only
+the daemon is always forced (never early). A sync that will write or remove
+anything drops the record first (`ClearSyncedTree`, via the optional
+`syncedTreeClearer` in `syncWorkingCopyOpts`, after the local-changes guard
+and before the first write), so a sync that fails or is killed part way,
+forced or not, leaves no record and the next update syncs fully instead of
+exiting early on a half-written working copy.
 
 Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
 `syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`

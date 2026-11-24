@@ -115,7 +115,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `SaveSyncedTree(root, commitID, sparse)` is `SaveTree` plus the `synced_tree`
   record in the same transaction; plain `SaveTree` (and an empty `commitID`)
   deletes the record, so it can only ever describe the rows it was written
-  with. `LoadSyncedTree` returns nil for a missing or unreadable record, which
+  with. `ClearSyncedTree` deletes only the record (rows stay); a sync calls it
+  before writing to the working copy. `LoadSyncedTree` returns nil for a missing or unreadable record, which
   `Update` reads as "unknown, do the full sync" (`docs/internals/client.md`).
   Cached objects are never touched by `SaveTree`; only the GC above removes them.
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a

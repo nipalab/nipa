@@ -131,6 +131,7 @@ func TestSyncedTree_NotInitialized(t *testing.T) {
 	require.EqualError(t, err, "local repo not initialized")
 	require.EqualError(t, lr.SaveSyncedTree(syncedTestTree("a.txt"), "c1", nil), "local repo not initialized")
 	require.EqualError(t, lr.SaveSyncedTree(syncedTestTree("a.txt"), "", nil), "local repo not initialized")
+	require.EqualError(t, lr.ClearSyncedTree(), "local repo not initialized")
 }
 
 func TestSyncedTree_ClosedDatabase(t *testing.T) {
@@ -141,4 +142,19 @@ func TestSyncedTree_ClosedDatabase(t *testing.T) {
 	_, err := lr.LoadSyncedTree()
 	require.Error(t, err)
 	require.Error(t, lr.SaveSyncedTree(syncedTestTree("a.txt"), "c1", nil))
+	require.Error(t, lr.ClearSyncedTree())
+}
+
+func TestClearSyncedTree_DropsRecordKeepsTree(t *testing.T) {
+	lr := newSyncedRepo(t)
+	require.NoError(t, lr.ClearSyncedTree(), "clearing an absent record is fine")
+	require.NoError(t, lr.SaveSyncedTree(syncedTestTree("a.txt"), "c1", []string{"src"}))
+
+	require.NoError(t, lr.ClearSyncedTree())
+	got, err := lr.LoadSyncedTree()
+	require.NoError(t, err)
+	require.Nil(t, got)
+	snap, err := lr.Snapshot()
+	require.NoError(t, err)
+	require.Len(t, snap.Files, 1, "the stored tree rows stay")
 }
