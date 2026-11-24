@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   ignoreRules: vi.fn(),
   settings: vi.fn(),
   uploadWorkers: vi.fn(),
+  downloadWorkers: vi.fn(),
   updateStatus: vi.fn(),
   onUpdate: vi.fn(),
   installUpdate: vi.fn(),
@@ -376,6 +377,7 @@ describe("App", () => {
     });
     api.settings.mockReturnValue(new Promise(() => {}));
     api.uploadWorkers.mockResolvedValue(0);
+    api.downloadWorkers.mockResolvedValue(0);
     api.accountStatus.mockReturnValue(new Promise(() => {}));
     renderWithProviders(<App />);
     await screen.findByRole("heading", { name: "game" });
@@ -434,6 +436,7 @@ describe("App", () => {
   it("shows the shortcut sheet with ? and opens settings with Ctrl+,", async () => {
     api.settings.mockReturnValue(new Promise(() => {}));
     api.uploadWorkers.mockResolvedValue(0);
+    api.downloadWorkers.mockResolvedValue(0);
     renderWithProviders(<App />);
     await screen.findByRole("heading", { name: "game" });
     await userEvent.keyboard("?");

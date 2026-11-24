@@ -125,6 +125,34 @@ func TestService_UploadWorkers(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestService_DownloadWorkers(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	h := newHarness()
+	n, err := h.svc.DownloadWorkers()
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.NoError(t, h.svc.SetDownloadWorkers(256))
+	n, err = h.svc.DownloadWorkers()
+	require.NoError(t, err)
+	require.Equal(t, 256, n)
+	up, err := h.svc.UploadWorkers()
+	require.NoError(t, err)
+	require.Zero(t, up, "downloads are pinned on their own")
+	require.Error(t, h.svc.SetDownloadWorkers(257))
+	require.Error(t, h.svc.SetDownloadWorkers(-1))
+	require.NoError(t, h.svc.SetDownloadWorkers(0))
+	n, err = h.svc.DownloadWorkers()
+	require.NoError(t, err)
+	require.Zero(t, n)
+
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte("{"), 0o600))
+	_, err = h.svc.DownloadWorkers()
+	require.Error(t, err)
+}
+
 func TestService_RestartDaemon(t *testing.T) {
 	saved := restartWait
 	restartWait = 2e9

@@ -29,7 +29,12 @@ type IgnoreRules struct {
 	Local  string `json:"local"`
 }
 
-const maxUploadWorkers = 64
+// The pins are the client pools' upper bounds; below their minimum the client
+// clamps, so any positive count is accepted.
+const (
+	maxUploadWorkers   = 64
+	maxDownloadWorkers = 256
+)
 
 var restartWait = 10 * time.Second
 
@@ -149,6 +154,24 @@ func (s *Service) SetUploadWorkers(workers int) error {
 		return fmt.Errorf("choose between 1 and %d uploads at once, or automatic", maxUploadWorkers)
 	}
 	return clientconfig.SetUploadWorkers(workers)
+}
+
+// DownloadWorkers returns the pinned download concurrency; 0 means automatic.
+func (s *Service) DownloadWorkers() (int, error) {
+	cfg, err := clientconfig.Load()
+	if err != nil {
+		return 0, err
+	}
+	return cfg.DownloadWorkers, nil
+}
+
+// SetDownloadWorkers pins the download concurrency (0 = automatic) in the
+// shared nipa config, used by the CLI and by clones the daemon opens next.
+func (s *Service) SetDownloadWorkers(workers int) error {
+	if workers < 0 || workers > maxDownloadWorkers {
+		return fmt.Errorf("choose between 1 and %d downloads at once, or automatic", maxDownloadWorkers)
+	}
+	return clientconfig.SetDownloadWorkers(workers)
 }
 
 // RestartDaemon stops the background service and starts a fresh one, so

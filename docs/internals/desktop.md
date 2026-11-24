@@ -190,8 +190,10 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (`OpenLink`/`TakeNavigation`, `app:navigate`, single instance), settings
   in `desktop.json` (`Settings`/`SaveSettings`: keep in tray, start at login
   via `internal/autostart`, notification kinds, poll interval, external
-  tools per extension used by `OpenFile`; `SetUploadWorkers` writes the
-  shared client config, `RestartDaemon`; `IgnoreRules`/`SaveIgnoreRules`;
+  tools per extension used by `OpenFile`; `SetUploadWorkers` (0..64) and
+  `SetDownloadWorkers` (0..256, the client pool maxima; 0 = automatic) write
+  `uploadWorkers` / `downloadWorkers` in the shared client config through
+  `clientconfig.SetUploadWorkers` / `SetDownloadWorkers`, `RestartDaemon`; `IgnoreRules`/`SaveIgnoreRules`;
   the window size and maximised state (`workspace.Window`, saved on close,
   tray quit and `ShouldQuit`) and the interface state (`ui` map through
   `UIState`/`SaveUIState`: `lib/settings.ts` loads it before the first render

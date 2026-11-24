@@ -270,6 +270,13 @@ export function DiskUsage(root: string): $CancellablePromise<$models.DiskUsage> 
     return $Call.ByID(379166928, root);
 }
 
+/**
+ * DownloadWorkers returns the pinned download concurrency; 0 means automatic.
+ */
+export function DownloadWorkers(): $CancellablePromise<number> {
+    return $Call.ByID(2121903431);
+}
+
 export function DropShelf(root: string, id: string): $CancellablePromise<void> {
     return $Call.ByID(905861819, root, id);
 }
@@ -804,6 +811,14 @@ export function SearchFiles(root: string, query: string, limit: number): $Cancel
  */
 export function SearchIssues(root: string, query: string): $CancellablePromise<$models.IssueSearch | null> {
     return $Call.ByID(3910902644, root, query);
+}
+
+/**
+ * SetDownloadWorkers pins the download concurrency (0 = automatic) in the
+ * shared nipa config, used by the CLI and by clones the daemon opens next.
+ */
+export function SetDownloadWorkers(workers: number): $CancellablePromise<void> {
+    return $Call.ByID(2853996983, workers);
 }
 
 /**

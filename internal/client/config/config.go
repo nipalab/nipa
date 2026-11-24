@@ -250,14 +250,25 @@ func clampUploadWindowMiB(mib int) int {
 // SetUploadWorkers pins the upload worker count in the user configuration; 0
 // removes the pin so concurrency is tuned automatically. Other keys are kept.
 func SetUploadWorkers(workers int) error {
+	return setWorkers("uploadWorkers", "upload", workers)
+}
+
+// SetDownloadWorkers pins the download worker count in the user configuration
+// (downloadWorkers, read by ResolveDownloadWorkers); 0 removes the pin so
+// concurrency is tuned automatically. Other keys are kept.
+func SetDownloadWorkers(workers int) error {
+	return setWorkers("downloadWorkers", "download", workers)
+}
+
+func setWorkers(key, direction string, workers int) error {
 	if workers < 0 {
-		return fmt.Errorf("upload workers must not be negative")
+		return fmt.Errorf("%s workers must not be negative", direction)
 	}
 	return update(func(raw map[string]json.RawMessage) error {
 		if workers == 0 {
-			delete(raw, "uploadWorkers")
+			delete(raw, key)
 		} else {
-			raw["uploadWorkers"] = json.RawMessage(strconv.Itoa(workers))
+			raw[key] = json.RawMessage(strconv.Itoa(workers))
 		}
 		return nil
 	})
