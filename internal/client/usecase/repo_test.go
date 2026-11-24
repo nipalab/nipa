@@ -123,6 +123,8 @@ type stubLocalRepo struct {
 	syncedTree      *domain.SyncedTree
 	syncedTreeErr   error
 	treeSaves       int
+	applyPushErr    error
+	appliedPushes   []domain.PushApply
 	savedCommitID   string
 	savedCommitHash string
 	saveCommitErr   error
@@ -226,6 +228,17 @@ func (s *stubLocalRepo) SaveSyncedTree(root *serverDomain.TreeNode, commitID str
 	if commitID != "" {
 		s.syncedTree = &domain.SyncedTree{CommitID: commitID, Sparse: append([]string{}, sparse...)}
 	}
+	return nil
+}
+
+// ApplyPush records the push and succeeds unless applyPushErr is set, in which
+// case the caller is expected to fall back to saving the fetched manifest.
+func (s *stubLocalRepo) ApplyPush(in domain.PushApply) error {
+	s.appliedPushes = append(s.appliedPushes, in)
+	if s.applyPushErr != nil {
+		return s.applyPushErr
+	}
+	s.syncedTree = &domain.SyncedTree{CommitID: in.CommitID, Sparse: []string{}}
 	return nil
 }
 

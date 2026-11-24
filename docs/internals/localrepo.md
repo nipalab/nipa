@@ -119,6 +119,32 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   before writing to the working copy. `LoadSyncedTree` returns nil for a missing or unreadable record, which
   `Update` reads as "unknown, do the full sync" (`docs/internals/client.md`).
   Cached objects are never touched by `SaveTree`; only the GC above removes them.
+- `ApplyPush(clientDomain.PushApply)` (`push_apply.go`) turns the stored tree
+  into the tree of the commit a push created, from the pushed files and
+  removed paths instead of a manifest, in one transaction. Base check first
+  (`clientDomain.ErrPushApplyBase`): the checkout is full, and the
+  `synced_tree` record names `BaseCommitID` with an empty sparse set, or, for
+  a push onto an empty branch (`BaseCommitID` empty), there is no record and
+  no root row. Then `planPushApply` mirrors the server's `buildNewTree`: every
+  directory from a touched path up to the root is rebuilt from its stored
+  files (`FileHashesByTree`: path, hash, mode, no chunk blobs) and child
+  directories (`TreeNodeChildHashes`); an untouched child keeps its stored
+  hash and rows, a rebuilt directory left without files and children is
+  dropped (the root never is), and so is an untouched child whose hash is the
+  empty tree hash. Hashes come from `treehash.TreeHash`; the tracked mode
+  class (1/2/3) is mapped back to the server's stored mode
+  (`hashModeOfClass`) first, because `treehash` classifies stored modes and
+  would read class 1 as an executable permission. Reads are three indexed
+  queries per rebuilt directory, writes one row per pushed file, removed
+  file and rebuilt directory, never the whole tree. If the computed root is
+  not `TreeHash` it returns `*clientDomain.PushApplyMismatchError`
+  (expected, computed) before any write. On a match it writes rows identical
+  to what `SaveSyncedTree` writes from the new head's manifest
+  (`pushedFileRow`: mode as `domain.ClassifyPerm` class, binary forced for
+  `chunker.IsLockablePath`, `chunker.NormalizeEncoding`, directory mode 0),
+  deletes the `stat_cache` rows of the removed paths (`StatCacheDelete`, not
+  the full sweep), and sets `tree_hash` and the `synced_tree` record
+  (commit = the pushed commit, `[]`).
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a
   tracked file whose `(size, mtime)` match a fresh fingerprint (`mtime < cached_at`)
   is trusted without reading, while misses are rehashed (bounded worker pool in

@@ -10,6 +10,73 @@ import (
 )
 
 var _ = Describe("nipa push", func() {
+	It("leaves the pusher's tree equal to the server's without a refetch, across adds, edits and removals", func() {
+		project := newProject("push-local-apply")
+		url := repoURLFor(orgSlug, project)
+		seedRepo(orgSlug, project, map[string][]byte{
+			"root.txt":            []byte("root\n"),
+			"src/a.txt":           []byte("a\n"),
+			"src/b.txt":           []byte("b\n"),
+			"solo/chain/only.txt": []byte("only\n"),
+		}, "seed")
+
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		other := cloneRepo(parent, url, "other")
+
+		settled := func(step string) {
+			assertCleanStatus(dir)
+			res := runNipa(dir, "update")
+			Expect(res.ExitCode).To(Equal(0), step+": "+res.Output())
+			Expect(res.Output()).To(ContainSubstring("Already up to date."), step)
+			res = runNipa(other, "update")
+			Expect(res.ExitCode).To(Equal(0), step+": "+res.Output())
+			assertCleanStatus(other)
+		}
+
+		writeText(dir, "src/a.txt", "a v2\n")
+		writeText(dir, "src/gen/v1/types.txt", "types\n")
+		Expect(runNipa(dir, "add", "src/a.txt", "src/gen/v1/types.txt").ExitCode).To(Equal(0))
+		push := pushRepo(dir, "edit and add nested")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		settled("edit and add nested")
+		Expect(readText(other, "src/a.txt")).To(Equal("a v2\n"))
+		Expect(readText(other, "src/gen/v1/types.txt")).To(Equal("types\n"))
+
+		removePath(dir, "solo/chain/only.txt")
+		removePath(dir, "src/b.txt")
+		writeText(dir, "new.txt", "new\n")
+		Expect(runNipa(dir, "add", "solo/chain/only.txt", "src/b.txt", "new.txt").ExitCode).To(Equal(0))
+		push = pushRepo(dir, "remove a directory chain, add at the root")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		settled("remove and add")
+		Expect(fileExists(other, "solo/chain/only.txt")).To(BeFalse())
+		Expect(fileExists(other, "src/b.txt")).To(BeFalse())
+		Expect(readText(other, "new.txt")).To(Equal("new\n"))
+
+		// The second client pushes on top, and the first one follows.
+		writeText(other, "root.txt", "root from other\n")
+		Expect(runNipa(other, "add", "root.txt").ExitCode).To(Equal(0))
+		push = pushRepo(other, "other edits root")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		res := runNipa(dir, "update")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).NotTo(ContainSubstring("Already up to date."))
+		Expect(readText(dir, "root.txt")).To(Equal("root from other\n"))
+
+		// And pushes again over the tree the update saved.
+		writeText(dir, "src/a.txt", "a v3\n")
+		Expect(runNipa(dir, "add", "src/a.txt").ExitCode).To(Equal(0))
+		push = pushRepo(dir, "edit after update")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		settled("edit after update")
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "src/a.txt")).To(Equal("a v3\n"))
+		Expect(readText(fresh, "root.txt")).To(Equal("root from other\n"))
+		Expect(fileExists(fresh, "solo/chain/only.txt")).To(BeFalse())
+	})
+
 	It("keeps a plugin's read-only guard out of status and pushes", func() {
 		project := newProject("push-readonly-guard")
 		url := repoURLFor(orgSlug, project)

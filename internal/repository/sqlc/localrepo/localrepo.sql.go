@@ -51,6 +51,42 @@ func (q *Queries) FileGet(ctx context.Context, path string) (FileGetRow, error) 
 	return i, err
 }
 
+const fileHashesByTree = `-- name: FileHashesByTree :many
+SELECT path, hash, mode
+FROM files
+WHERE tree_path = ?1
+ORDER BY path
+`
+
+type FileHashesByTreeRow struct {
+	Path string `json:"path"`
+	Hash []byte `json:"hash"`
+	Mode int64  `json:"mode"`
+}
+
+func (q *Queries) FileHashesByTree(ctx context.Context, treePath string) ([]FileHashesByTreeRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileHashesByTree, treePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileHashesByTreeRow
+	for rows.Next() {
+		var i FileHashesByTreeRow
+		if err := rows.Scan(&i.Path, &i.Hash, &i.Mode); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileList = `-- name: FileList :many
 SELECT path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
@@ -434,6 +470,16 @@ func (q *Queries) StagedFileList(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const statCacheDelete = `-- name: StatCacheDelete :exec
+DELETE FROM stat_cache
+WHERE path = ?1
+`
+
+func (q *Queries) StatCacheDelete(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, statCacheDelete, path)
+	return err
+}
+
 const statCacheGet = `-- name: StatCacheGet :one
 SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache
@@ -532,6 +578,41 @@ func (q *Queries) StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams
 	return err
 }
 
+const treeNodeChildHashes = `-- name: TreeNodeChildHashes :many
+SELECT path, hash
+FROM tree_nodes
+WHERE parent_path = ?1 AND path <> parent_path
+ORDER BY path
+`
+
+type TreeNodeChildHashesRow struct {
+	Path string `json:"path"`
+	Hash []byte `json:"hash"`
+}
+
+func (q *Queries) TreeNodeChildHashes(ctx context.Context, parentPath string) ([]TreeNodeChildHashesRow, error) {
+	rows, err := q.db.QueryContext(ctx, treeNodeChildHashes, parentPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TreeNodeChildHashesRow
+	for rows.Next() {
+		var i TreeNodeChildHashesRow
+		if err := rows.Scan(&i.Path, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const treeNodeChildren = `-- name: TreeNodeChildren :many
 SELECT path
 FROM tree_nodes
@@ -570,6 +651,25 @@ WHERE path = ?1
 func (q *Queries) TreeNodeDelete(ctx context.Context, path string) error {
 	_, err := q.db.ExecContext(ctx, treeNodeDelete, path)
 	return err
+}
+
+const treeNodeGet = `-- name: TreeNodeGet :one
+SELECT path, parent_path, hash, mode
+FROM tree_nodes
+WHERE path = ?1
+LIMIT 1
+`
+
+func (q *Queries) TreeNodeGet(ctx context.Context, path string) (TreeNode, error) {
+	row := q.db.QueryRowContext(ctx, treeNodeGet, path)
+	var i TreeNode
+	err := row.Scan(
+		&i.Path,
+		&i.ParentPath,
+		&i.Hash,
+		&i.Mode,
+	)
+	return i, err
 }
 
 const treeNodeList = `-- name: TreeNodeList :many
