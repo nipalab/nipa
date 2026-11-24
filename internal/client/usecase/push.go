@@ -34,7 +34,7 @@ type pushLocalRepo interface {
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
 	ClearStaged() error
-	SaveTree(root *serverDomain.TreeNode) error
+	SaveSyncedTree(root *serverDomain.TreeNode, commitID string, sparse []string) error
 	SaveCommit(commitID, commitHash string) error
 	StoreChunks(chunks []*serverDomain.ChunkData) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
@@ -342,7 +342,9 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err != nil {
 		return nil, err
 	}
-	if err := p.localRepo.SaveTree(rootTree); err != nil {
+	// The manifest is the branch head's, read right after this push made its
+	// commit the head, with the sparse set the config holds.
+	if err := p.localRepo.SaveSyncedTree(rootTree, result.CommitID.Base36(), sparse); err != nil {
 		return nil, err
 	}
 	if err := p.localRepo.ClearStaged(); err != nil {

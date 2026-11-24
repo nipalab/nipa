@@ -105,6 +105,7 @@ var _ = Describe("nipa switch", func() {
 		res := runNipa(dir, "update")
 		Expect(res.ExitCode).To(Equal(0), res.Output())
 		Expect(readText(dir, "a.txt")).To(Equal("v1\n"), "update must re-sync the tagged commit, not the branch head")
+		Expect(res.Output()).To(ContainSubstring("Already up to date."), "the tagged commit is already checked out")
 	})
 
 	It("refuses push, merge and revert while detached", func() {

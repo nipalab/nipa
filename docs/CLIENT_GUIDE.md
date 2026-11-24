@@ -87,6 +87,15 @@ edited tracked file, or an untracked file where a new one arrives) and lists
 them; push, shelve or `nipa restore` them first, or pass `--force` to
 overwrite them. Local edits to files the update does not touch never block it.
 
+When the working copy already holds the branch head (or the checked-out tag)
+with the current sparse set, `nipa update` prints `Already up to date.` and
+stops after asking the server for the branch head: it does not download the
+file list or look at the working copy, which keeps it fast on very large
+repositories. A tracked file you deleted from disk is therefore not brought
+back by a plain `nipa update` in that case; run `nipa update --force` (which
+always does the full sync and overwrites local changes) or
+`nipa restore <path>` to get it back.
+
 ## Working-copy commands
 
 ### `nipa status`
@@ -617,6 +626,7 @@ subdirectory.
 | `merge`/`revert` refuses in a sparse clone | `nipa sparse-checkout disable`, merge or revert, then re-enable. |
 | `push`, `merge` or `revert` refuses while detached at a tag | `nipa switch <branch>` to re-attach first. |
 | `nipa update` did nothing on a large clone | Expected: unchanged files are skipped using the stat cache. Use `nipa status --no-cache` / `nipa diff --no-cache` to force a rehash. |
+| `nipa update` says `Already up to date.` but a tracked file is missing on disk | Expected: an up-to-date working copy is not scanned. `nipa restore <path>` or `nipa update --force` brings it back. |
 | Diff viewer does not open | `--ext-diff` is required, and a command must be configured via `NIPA_EXTERNAL_DIFF` or `diffExternal`. |
 | `... is in maintenance (read-only\|closed\|frozen): <message>` | An operator paused the server, the organization or the project. The error prints the estimated end and what still works (read-only: reads; frozen: reads while the session lasts, no sign-in). Nothing is retried and the stored session is kept; run the command again once maintenance ends. `nipa status` and `nipa version --server` show active and scheduled windows, `nipa push` refuses before any work during a window and warns when one starts within 24 h. |
 

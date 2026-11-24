@@ -5,7 +5,7 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (393 specs, counted as the `It(`/`PIt(` calls in the
+Coverage (395 specs, counted as the `It(`/`PIt(` calls in the
 non-support spec files): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection, username binding, deleted keys, default

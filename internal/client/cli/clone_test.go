@@ -105,11 +105,13 @@ func (fakeLocalRepo) SaveConfig(_ domain.Config) error { return nil }
 func (fakeLocalRepo) LoadConfig() (*domain.Config, error) {
 	return &domain.Config{Url: "http://example.com/org/project", Branch: "main"}, nil
 }
-func (fakeLocalRepo) SaveTree(_ *serverDomain.TreeNode) error { return nil }
-func (fakeLocalRepo) Snapshot() (*domain.Snapshot, error)     { return &domain.Snapshot{}, nil }
-func (fakeLocalRepo) ListStaged() ([]string, error)           { return nil, nil }
-func (fakeLocalRepo) StageAdd(_ string) error                 { return nil }
-func (fakeLocalRepo) StageRemove(_ []string) error            { return nil }
+func (fakeLocalRepo) SaveSyncedTree(_ *serverDomain.TreeNode, _ string, _ []string) error {
+	return nil
+}
+func (fakeLocalRepo) Snapshot() (*domain.Snapshot, error) { return &domain.Snapshot{}, nil }
+func (fakeLocalRepo) ListStaged() ([]string, error)       { return nil, nil }
+func (fakeLocalRepo) StageAdd(_ string) error             { return nil }
+func (fakeLocalRepo) StageRemove(_ []string) error        { return nil }
 func (fakeLocalRepo) MissingChunks(_ []serverDomain.Hash) ([]serverDomain.Hash, error) {
 	return nil, nil
 }

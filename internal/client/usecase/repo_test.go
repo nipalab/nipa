@@ -120,6 +120,9 @@ type stubLocalRepo struct {
 
 	loadCommit      *domain.LocalCommit
 	loadCommitErr   error
+	syncedTree      *domain.SyncedTree
+	syncedTreeErr   error
+	treeSaves       int
 	savedCommitID   string
 	savedCommitHash string
 	saveCommitErr   error
@@ -206,7 +209,28 @@ func (s *stubLocalRepo) LoadConfig() (*domain.Config, error) {
 
 func (s *stubLocalRepo) SaveTree(root *serverDomain.TreeNode) error {
 	s.tree = root
+	s.treeSaves++
+	if s.treeErr == nil {
+		s.syncedTree = nil
+	}
 	return s.treeErr
+}
+
+func (s *stubLocalRepo) SaveSyncedTree(root *serverDomain.TreeNode, commitID string, sparse []string) error {
+	s.tree = root
+	s.treeSaves++
+	if s.treeErr != nil {
+		return s.treeErr
+	}
+	s.syncedTree = nil
+	if commitID != "" {
+		s.syncedTree = &domain.SyncedTree{CommitID: commitID, Sparse: append([]string{}, sparse...)}
+	}
+	return nil
+}
+
+func (s *stubLocalRepo) LoadSyncedTree() (*domain.SyncedTree, error) {
+	return s.syncedTree, s.syncedTreeErr
 }
 
 func (s *stubLocalRepo) Snapshot() (*domain.Snapshot, error) {

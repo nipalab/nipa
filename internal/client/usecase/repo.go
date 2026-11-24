@@ -30,7 +30,7 @@ type localRepo interface {
 	Init(target string) error
 	SaveConfig(cfg domain.Config) error
 	LoadConfig() (*domain.Config, error)
-	SaveTree(root *serverDomain.TreeNode) error
+	SaveSyncedTree(root *serverDomain.TreeNode, commitID string, sparse []string) error
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
 	StageAdd(path string) error
@@ -117,7 +117,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string
 	if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
 		return err
 	}
-	if err := r.localRepo.SaveTree(root); err != nil {
+	if err := r.localRepo.SaveSyncedTree(root, headCommitID, paths); err != nil {
 		return err
 	}
 	if headCommitID != "" {

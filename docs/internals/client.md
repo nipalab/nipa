@@ -202,6 +202,39 @@ maps to 404) or an `unavailable` tracker. `CommitLogEntry.IssueKeys`
 `issue_keys` fields; `nipa log` prints an `Issues:` line in the full format,
 ` [KEY, ...]` after the subject with `--oneline` and `issue_keys` in `--json`, `nipa mr view` an `issues:` block.
 
+Up-to-date early exit: `Update.RunResult` (`Run` is the same call without the
+`UpdateResult`) resolves the branch head (`GetBranchByName`) and returns
+`UpdateResult{UpToDate: true}` right there, with no manifest fetch, no
+`syncWorkingCopy` (snapshot load + per-file stat), no tree/commit save and no
+`pruneAfterSuccess`, when all of these hold: the update is not forced; the
+head id is non-empty and equals `LoadCommit().CommitID`; and the synced-tree
+record (`LoadSyncedTree`, `docs/internals/localrepo.md`) names that same commit
+and a sparse set equal to `cfg.Sparse` (`sameSparseSet`: order, duplicates and
+empty entries ignored). Detached (`runDetached`) the target is the checked-out
+commit itself, so the test is only "not forced + record matches the local
+commit and sparse set"; connect and the login check still run first, as on
+every update. No record (older clone, tree saved by merge/revert) always means
+the full path. The record is written by `SaveSyncedTree(tree, commitID,
+sparse)` in every flow that saves a manifest fetched with `cfg.Sparse`: clone,
+`Run`, `runDetached`, `Switch`, `SwitchTag` and the post-push save (commit =
+the pushed commit). Merge and revert keep plain `SaveTree`, which drops the
+record, because their trees are fetched unscoped or built locally. The commit
+id is part of the record (not just the sparse set) because the local commit
+can move without the stored tree: push saves its commit before it refetches
+the tree, and `Switch`/`SwitchTag` save the tree before config and commit, so
+an interrupted run leaves commit and record disagreeing and the next update
+syncs fully. Consequence, by design: the early exit does not restore a tracked
+file deleted from disk; `--force` (or `nipa restore`) does. The CLI prints
+`Already up to date.`; `sparse-checkout`, the MCP `update` tool and the
+daemon call `Run` and stay silent. MCP passes its `force` input through
+(`WithForce(in.Force)`), so an unforced MCP update can exit early too; only
+the daemon is always forced (never early). A sync that will write or remove
+anything drops the record first (`ClearSyncedTree`, via the optional
+`syncedTreeClearer` in `syncWorkingCopyOpts`, after the local-changes guard
+and before the first write), so a sync that fails or is killed part way,
+forced or not, leaves no record and the next update syncs fully instead of
+exiting early on a half-written working copy.
+
 Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
 `syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`
 (`nipa update --force`, `nipa switch --force`, the MCP tools' `force`).
