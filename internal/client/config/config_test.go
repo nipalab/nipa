@@ -235,6 +235,38 @@ func TestSetUploadWorkers(t *testing.T) {
 	require.Error(t, SetUploadWorkers(2))
 }
 
+func TestSetDownloadWorkers(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvDownloadWorkers, "")
+	t.Setenv(EnvUploadWorkers, "")
+	require.NoError(t, SetDownloadWorkers(0), "clearing a missing file is fine")
+	require.NoError(t, SetDownloadWorkers(128))
+	workers, pinned, err := ResolveDownloadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 128, workers)
+	_, pinned, err = ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.False(t, pinned, "the download pin leaves uploads automatic")
+
+	path := filepath.Join(dir, "nipa", "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"uploadWorkers":4,"downloadWorkers":32,"future":{"a":1}}`), 0o600))
+	require.NoError(t, SetDownloadWorkers(0))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "downloadWorkers")
+	require.Contains(t, string(data), `"future"`)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 4, cfg.UploadWorkers)
+	require.Zero(t, cfg.DownloadWorkers)
+
+	require.ErrorContains(t, SetDownloadWorkers(-1), "download workers")
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	require.ErrorContains(t, SetDownloadWorkers(2), "parse")
+}
+
 func TestSetUploadWorkersUnwritableDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

@@ -22,6 +22,11 @@ export const pollOptions: { seconds: number; label: string }[] = [
   { seconds: 3600, label: translate("settingsDialog.1Hour") },
 ];
 
+// The client pools' upper bounds (internal/client/grpc/transfer.go), checked
+// again by SetUploadWorkers / SetDownloadWorkers.
+const MAX_UPLOAD_WORKERS = 64;
+const MAX_DOWNLOAD_WORKERS = 256;
+
 type SettingsDialogProps = {
   canReplayTour?: boolean;
   onClose: () => void;
@@ -43,6 +48,10 @@ export function SettingsDialog({ onClose, notify, canReplayTour = true }: Settin
     queryKey: ["upload-workers"],
     queryFn: desktop.uploadWorkers,
   });
+  const downloads = useQuery({
+    queryKey: ["download-workers"],
+    queryFn: desktop.downloadWorkers,
+  });
   const llm = useLLMSettings();
   return (
     <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
@@ -55,14 +64,14 @@ export function SettingsDialog({ onClose, notify, canReplayTour = true }: Settin
             <X />
           </Button>
         </div>
-        {settings.isError || workers.isError || llm.isError ? (
+        {settings.isError || workers.isError || downloads.isError || llm.isError ? (
           <p role="alert" className="p-5 text-xs text-danger">
             {t("settingsDialog.loadFailed", {
-              error: errorMessage(settings.error ?? workers.error ?? llm.error),
+              error: errorMessage(settings.error ?? workers.error ?? downloads.error ?? llm.error),
             })}
           </p>
-        ) : settings.data && workers.data !== undefined && llm.data ? (
-          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialLLM={llm.data} onClose={onClose} notify={notify} canReplayTour={canReplayTour} />
+        ) : settings.data && workers.data !== undefined && downloads.data !== undefined && llm.data ? (
+          <SettingsForm initial={settings.data} initialWorkers={workers.data} initialDownloads={downloads.data} initialLLM={llm.data} onClose={onClose} notify={notify} canReplayTour={canReplayTour} />
         ) : (
           <p role="status" className="p-5 text-xs text-muted-foreground">
             {t("settingsDialog.loadingSettings")}
@@ -76,17 +85,19 @@ export function SettingsDialog({ onClose, notify, canReplayTour = true }: Settin
 type FormProps = {
   initial: Settings;
   initialWorkers: number;
+  initialDownloads: number;
   initialLLM: LLMSettings;
   onClose: () => void;
   notify: SettingsDialogProps["notify"];
   canReplayTour: boolean;
 };
 
-function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, canReplayTour }: FormProps) {
+function SettingsForm({ initial, initialWorkers, initialDownloads, initialLLM, onClose, notify, canReplayTour }: FormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Settings>(initial);
   const [workers, setWorkers] = useState(initialWorkers > 0 ? String(initialWorkers) : "");
+  const [downloads, setDownloads] = useState(initialDownloads > 0 ? String(initialDownloads) : "");
   const [restartHint, setRestartHint] = useState(false);
   const [ai, setAI] = useState<AIForm>({
     endpoint: initialLLM.endpoint,
@@ -94,7 +105,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
     key: "",
   });
   const [section, setSection] = useState<SectionId>("general");
-  const ids = { workers: useId(), poll: useId(), service: useId() };
+  const ids = { workers: useId(), downloads: useId(), poll: useId(), service: useId() };
   const set = (patch: Partial<Settings>) => setDraft((d) => ({ ...d, ...patch }));
   const setNotify = (patch: Partial<Settings["notify"]>) => set({ notify: { ...draft.notify, ...patch } });
   const setTool = (i: number, patch: Partial<Tool>) =>
@@ -102,13 +113,18 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
       tools: draft.tools.map((t, j) => (j === i ? { ...t, ...patch } : t)),
     });
   const workerCount = workers.trim() === "" ? 0 : Number(workers);
-  const workersValid = Number.isInteger(workerCount) && workerCount >= 0 && workerCount <= 64;
-  const valid = workersValid && aiFormValid(ai);
+  const workersValid = Number.isInteger(workerCount) && workerCount >= 0 && workerCount <= MAX_UPLOAD_WORKERS;
+  const downloadCount = downloads.trim() === "" ? 0 : Number(downloads);
+  const downloadsValid = Number.isInteger(downloadCount) && downloadCount >= 0 && downloadCount <= MAX_DOWNLOAD_WORKERS;
+  const transfersValid = workersValid && downloadsValid;
+  const transfersChanged = workerCount !== initialWorkers || downloadCount !== initialDownloads;
+  const valid = transfersValid && aiFormValid(ai);
 
   const save = useMutation({
     mutationFn: async () => {
       const saved = await desktop.saveSettings(draft);
       if (workerCount !== initialWorkers) await desktop.setUploadWorkers(workerCount);
+      if (downloadCount !== initialDownloads) await desktop.setDownloadWorkers(downloadCount);
       if (ai.endpoint.trim() !== initialLLM.endpoint || ai.model.trim() !== initialLLM.model) await desktop.setLLM(ai.endpoint.trim(), ai.model.trim());
       if (ai.key.trim() !== "") await desktop.setLLMKey(ai.key.trim());
       return saved;
@@ -117,7 +133,8 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
     onSuccess: (saved) => {
       queryClient.setQueryData(["settings"], saved);
       queryClient.setQueryData(["upload-workers"], workerCount);
-      if (workerCount !== initialWorkers) {
+      queryClient.setQueryData(["download-workers"], downloadCount);
+      if (transfersChanged) {
         setRestartHint(true);
         setSection("advanced");
         setDraft(saved);
@@ -161,7 +178,7 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        <SectionNav current={section} onSelect={setSection} invalid={{ advanced: !workersValid, aIAssistance: !aiFormValid(ai) }} />
+        <SectionNav current={section} onSelect={setSection} invalid={{ advanced: !transfersValid, aIAssistance: !aiFormValid(ai) }} />
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 text-[12px]">
           <Panel id="general" active={section === "general"}>
             <GeneralSection draft={draft} set={set} onTour={onClose} canReplay={canReplayTour} />
@@ -293,6 +310,22 @@ function SettingsForm({ initial, initialWorkers, initialLLM, onClose, notify, ca
                   onChange={(e) => setWorkers(e.target.value)}
                   placeholder={t("settingsDialog.automatic")}
                   aria-invalid={!workersValid}
+                  className={cn(fieldClass, "w-28 text-right")}
+                />
+              </Row>
+              <Row
+                label={t("settingsDialog.downloadsAtOnce")}
+                description={downloadsValid ? t("settingsDialog.leaveEmptyToTuneIt") : t("settingsDialog.enterANumberFrom1To256")}
+                tone={downloadsValid ? "default" : "danger"}
+                htmlFor={ids.downloads}
+              >
+                <input
+                  id={ids.downloads}
+                  inputMode="numeric"
+                  value={downloads}
+                  onChange={(e) => setDownloads(e.target.value)}
+                  placeholder={t("settingsDialog.automatic")}
+                  aria-invalid={!downloadsValid}
                   className={cn(fieldClass, "w-28 text-right")}
                 />
               </Row>

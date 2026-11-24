@@ -73,7 +73,7 @@ Sonar never compile it.
   `ConflictTexts`, `ConflictDiff`, `ResolveConflict`; Activity and links:
   `Activity`, `OpenLink`, `Navigate`, `TakeNavigation`; Settings:
   `Settings`, `SaveSettings`, `UploadWorkers`, `SetUploadWorkers`,
-  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`,
+  `DownloadWorkers`, `SetDownloadWorkers`, `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`,
   `LLMSettings`, `SetLLM`, `SetLLMKey`, `ClearLLMKey`, `TestLLM`; Updates:
   `UpdateStatus`, `CheckForUpdate`, `InstallUpdate`, `RestartToUpdate`,
   `OpenUpdatePage`). Plain Go behind `Dialer`/
@@ -515,9 +515,10 @@ Sonar never compile it.
   `.desktop` file, the NSIS installer).
 - Settings (gear in the sidebar): theme, keep in tray, start at login,
   notifications per kind, server check interval (30 s to 1 h, the daemon
-  clamps to at least 15 s), uploads at once (the shared `uploadWorkers` in
-  `~/.config/nipa/config.json`, applied after "Restart" of the background
-  service) and external tools per extension (`.blend` → Blender), which
+  clamps to at least 15 s), uploads at once and downloads at once (the
+  shared `uploadWorkers` / `downloadWorkers` in `~/.config/nipa/config.json`,
+  1 to 64 and 1 to 256, empty for automatic tuning, applied after "Restart"
+  of the background service) and external tools per extension (`.blend` → Blender), which
   `OpenFile` uses instead of the system default (`open -a` for macOS app
   bundles). The Details tab edits the clone's `.nipaignore` (versioned) and
   `.nipa/ignore` (local).

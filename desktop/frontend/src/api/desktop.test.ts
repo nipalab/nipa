@@ -100,6 +100,8 @@ const service = vi.hoisted(() => ({
   SaveSettings: vi.fn(),
   UploadWorkers: vi.fn(),
   SetUploadWorkers: vi.fn(),
+  DownloadWorkers: vi.fn(),
+  SetDownloadWorkers: vi.fn(),
   RestartDaemon: vi.fn(),
   ChooseProgram: vi.fn(),
   IgnoreRules: vi.fn(),
@@ -513,6 +515,10 @@ describe("desktop api", () => {
     expect(await desktop.uploadWorkers()).toBe(4);
     await desktop.setUploadWorkers(8);
     expect(service.SetUploadWorkers).toHaveBeenCalledWith(8);
+    service.DownloadWorkers.mockResolvedValue(128);
+    expect(await desktop.downloadWorkers()).toBe(128);
+    await desktop.setDownloadWorkers(32);
+    expect(service.SetDownloadWorkers).toHaveBeenCalledWith(32);
     await desktop.restartDaemon();
     await desktop.chooseProgram();
     expect(service.RestartDaemon).toHaveBeenCalled();

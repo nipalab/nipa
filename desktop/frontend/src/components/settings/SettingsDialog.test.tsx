@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({
   saveSettings: vi.fn(),
   uploadWorkers: vi.fn(),
   setUploadWorkers: vi.fn(),
+  downloadWorkers: vi.fn(),
+  setDownloadWorkers: vi.fn(),
   restartDaemon: vi.fn(),
   chooseProgram: vi.fn(),
   updateStatus: vi.fn(),
@@ -41,6 +43,8 @@ beforeEach(() => {
   api.uploadWorkers.mockResolvedValue(0);
   api.saveSettings.mockImplementation(async (s: Settings) => s);
   api.setUploadWorkers.mockResolvedValue(undefined);
+  api.downloadWorkers.mockResolvedValue(0);
+  api.setDownloadWorkers.mockResolvedValue(undefined);
   api.updateStatus.mockResolvedValue(idle);
   api.onUpdate.mockReturnValue(() => {});
   api.llmSettings.mockResolvedValue(noLLM);
@@ -164,6 +168,7 @@ describe("SettingsDialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(api.saveSettings).toHaveBeenCalledWith({ keepInTray: false, startAtLogin: true, pollSeconds: 300, notify: { pushes: false, locks: false, reviews: false, lockRequests: false, maintenance: false }, tools: [], manualUpdates: false });
     expect(api.setUploadWorkers).not.toHaveBeenCalled();
+    expect(api.setDownloadWorkers).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith("Settings saved", "success");
   });
 
@@ -210,7 +215,7 @@ describe("SettingsDialog", () => {
     await userEvent.type(input, "4");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.setUploadWorkers).toHaveBeenCalledWith(4));
-    expect(await screen.findByText("Restart the background service to use the new upload setting.")).toBeInTheDocument();
+    expect(await screen.findByText("Restart the background service to use the new transfer settings.")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Advanced" })).toHaveAttribute("aria-selected", "true");
     expect(onClose).not.toHaveBeenCalled();
 
@@ -219,6 +224,42 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: /Restart/ }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Background service restarted", "success"));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("pins download workers next to uploads and offers a restart", async () => {
+    api.downloadWorkers.mockResolvedValue(128);
+    render();
+    await openTab("Advanced");
+    const input = await screen.findByLabelText("Downloads at once");
+    expect(input).toHaveValue("128");
+    expect(screen.getByLabelText("Uploads at once")).toHaveValue("");
+    await userEvent.clear(input);
+    await userEvent.type(input, "257");
+    expect(screen.getByText(/Enter a number from 1 to 256/)).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.clear(input);
+    await userEvent.type(input, "200");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.setDownloadWorkers).toHaveBeenCalledWith(200));
+    expect(api.setUploadWorkers).not.toHaveBeenCalled();
+    expect(await screen.findByText("Restart the background service to use the new transfer settings.")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("clears pinned download workers", async () => {
+    api.downloadWorkers.mockResolvedValue(32);
+    render();
+    await openTab("Advanced");
+    await userEvent.clear(await screen.findByLabelText("Downloads at once"));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.setDownloadWorkers).toHaveBeenCalledWith(0));
+  });
+
+  it("reports a failure to read the download workers", async () => {
+    api.downloadWorkers.mockRejectedValue(new Error("bad config"));
+    render();
+    expect(await screen.findByRole("alert")).toHaveTextContent("bad config");
   });
 
   it("clears pinned workers and closes with Escape or Cancel", async () => {

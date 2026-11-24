@@ -291,6 +291,8 @@ export function createService(scenario: string): typeof Real {
     SetZoom: () => ok(undefined),
     UploadWorkers: () => ok(16),
     SetUploadWorkers: () => ok(undefined),
+    DownloadWorkers: () => ok(64),
+    SetDownloadWorkers: () => ok(undefined),
     RestartDaemon: () => ok({ version: "1.4.0", pid: 4243, port: 7070, started: true }),
     LLMSettings: () => ok(clone(llm)),
     SetLLM: (endpoint, model) => {
