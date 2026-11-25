@@ -71,6 +71,45 @@ func (mr *MockpushRepositoryMockRecorder) ApplyPush(ctx, req any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyPush", reflect.TypeOf((*MockpushRepository)(nil).ApplyPush), ctx, req)
 }
 
+// MocklegacyTreeHashLookup is a mock of legacyTreeHashLookup interface.
+type MocklegacyTreeHashLookup struct {
+	ctrl     *gomock.Controller
+	recorder *MocklegacyTreeHashLookupMockRecorder
+	isgomock struct{}
+}
+
+// MocklegacyTreeHashLookupMockRecorder is the mock recorder for MocklegacyTreeHashLookup.
+type MocklegacyTreeHashLookupMockRecorder struct {
+	mock *MocklegacyTreeHashLookup
+}
+
+// NewMocklegacyTreeHashLookup creates a new mock instance.
+func NewMocklegacyTreeHashLookup(ctrl *gomock.Controller) *MocklegacyTreeHashLookup {
+	mock := &MocklegacyTreeHashLookup{ctrl: ctrl}
+	mock.recorder = &MocklegacyTreeHashLookupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocklegacyTreeHashLookup) EXPECT() *MocklegacyTreeHashLookupMockRecorder {
+	return m.recorder
+}
+
+// LegacyTreeHash mocks base method.
+func (m *MocklegacyTreeHashLookup) LegacyTreeHash(ctx context.Context, treeID int64) (*domain.Hash, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LegacyTreeHash", ctx, treeID)
+	ret0, _ := ret[0].(*domain.Hash)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LegacyTreeHash indicates an expected call of LegacyTreeHash.
+func (mr *MocklegacyTreeHashLookupMockRecorder) LegacyTreeHash(ctx, treeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LegacyTreeHash", reflect.TypeOf((*MocklegacyTreeHashLookup)(nil).LegacyTreeHash), ctx, treeID)
+}
+
 // MockreviewPushGate is a mock of reviewPushGate interface.
 type MockreviewPushGate struct {
 	ctrl     *gomock.Controller

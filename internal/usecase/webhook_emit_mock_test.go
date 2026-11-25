@@ -264,3 +264,41 @@ func (mr *MockemailNotifierMockRecorder) Wants(event any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Wants", reflect.TypeOf((*MockemailNotifier)(nil).Wants), event)
 }
+
+// MocklockRequestNotifier is a mock of lockRequestNotifier interface.
+type MocklockRequestNotifier struct {
+	ctrl     *gomock.Controller
+	recorder *MocklockRequestNotifierMockRecorder
+	isgomock struct{}
+}
+
+// MocklockRequestNotifierMockRecorder is the mock recorder for MocklockRequestNotifier.
+type MocklockRequestNotifierMockRecorder struct {
+	mock *MocklockRequestNotifier
+}
+
+// NewMocklockRequestNotifier creates a new mock instance.
+func NewMocklockRequestNotifier(ctrl *gomock.Controller) *MocklockRequestNotifier {
+	mock := &MocklockRequestNotifier{ctrl: ctrl}
+	mock.recorder = &MocklockRequestNotifierMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocklockRequestNotifier) EXPECT() *MocklockRequestNotifierMockRecorder {
+	return m.recorder
+}
+
+// NotifyLockRequest mocks base method.
+func (m *MocklockRequestNotifier) NotifyLockRequest(ctx context.Context, notice LockRequestNotice) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyLockRequest", ctx, notice)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyLockRequest indicates an expected call of NotifyLockRequest.
+func (mr *MocklockRequestNotifierMockRecorder) NotifyLockRequest(ctx, notice any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyLockRequest", reflect.TypeOf((*MocklockRequestNotifier)(nil).NotifyLockRequest), ctx, notice)
+}

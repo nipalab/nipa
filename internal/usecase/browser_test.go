@@ -92,8 +92,8 @@ func TestBranch_TreeAt_HiddenPathIsNotFound(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).
 		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{101}).Return(nil, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{101}).Return(nil, nil)
 
 	_, err := uc.TreeAt(context.Background(), snow.ID(1), "main", "secret")
 	require.True(t, domain.IsErrorNotFound(err))

@@ -410,7 +410,7 @@ func TestBranch_PathHashAtCommit(t *testing.T) {
 		repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(101), "sub").
 			Return(&domain.TreeNode{ID: 201, Name: "sub"}, nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(201)).Return(nil, wantErr)
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{201}).Return(nil, wantErr)
 
 		_, _, err := uc.pathHashAtCommit(context.Background(), snow.ID(1), snow.ID(10), "sub")
 		require.ErrorIs(t, err, wantErr)

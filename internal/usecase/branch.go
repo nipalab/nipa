@@ -46,6 +46,11 @@ type branchRepository interface {
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
 	ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
 	ListFileMetaByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
+	// ListTreeChildrenByTrees and ListFilesByTrees are the batched twins of
+	// ListTreeChildren and ListFilesByTree: results are keyed by the requested
+	// node id and keep the single-directory ordering.
+	ListTreeChildrenByTrees(ctx context.Context, parentIDs []int64) (map[int64][]*domain.TreeNode, error)
+	ListFilesByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error)
 	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 	CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 }
@@ -664,49 +669,141 @@ func (b *Branch) findTreeNode(ctx context.Context, root *domain.TreeNode, path s
 	return node, nil
 }
 
-func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, path string, recursive bool, filter *PathFilter, sparse domain.PrefixSet) error {
-	if node.Hash == emptyTreeHash {
-		node.FileChildren, node.TreeChildren = nil, nil
-		return nil
-	}
-	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
-	if err != nil {
-		return err
-	}
-	node.FileChildren = nil
-	for _, file := range files {
-		filePath := joinTreePath(path, file.Name)
-		if !filter.Allow(filePath) {
-			continue
-		}
-		if !sparse.Covers(filePath) && !keepRootTeamFile(path, file.Name, sparse) {
-			continue
-		}
-		node.FileChildren = append(node.FileChildren, file)
-	}
+// manifestEntry is one directory of the level a manifest load is working on.
+type manifestEntry struct {
+	node *domain.TreeNode
+	path string
+}
 
-	node.TreeChildren = nil
-	if !recursive {
+// loadTreeManifest fills node with its files and, when recursive, its whole
+// subtree, keeping only what filter and sparse let through. It walks the tree
+// level by level: every level costs one files batch and one children batch
+// (ListFilesByTrees / ListTreeChildrenByTrees), so the number of repository
+// calls follows the tree depth instead of the directory count. Directories are
+// filtered before they join the next level, so a pruned subtree is never
+// queried, and directories that end up empty are dropped bottom-up at the end.
+func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, path string, recursive bool, filter *PathFilter, sparse domain.PrefixSet) error {
+	node.FileChildren, node.TreeChildren = nil, nil
+	if node.Hash == emptyTreeHash {
 		return nil
 	}
-	children, err := b.branchRepo.ListTreeChildren(ctx, node.ID)
-	if err != nil {
-		return err
-	}
-	for _, child := range children {
-		childPath := joinTreePath(path, child.Name)
-		if !filter.CanDescend(childPath) || !sparse.CanDescend(childPath) {
-			continue
-		}
-		if err := b.loadTreeManifest(ctx, child, childPath, true, filter, sparse); err != nil {
+	levels := [][]manifestEntry{{{node: node, path: path}}}
+	for {
+		next, err := b.loadManifestLevel(ctx, levels[len(levels)-1], recursive, filter, sparse)
+		if err != nil {
 			return err
 		}
+		if len(next) == 0 {
+			break
+		}
+		levels = append(levels, next)
+	}
+	// The deepest level holds only leaves; prune from its parents upwards so a
+	// directory is judged after its own children were.
+	for i := len(levels) - 2; i >= 0; i-- {
+		for _, entry := range levels[i] {
+			dropEmptyTreeChildren(entry.node)
+		}
+	}
+	return nil
+}
+
+// loadManifestLevel loads the files (and, when recursive, the children) of
+// every directory in level with one batch each and returns the directories of
+// the next level. The same node id can sit at several paths of one level
+// (identical directories share their content rows); every occurrence gets its
+// own File and TreeNode values because filtering and rehashing are per path.
+func (b *Branch) loadManifestLevel(ctx context.Context, level []manifestEntry, recursive bool, filter *PathFilter, sparse domain.PrefixSet) ([]manifestEntry, error) {
+	ids := make([]int64, 0, len(level))
+	seen := make(map[int64]struct{}, len(level))
+	for _, entry := range level {
+		if _, ok := seen[entry.node.ID]; ok {
+			continue
+		}
+		seen[entry.node.ID] = struct{}{}
+		ids = append(ids, entry.node.ID)
+	}
+	files, err := b.branchRepo.ListFilesByTrees(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	var children map[int64][]*domain.TreeNode
+	if recursive {
+		if children, err = b.branchRepo.ListTreeChildrenByTrees(ctx, ids); err != nil {
+			return nil, err
+		}
+	}
+
+	var next []manifestEntry
+	handedOut := make(map[int64]struct{}, len(ids))
+	for _, entry := range level {
+		id := entry.node.ID
+		_, shared := handedOut[id]
+		handedOut[id] = struct{}{}
+		for _, file := range files[id] {
+			filePath := joinTreePath(entry.path, file.Name)
+			if !filter.Allow(filePath) {
+				continue
+			}
+			if !sparse.Covers(filePath) && !keepRootTeamFile(entry.path, file.Name, sparse) {
+				continue
+			}
+			if shared {
+				file = cloneManifestFile(file)
+			}
+			entry.node.FileChildren = append(entry.node.FileChildren, file)
+		}
+		for _, child := range children[id] {
+			childPath := joinTreePath(entry.path, child.Name)
+			if !filter.CanDescend(childPath) || !sparse.CanDescend(childPath) {
+				continue
+			}
+			if child.Hash == emptyTreeHash {
+				continue
+			}
+			if shared {
+				child = cloneManifestNode(child)
+			}
+			child.FileChildren, child.TreeChildren = nil, nil
+			entry.node.TreeChildren = append(entry.node.TreeChildren, child)
+			next = append(next, manifestEntry{node: child, path: childPath})
+		}
+	}
+	return next, nil
+}
+
+// dropEmptyTreeChildren removes the children that ended up with neither files
+// nor subdirectories after filtering.
+func dropEmptyTreeChildren(node *domain.TreeNode) {
+	kept := node.TreeChildren[:0]
+	for _, child := range node.TreeChildren {
 		if len(child.FileChildren) == 0 && len(child.TreeChildren) == 0 {
 			continue
 		}
-		node.TreeChildren = append(node.TreeChildren, child)
+		kept = append(kept, child)
 	}
-	return nil
+	clear(node.TreeChildren[len(kept):])
+	if len(kept) == 0 {
+		kept = nil
+	}
+	node.TreeChildren = kept
+}
+
+func cloneManifestFile(file *domain.File) *domain.File {
+	clone := *file
+	if file.Chunks != nil {
+		clone.Chunks = append(make([]domain.Chunk, 0, len(file.Chunks)), file.Chunks...)
+	}
+	return &clone
+}
+
+func cloneManifestNode(node *domain.TreeNode) *domain.TreeNode {
+	clone := *node
+	if node.ParentID != nil {
+		parentID := *node.ParentID
+		clone.ParentID = &parentID
+	}
+	return &clone
 }
 
 func joinTreePath(parent, name string) string {

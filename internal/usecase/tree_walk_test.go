@@ -154,6 +154,34 @@ func (r *memTreeRepo) ListFilesByTree(_ context.Context, id int64) ([]*domain.Fi
 	return out, nil
 }
 
+func (r *memTreeRepo) ListTreeChildrenByTrees(ctx context.Context, ids []int64) (map[int64][]*domain.TreeNode, error) {
+	out := make(map[int64][]*domain.TreeNode, len(ids))
+	for _, id := range ids {
+		children, err := r.ListTreeChildren(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if len(children) > 0 {
+			out[id] = children
+		}
+	}
+	return out, nil
+}
+
+func (r *memTreeRepo) ListFilesByTrees(ctx context.Context, ids []int64) (map[int64][]*domain.File, error) {
+	out := make(map[int64][]*domain.File, len(ids))
+	for _, id := range ids {
+		files, err := r.ListFilesByTree(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if len(files) > 0 {
+			out[id] = files
+		}
+	}
+	return out, nil
+}
+
 func (r *memTreeRepo) ListFileMetaByTree(_ context.Context, id int64) ([]*domain.File, error) {
 	r.metaCall++
 	files, _ := r.ListFilesByTree(context.Background(), id)

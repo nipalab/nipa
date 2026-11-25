@@ -106,23 +106,23 @@ func TestBranch_GetCommit_Success(t *testing.T) {
 			GetTreeNode(gomock.Any(), int64(5)).
 			Return(&domain.TreeNode{ID: 5, Hash: rootHash}, nil),
 		repo.EXPECT().
-			ListFilesByTree(gomock.Any(), int64(5)).
-			Return([]*domain.File{{ID: 1, Name: "readme.md", TreeID: 5, Hash: fileHash}}, nil),
+			ListFilesByTrees(gomock.Any(), []int64{5}).
+			Return(map[int64][]*domain.File{5: []*domain.File{{ID: 1, Name: "readme.md", TreeID: 5, Hash: fileHash}}}, nil),
 		repo.EXPECT().
-			ListTreeChildren(gomock.Any(), int64(5)).
-			Return([]*domain.TreeNode{{ID: 6, Name: "src", Hash: dirHash}}, nil),
+			ListTreeChildrenByTrees(gomock.Any(), []int64{5}).
+			Return(map[int64][]*domain.TreeNode{5: []*domain.TreeNode{{ID: 6, Name: "src", Hash: dirHash}}}, nil),
 		repo.EXPECT().
-			ListFilesByTree(gomock.Any(), int64(6)).
-			Return([]*domain.File{{
+			ListFilesByTrees(gomock.Any(), []int64{6}).
+			Return(map[int64][]*domain.File{6: []*domain.File{{
 				ID:     2,
 				Name:   "main.go",
 				Mode:   0o644,
 				TreeID: 6,
 				Hash:   fileHash,
 				Chunks: []domain.Chunk{{ID: 3, Hash: chunkHash, SizeBytes: 10}},
-			}}, nil),
+			}}}, nil),
 		repo.EXPECT().
-			ListTreeChildren(gomock.Any(), int64(6)).
+			ListTreeChildrenByTrees(gomock.Any(), []int64{6}).
 			Return(nil, nil),
 	)
 

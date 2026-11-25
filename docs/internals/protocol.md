@@ -394,6 +394,33 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Branch.loadTreeManifest` skips nodes with the empty-tree hash without a
   query, since the content-node lookup of an empty hash scans every row
   sharing it.
+- **Manifest loading is level by level** (`Branch.loadTreeManifest` /
+  `loadManifestLevel`, used by every manifest caller: `manifestForCommit`,
+  `GetCommit`, merge base trees, `mergeTree`, the restricted web browse
+  paths). Each tree level costs one `ListFilesByTrees` and, when recursive,
+  one `ListTreeChildrenByTrees` call for all its directories, so repository
+  calls follow the tree depth, not the directory count (a 1,649-directory
+  tree: 8 calls / 19 statements instead of 3,298 calls / 4,899 statements).
+  The repositories split the ids into `treeBatchSize` (500) slices and run
+  `TreeNodeListChildrenByTrees`, `FileListByTrees` and
+  `ChunkListByContentTrees`: the first two resolve every requested ref id to
+  its content node exactly like the single-directory queries (lowest id
+  sharing the hash that owns rows; files OR children for children, files only
+  for files) and return `ref_id` so rows are grouped per requested node, files
+  and children ordered by name; the chunk query takes the content ids the file
+  rows carry (`files.tree_id`) and only guarantees chunk-index order within a
+  file. Permission (`filter.Allow`/`CanDescend`) and sparse filtering happen
+  before a directory joins the next level, so pruned subtrees are never
+  queried; directories left without files and subdirectories are dropped in a
+  bottom-up pass after the walk. One node id can sit at several paths of a
+  level (identical directories share content rows, so they list the same child
+  ids): the id is queried once and every further occurrence gets cloned
+  `File`/`TreeNode` values, because filtering and `rehashTree` are per path.
+  The single-directory `ListFilesByTree`/`ListTreeChildren` stay for the
+  shallow browse, tree-walk diff and push paths. The reference per-directory
+  loader lives in `internal/usecase/export_test.go`;
+  `manifest_load_test.go` checks the two produce deeply equal trees on a real
+  SQLite database.
   `Push.pushStaged` scans into 32MB windows (`uploadWindowBytes`; a client
   override `NIPA_UPLOAD_WINDOW_MIB` / `uploadWindowMiB`, clamped to 4..256 MiB,
   reaches the uploader through `Client.UploadWindowBytes`) handed to four
