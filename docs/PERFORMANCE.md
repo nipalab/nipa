@@ -51,6 +51,7 @@ baseline table. They are skipped unless the env var is set, so CI stays fast.
 | `make bench-unit` | chunker encode (text/packed/unknown), Myers diff, tree hash throughput | release commit |
 | `make bench-scale-files files=10000` | wide-tree scale on SQLite: initial and one-file push, recursive manifest, commit and merge-request diff, clone, `ApplyPush` alone, `SaveTree` with 5 changes | per change that touches these paths |
 | `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker); `NIPA_BENCH_LATENCY=500us` adds a one-way delay in front of postgres | per change that touches these paths |
+| `make bench-small-change files=100000` | client-side cost of `nipa add` and of the local side of `nipa push` for one changed file in a working copy of N tracked text files (real localrepo, stubbed server; median of `NIPA_BENCH_RUNS`, default 5, with the costliest local calls) | per change that touches add, push or the post-push prune |
 | `make bench-manifest` | one full recursive manifest of a 1,649-directory / ~97.6k-file tree, per-directory walk vs the level-batched loader: Go benchmark on SQLite, then a timed harness on postgres (Docker) | per change that touches manifest loading or the tree queries |
 
 Expected shape (loopback, modern laptop): encode is roughly 0.5–1 GiB/s for
@@ -104,6 +105,36 @@ write checks and binary-lock planning (`commitChanges`) use the same walk, and
 `VisibleChunks` skips directories it has already visited across the requested
 commits. The stored hash is compared before permission filtering; both sides
 use the same filter, so equal hashes stay equal after it.
+
+### Small change in a large working copy (100,000 tracked text files)
+
+`nipa add` and `nipa push` of one file used to pay whole-repository local
+costs. `TestSmallChangeScale` (`make bench-small-change files=100000`) builds
+a full checkout of 100,000 tracked text files in a real localrepo (1,000
+directories, a fresh `stat_cache` row and one cached object per file), edits
+one file, and times the add and the push in process; the push figure excludes
+the stubbed server's time. Recorded 2026-11-25 on the Ryzen 7 6800H laptop:
+
+| Client-side cost, one changed file | Before | After |
+|---|---|---|
+| `nipa add <file>`, total | 439 ms | 0.7 ms |
+| ... `LoadStatCache` (every fingerprint) | 263 ms | 0.07 ms (`StatEntries`, one row) |
+| ... `Snapshot` (every file row) | 144 ms | 0.08 ms (`SnapshotFiles`, one row) |
+| ... building the tracked / ignore-exempt sets | ~32 ms | not built |
+| `nipa push`, local side, total | 526 ms | 19 ms |
+| ... `Snapshot` (twice: staged base, then the prune) | 275 ms | 0.1 ms (`SnapshotFiles`) |
+| ... `PruneObjects` (list the whole object cache) | 225 ms | 16 ms (`FilesWithChunk` for the one replaced chunk) + 0.07 ms (`RemoveObjects`) |
+| ... `ApplyPush` | 0.7 ms | 0.9 ms |
+
+What is left of the push is one filtered scan of the `files` table per
+replaced chunk that is in the cache (`docs/internals/client.md`, "Post-push
+prune"); it still grows with the repository, at about a twentieth of the old
+sweep, and a push of binaries or of new files runs none.
+`TestSmallChange_ReadsDoNotGrowWithTheRepository` asserts that neither command loads the
+snapshot, the stat cache or the cache listing and that the by-path reads
+return the same rows at 200 and 4,000 files. Directory adds read the range of
+the snapshot below the directory; `nipa add .`, `status`, `diff`, a real
+`update` and `switch` still read everything.
 
 ### Full manifest of a deep tree (1,649 directories, ~97.6k single-chunk files)
 

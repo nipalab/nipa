@@ -236,6 +236,39 @@ and before the first write), so a sync that fails or is killed part way,
 forced or not, leaves no record and the next update syncs fully instead of
 exiting early on a half-written working copy.
 
+Push reads (`Push.stagedBase`): `Run` (through `pushStagedEffect`) and `Plan`
+read the tracked rows of the staged paths (`SnapshotFiles`) and the tree hash
+(`SnapshotTreeHash`) instead of `Snapshot()`; a repository without those reads
+gets the whole snapshot, with the same error precedence (snapshot, staged
+list, "nothing staged").
+
+Post-push prune (`pruneAfterPush`, `push_prune.go`): a push that was applied
+to the stored tree locally (`saveLandedTree` returned `applied`) and did not
+conclude a merge or revert changed only the rows of the paths it sent, so the
+objects it can have orphaned are known: the chunks of the previous rows of the
+pushed and removed files, and the chunks of the rows it wrote (the push
+caches text and pinned raw content; an exact pin that lands is released, so
+that content loses its keeper). `pruneChunks` checks only those: candidates
+without an object are dropped first (`MissingChunks`; when none is cached the
+prune is done, without the lock), then, under the same guard as the full sweep
+(`pruneGuard`: exclusive lock without waiting, no pending merge/revert/shelf
+state), the rewritten rows settle the chunks they keep, every remaining chunk
+is looked up with `FilesWithChunk`, and an object is deleted (`RemoveObjects`)
+only when no tracked file that `cachedInPristine` accepts lists it: the keep
+rule of `pruneCache`, restricted to the candidates, so it never deletes what
+the full sweep would keep. The full sweep still runs after a push that
+concluded a merge or revert (their materialized content has no row), that
+saved a fetched manifest (sparse checkout, `base`/`mismatch`/`error`
+fallback), that leaves more than `maxTargetedPruneChunks` (16) chunks to look
+up, and for repositories without the by-path reads. What the targeted prune
+does not collect, and the next full sweep does (clone, a real update, switch,
+tag switch, restore, `nipa diff`, lock pins, the daemon's idle pruner, `nipa
+gc`, or one of the pushes above): objects no row of this push referenced
+(chunks an earlier failed push cached for content that was edited or unstaged
+since, content a daemon blob/preview read left behind), stale `.tmp-*` files,
+and the orphans of a push whose prune was skipped (repository busy or a
+pending state). `nipa gc` is unchanged.
+
 Post-push tree save (`Push.saveLandedTree`, span `push.tree`): after the
 server accepted the push and `SaveCommit` pinned the new commit, the stored
 tree is brought to the new head without fetching its manifest. The server
@@ -302,7 +335,20 @@ silently. Add stages only tracked paths that are new, modified or missing:
 files whose fresh `stat_cache` fingerprint matches the snapshot hash are
 skipped (no content is read), and the remaining paths are staged in one
 transaction (`StageAddMany`, client DB runs WAL + `synchronous=NORMAL`), so
-`nipa add *` on a large clone is cheap. The matcher is client-side only: a
+`nipa add *` on a large clone is cheap. Add reads only what its targets name
+(`trackedScope`, `tracked_scope.go`): a file target costs its `files` row
+and its `stat_cache` row (`SnapshotFiles`, `StatEntries`), a directory target
+one range of the snapshot (`SnapshotFilesUnder`, which also yields the
+deletions to stage and the walk's ignore exemptions) plus the fingerprints of
+the tracked files below it, and only the root (`.`), or a repository without
+the by-path reads (`scopedSnapshotRepo`; the test stubs), loads `Snapshot()`
+and `LoadStatCache()` as every add did before. The ignore exemption is asked
+lazily (`newLookupIgnoreState` + `trackedScope.protects`), only for paths a
+rule ignores; a failed lookup is returned, never read as "ignored".
+`recordProvenance`, `forgetProvenance` (`nipa remove`) and
+`RefreshStatEntries` (the daemon watcher) use the same scope. On a
+100,000-file clone a one-file add is two indexed reads (`make
+bench-small-change`). The matcher is client-side only: a
 hostile client can still push such paths, and a tracked file that later matches
 a rule stays tracked until explicitly removed. Sparse manifests always include the root `.nipaignore` (and `.nipaassets.yml`, `.nipaprovenance.yml`)
 (`loadTreeManifest`'s `keepRootTeamFile`, still behind the read filter), so

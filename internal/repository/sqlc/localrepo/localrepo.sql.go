@@ -7,6 +7,7 @@ package localrepo
 
 import (
 	"context"
+	"strings"
 )
 
 const fileDelete = `-- name: FileDelete :exec
@@ -17,6 +18,26 @@ WHERE path = ?1
 func (q *Queries) FileDelete(ctx context.Context, path string) error {
 	_, err := q.db.ExecContext(ctx, fileDelete, path)
 	return err
+}
+
+const fileFirstInRange = `-- name: FileFirstInRange :one
+SELECT path
+FROM files
+WHERE path >= ?1 AND path < ?2
+ORDER BY path
+LIMIT 1
+`
+
+type FileFirstInRangeParams struct {
+	Lower string `json:"lower"`
+	Upper string `json:"upper"`
+}
+
+func (q *Queries) FileFirstInRange(ctx context.Context, arg FileFirstInRangeParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, fileFirstInRange, arg.Lower, arg.Upper)
+	var path string
+	err := row.Scan(&path)
+	return path, err
 }
 
 const fileGet = `-- name: FileGet :one
@@ -124,6 +145,110 @@ func (q *Queries) FileList(ctx context.Context) ([]File, error) {
 	return items, nil
 }
 
+const fileListByChunk = `-- name: FileListByChunk :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE instr(chunks, CAST(?1 AS BLOB)) > 0
+`
+
+type FileListByChunkRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileListByChunk(ctx context.Context, chunk []byte) ([]FileListByChunkRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileListByChunk, chunk)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListByChunkRow
+	for rows.Next() {
+		var i FileListByChunkRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const fileListByPaths = `-- name: FileListByPaths :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path IN (/*SLICE:paths*/?)
+`
+
+type FileListByPathsRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileListByPaths(ctx context.Context, paths []string) ([]FileListByPathsRow, error) {
+	query := fileListByPaths
+	var queryParams []interface{}
+	if len(paths) > 0 {
+		for _, v := range paths {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:paths*/?", strings.Repeat(",?", len(paths))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:paths*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListByPathsRow
+	for rows.Next() {
+		var i FileListByPathsRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileListByTree = `-- name: FileListByTree :many
 SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
@@ -150,6 +275,59 @@ func (q *Queries) FileListByTree(ctx context.Context, treePath string) ([]FileLi
 	var items []FileListByTreeRow
 	for rows.Next() {
 		var i FileListByTreeRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const fileListInRange = `-- name: FileListInRange :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path >= ?1 AND path < ?2
+ORDER BY path
+`
+
+type FileListInRangeParams struct {
+	Lower string `json:"lower"`
+	Upper string `json:"upper"`
+}
+
+type FileListInRangeRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileListInRange(ctx context.Context, arg FileListInRangeParams) ([]FileListInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileListInRange, arg.Lower, arg.Upper)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListInRangeRow
+	for rows.Next() {
+		var i FileListInRangeRow
 		if err := rows.Scan(
 			&i.Path,
 			&i.Hash,
@@ -508,6 +686,52 @@ ORDER BY path
 
 func (q *Queries) StatCacheList(ctx context.Context) ([]StatCache, error) {
 	rows, err := q.db.QueryContext(ctx, statCacheList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatCache
+	for rows.Next() {
+		var i StatCache
+		if err := rows.Scan(
+			&i.Path,
+			&i.SizeBytes,
+			&i.MtimeNs,
+			&i.Mode,
+			&i.Hash,
+			&i.CachedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statCacheListByPaths = `-- name: StatCacheListByPaths :many
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+WHERE path IN (/*SLICE:paths*/?)
+`
+
+func (q *Queries) StatCacheListByPaths(ctx context.Context, paths []string) ([]StatCache, error) {
+	query := statCacheListByPaths
+	var queryParams []interface{}
+	if len(paths) > 0 {
+		for _, v := range paths {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:paths*/?", strings.Repeat(",?", len(paths))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:paths*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

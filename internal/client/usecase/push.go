@@ -67,7 +67,10 @@ func NewPush(auth *Auth, pushClient pushClient, localRepo pushLocalRepo) *Push {
 func (p *Push) Run(ctx context.Context, root, message string, progress ...UploadProgress) (err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.push")
 	defer func() { obs.FinishSpan(span, err) }()
-	defer func() { pruneAfterSuccess(p.localRepo, err) }()
+	// What the push can leave unreferenced in the object cache decides how
+	// much the prune after it has to look at (pruneAfterPush).
+	var effect *pushCacheEffect
+	defer func() { pruneAfterPush(p.localRepo, effect, err) }()
 
 	if strings.TrimSpace(message) == "" {
 		return domain.NewUserError("commit message is required")
@@ -135,8 +138,14 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	if _, err := p.pushStaged(ctx, root, nipaUrl, cfg.Branch, message, baseTreeHash, baseCommitID, parent2, progress...); err != nil {
+	_, landed, err := p.pushStagedEffect(ctx, root, nipaUrl, cfg.Branch, message, baseTreeHash, baseCommitID, parent2, progress...)
+	if err != nil {
 		return err
+	}
+	// A merge or revert cached content of its own while it was pending, which
+	// only the full sweep finds.
+	if mergeState == nil && revertState == nil {
+		effect = landed
 	}
 	if err := p.localRepo.ClearMergeState(); err != nil {
 		return err
@@ -175,20 +184,9 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 		return nil, domain.NewUserError("a revert sequence is in progress; run nipa revert --continue").
 			WithHint("the working copy is mid revert-sequence", "nipa revert --continue")
 	}
-	snapshot, err := p.localRepo.Snapshot()
+	staged, baseByPath, _, err := p.stagedBase()
 	if err != nil {
 		return nil, err
-	}
-	staged, err := p.localRepo.ListStaged()
-	if err != nil {
-		return nil, err
-	}
-	if len(staged) == 0 {
-		return nil, domain.NewUserError("nothing staged to push; run nipa add first")
-	}
-	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
-	for _, f := range snapshot.Files {
-		baseByPath[f.Path] = f
 	}
 	toRead, removed, err := classifyStaged(root, staged, baseByPath)
 	if err != nil {
@@ -225,34 +223,67 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 	return plan, nil
 }
 
-func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, baseCommitID, parent2 string, progress ...UploadProgress) (*serverDomain.PushResult, error) {
-	if err := p.localRepo.Init(root); err != nil {
-		return nil, err
+// stagedBase returns the staged paths with the tracked rows they replace and
+// the snapshot's tree hash. A repository that reads by path is asked for the
+// staged paths only, so the cost follows the push, not the repository.
+func (p *Push) stagedBase() ([]string, map[string]domain.SnapshotFile, string, error) {
+	staged, stagedErr := p.localRepo.ListStaged()
+	if stagedErr != nil {
+		staged = nil
 	}
-	snapshot, err := p.localRepo.Snapshot()
-	if err != nil {
-		return nil, err
+	var (
+		baseByPath map[string]domain.SnapshotFile
+		treeHash   string
+		err        error
+	)
+	if scoped, ok := p.localRepo.(scopedSnapshotRepo); ok {
+		if baseByPath, err = scoped.SnapshotFiles(staged); err == nil {
+			treeHash, err = scoped.SnapshotTreeHash()
+		}
+	} else {
+		var snapshot *domain.Snapshot
+		if snapshot, err = p.localRepo.Snapshot(); err == nil {
+			treeHash = snapshot.TreeHash
+			baseByPath = make(map[string]domain.SnapshotFile, len(snapshot.Files))
+			for _, f := range snapshot.Files {
+				baseByPath[f.Path] = f
+			}
+		}
 	}
-	staged, err := p.localRepo.ListStaged()
-	if err != nil {
-		return nil, err
+	switch {
+	case err != nil:
+		return nil, nil, "", err
+	case stagedErr != nil:
+		return nil, nil, "", stagedErr
+	case len(staged) == 0:
+		return nil, nil, "", domain.NewUserError("nothing staged to push; run nipa add first")
 	}
-	if len(staged) == 0 {
-		return nil, domain.NewUserError("nothing staged to push; run nipa add first")
-	}
+	return staged, baseByPath, treeHash, nil
+}
 
-	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
-	for _, f := range snapshot.Files {
-		baseByPath[f.Path] = f
+func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, baseCommitID, parent2 string, progress ...UploadProgress) (*serverDomain.PushResult, error) {
+	result, _, err := p.pushStagedEffect(ctx, root, nipaUrl, branch, message, baseTreeHash, baseCommitID, parent2, progress...)
+	return result, err
+}
+
+// pushStagedEffect is pushStaged that also reports what the push can have
+// left unreferenced in the object cache.
+func (p *Push) pushStagedEffect(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, baseCommitID, parent2 string, progress ...UploadProgress) (*serverDomain.PushResult, *pushCacheEffect, error) {
+	if err := p.localRepo.Init(root); err != nil {
+		return nil, nil, err
+	}
+	staged, baseByPath, snapshotTreeHash, err := p.stagedBase()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	toRead, removed, err := classifyStaged(root, staged, baseByPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	pins, err := p.localRepo.ListPins()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i := range toRead {
 		toRead[i].cache = !toRead[i].isBinary || pinsCover(pins, toRead[i].path)
@@ -298,11 +329,11 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err != nil {
 		uploader.abort()
 		obs.FinishSpan(uploadSpan, err)
-		return nil, err
+		return nil, nil, err
 	}
 	if err := uploader.close(); err != nil {
 		obs.FinishSpan(uploadSpan, err)
-		return nil, err
+		return nil, nil, err
 	}
 	obs.FinishSpan(uploadSpan, nil)
 	if prog != nil {
@@ -310,12 +341,12 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	}
 	if len(statEntries) > 0 {
 		if err := p.localRepo.SaveStatEntries(statEntries); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	if baseTreeHash == "" {
-		baseTreeHash = snapshot.TreeHash
+		baseTreeHash = snapshotTreeHash
 	}
 	commitCtx, commitSpan := obs.StartSpan(ctx, "push.commit",
 		attribute.String(obs.AttrBranch, branch),
@@ -324,11 +355,11 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	result, err := p.pushClient.Push(commitCtx, nipaUrl.Org, nipaUrl.Project, branch, baseTreeHash, message, files, removed, parent2, baseCommitID)
 	if err != nil {
 		obs.FinishSpan(commitSpan, err)
-		return nil, err
+		return nil, nil, err
 	}
 	if err := p.localRepo.SaveCommit(result.CommitID.Base36(), result.CommitHash.String()); err != nil {
 		obs.FinishSpan(commitSpan, err)
-		return nil, err
+		return nil, nil, err
 	}
 	commitSpan.SetAttributes(
 		attribute.String("nipa.push.commit", result.CommitID.Base36()),
@@ -336,18 +367,19 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	)
 	obs.FinishSpan(commitSpan, nil)
 
-	if err := p.saveLandedTree(ctx, nipaUrl, branch, baseCommitID, result, files, removed); err != nil {
-		return nil, err
+	applied, err := p.saveLandedTree(ctx, nipaUrl, branch, baseCommitID, result, files, removed)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := p.localRepo.ClearStaged(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if landed := landedPins(pins, files, removed); len(landed) > 0 {
 		if err := p.localRepo.UnpinPaths(landed); err != nil {
 			slog.Warn("unpin pushed paths failed", "error", err)
 		}
 	}
-	return result, nil
+	return result, newPushCacheEffect(applied, baseByPath, files, removed), nil
 }
 
 // Values of the nipa.push.tree_sync span attribute: how the stored tree was
@@ -363,8 +395,10 @@ const (
 // push response; a sparse checkout, a stored tree that is not the push base
 // and a root hash that does not match all save the new head's manifest
 // instead, as every push did before. The commit already landed, so a failed
-// local apply never fails the push: the manifest fetch decides.
-func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, branch, baseCommitID string, result *serverDomain.PushResult, files []*serverDomain.PushFile, removed []string) (err error) {
+// local apply never fails the push: the manifest fetch decides. It reports
+// whether the push was applied locally, in which case only the rows of the
+// pushed and removed paths changed.
+func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, branch, baseCommitID string, result *serverDomain.PushResult, files []*serverDomain.PushFile, removed []string) (applied bool, err error) {
 	ctx, span := obs.StartSpan(ctx, "push.tree")
 	defer func() { obs.FinishSpan(span, err) }()
 
@@ -385,7 +419,7 @@ func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, bran
 			})
 			if applyErr == nil {
 				span.SetAttributes(attribute.String("nipa.push.tree_sync", treeSyncLocal))
-				return nil
+				return true, nil
 			}
 			reason = applyFallbackReason(applyErr, result.TreeHash)
 		}
@@ -396,11 +430,11 @@ func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, bran
 	)
 	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, sparse)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// The manifest is the branch head's, read right after this push made its
 	// commit the head, with the sparse set the config holds.
-	return p.localRepo.SaveSyncedTree(rootTree, commitID, sparse)
+	return false, p.localRepo.SaveSyncedTree(rootTree, commitID, sparse)
 }
 
 // applyFallbackReason names why a local apply gave way to the manifest fetch
