@@ -42,6 +42,19 @@ message GetTreeManifestRequest {
     bool recursive = 5;
     repeated string paths = 6; // directory prefixes to include; empty = whole tree
     optional string commit_id = 7; // base36 snow ID; when set, the manifest is built from that commit instead of the branch head
+    // Delta manifests (StreamTreeManifest only, recursive requests only). A
+    // client that holds the manifest of base_commit_id, fetched with the same
+    // paths, asks for only what differs from it. base_view is the view token
+    // (TreeManifestPart.view) the server returned with that manifest; the
+    // server answers with a delta only when it still equals the token of the
+    // caller's current view, and with a full manifest otherwise. Unset
+    // base_commit_id = a full manifest, exactly as before these fields.
+    optional string base_commit_id = 8; // base36 snow ID of the commit the client holds
+    bytes base_view = 9; // opaque view token of the manifest the client holds
+    // Raw 32-byte root tree hash of the manifest the client holds. Optional:
+    // it lets the server prove the root hash of the result (see
+    // TreeManifestDir.tree_hash in a delta); without it the delta carries none.
+    bytes base_tree_hash = 10;
 }
 
 message GetTreeManifestResponse {
@@ -53,10 +66,35 @@ message GetTreeManifestResponse {
 // followed by its own files, then by its subdirectories. A directory's depth
 // (0 = root) names its parent, the last directory sent one level up. No entry
 // at all means no tree (an empty branch or an unchanged tree_hash).
+//
+// A delta (TreeManifestPart.delta) uses the same stream to describe the
+// target manifest relative to the base manifest the client holds:
+//   - A directory with unchanged = true is identical to the base in this
+//     view, subtree included. Nothing follows for it and the client keeps
+//     whatever it holds under that path, which may be nothing: a directory
+//     without any visible file is not part of a manifest, and the server does
+//     not look inside an unchanged directory to find out.
+//   - Any other directory is a changed directory and lists ALL its entries by
+//     name: every file either in full (added or modified) or as
+//     TreeManifestFile.unchanged with only its name, and every child
+//     directory either as unchanged or as a changed directory, recursively.
+//     Whatever the client holds in a changed directory that is not listed was
+//     removed. A directory new in the target is a changed directory whose
+//     files are all sent in full.
+//   - A changed directory that ends up without any file or subdirectory once
+//     its unchanged entries are resolved is not part of the manifest (the
+//     root excepted), exactly as a full manifest leaves it out.
+//   - tree_hash is empty on every directory of a delta except, sometimes, the
+//     root. A root tree_hash is the hash the full manifest of this view
+//     carries for the target and the client can verify its result against it;
+//     an empty one means the server could not know it without loading
+//     unchanged directories. Either way the client recomputes the hashes of
+//     changed directories from its own rows.
 message TreeManifestDir {
     int32 depth = 1;
     string name = 2;
-    bytes tree_hash = 3; // raw 32-byte hash
+    bytes tree_hash = 3; // raw 32-byte hash; see above for a delta
+    bool unchanged = 4; // delta only: the subtree is the base's
 }
 
 message TreeManifestFile {
@@ -67,6 +105,7 @@ message TreeManifestFile {
     repeated bytes chunk_hashes = 5; // raw 32-byte hashes; more may follow in TreeManifestChunks
     string encoding = 6;
     repeated int64 chunk_sizes = 7; // parallel to chunk_hashes; empty when unknown
+    bool unchanged = 8; // delta only: the file is the base's; only name is set
 }
 
 // TreeManifestChunks appends chunk hashes (and sizes) to the last file sent.
@@ -87,6 +126,15 @@ message TreeManifestPart {
     string branch = 1; // first part only
     CommitDetail commit = 2; // first part only: set for a recursive manifest of a whole commit
     repeated TreeManifestEntry entries = 3;
+    // first part only: opaque token of the view (the caller's read rules, the
+    // requested paths and the recursive flag) this manifest was built for. A
+    // client stores it with the manifest and sends it back as base_view.
+    bytes view = 4;
+    // first part only: the entries are a delta against base_commit_id. False
+    // on a request with base_commit_id means the server declined and a full
+    // manifest follows.
+    bool delta = 5;
+    string target_commit_id = 6; // first part of a delta only: base36 snow ID of the commit the delta leads to
 }
 
 message PushFile {

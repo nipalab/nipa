@@ -1,7 +1,10 @@
 package usecase
 
 import (
+	"cmp"
 	"context"
+	"encoding/binary"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -262,6 +265,65 @@ func (f *PathFilter) CanDescend(dir string) bool {
 		}
 	}
 	return false
+}
+
+// appendFingerprint appends a canonical encoding of everything Allow and
+// CanDescend depend on, so two filters with equal encodings let exactly the
+// same paths through. It holds no ids, names or timestamps: only the
+// permission asked for and, per rule and path default, the prefix and the
+// bits of that permission it grants. It reports false for a filter it cannot
+// describe (a nil filter).
+//
+// Every filter that allows everything (admins, org owners) encodes the same.
+// Rules that grant none of the bits never matter and are left out; path
+// defaults are all kept, because a default without the bits shadows the
+// shallower ones. Entries are sorted, so the order the repository returned
+// them in does not show (defaults sharing a prefix keep theirs: the first one
+// wins in effective).
+func (f *PathFilter) appendFingerprint(buf []byte) ([]byte, bool) {
+	if f == nil {
+		return buf, false
+	}
+	if f.All() {
+		return append(buf, 'A'), true
+	}
+	if f.set == nil {
+		return buf, false
+	}
+	type entry struct {
+		prefix string
+		bits   domain.Permission
+	}
+	appendEntries := func(kind byte, entries []entry) {
+		buf = append(buf, kind)
+		buf = binary.AppendUvarint(buf, uint64(len(entries)))
+		for _, e := range entries {
+			buf = binary.AppendUvarint(buf, uint64(len(e.prefix)))
+			buf = append(buf, e.prefix...)
+			buf = binary.AppendUvarint(buf, uint64(e.bits))
+		}
+	}
+	buf = append(buf, 'R')
+	buf = binary.AppendUvarint(buf, uint64(f.permission))
+
+	rules := make([]entry, 0, len(f.set.rules))
+	for _, rule := range f.set.rules {
+		if bits := rule.Permission & f.permission; bits != 0 {
+			rules = append(rules, entry{rule.PathPrefix, bits})
+		}
+	}
+	slices.SortFunc(rules, func(a, b entry) int {
+		return cmp.Or(strings.Compare(a.prefix, b.prefix), cmp.Compare(a.bits, b.bits))
+	})
+	appendEntries('r', slices.Compact(rules))
+
+	defaults := make([]entry, 0, len(f.set.defaults))
+	for _, def := range f.set.defaults {
+		defaults = append(defaults, entry{def.PathPrefix, def.Permission & f.permission})
+	}
+	slices.SortStableFunc(defaults, func(a, b entry) int { return strings.Compare(a.prefix, b.prefix) })
+	appendEntries('d', defaults)
+	return buf, true
 }
 
 func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {

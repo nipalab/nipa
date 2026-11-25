@@ -287,14 +287,27 @@ func (x *TreeManifest) GetFiles() []*FileNode {
 }
 
 type GetTreeManifestRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Branch        string                 `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
-	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
-	TreeHash      *string                `protobuf:"bytes,4,opt,name=tree_hash,json=treeHash,proto3,oneof" json:"tree_hash,omitempty"`
-	Recursive     bool                   `protobuf:"varint,5,opt,name=recursive,proto3" json:"recursive,omitempty"`
-	Paths         []string               `protobuf:"bytes,6,rep,name=paths,proto3" json:"paths,omitempty"`                             // directory prefixes to include; empty = whole tree
-	CommitId      *string                `protobuf:"bytes,7,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"` // base36 snow ID; when set, the manifest is built from that commit instead of the branch head
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Context   *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Branch    string                 `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
+	Path      string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	TreeHash  *string                `protobuf:"bytes,4,opt,name=tree_hash,json=treeHash,proto3,oneof" json:"tree_hash,omitempty"`
+	Recursive bool                   `protobuf:"varint,5,opt,name=recursive,proto3" json:"recursive,omitempty"`
+	Paths     []string               `protobuf:"bytes,6,rep,name=paths,proto3" json:"paths,omitempty"`                             // directory prefixes to include; empty = whole tree
+	CommitId  *string                `protobuf:"bytes,7,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"` // base36 snow ID; when set, the manifest is built from that commit instead of the branch head
+	// Delta manifests (StreamTreeManifest only, recursive requests only). A
+	// client that holds the manifest of base_commit_id, fetched with the same
+	// paths, asks for only what differs from it. base_view is the view token
+	// (TreeManifestPart.view) the server returned with that manifest; the
+	// server answers with a delta only when it still equals the token of the
+	// caller's current view, and with a full manifest otherwise. Unset
+	// base_commit_id = a full manifest, exactly as before these fields.
+	BaseCommitId *string `protobuf:"bytes,8,opt,name=base_commit_id,json=baseCommitId,proto3,oneof" json:"base_commit_id,omitempty"` // base36 snow ID of the commit the client holds
+	BaseView     []byte  `protobuf:"bytes,9,opt,name=base_view,json=baseView,proto3" json:"base_view,omitempty"`                     // opaque view token of the manifest the client holds
+	// Raw 32-byte root tree hash of the manifest the client holds. Optional:
+	// it lets the server prove the root hash of the result (see
+	// TreeManifestDir.tree_hash in a delta); without it the delta carries none.
+	BaseTreeHash  []byte `protobuf:"bytes,10,opt,name=base_tree_hash,json=baseTreeHash,proto3" json:"base_tree_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -378,6 +391,27 @@ func (x *GetTreeManifestRequest) GetCommitId() string {
 	return ""
 }
 
+func (x *GetTreeManifestRequest) GetBaseCommitId() string {
+	if x != nil && x.BaseCommitId != nil {
+		return *x.BaseCommitId
+	}
+	return ""
+}
+
+func (x *GetTreeManifestRequest) GetBaseView() []byte {
+	if x != nil {
+		return x.BaseView
+	}
+	return nil
+}
+
+func (x *GetTreeManifestRequest) GetBaseTreeHash() []byte {
+	if x != nil {
+		return x.BaseTreeHash
+	}
+	return nil
+}
+
 type GetTreeManifestResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Branch        string                 `protobuf:"bytes,1,opt,name=branch,proto3" json:"branch,omitempty"`
@@ -434,11 +468,36 @@ func (x *GetTreeManifestResponse) GetRootTree() *TreeManifest {
 // followed by its own files, then by its subdirectories. A directory's depth
 // (0 = root) names its parent, the last directory sent one level up. No entry
 // at all means no tree (an empty branch or an unchanged tree_hash).
+//
+// A delta (TreeManifestPart.delta) uses the same stream to describe the
+// target manifest relative to the base manifest the client holds:
+//   - A directory with unchanged = true is identical to the base in this
+//     view, subtree included. Nothing follows for it and the client keeps
+//     whatever it holds under that path, which may be nothing: a directory
+//     without any visible file is not part of a manifest, and the server does
+//     not look inside an unchanged directory to find out.
+//   - Any other directory is a changed directory and lists ALL its entries by
+//     name: every file either in full (added or modified) or as
+//     TreeManifestFile.unchanged with only its name, and every child
+//     directory either as unchanged or as a changed directory, recursively.
+//     Whatever the client holds in a changed directory that is not listed was
+//     removed. A directory new in the target is a changed directory whose
+//     files are all sent in full.
+//   - A changed directory that ends up without any file or subdirectory once
+//     its unchanged entries are resolved is not part of the manifest (the
+//     root excepted), exactly as a full manifest leaves it out.
+//   - tree_hash is empty on every directory of a delta except, sometimes, the
+//     root. A root tree_hash is the hash the full manifest of this view
+//     carries for the target and the client can verify its result against it;
+//     an empty one means the server could not know it without loading
+//     unchanged directories. Either way the client recomputes the hashes of
+//     changed directories from its own rows.
 type TreeManifestDir struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Depth         int32                  `protobuf:"varint,1,opt,name=depth,proto3" json:"depth,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	TreeHash      []byte                 `protobuf:"bytes,3,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"` // raw 32-byte hash
+	TreeHash      []byte                 `protobuf:"bytes,3,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"` // raw 32-byte hash; see above for a delta
+	Unchanged     bool                   `protobuf:"varint,4,opt,name=unchanged,proto3" json:"unchanged,omitempty"`              // delta only: the subtree is the base's
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -494,6 +553,13 @@ func (x *TreeManifestDir) GetTreeHash() []byte {
 	return nil
 }
 
+func (x *TreeManifestDir) GetUnchanged() bool {
+	if x != nil {
+		return x.Unchanged
+	}
+	return false
+}
+
 type TreeManifestFile struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -503,6 +569,7 @@ type TreeManifestFile struct {
 	ChunkHashes   [][]byte               `protobuf:"bytes,5,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"` // raw 32-byte hashes; more may follow in TreeManifestChunks
 	Encoding      string                 `protobuf:"bytes,6,opt,name=encoding,proto3" json:"encoding,omitempty"`
 	ChunkSizes    []int64                `protobuf:"varint,7,rep,packed,name=chunk_sizes,json=chunkSizes,proto3" json:"chunk_sizes,omitempty"` // parallel to chunk_hashes; empty when unknown
+	Unchanged     bool                   `protobuf:"varint,8,opt,name=unchanged,proto3" json:"unchanged,omitempty"`                            // delta only: the file is the base's; only name is set
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -584,6 +651,13 @@ func (x *TreeManifestFile) GetChunkSizes() []int64 {
 		return x.ChunkSizes
 	}
 	return nil
+}
+
+func (x *TreeManifestFile) GetUnchanged() bool {
+	if x != nil {
+		return x.Unchanged
+	}
+	return false
 }
 
 // TreeManifestChunks appends chunk hashes (and sizes) to the last file sent.
@@ -738,12 +812,21 @@ func (*TreeManifestEntry_File) isTreeManifestEntry_Entry() {}
 func (*TreeManifestEntry_Chunks) isTreeManifestEntry_Entry() {}
 
 type TreeManifestPart struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Branch        string                 `protobuf:"bytes,1,opt,name=branch,proto3" json:"branch,omitempty"` // first part only
-	Commit        *CommitDetail          `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"` // first part only: set for a recursive manifest of a whole commit
-	Entries       []*TreeManifestEntry   `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Branch  string                 `protobuf:"bytes,1,opt,name=branch,proto3" json:"branch,omitempty"` // first part only
+	Commit  *CommitDetail          `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"` // first part only: set for a recursive manifest of a whole commit
+	Entries []*TreeManifestEntry   `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
+	// first part only: opaque token of the view (the caller's read rules, the
+	// requested paths and the recursive flag) this manifest was built for. A
+	// client stores it with the manifest and sends it back as base_view.
+	View []byte `protobuf:"bytes,4,opt,name=view,proto3" json:"view,omitempty"`
+	// first part only: the entries are a delta against base_commit_id. False
+	// on a request with base_commit_id means the server declined and a full
+	// manifest follows.
+	Delta          bool   `protobuf:"varint,5,opt,name=delta,proto3" json:"delta,omitempty"`
+	TargetCommitId string `protobuf:"bytes,6,opt,name=target_commit_id,json=targetCommitId,proto3" json:"target_commit_id,omitempty"` // first part of a delta only: base36 snow ID of the commit the delta leads to
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *TreeManifestPart) Reset() {
@@ -795,6 +878,27 @@ func (x *TreeManifestPart) GetEntries() []*TreeManifestEntry {
 		return x.Entries
 	}
 	return nil
+}
+
+func (x *TreeManifestPart) GetView() []byte {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
+func (x *TreeManifestPart) GetDelta() bool {
+	if x != nil {
+		return x.Delta
+	}
+	return false
+}
+
+func (x *TreeManifestPart) GetTargetCommitId() string {
+	if x != nil {
+		return x.TargetCommitId
+	}
+	return ""
 }
 
 type PushFile struct {
@@ -13426,7 +13530,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\ttree_hash\x18\x01 \x01(\tR\btreeHash\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x120\n" +
 	"\tsub_trees\x18\x03 \x03(\v2\x13.greet.TreeManifestR\bsubTrees\x12%\n" +
-	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\x89\x02\n" +
+	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\x8a\x03\n" +
 	"\x16GetTreeManifestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12\x12\n" +
@@ -13434,18 +13538,24 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\ttree_hash\x18\x04 \x01(\tH\x00R\btreeHash\x88\x01\x01\x12\x1c\n" +
 	"\trecursive\x18\x05 \x01(\bR\trecursive\x12\x14\n" +
 	"\x05paths\x18\x06 \x03(\tR\x05paths\x12 \n" +
-	"\tcommit_id\x18\a \x01(\tH\x01R\bcommitId\x88\x01\x01B\f\n" +
+	"\tcommit_id\x18\a \x01(\tH\x01R\bcommitId\x88\x01\x01\x12)\n" +
+	"\x0ebase_commit_id\x18\b \x01(\tH\x02R\fbaseCommitId\x88\x01\x01\x12\x1b\n" +
+	"\tbase_view\x18\t \x01(\fR\bbaseView\x12$\n" +
+	"\x0ebase_tree_hash\x18\n" +
+	" \x01(\fR\fbaseTreeHashB\f\n" +
 	"\n" +
 	"_tree_hashB\f\n" +
 	"\n" +
-	"_commit_id\"c\n" +
+	"_commit_idB\x11\n" +
+	"\x0f_base_commit_id\"c\n" +
 	"\x17GetTreeManifestResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x120\n" +
-	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"X\n" +
+	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"v\n" +
 	"\x0fTreeManifestDir\x12\x14\n" +
 	"\x05depth\x18\x01 \x01(\x05R\x05depth\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
-	"\ttree_hash\x18\x03 \x01(\fR\btreeHash\"\xe7\x01\n" +
+	"\ttree_hash\x18\x03 \x01(\fR\btreeHash\x12\x1c\n" +
+	"\tunchanged\x18\x04 \x01(\bR\tunchanged\"\x85\x02\n" +
 	"\x10TreeManifestFile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
 	"\x04mode\x18\x02 \x01(\x0e2\x0f.greet.FileModeR\x04mode\x12\x1d\n" +
@@ -13455,7 +13565,8 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\fchunk_hashes\x18\x05 \x03(\fR\vchunkHashes\x12\x1a\n" +
 	"\bencoding\x18\x06 \x01(\tR\bencoding\x12\x1f\n" +
 	"\vchunk_sizes\x18\a \x03(\x03R\n" +
-	"chunkSizes\"X\n" +
+	"chunkSizes\x12\x1c\n" +
+	"\tunchanged\x18\b \x01(\bR\tunchanged\"X\n" +
 	"\x12TreeManifestChunks\x12!\n" +
 	"\fchunk_hashes\x18\x01 \x03(\fR\vchunkHashes\x12\x1f\n" +
 	"\vchunk_sizes\x18\x02 \x03(\x03R\n" +
@@ -13464,11 +13575,14 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x03dir\x18\x01 \x01(\v2\x16.greet.TreeManifestDirH\x00R\x03dir\x12-\n" +
 	"\x04file\x18\x02 \x01(\v2\x17.greet.TreeManifestFileH\x00R\x04file\x123\n" +
 	"\x06chunks\x18\x03 \x01(\v2\x19.greet.TreeManifestChunksH\x00R\x06chunksB\a\n" +
-	"\x05entry\"\x8b\x01\n" +
+	"\x05entry\"\xdf\x01\n" +
 	"\x10TreeManifestPart\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x12+\n" +
 	"\x06commit\x18\x02 \x01(\v2\x13.greet.CommitDetailR\x06commit\x122\n" +
-	"\aentries\x18\x03 \x03(\v2\x18.greet.TreeManifestEntryR\aentries\"\xdb\x01\n" +
+	"\aentries\x18\x03 \x03(\v2\x18.greet.TreeManifestEntryR\aentries\x12\x12\n" +
+	"\x04view\x18\x04 \x01(\fR\x04view\x12\x14\n" +
+	"\x05delta\x18\x05 \x01(\bR\x05delta\x12(\n" +
+	"\x10target_commit_id\x18\x06 \x01(\tR\x0etargetCommitId\"\xdb\x01\n" +
 	"\bPushFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12#\n" +
 	"\x04mode\x18\x02 \x01(\x0e2\x0f.greet.FileModeR\x04mode\x12\x1d\n" +

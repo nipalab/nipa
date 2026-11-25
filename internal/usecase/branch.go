@@ -51,6 +51,12 @@ type branchRepository interface {
 	// node id and keep the single-directory ordering.
 	ListTreeChildrenByTrees(ctx context.Context, parentIDs []int64) (map[int64][]*domain.TreeNode, error)
 	ListFilesByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error)
+	// ListFileMetaByTrees is the batched ListFileMetaByTree, and
+	// ListChunksByFiles returns the chunk lists of single files by file id;
+	// together they let the delta manifest read chunks only for the files
+	// that changed.
+	ListFileMetaByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error)
+	ListChunksByFiles(ctx context.Context, fileIDs []int64) (map[int64][]domain.Chunk, error)
 	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 	CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 }

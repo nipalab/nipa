@@ -334,6 +334,21 @@ func (mr *MockbranchRepositoryMockRecorder) ListBranches(ctx, projectID, limit, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBranches", reflect.TypeOf((*MockbranchRepository)(nil).ListBranches), ctx, projectID, limit, updatedAfter, lastID)
 }
 
+// ListChunksByFiles mocks base method.
+func (m *MockbranchRepository) ListChunksByFiles(ctx context.Context, fileIDs []int64) (map[int64][]domain.Chunk, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChunksByFiles", ctx, fileIDs)
+	ret0, _ := ret[0].(map[int64][]domain.Chunk)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChunksByFiles indicates an expected call of ListChunksByFiles.
+func (mr *MockbranchRepositoryMockRecorder) ListChunksByFiles(ctx, fileIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChunksByFiles", reflect.TypeOf((*MockbranchRepository)(nil).ListChunksByFiles), ctx, fileIDs)
+}
+
 // ListFileMetaByTree mocks base method.
 func (m *MockbranchRepository) ListFileMetaByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
 	m.ctrl.T.Helper()
@@ -347,6 +362,21 @@ func (m *MockbranchRepository) ListFileMetaByTree(ctx context.Context, treeID in
 func (mr *MockbranchRepositoryMockRecorder) ListFileMetaByTree(ctx, treeID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFileMetaByTree", reflect.TypeOf((*MockbranchRepository)(nil).ListFileMetaByTree), ctx, treeID)
+}
+
+// ListFileMetaByTrees mocks base method.
+func (m *MockbranchRepository) ListFileMetaByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFileMetaByTrees", ctx, treeIDs)
+	ret0, _ := ret[0].(map[int64][]*domain.File)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFileMetaByTrees indicates an expected call of ListFileMetaByTrees.
+func (mr *MockbranchRepositoryMockRecorder) ListFileMetaByTrees(ctx, treeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFileMetaByTrees", reflect.TypeOf((*MockbranchRepository)(nil).ListFileMetaByTrees), ctx, treeIDs)
 }
 
 // ListFilesByTree mocks base method.

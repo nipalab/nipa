@@ -437,6 +437,56 @@ func (b *BranchRepository) ListFilesByTrees(ctx context.Context, treeIDs []int64
 	return out, nil
 }
 
+// ListFileMetaByTrees is the batched ListFileMetaByTree: the files of every
+// requested node without their chunks, keyed by the requested (ref) id and
+// ordered by name. Nodes without files have no entry, and refs that resolve to
+// the same content node each get their own File values.
+func (b *BranchRepository) ListFileMetaByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error) {
+	out := make(map[int64][]*domain.File)
+	for _, batch := range treeIDBatches(treeIDs) {
+		rows, err := b.queries.FileListByTrees(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range rows {
+			out[row.RefID] = append(out[row.RefID], fileToDomain(sqlcSqlite.File{
+				ID:        row.ID,
+				Name:      row.Name,
+				Mode:      row.Mode,
+				TreeID:    row.TreeID,
+				Hash:      row.Hash,
+				SizeBytes: row.SizeBytes,
+				IsBinary:  row.IsBinary,
+				Encoding:  row.Encoding,
+				CreatedAt: row.CreatedAt,
+			}))
+		}
+	}
+	return out, nil
+}
+
+// ListChunksByFiles returns the chunk lists of the given files in chunk-index
+// order, keyed by file id. Files without chunks (and unknown ids) have no
+// entry.
+func (b *BranchRepository) ListChunksByFiles(ctx context.Context, fileIDs []int64) (map[int64][]domain.Chunk, error) {
+	out := make(map[int64][]domain.Chunk)
+	for _, batch := range treeIDBatches(fileIDs) {
+		rows, err := b.queries.ChunkListByFiles(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range rows {
+			out[row.FileID] = append(out[row.FileID], chunkToDomain(sqlcSqlite.Chunk{
+				ID:        row.ID,
+				Hash:      row.Hash,
+				SizeBytes: row.SizeBytes,
+				CreatedAt: row.CreatedAt,
+			}))
+		}
+	}
+	return out, nil
+}
+
 // treeIDBatches drops duplicate ids and splits the rest into treeBatchSize
 // slices, keeping first-seen order.
 func treeIDBatches(ids []int64) [][]int64 {
