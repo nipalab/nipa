@@ -186,7 +186,7 @@ func TestManifestWriter_SendErrorStops(t *testing.T) {
 
 func expectSmallTree(repo *MockbranchRepository, treeID int64) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), treeID).Return(&domain.TreeNode{ID: treeID, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{treeID}).Return(map[int64][]*domain.File{treeID: []*domain.File{{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
+	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{treeID}).Return(map[int64][]*domain.File{treeID: {{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
 	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{treeID}).Return(nil, nil)
 }
 
@@ -240,7 +240,7 @@ func TestStreamTreeManifest_CommitSubdirHasNoDetail(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, ProjectID: 42, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.File{100: []*domain.File{{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
+	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.File{100: {{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
 
 	id := commitID.Base36()
 	stream := &fakeManifestStream{}

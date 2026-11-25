@@ -42,7 +42,7 @@ func TestGetCommit_Success(t *testing.T) {
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).
 			Return(&domain.TreeNode{ID: 5, Hash: rootHash}, nil),
 		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{5}).
-			Return(map[int64][]*domain.File{5: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 5, Hash: fileHash, SizeBytes: 3}}}, nil),
+			Return(map[int64][]*domain.File{5: {{ID: 1, Name: "a.txt", TreeID: 5, Hash: fileHash, SizeBytes: 3}}}, nil),
 		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{5}).Return(nil, nil),
 	)
 

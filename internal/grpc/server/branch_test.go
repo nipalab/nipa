@@ -564,15 +564,15 @@ func TestGetTreeManifest_Success(t *testing.T) {
 		Return(&domain.TreeNode{ID: 100, Name: "root", Hash: hash}, nil)
 	repo.EXPECT().
 		ListFilesByTrees(gomock.Any(), []int64{100}).
-		Return(map[int64][]*domain.File{100: []*domain.File{
+		Return(map[int64][]*domain.File{100: {
 			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Hash: hash, Chunks: []domain.Chunk{{ID: 1, Hash: hash, SizeBytes: 10}}},
 		}}, nil)
 	repo.EXPECT().
 		ListTreeChildrenByTrees(gomock.Any(), []int64{100}).
-		Return(map[int64][]*domain.TreeNode{100: []*domain.TreeNode{{ID: 200, Name: "assets", Hash: hash}}}, nil)
+		Return(map[int64][]*domain.TreeNode{100: {{ID: 200, Name: "assets", Hash: hash}}}, nil)
 	repo.EXPECT().
 		ListFilesByTrees(gomock.Any(), []int64{200}).
-		Return(map[int64][]*domain.File{200: []*domain.File{{ID: 2, Name: "logo.png", Mode: 0o644, Hash: hash}}}, nil)
+		Return(map[int64][]*domain.File{200: {{ID: 2, Name: "logo.png", Mode: 0o644, Hash: hash}}}, nil)
 	repo.EXPECT().
 		ListTreeChildrenByTrees(gomock.Any(), []int64{200}).
 		Return(nil, nil)
@@ -639,7 +639,7 @@ func TestGetTreeManifest_CommitID(t *testing.T) {
 		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
 	repo.EXPECT().
 		ListFilesByTrees(gomock.Any(), []int64{100}).
-		Return(map[int64][]*domain.File{100: []*domain.File{{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
+		Return(map[int64][]*domain.File{100: {{ID: 1, Name: "a.txt", Mode: 0o644}}}, nil)
 	repo.EXPECT().
 		ListTreeChildrenByTrees(gomock.Any(), []int64{100}).
 		Return(nil, nil)

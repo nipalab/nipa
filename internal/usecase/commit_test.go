@@ -107,13 +107,13 @@ func TestBranch_GetCommit_Success(t *testing.T) {
 			Return(&domain.TreeNode{ID: 5, Hash: rootHash}, nil),
 		repo.EXPECT().
 			ListFilesByTrees(gomock.Any(), []int64{5}).
-			Return(map[int64][]*domain.File{5: []*domain.File{{ID: 1, Name: "readme.md", TreeID: 5, Hash: fileHash}}}, nil),
+			Return(map[int64][]*domain.File{5: {{ID: 1, Name: "readme.md", TreeID: 5, Hash: fileHash}}}, nil),
 		repo.EXPECT().
 			ListTreeChildrenByTrees(gomock.Any(), []int64{5}).
-			Return(map[int64][]*domain.TreeNode{5: []*domain.TreeNode{{ID: 6, Name: "src", Hash: dirHash}}}, nil),
+			Return(map[int64][]*domain.TreeNode{5: {{ID: 6, Name: "src", Hash: dirHash}}}, nil),
 		repo.EXPECT().
 			ListFilesByTrees(gomock.Any(), []int64{6}).
-			Return(map[int64][]*domain.File{6: []*domain.File{{
+			Return(map[int64][]*domain.File{6: {{
 				ID:     2,
 				Name:   "main.go",
 				Mode:   0o644,
