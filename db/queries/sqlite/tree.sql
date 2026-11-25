@@ -171,6 +171,16 @@ JOIN chunks ON chunks.id = file_chunks.chunk_id
 WHERE f.tree_id IN (sqlc.slice('tree_ids'))
 ORDER BY f.tree_id, f.name, file_chunks.chunk_index;
 
+-- ChunkListByFiles returns the chunk lists of the given files only, for
+-- callers that already hold the file rows (the delta manifest loads chunks
+-- just for added and modified files). Callers group the rows per file_id.
+-- name: ChunkListByFiles :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
+FROM file_chunks
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+WHERE file_chunks.file_id IN (sqlc.slice('file_ids'))
+ORDER BY file_chunks.file_id, file_chunks.chunk_index;
+
 -- name: CommitAncestors :many
 WITH RECURSIVE anc(id) AS (
     SELECT :start_commit_id AS id

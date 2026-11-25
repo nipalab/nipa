@@ -38,6 +38,10 @@ type Querier interface {
 	// the rows per file_id; only the chunk_index order within a file matters, and
 	// ordering by the (tree_id, name) index order first spares SQLite a sort.
 	ChunkListByContentTrees(ctx context.Context, treeIds []sql.NullInt64) ([]ChunkListByContentTreesRow, error)
+	// ChunkListByFiles returns the chunk lists of the given files only, for
+	// callers that already hold the file rows (the delta manifest loads chunks
+	// just for added and modified files). Callers group the rows per file_id.
+	ChunkListByFiles(ctx context.Context, fileIds []int64) ([]ChunkListByFilesRow, error)
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	ChunkPackInsert(ctx context.Context, arg ChunkPackInsertParams) error

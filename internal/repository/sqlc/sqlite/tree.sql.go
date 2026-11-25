@@ -72,6 +72,64 @@ func (q *Queries) ChunkListByContentTrees(ctx context.Context, treeIds []sql.Nul
 	return items, nil
 }
 
+const chunkListByFiles = `-- name: ChunkListByFiles :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
+FROM file_chunks
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+WHERE file_chunks.file_id IN (/*SLICE:file_ids*/?)
+ORDER BY file_chunks.file_id, file_chunks.chunk_index
+`
+
+type ChunkListByFilesRow struct {
+	ID        int64        `json:"id"`
+	Hash      []byte       `json:"hash"`
+	SizeBytes int64        `json:"size_bytes"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	FileID    int64        `json:"file_id"`
+}
+
+// ChunkListByFiles returns the chunk lists of the given files only, for
+// callers that already hold the file rows (the delta manifest loads chunks
+// just for added and modified files). Callers group the rows per file_id.
+func (q *Queries) ChunkListByFiles(ctx context.Context, fileIds []int64) ([]ChunkListByFilesRow, error) {
+	query := chunkListByFiles
+	var queryParams []interface{}
+	if len(fileIds) > 0 {
+		for _, v := range fileIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:file_ids*/?", strings.Repeat(",?", len(fileIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:file_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChunkListByFilesRow
+	for rows.Next() {
+		var i ChunkListByFilesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.CreatedAt,
+			&i.FileID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const chunkListByTree = `-- name: ChunkListByTree :many
 SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks

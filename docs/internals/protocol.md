@@ -394,6 +394,90 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Branch.loadTreeManifest` skips nodes with the empty-tree hash without a
   query, since the content-node lookup of an empty hash scans every row
   sharing it.
+- **Delta manifests** (`StreamTreeManifest` only; server side
+  `Branch.GetTreeManifestDelta` in `internal/usecase/manifest_delta.go`, wire
+  in `manifest_stream.go`, client transport `Client.GetTreeManifestDelta`,
+  shared types and `Apply` in `internal/treedelta`). A client that holds the
+  recursive manifest of a commit BASE asks for the manifest of a TARGET
+  (branch head or `commit_id`) relative to it, so both sides work in
+  proportion to the change. Nothing in the client usecases asks for one yet.
+  - *Request*: `base_commit_id` (base36), `base_view` (the view token the
+    server returned with the manifest the client holds) and optionally
+    `base_tree_hash` (raw root hash of that manifest). Without
+    `base_commit_id` the answer is the full manifest as before.
+  - *First part*: `view` is set on every manifest, full or delta: the token
+    of the view the answer was built for. `delta = true` says the entries are
+    a delta against `base_commit_id`; false on a request that named a base
+    means the server declined and a full manifest follows.
+    `target_commit_id` (delta only) names the commit the delta leads to. For
+    a whole-commit request the `CommitDetail` is sent as usual, with
+    `tree_hash` set only when the delta has a root hash.
+  - *Encoding* (same depth-first entry stream): a `TreeManifestDir` with
+    `unchanged` is the base's subtree, nothing follows for it. Any other
+    directory is a changed directory and lists all its entries: each file
+    either in full (added/modified: hash, mode class, binary flag, encoding or
+    size differs) or as `TreeManifestFile.unchanged` with only the name, each
+    child directory unchanged or changed, recursively. What the client holds
+    in a changed directory and is not listed was removed; a new directory is
+    a changed directory with every file in full. No directory of a delta
+    carries a `tree_hash` except, when provable, the root.
+  - *"Unchanged" means "keep what you hold, if anything"*. Two directories
+    at the same path with the same stored hash give the same manifest subtree
+    in any fixed view, but whether that subtree shows anything in a filtered
+    or sparse view is only known by reading it, which the walk never does. So
+    an unchanged directory may be one the client does not hold, and a changed
+    directory may end up empty once its unchanged entries are resolved:
+    `treedelta.Apply` drops those (root excepted) exactly as
+    `loadTreeManifest` drops empty directories. A directory whose stored hash
+    differs but whose visible entries do not (only hidden files changed) is
+    detected for the directories the walk reads (`deltaPair.same`) and sent
+    as unchanged, up to the root.
+  - *View token* (`Branch.ManifestView` / `manifestView`): SHA-256 of a
+    version label, `PathFilter.appendFingerprint`, the sorted de-duplicated
+    sparse prefixes and the recursive flag. The filter fingerprint is one
+    byte for every allow-all filter (admins, org owners), otherwise the read
+    permission and, sorted, each rule and each path default as (prefix, the
+    read bits it grants); rules that grant no read are left out, defaults
+    that grant none are kept because they shadow shallower ones. It holds no
+    ids, names or times, so it is the same on every instance and across
+    restarts, and it changes when a rule or default that affects reading
+    does. A nil filter has no fingerprint and never gets a delta. Bump
+    `manifestViewVersion` when manifest filtering itself changes (e.g. a new
+    always-kept root team file).
+  - *Declining* is never an error; the handler then runs the ordinary full
+    manifest path, so its answer (including every error) is the one a client
+    without the new fields gets. The server declines when: the request is
+    not recursive; `base_commit_id` does not parse, is unknown or belongs to
+    another project; `base_view` is empty or is not the current token (read
+    rules or sparse set changed, or the base was fetched non-recursively);
+    the caller has no read access; the target is unknown, not in the
+    project, an empty branch, or lacks a requested sparse path. Only
+    server-side failures (repository errors) fail the call.
+  - *Cost*: the two trees are walked together level by level over the
+    changed directories only. Each level is one `ListFileMetaByTrees` and one
+    `ListTreeChildrenByTrees` over the changed directories of both sides, and
+    one `ListChunksByFiles` at the end loads chunk lists for added/modified
+    files only (`ChunkListByFiles`, ids batched by `treeBatchSize`;
+    `ListFileMetaByTrees` reuses `FileListByTrees`). BASE == TARGET (same
+    stored root hash) reads the two commits and their root rows, nothing
+    else.
+  - *Root hash*: manifests carry rehashed directories, which equal the stored
+    hashes only when the view hides nothing and the stored hashes are sound
+    (no pre-backfill legacy hashes, no empty directory rows). The server
+    vouches for the target's root hash only when it can prove that without
+    reading unchanged directories: the client's `base_tree_hash` must equal
+    the stored base root, and every directory the walk reads, on both sides,
+    must hash to its stored hash from the entries the manifest lists
+    (`deltaWalk.prove`). Otherwise the root `tree_hash` is empty. In every
+    case the client recomputes the hashes of changed directories from its own
+    rows (`treedelta.Apply` does it for whole trees and fails with
+    `ErrRootHashMismatch` when a sent root hash does not match).
+  - *Tests*: `internal/e2e/manifest_delta_test.go` is the property test
+    (random push histories, six read-rule sets, five sparse sets, every
+    commit pair, through the real server and the gRPC codec:
+    `Apply(full(BASE), delta) == full(TARGET)`), plus the decline cases;
+    `internal/usecase/manifest_delta_test.go` covers hand-built shapes,
+    unsound stored hashes and the query cost.
 - **Manifest loading is level by level** (`Branch.loadTreeManifest` /
   `loadManifestLevel`, used by every manifest caller: `manifestForCommit`,
   `GetCommit`, merge base trees, `mergeTree`, the restricted web browse

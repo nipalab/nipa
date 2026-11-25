@@ -106,6 +106,7 @@ type fakeServer struct {
 	getTagErr           error
 	lastGetTagReq       *pb.GetTagByNameRequest
 	lastTreeHash        string
+	lastManifestReq     *pb.GetTreeManifestRequest
 	lastCommitID        string
 	sshBeginErr         error
 	sshCompleteErr      error

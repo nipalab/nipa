@@ -196,10 +196,7 @@ func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifes
 }
 
 func (n *nipaServer) manifestRoot(ctx context.Context, projectID snow.ID, req *pb.GetTreeManifestRequest) (*domain.TreeNode, error) {
-	paths := req.GetPaths()
-	if len(paths) == 0 && req.GetPath() != "" {
-		paths = []string{req.GetPath()}
-	}
+	paths := manifestPaths(req)
 	if commitID := req.GetCommitId(); commitID != "" {
 		id, err := snow.ParseBase36(commitID)
 		if err != nil {
@@ -208,6 +205,16 @@ func (n *nipaServer) manifestRoot(ctx context.Context, projectID snow.ID, req *p
 		return n.uc.Branch().GetCommitTreeManifest(ctx, projectID, id, paths, req.Recursive)
 	}
 	return n.uc.Branch().GetTreeManifest(ctx, projectID, req.Branch, paths, req.GetTreeHash(), req.Recursive)
+}
+
+// manifestPaths returns the sparse prefixes of a manifest request: paths, or
+// the single legacy path.
+func manifestPaths(req *pb.GetTreeManifestRequest) []string {
+	paths := req.GetPaths()
+	if len(paths) == 0 && req.GetPath() != "" {
+		paths = []string{req.GetPath()}
+	}
+	return paths
 }
 
 func (n *nipaServer) GetMergeBase(ctx context.Context, req *pb.GetMergeBaseRequest) (*pb.GetMergeBaseResponse, error) {

@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
+	"github.com/nipalab/nipa/internal/treedelta"
 )
 
 // StreamTreeManifest reads a manifest through the server-streaming RPC and
@@ -82,6 +83,13 @@ func readManifest(ctx context.Context, client pb.NipaServiceClient, req *pb.GetT
 // recvManifest feeds every entry of a streamed manifest to add and returns
 // the first part, which carries the branch and commit.
 func recvManifest(ctx context.Context, client pb.NipaServiceClient, req *pb.GetTreeManifestRequest, add func(*pb.TreeManifestEntry) error) (*pb.TreeManifestPart, error) {
+	return recvManifestParts(ctx, client, req, nil, add)
+}
+
+// recvManifestParts is recvManifest with a hook that sees the head of the
+// first part before any entry reaches add, for callers whose decoding depends
+// on what the server chose to send.
+func recvManifestParts(ctx context.Context, client pb.NipaServiceClient, req *pb.GetTreeManifestRequest, start func(*pb.TreeManifestPart) error, add func(*pb.TreeManifestEntry) error) (*pb.TreeManifestPart, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.StreamTreeManifest(ctx, req)
@@ -97,15 +105,216 @@ func recvManifest(ctx context.Context, client pb.NipaServiceClient, req *pb.GetT
 		if err != nil {
 			return nil, err
 		}
+		if head == nil {
+			head = &pb.TreeManifestPart{
+				Branch: part.GetBranch(), Commit: part.GetCommit(),
+				View: part.GetView(), Delta: part.GetDelta(), TargetCommitId: part.GetTargetCommitId(),
+			}
+			if start != nil {
+				if err := start(head); err != nil {
+					return nil, err
+				}
+			}
+		}
 		for _, entry := range part.GetEntries() {
 			if err := add(entry); err != nil {
 				return nil, err
 			}
 		}
-		if head == nil {
-			head = &pb.TreeManifestPart{Branch: part.GetBranch(), Commit: part.GetCommit()}
+	}
+}
+
+// ManifestTarget names the commit a manifest is asked for: CommitID (base36)
+// when set, the head of Branch otherwise.
+type ManifestTarget struct {
+	Branch   string
+	CommitID string
+}
+
+// GetTreeManifestDelta reads the recursive manifest of target, as a delta
+// against the manifest the caller holds when base names one and the server
+// can build it. The answer is a full manifest (Manifest.Full) when base is
+// empty, when the server declined (the base commit is unknown to it, or the
+// view changed since the base was fetched: other read rules, another sparse
+// set) and when the server predates deltas. Either way it carries the view
+// token to store with the result. A delta is checked for shape only: applying
+// it (treedelta.Apply) is what ties it to the base.
+func (c *Client) GetTreeManifestDelta(ctx context.Context, org, project string, target ManifestTarget, paths []string, base treedelta.Base) (*treedelta.Manifest, error) {
+	req := &pb.GetTreeManifestRequest{
+		Context:   &pb.ProjectContext{Org: org, Project: project},
+		Branch:    target.Branch,
+		Paths:     paths,
+		Recursive: true,
+	}
+	if target.CommitID != "" {
+		req.CommitId = &target.CommitID
+	}
+	if base.CommitID != "" {
+		req.BaseCommitId = &base.CommitID
+		req.BaseView = base.View
+		if base.TreeHash != nil {
+			req.BaseTreeHash = base.TreeHash.Bytes()
 		}
 	}
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, streamError(err, "streamed tree manifests")
+	}
+	var out *treedelta.Manifest
+	err = c.invokeWithThrottleRetry(ctx, func() error {
+		return c.callAuthed(ctx, func(authCtx context.Context) error {
+			var err error
+			out, err = readManifestDelta(authCtx, client, req)
+			return err
+		})
+	})
+	if err != nil {
+		return nil, streamError(err, "streamed tree manifests")
+	}
+	return out, nil
+}
+
+func readManifestDelta(ctx context.Context, client pb.NipaServiceClient, req *pb.GetTreeManifestRequest) (*treedelta.Manifest, error) {
+	var full treeAssembler
+	var delta *deltaAssembler
+	head, err := recvManifestParts(ctx, client, req, func(head *pb.TreeManifestPart) error {
+		if !head.GetDelta() {
+			return nil
+		}
+		if req.GetBaseCommitId() == "" {
+			return errors.New("malformed tree manifest: a delta nobody asked for")
+		}
+		delta = &deltaAssembler{}
+		return nil
+	}, func(entry *pb.TreeManifestEntry) error {
+		if delta != nil {
+			return delta.add(entry)
+		}
+		return full.add(entry)
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &treedelta.Manifest{View: head.GetView()}
+	if delta == nil {
+		out.Full = full.finish()
+		return out, nil
+	}
+	if out.Delta, err = delta.finish(); err != nil {
+		return nil, err
+	}
+	out.CommitID = head.GetTargetCommitId()
+	return out, nil
+}
+
+// deltaAssembler builds a treedelta.Delta from the entries of a delta
+// manifest, with the checks treeAssembler applies to a full one: names are
+// single safe path segments and hashes are whole. On top of that nothing may
+// follow an unchanged directory or file, which carry a name only.
+type deltaAssembler struct {
+	root  *treedelta.Dir
+	hash  *serverDomain.Hash
+	stack []*treedelta.Dir
+	// files reads the chunk lists of the file being received.
+	files treeAssembler
+}
+
+func (a *deltaAssembler) add(entry *pb.TreeManifestEntry) error {
+	switch e := entry.GetEntry().(type) {
+	case *pb.TreeManifestEntry_Dir:
+		return a.dir(e.Dir)
+	case *pb.TreeManifestEntry_File:
+		return a.file(e.File)
+	case *pb.TreeManifestEntry_Chunks:
+		if a.files.last == nil {
+			return errors.New("malformed tree manifest: chunks before any file")
+		}
+		return a.files.chunks(e.Chunks.GetChunkHashes(), e.Chunks.GetChunkSizes())
+	default:
+		return errors.New("malformed tree manifest: empty entry")
+	}
+}
+
+func (a *deltaAssembler) dir(d *pb.TreeManifestDir) error {
+	a.files.seal()
+	node := &treedelta.Dir{Name: d.GetName(), Unchanged: d.GetUnchanged()}
+	depth := int(d.GetDepth())
+	switch {
+	case depth == 0 && a.root == nil:
+		if raw := d.GetTreeHash(); len(raw) != 0 {
+			var hash serverDomain.Hash
+			if len(raw) != len(hash) {
+				return fmt.Errorf("malformed tree manifest: hash has %d bytes", len(raw))
+			}
+			copy(hash[:], raw)
+			a.hash = &hash
+		}
+		a.root = node
+	case depth >= 1 && depth <= len(a.stack):
+		if err := a.checkName(a.stack[1:depth], d.GetName()); err != nil {
+			return err
+		}
+		a.stack = a.stack[:depth]
+		parent := a.stack[depth-1]
+		if parent.Unchanged {
+			return fmt.Errorf("malformed tree manifest: directory %q inside an unchanged directory", d.GetName())
+		}
+		parent.Dirs = append(parent.Dirs, node)
+	default:
+		return fmt.Errorf("malformed tree manifest: directory %q at depth %d", d.GetName(), depth)
+	}
+	a.stack = append(a.stack, node)
+	return nil
+}
+
+func (a *deltaAssembler) file(f *pb.TreeManifestFile) error {
+	a.files.seal()
+	if len(a.stack) == 0 {
+		return fmt.Errorf("malformed tree manifest: file %q before any directory", f.GetName())
+	}
+	if err := a.checkName(a.stack[1:], f.GetName()); err != nil {
+		return err
+	}
+	dir := a.stack[len(a.stack)-1]
+	if dir.Unchanged {
+		return fmt.Errorf("malformed tree manifest: file %q inside an unchanged directory", f.GetName())
+	}
+	if f.GetUnchanged() {
+		if len(f.GetChunkHashes()) != 0 {
+			return fmt.Errorf("malformed tree manifest: unchanged file %q with chunks", f.GetName())
+		}
+		dir.Files = append(dir.Files, treedelta.File{Name: f.GetName()})
+		return nil
+	}
+	node := &serverDomain.File{
+		Name:      f.GetName(),
+		Mode:      int(f.GetMode()),
+		SizeBytes: f.GetSizeBytes(),
+		IsBinary:  f.GetIsBinary(),
+		Encoding:  f.GetEncoding(),
+	}
+	dir.Files = append(dir.Files, treedelta.File{Name: node.Name, Changed: node})
+	a.files.last, a.files.sized = node, true
+	return a.files.chunks(f.GetChunkHashes(), f.GetChunkSizes())
+}
+
+func (a *deltaAssembler) finish() (*treedelta.Delta, error) {
+	a.files.seal()
+	if a.root == nil {
+		return nil, errors.New("malformed tree manifest: a delta without a root directory")
+	}
+	return &treedelta.Delta{Root: a.root, RootHash: a.hash}, nil
+}
+
+func (a *deltaAssembler) checkName(parents []*treedelta.Dir, name string) error {
+	if err := serverDomain.ValidateLocalPathSegment(name); err != nil {
+		path := name
+		for i := len(parents) - 1; i >= 0; i-- {
+			path = parents[i].Name + "/" + path
+		}
+		return unsafeManifestName(path, err)
+	}
+	return nil
 }
 
 // treeAssembler builds the domain tree from manifest entries with the same

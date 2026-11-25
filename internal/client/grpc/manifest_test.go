@@ -31,6 +31,7 @@ func (f *fakeServer) StreamTreeManifest(req *pb.GetTreeManifestRequest, stream g
 	f.lastPaths = req.GetPaths()
 	f.lastTreeHash = req.GetTreeHash()
 	f.lastCommitID = req.GetCommitId()
+	f.lastManifestReq = req
 	tree := f.treeManifest
 	first := &pb.TreeManifestPart{Branch: "main"}
 	if req.GetCommitId() != "" && req.GetRecursive() && (f.getCommitResp != nil || f.getCommitErr != nil) {
