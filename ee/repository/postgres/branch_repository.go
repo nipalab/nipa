@@ -333,6 +333,125 @@ func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([
 	return files, nil
 }
 
+// treeBatchSize bounds how many tree node ids one batched tree statement
+// carries. It stays far below SQLite's bound-parameter limit and keeps a
+// single result set to a slice of a tree level on both dialects.
+const treeBatchSize = 500
+
+// ListTreeChildrenByTrees is the batched ListTreeChildren: it returns the
+// child nodes of every requested node, keyed by the requested (ref) id and
+// ordered by name. Nodes without children have no entry.
+func (b *BranchRepository) ListTreeChildrenByTrees(ctx context.Context, parentIDs []int64) (map[int64][]*domain.TreeNode, error) {
+	out := make(map[int64][]*domain.TreeNode)
+	for _, batch := range treeIDBatches(parentIDs) {
+		rows, err := b.queries.TreeNodeListChildrenByTrees(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range rows {
+			out[row.RefID] = append(out[row.RefID], treeNodeToDomain(sqlcPostgres.TreeNode{
+				ID:           row.ID,
+				Hash:         row.Hash,
+				Name:         row.Name,
+				Mode:         row.Mode,
+				ParentTreeID: row.ParentTreeID,
+				CreatedAt:    row.CreatedAt,
+			}))
+		}
+	}
+	return out, nil
+}
+
+// ListFilesByTrees is the batched ListFilesByTree: it returns the files of
+// every requested node with their chunk lists, keyed by the requested (ref)
+// id, files ordered by name and chunks by chunk index. Nodes without files
+// have no entry. Refs that resolve to the same content node each get their own
+// File values and chunk slices.
+func (b *BranchRepository) ListFilesByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error) {
+	out := make(map[int64][]*domain.File)
+	for _, batch := range treeIDBatches(treeIDs) {
+		rows, err := b.queries.FileListByTrees(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		// filesByID holds the first File of each file id; twins are the extra
+		// copies handed to other refs that resolve to the same content node.
+		filesByID := make(map[int64]*domain.File, len(rows))
+		var twins map[int64][]*domain.File
+		contentSeen := make(map[int64]struct{})
+		var contentIDs []int64
+		for _, row := range rows {
+			file := fileToDomain(sqlcPostgres.File{
+				ID:        row.ID,
+				Name:      row.Name,
+				Mode:      row.Mode,
+				TreeID:    row.TreeID,
+				Hash:      row.Hash,
+				SizeBytes: row.SizeBytes,
+				IsBinary:  row.IsBinary,
+				Encoding:  row.Encoding,
+				CreatedAt: row.CreatedAt,
+			})
+			out[row.RefID] = append(out[row.RefID], file)
+			if _, ok := filesByID[row.ID]; !ok {
+				filesByID[row.ID] = file
+			} else {
+				if twins == nil {
+					twins = make(map[int64][]*domain.File)
+				}
+				twins[row.ID] = append(twins[row.ID], file)
+			}
+			if _, ok := contentSeen[row.TreeID.Int64]; !ok {
+				contentSeen[row.TreeID.Int64] = struct{}{}
+				contentIDs = append(contentIDs, row.TreeID.Int64)
+			}
+		}
+		chunks, err := b.queries.ChunkListByContentTrees(ctx, contentIDs)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range chunks {
+			chunk := chunkToDomain(sqlcPostgres.Chunk{
+				ID:        row.ID,
+				Hash:      row.Hash,
+				SizeBytes: row.SizeBytes,
+				CreatedAt: row.CreatedAt,
+			})
+			file, ok := filesByID[row.FileID]
+			if !ok {
+				continue
+			}
+			file.Chunks = append(file.Chunks, chunk)
+			for _, twin := range twins[row.FileID] {
+				twin.Chunks = append(twin.Chunks, chunk)
+			}
+		}
+	}
+	return out, nil
+}
+
+// treeIDBatches drops duplicate ids and splits the rest into treeBatchSize
+// slices, keeping first-seen order.
+func treeIDBatches(ids []int64) [][]int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	unique := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	var batches [][]int64
+	for start := 0; start < len(unique); start += treeBatchSize {
+		batches = append(batches, unique[start:min(start+treeBatchSize, len(unique))])
+	}
+	return batches
+}
+
 func (b *BranchRepository) CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
 	rows, err := b.queries.CommitLog(ctx, sqlcPostgres.CommitLogParams{
 		ProjectID:     projectID.Int64(),

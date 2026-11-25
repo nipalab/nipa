@@ -51,6 +51,7 @@ baseline table. They are skipped unless the env var is set, so CI stays fast.
 | `make bench-unit` | chunker encode (text/packed/unknown), Myers diff, tree hash throughput | release commit |
 | `make bench-scale-files files=10000` | wide-tree scale on SQLite: initial and one-file push, recursive manifest, commit and merge-request diff, clone, `ApplyPush` alone, `SaveTree` with 5 changes | per change that touches these paths |
 | `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker); `NIPA_BENCH_LATENCY=500us` adds a one-way delay in front of postgres | per change that touches these paths |
+| `make bench-manifest` | one full recursive manifest of a 1,649-directory / ~97.6k-file tree, per-directory walk vs the level-batched loader: Go benchmark on SQLite, then a timed harness on postgres (Docker) | per change that touches manifest loading or the tree queries |
 
 Expected shape (loopback, modern laptop): encode is roughly 0.5–1 GiB/s for
 packed/unknown binaries and BLAKE3 ~4 GiB/s, so network and disk dominate; the
@@ -103,6 +104,31 @@ write checks and binary-lock planning (`commitChanges`) use the same walk, and
 `VisibleChunks` skips directories it has already visited across the requested
 commits. The stored hash is compared before permission filtering; both sides
 use the same filter, so equal hashes stay equal after it.
+
+### Full manifest of a deep tree (1,649 directories, ~97.6k single-chunk files)
+
+The wide-tree harness above has 10 directories, so it hides the cost that
+dominated the 100k-file load test: `loadTreeManifest` used to issue three
+statements per directory (files, chunks, children). It now loads a whole tree
+level per batch (`docs/internals/protocol.md`, "Manifest loading is level by
+level"). Recorded 2026-11-25 on the same Ryzen 7 6800H laptop, loopback,
+postgres 17 in a local container, tree shape 8 x 5 x 40 leaf directories with
+61 files each:
+
+| Full recursive manifest | Per-directory (before) | Level-batched (after) |
+|---|---|---|
+| Repository calls / SQL statements | 3,298 / ~4,900 | 8 / ~19 |
+| SQLite (`BenchmarkLoadTreeManifest`) | 604 ms | 489 ms |
+| Postgres, loopback (`TestManifestLoadScale`, best of 3) | 1,026 ms | 423 ms |
+
+SQLite has no round trip to save, so the gain there is the avoided statement
+overhead; on postgres every avoided statement is a network round trip, so the
+gap widens with the latency between the server and the database (the load test
+measured ~3.6 s per manifest before). The batched loader allocates about a
+third more in total per manifest (225 MB vs 167 MB on SQLite, from the larger
+row slices sqlc grows per batch) with slightly fewer allocations; the retained
+tree is the same and the transient part is bounded by `treeBatchSize` (500
+directories per statement).
 
 ## Load scenarios (`tests/load`)
 
@@ -179,8 +205,9 @@ declared size (413) before reading chunks, serves `ETag` = file hash with
 
 Tree nodes are deduplicated by hash: identical subtrees share a hash, but only
 one `tree_nodes` row holds the files and children. `TreeNodeGetChildByName`,
-`TreeNodeListChildren`, `FileListByTree` and `ChunkListByTree`
-(`db/queries/sqlite/tree.sql` and the postgres twins) therefore resolve the
+`TreeNodeListChildren`, `FileListByTree` and `ChunkListByTree`, and the
+batched `TreeNodeListChildrenByTrees` / `FileListByTrees` the manifest loader
+uses (`db/queries/sqlite/tree.sql` and the postgres twins) therefore resolve the
 "content" row on every call with a `tree_nodes` self-join on `hash`, two
 `EXISTS` probes and `ORDER BY id LIMIT 1`; `ChunkListByTree` nests it twice.
 

@@ -122,6 +122,55 @@ WHERE file_chunks.file_id IN (
     )
 ORDER BY file_chunks.file_id, file_chunks.chunk_index;
 
+-- The *ByTrees queries are the batched twins of TreeNodeListChildren,
+-- FileListByTree and ChunkListByTree: one statement serves a whole tree level.
+-- Each requested id is a "ref" and is resolved to its content node exactly as
+-- the single-directory queries do (lowest id sharing the hash that owns rows;
+-- files OR children for the children variant, files only for the files
+-- variant). Rows carry ref_id so the caller can group them per requested node.
+-- name: TreeNodeListChildrenByTrees :many
+SELECT ref.id AS ref_id, t.*
+FROM tree_nodes ref
+JOIN tree_nodes t ON t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        WHERE content.hash = ref.hash
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+WHERE ref.id IN (sqlc.slice('tree_ids'))
+ORDER BY ref.id, t.name;
+
+-- name: FileListByTrees :many
+SELECT ref.id AS ref_id, f.*
+FROM tree_nodes ref
+JOIN files f ON f.tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        WHERE content.hash = ref.hash
+          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+        ORDER BY content.id
+        LIMIT 1
+    )
+WHERE ref.id IN (sqlc.slice('tree_ids'))
+ORDER BY ref.id, f.name;
+
+-- ChunkListByContentTrees takes the content node ids FileListByTrees returned
+-- as files.tree_id, so the refs are not resolved a second time. Callers group
+-- the rows per file_id; only the chunk_index order within a file matters, and
+-- ordering by the (tree_id, name) index order first spares SQLite a sort.
+-- name: ChunkListByContentTrees :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
+FROM files f
+JOIN file_chunks ON file_chunks.file_id = f.id
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+WHERE f.tree_id IN (sqlc.slice('tree_ids'))
+ORDER BY f.tree_id, f.name, file_chunks.chunk_index;
+
 -- name: CommitAncestors :many
 WITH RECURSIVE anc(id) AS (
     SELECT :start_commit_id AS id

@@ -41,9 +41,9 @@ func TestGetCommit_Success(t *testing.T) {
 	gomock.InOrder(
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).
 			Return(&domain.TreeNode{ID: 5, Hash: rootHash}, nil),
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(5)).
-			Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 5, Hash: fileHash, SizeBytes: 3}}, nil),
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(5)).Return(nil, nil),
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{5}).
+			Return(map[int64][]*domain.File{5: {{ID: 1, Name: "a.txt", TreeID: 5, Hash: fileHash, SizeBytes: 3}}}, nil),
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{5}).Return(nil, nil),
 	)
 
 	resp, err := srv.GetCommit(context.Background(), &pb.GetCommitRequest{

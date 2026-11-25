@@ -123,7 +123,7 @@ func TestBranch_TreeFilesAt_Errors(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101}, nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, wantErr)
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{101}).Return(nil, wantErr)
 
 		_, err := uc.TreeFilesAt(context.Background(), snow.ID(1), "main", "")
 		require.ErrorIs(t, err, wantErr)

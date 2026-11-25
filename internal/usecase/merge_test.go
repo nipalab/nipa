@@ -410,8 +410,8 @@ func TestBranch_GetMergeBase_SameHead(t *testing.T) {
 		// commitTreeManifest on the (equal) base.
 		repo.EXPECT().GetCommit(gomock.Any(), head).Return(&domain.Commit{ID: head, TreeID: 100, Hash: domain.Hash{1}}, nil),
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil),
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(rootFiles, nil),
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.File{100: rootFiles}, nil),
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{100}).Return(nil, nil),
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
@@ -459,8 +459,8 @@ func TestBranch_GetMergeBase_ForkedBranches(t *testing.T) {
 		// merge base tree manifest (recursive).
 		repo.EXPECT().GetCommit(gomock.Any(), base).Return(&domain.Commit{ID: base, TreeID: 100}, nil),
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil),
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil),
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{100}).Return(nil, nil),
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{100}).Return(nil, nil),
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
@@ -568,8 +568,8 @@ func TestBranch_GetMergeBase_CommitRefs(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), sourceID).Return(sourceCommit, nil),
 		repo.EXPECT().GetCommit(gomock.Any(), base).Return(&domain.Commit{ID: base, TreeID: 100}, nil),
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil),
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil),
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{100}).Return(nil, nil),
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{100}).Return(nil, nil),
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
@@ -806,7 +806,7 @@ func TestBranch_CommitTreeManifest_Errors(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), commitID).
 			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, wantErr)
+		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{101}).Return(nil, wantErr)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
 		_, err := uc.commitTreeManifest(ctx, projectID, commitID, true)

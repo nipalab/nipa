@@ -12,6 +12,66 @@ import (
 	"time"
 )
 
+const chunkListByContentTrees = `-- name: ChunkListByContentTrees :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
+FROM files f
+JOIN file_chunks ON file_chunks.file_id = f.id
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+WHERE f.tree_id IN (/*SLICE:tree_ids*/?)
+ORDER BY f.tree_id, f.name, file_chunks.chunk_index
+`
+
+type ChunkListByContentTreesRow struct {
+	ID        int64        `json:"id"`
+	Hash      []byte       `json:"hash"`
+	SizeBytes int64        `json:"size_bytes"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	FileID    int64        `json:"file_id"`
+}
+
+// ChunkListByContentTrees takes the content node ids FileListByTrees returned
+// as files.tree_id, so the refs are not resolved a second time. Callers group
+// the rows per file_id; only the chunk_index order within a file matters, and
+// ordering by the (tree_id, name) index order first spares SQLite a sort.
+func (q *Queries) ChunkListByContentTrees(ctx context.Context, treeIds []sql.NullInt64) ([]ChunkListByContentTreesRow, error) {
+	query := chunkListByContentTrees
+	var queryParams []interface{}
+	if len(treeIds) > 0 {
+		for _, v := range treeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", strings.Repeat(",?", len(treeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChunkListByContentTreesRow
+	for rows.Next() {
+		var i ChunkListByContentTreesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.CreatedAt,
+			&i.FileID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const chunkListByTree = `-- name: ChunkListByTree :many
 SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks
@@ -491,6 +551,78 @@ func (q *Queries) FileListByTree(ctx context.Context, treeID int64) ([]File, err
 	return items, nil
 }
 
+const fileListByTrees = `-- name: FileListByTrees :many
+SELECT ref.id AS ref_id, f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.encoding, f.created_at
+FROM tree_nodes ref
+JOIN files f ON f.tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        WHERE content.hash = ref.hash
+          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+        ORDER BY content.id
+        LIMIT 1
+    )
+WHERE ref.id IN (/*SLICE:tree_ids*/?)
+ORDER BY ref.id, f.name
+`
+
+type FileListByTreesRow struct {
+	RefID     int64         `json:"ref_id"`
+	ID        int64         `json:"id"`
+	Name      string        `json:"name"`
+	Mode      int64         `json:"mode"`
+	TreeID    sql.NullInt64 `json:"tree_id"`
+	Hash      []byte        `json:"hash"`
+	SizeBytes int64         `json:"size_bytes"`
+	IsBinary  bool          `json:"is_binary"`
+	Encoding  string        `json:"encoding"`
+	CreatedAt sql.NullTime  `json:"created_at"`
+}
+
+func (q *Queries) FileListByTrees(ctx context.Context, treeIds []int64) ([]FileListByTreesRow, error) {
+	query := fileListByTrees
+	var queryParams []interface{}
+	if len(treeIds) > 0 {
+		for _, v := range treeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", strings.Repeat(",?", len(treeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListByTreesRow
+	for rows.Next() {
+		var i FileListByTreesRow
+		if err := rows.Scan(
+			&i.RefID,
+			&i.ID,
+			&i.Name,
+			&i.Mode,
+			&i.TreeID,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const treeNodeGet = `-- name: TreeNodeGet :one
 SELECT id, hash, name, mode, parent_tree_id, created_at
 FROM tree_nodes
@@ -578,6 +710,81 @@ func (q *Queries) TreeNodeListChildren(ctx context.Context, parentTreeID int64) 
 	for rows.Next() {
 		var i TreeNode
 		if err := rows.Scan(
+			&i.ID,
+			&i.Hash,
+			&i.Name,
+			&i.Mode,
+			&i.ParentTreeID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const treeNodeListChildrenByTrees = `-- name: TreeNodeListChildrenByTrees :many
+SELECT ref.id AS ref_id, t.id, t.hash, t.name, t.mode, t.parent_tree_id, t.created_at
+FROM tree_nodes ref
+JOIN tree_nodes t ON t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        WHERE content.hash = ref.hash
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+WHERE ref.id IN (/*SLICE:tree_ids*/?)
+ORDER BY ref.id, t.name
+`
+
+type TreeNodeListChildrenByTreesRow struct {
+	RefID        int64         `json:"ref_id"`
+	ID           int64         `json:"id"`
+	Hash         []byte        `json:"hash"`
+	Name         string        `json:"name"`
+	Mode         int64         `json:"mode"`
+	ParentTreeID sql.NullInt64 `json:"parent_tree_id"`
+	CreatedAt    sql.NullTime  `json:"created_at"`
+}
+
+// The *ByTrees queries are the batched twins of TreeNodeListChildren,
+// FileListByTree and ChunkListByTree: one statement serves a whole tree level.
+// Each requested id is a "ref" and is resolved to its content node exactly as
+// the single-directory queries do (lowest id sharing the hash that owns rows;
+// files OR children for the children variant, files only for the files
+// variant). Rows carry ref_id so the caller can group them per requested node.
+func (q *Queries) TreeNodeListChildrenByTrees(ctx context.Context, treeIds []int64) ([]TreeNodeListChildrenByTreesRow, error) {
+	query := treeNodeListChildrenByTrees
+	var queryParams []interface{}
+	if len(treeIds) > 0 {
+		for _, v := range treeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", strings.Repeat(",?", len(treeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tree_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TreeNodeListChildrenByTreesRow
+	for rows.Next() {
+		var i TreeNodeListChildrenByTreesRow
+		if err := rows.Scan(
+			&i.RefID,
 			&i.ID,
 			&i.Hash,
 			&i.Name,

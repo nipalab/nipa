@@ -33,6 +33,11 @@ type Querier interface {
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkInsertManyOrIgnore(ctx context.Context, arg ChunkInsertManyOrIgnoreParams) error
+	// ChunkListByContentTrees takes the content node ids FileListByTrees returned
+	// as files.tree_id, so the refs are not resolved a second time. Callers group
+	// the rows per file_id; only the chunk_index order within a file matters, and
+	// ordering by the (tree_id, name) index order first spares SQLite a sort.
+	ChunkListByContentTrees(ctx context.Context, treeIds []sql.NullInt64) ([]ChunkListByContentTreesRow, error)
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	ChunkPackInsert(ctx context.Context, arg ChunkPackInsertParams) error
@@ -68,6 +73,7 @@ type Querier interface {
 	FileChunkInsertMany(ctx context.Context, links interface{}) error
 	FileInsertMany(ctx context.Context, fileRows interface{}) ([]FileInsertManyRow, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
+	FileListByTrees(ctx context.Context, treeIds []int64) ([]FileListByTreesRow, error)
 	FileLockCreate(ctx context.Context, arg FileLockCreateParams) (FileLock, error)
 	FileLockDelete(ctx context.Context, id int64) (int64, error)
 	FileLockDeleteByBranch(ctx context.Context, arg FileLockDeleteByBranchParams) (int64, error)
@@ -282,6 +288,13 @@ type Querier interface {
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
+	// The *ByTrees queries are the batched twins of TreeNodeListChildren,
+	// FileListByTree and ChunkListByTree: one statement serves a whole tree level.
+	// Each requested id is a "ref" and is resolved to its content node exactly as
+	// the single-directory queries do (lowest id sharing the hash that owns rows;
+	// files OR children for the children variant, files only for the files
+	// variant). Rows carry ref_id so the caller can group them per requested node.
+	TreeNodeListChildrenByTrees(ctx context.Context, treeIds []int64) ([]TreeNodeListChildrenByTreesRow, error)
 	TreeNodeMaxID(ctx context.Context) (int64, error)
 	TreeNodeSetHash(ctx context.Context, arg TreeNodeSetHashParams) error
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error

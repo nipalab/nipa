@@ -364,6 +364,21 @@ func (mr *MockbranchRepositoryMockRecorder) ListFilesByTree(ctx, treeID any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesByTree", reflect.TypeOf((*MockbranchRepository)(nil).ListFilesByTree), ctx, treeID)
 }
 
+// ListFilesByTrees mocks base method.
+func (m *MockbranchRepository) ListFilesByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFilesByTrees", ctx, treeIDs)
+	ret0, _ := ret[0].(map[int64][]*domain.File)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFilesByTrees indicates an expected call of ListFilesByTrees.
+func (mr *MockbranchRepositoryMockRecorder) ListFilesByTrees(ctx, treeIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesByTrees", reflect.TypeOf((*MockbranchRepository)(nil).ListFilesByTrees), ctx, treeIDs)
+}
+
 // ListTreeChildren mocks base method.
 func (m *MockbranchRepository) ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error) {
 	m.ctrl.T.Helper()
@@ -377,6 +392,21 @@ func (m *MockbranchRepository) ListTreeChildren(ctx context.Context, parentID in
 func (mr *MockbranchRepositoryMockRecorder) ListTreeChildren(ctx, parentID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildren", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildren), ctx, parentID)
+}
+
+// ListTreeChildrenByTrees mocks base method.
+func (m *MockbranchRepository) ListTreeChildrenByTrees(ctx context.Context, parentIDs []int64) (map[int64][]*domain.TreeNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTreeChildrenByTrees", ctx, parentIDs)
+	ret0, _ := ret[0].(map[int64][]*domain.TreeNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTreeChildrenByTrees indicates an expected call of ListTreeChildrenByTrees.
+func (mr *MockbranchRepositoryMockRecorder) ListTreeChildrenByTrees(ctx, parentIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildrenByTrees", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildrenByTrees), ctx, parentIDs)
 }
 
 // RenameBranch mocks base method.

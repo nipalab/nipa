@@ -31,7 +31,48 @@ func specHash(spec *testTreeSpec) domain.Hash {
 	return treehash.TreeHash(files, trees)
 }
 
+// expectTreeManifest registers the single-directory lookups for every node of
+// spec plus the batched level loads loadTreeManifest issues for any set of
+// its nodes.
 func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
+	files := map[int64][]*domain.File{}
+	children := map[int64][]*domain.TreeNode{}
+	known := map[int64]bool{}
+	expectTreeNodes(repo, spec, files, children, known)
+	inTree := gomock.Cond(func(ids []int64) bool {
+		for _, id := range ids {
+			if !known[id] {
+				return false
+			}
+		}
+		return true
+	})
+	repo.EXPECT().ListFilesByTrees(gomock.Any(), inTree).
+		DoAndReturn(func(_ context.Context, ids []int64) (map[int64][]*domain.File, error) {
+			out := map[int64][]*domain.File{}
+			for _, id := range ids {
+				for _, file := range files[id] {
+					cp := *file
+					out[id] = append(out[id], &cp)
+				}
+			}
+			return out, nil
+		}).AnyTimes()
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), inTree).
+		DoAndReturn(func(_ context.Context, ids []int64) (map[int64][]*domain.TreeNode, error) {
+			out := map[int64][]*domain.TreeNode{}
+			for _, id := range ids {
+				for _, child := range children[id] {
+					cp := *child
+					out[id] = append(out[id], &cp)
+				}
+			}
+			return out, nil
+		}).AnyTimes()
+}
+
+func expectTreeNodes(repo *MockbranchRepository, spec *testTreeSpec, allFiles map[int64][]*domain.File, allChildren map[int64][]*domain.TreeNode, known map[int64]bool) {
+	known[spec.id] = true
 	repo.EXPECT().GetTreeNode(gomock.Any(), spec.id).
 		DoAndReturn(func(context.Context, int64) (*domain.TreeNode, error) {
 			return &domain.TreeNode{ID: spec.id, Name: spec.name, Hash: specHash(spec)}, nil
@@ -56,8 +97,10 @@ func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
 		children = append(children, &domain.TreeNode{ID: child.id, Name: child.name, Hash: specHash(child)})
 	}
 	repo.EXPECT().ListTreeChildren(gomock.Any(), spec.id).Return(children, nil).AnyTimes()
+	allFiles[spec.id] = files
+	allChildren[spec.id] = children
 	for _, child := range spec.children {
-		expectTreeManifest(repo, child)
+		expectTreeNodes(repo, child, allFiles, allChildren, known)
 	}
 }
 
