@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack vscode-test vscode-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-manifest bench-unit fuzz load-test release release-server
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack vscode-test vscode-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-manifest bench-small-change bench-unit fuzz load-test release release-server
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 GCOVR ?= gcovr
@@ -243,6 +243,10 @@ bench-scale-files-ee:
 bench-manifest:
 	go test ./internal/usecase -run '^$$' -bench BenchmarkLoadTreeManifest -benchtime=5x -benchmem
 	NIPA_BENCH_TREE_LEAVES=40 go test ./ee/repository/postgres -run 'TestBranchRepositorySuite/TestManifestLoadScale' -v -count=1
+
+## Client-side cost of `nipa add` and `nipa push` of one file in a working copy of N tracked files (e.g. make bench-small-change files=100000).
+bench-small-change:
+	NIPA_BENCH_FILES=$(files) go test ./internal/client/usecase -run TestSmallChangeScale -v -count=1
 
 ## Run the package micro-benchmarks (chunker, diff, treehash).
 bench-unit:

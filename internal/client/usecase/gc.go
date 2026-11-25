@@ -73,37 +73,66 @@ func lockShared(lr any) (func(), error) {
 	return func() {}, nil
 }
 
-func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
+// pruneGuard takes what every prune needs before it deletes anything: the
+// exclusive repository lock, without waiting, and no pending merge, revert or
+// shelf state (their content lives in the cache without a snapshot row). When
+// the prune must not run it returns the skipped result instead of a release
+// function.
+func pruneGuard(lr cacheLocalRepo) (release func(), skipped *PruneResult, err error) {
+	release = func() {}
 	if locker, ok := lr.(exclusiveLocker); ok {
-		release, acquired, err := locker.TryLockExclusive()
+		unlock, acquired, err := locker.TryLockExclusive()
 		if err != nil {
-			return PruneResult{}, err
+			return nil, nil, err
 		}
 		if !acquired {
-			return PruneResult{Skipped: true, SkipReason: PruneSkipBusy}, nil
+			return nil, &PruneResult{Skipped: true, SkipReason: PruneSkipBusy}, nil
 		}
-		defer release()
+		release = unlock
 	}
+	pending, err := pruneBlocked(lr)
+	if err != nil || pending {
+		release()
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
+	}
+	return release, nil, nil
+}
+
+// pruneBlocked reports whether a merge, revert or shelf operation is pending.
+func pruneBlocked(lr cacheLocalRepo) (bool, error) {
 	merge, err := lr.LoadMergeState()
 	if err != nil {
-		return PruneResult{}, err
+		return false, err
 	}
 	revert, err := lr.LoadRevertState()
 	if err != nil {
-		return PruneResult{}, err
+		return false, err
 	}
 	if merge != nil || revert != nil {
-		return PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
+		return true, nil
 	}
 	if l, ok := lr.(shelfStateLoader); ok {
 		shelf, err := l.LoadShelfState()
 		if err != nil {
-			return PruneResult{}, err
+			return false, err
 		}
-		if shelf != nil {
-			return PruneResult{Skipped: true, SkipReason: PruneSkipPending}, nil
-		}
+		return shelf != nil, nil
 	}
+	return false, nil
+}
+
+func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
+	release, skipped, err := pruneGuard(lr)
+	if err != nil {
+		return PruneResult{}, err
+	}
+	if skipped != nil {
+		return *skipped, nil
+	}
+	defer release()
 	snapshot, err := lr.Snapshot()
 	if err != nil {
 		return PruneResult{}, err

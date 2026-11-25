@@ -91,61 +91,69 @@ func (w *WorkingCopy) AddWithReport(ctx context.Context, targets []string, opts 
 		opt = opts[0]
 	}
 	var rep ProvenanceReport
-	snapshot, err := w.localRepo.Snapshot()
+	// The scope reads only the rows the targets name: single rows for files,
+	// one range of the snapshot for a directory, everything for the root.
+	tracked, err := newTrackedScope(w.localRepo)
 	if err != nil {
 		return rep, err
 	}
-	paths, err := w.expandAddTargets(snapshot, targets, opt.Force)
+	paths, err := w.expandAddTargets(tracked, targets, opt.Force)
 	if err != nil {
 		return rep, err
 	}
-	paths, err = w.withoutUnchanged(snapshot, paths)
+	paths, err = w.withoutUnchanged(tracked, paths)
 	if err != nil {
 		return rep, err
 	}
 	if !opt.NoProvenance {
 		var changed bool
-		if rep, changed, err = w.recordProvenance(snapshot, paths); err != nil {
+		if rep, changed, err = w.recordProvenance(tracked, paths); err != nil {
 			return rep, err
 		}
 		if changed {
 			paths = withProvenanceFile(paths)
 		}
 	}
-	rep.Generated = ignore.DetectGenerated(w.root, untracked(snapshot, paths))
+	untracked, err := tracked.untracked(paths)
+	if err != nil {
+		return rep, err
+	}
+	rep.Generated = ignore.DetectGenerated(w.root, untracked)
 	return rep, w.localRepo.StageAddMany(paths)
 }
 
-func untracked(snapshot *domain.Snapshot, paths []string) []string {
-	tracked := make(map[string]bool, len(snapshot.Files))
-	for _, f := range snapshot.Files {
-		tracked[f.Path] = true
+// scopedStatEntries loads the fingerprints of the tracked paths a scope was
+// asked about: the rows of those paths when the repository reads by path,
+// the whole cache when the scope holds the whole snapshot anyway.
+func (w *WorkingCopy) scopedStatEntries(tracked *trackedScope, paths []string) (map[string]domain.StatEntry, error) {
+	if getter, ok := w.localRepo.(statEntryGetter); ok && !tracked.all {
+		return getter.StatEntries(paths)
 	}
-	var out []string
-	for _, p := range paths {
-		if !tracked[p] {
-			out = append(out, p)
-		}
-	}
-	return out
+	return w.localRepo.LoadStatCache()
 }
 
 // withoutUnchanged drops tracked paths whose cached fingerprint still matches
 // the snapshot, so adding a large tree only stages new, modified and deleted
 // files. Paths without a trustworthy fingerprint stay staged; Add never hashes
 // content.
-func (w *WorkingCopy) withoutUnchanged(snapshot *domain.Snapshot, paths []string) ([]string, error) {
-	statCache, err := w.localRepo.LoadStatCache()
+func (w *WorkingCopy) withoutUnchanged(scope *trackedScope, paths []string) ([]string, error) {
+	if err := scope.prefetch(paths); err != nil {
+		return nil, err
+	}
+	trackedPaths := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if _, tracked := scope.files[path]; tracked {
+			trackedPaths = append(trackedPaths, path)
+		}
+	}
+	statCache, err := w.scopedStatEntries(scope, trackedPaths)
 	if err != nil {
 		return nil, err
 	}
 	if len(statCache) == 0 {
 		return paths, nil
 	}
-	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
-	for _, f := range snapshot.Files {
-		baseByPath[f.Path] = f
-	}
+	baseByPath := scope.files
 	kept := paths[:0]
 	for _, path := range paths {
 		base, tracked := baseByPath[path]
@@ -395,18 +403,18 @@ func (w *WorkingCopy) RefreshStatEntries(paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	snapshot, err := w.localRepo.Snapshot()
+	scope, err := newTrackedScope(w.localRepo)
 	if err != nil {
 		return err
 	}
-	statCache, err := w.localRepo.LoadStatCache()
+	if err := scope.prefetch(paths); err != nil {
+		return err
+	}
+	statCache, err := w.scopedStatEntries(scope, paths)
 	if err != nil {
 		return err
 	}
-	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
-	for _, f := range snapshot.Files {
-		baseByPath[f.Path] = f
-	}
+	baseByPath := scope.files
 
 	observedAt := time.Now().UnixNano()
 	var jobs []statusHashJob
@@ -551,6 +559,26 @@ func (w *WorkingCopy) rehashLayout(jobs []statusHashJob, keepLayout bool) []stat
 type ignoreState struct {
 	matcher   *ignore.Matcher
 	protected map[string]bool
+	// lookup replaces protected when the exempt paths are looked up on
+	// demand instead of listed up front.
+	lookup func(rel string) bool
+}
+
+// newLookupIgnoreState is newIgnoreState with the exemption answered by
+// lookup, which is only asked about paths the rules ignore.
+func newLookupIgnoreState(root string, lookup func(rel string) bool) (*ignoreState, error) {
+	matcher, err := ignore.New(root)
+	if err != nil {
+		return nil, err
+	}
+	return &ignoreState{matcher: matcher, lookup: lookup}, nil
+}
+
+func (s *ignoreState) exempt(rel string) bool {
+	if s.lookup != nil {
+		return s.lookup(rel)
+	}
+	return s.protected[rel]
 }
 
 func newIgnoreState(root string, protected []string) (*ignoreState, error) {
@@ -583,14 +611,14 @@ func (s *ignoreState) skipDir(rel string) bool {
 	if s == nil || s.matcher.Empty() {
 		return false
 	}
-	return s.matcher.Ignores(rel, true) && !s.protected[rel]
+	return s.matcher.Ignores(rel, true) && !s.exempt(rel)
 }
 
 func (s *ignoreState) skipFile(rel string) bool {
 	if s == nil || s.matcher.Empty() {
 		return false
 	}
-	return s.matcher.Ignores(rel, false) && !s.protected[rel]
+	return s.matcher.Ignores(rel, false) && !s.exempt(rel)
 }
 
 // walkWorkingFiles returns the repo-relative slash paths of regular files in
@@ -650,8 +678,8 @@ func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 	return set, nil
 }
 
-func (w *WorkingCopy) expandAddTargets(snapshot *domain.Snapshot, targets []string, force bool) ([]string, error) {
-	ignores, err := newIgnoreState(w.root, snapshotPaths(snapshot))
+func (w *WorkingCopy) expandAddTargets(tracked *trackedScope, targets []string, force bool) ([]string, error) {
+	ignores, err := newLookupIgnoreState(w.root, tracked.protects)
 	if err != nil {
 		return nil, err
 	}
@@ -681,19 +709,37 @@ func (w *WorkingCopy) expandAddTargets(snapshot *domain.Snapshot, targets []stri
 			if !errors.Is(err, fs.ErrNotExist) {
 				return nil, err
 			}
-			if !stageTrackedTarget(snapshot, t, add) {
+			found, err := stageTrackedTarget(tracked, t, add)
+			if err != nil {
+				return nil, err
+			}
+			if !found {
 				return nil, fmt.Errorf("path %q does not exist", t)
 			}
 			continue
 		}
 		if !info.IsDir() {
-			if !force && ignores.skipFile(t) {
+			ignored := !force && ignores.skipFile(t)
+			if tracked.err != nil {
+				return nil, tracked.err
+			}
+			if ignored {
 				return nil, ignoredPathError(t)
 			}
 			add(t)
 			continue
 		}
-		if !force && ignores.skipDir(t) {
+		// Loaded before the walk: the tracked files below the directory are
+		// both the deletions to stage and the walk's ignore exemptions.
+		under, err := tracked.under(t)
+		if err != nil {
+			return nil, err
+		}
+		ignored := !force && ignores.skipDir(t)
+		if tracked.err != nil {
+			return nil, tracked.err
+		}
+		if ignored {
 			return nil, ignoredPathError(t)
 		}
 		err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, walkErr error) error {
@@ -732,14 +778,11 @@ func (w *WorkingCopy) expandAddTargets(snapshot *domain.Snapshot, targets []stri
 		if err != nil {
 			return nil, err
 		}
-		prefix := ""
-		if t != "" {
-			prefix = t + "/"
+		if tracked.err != nil {
+			return nil, tracked.err
 		}
-		for _, f := range snapshot.Files {
-			if strings.HasPrefix(f.Path, prefix) {
-				add(f.Path)
-			}
+		for _, p := range under {
+			add(p)
 		}
 	}
 	sort.Strings(out)
@@ -753,15 +796,26 @@ func ignoredPathError(path string) error {
 // stageTrackedTarget marks a missing add target as a deletion: the exact path
 // when it was a tracked file, otherwise every tracked file under it. It
 // reports whether the snapshot still tracks anything at the target.
-func stageTrackedTarget(snapshot *domain.Snapshot, target string, add func(string)) bool {
-	staged := false
-	for _, f := range snapshot.Files {
-		if f.Path == target || strings.HasPrefix(f.Path, target+"/") {
-			add(f.Path)
-			staged = true
-		}
+func stageTrackedTarget(tracked *trackedScope, target string, add func(string)) (bool, error) {
+	if target == "" {
+		return false, nil
 	}
-	return staged
+	_, staged, err := tracked.get(target)
+	if err != nil {
+		return false, err
+	}
+	if staged {
+		add(target)
+	}
+	under, err := tracked.under(target)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range under {
+		add(p)
+		staged = true
+	}
+	return staged, nil
 }
 
 func (w *WorkingCopy) workingFileHash(path, encoding string) (serverDomain.Hash, error) {

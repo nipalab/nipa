@@ -119,19 +119,20 @@ func (w *WorkingCopy) workingFileInfo(p string) (os.FileInfo, bool, error) {
 // of files gone from the working copy follow a new path with the same
 // content, new supported files get the metadata they declare, and staged
 // deletions drop what is left. Existing records are never overwritten.
-func (w *WorkingCopy) recordProvenance(snapshot *domain.Snapshot, paths []string) (ProvenanceReport, bool, error) {
+func (w *WorkingCopy) recordProvenance(scope *trackedScope, paths []string) (ProvenanceReport, bool, error) {
 	var rep ProvenanceReport
 	f, err := LoadProvenance(w.root)
 	if err != nil || f == nil {
 		return rep, false, err
 	}
-	tracked := map[string]bool{}
-	for _, p := range snapshotPaths(snapshot) {
-		tracked[p] = true
+	recorded := f.Paths()
+	if err := scope.prefetch(recorded); err != nil {
+		return rep, false, err
 	}
+	tracked := scope.files
 	orphans := map[string][]string{}
-	for _, p := range f.Paths() {
-		if !tracked[p] {
+	for _, p := range recorded {
+		if _, ok := tracked[p]; !ok {
 			continue
 		}
 		if _, exists, err := w.workingFileInfo(p); err != nil {
@@ -217,16 +218,16 @@ func (w *WorkingCopy) forgetProvenance(paths []string) (ProvenanceReport, bool, 
 	if err != nil || f == nil {
 		return rep, false, err
 	}
-	snapshot, err := w.localRepo.Snapshot()
+	scope, err := newTrackedScope(w.localRepo)
 	if err != nil {
 		return rep, false, err
 	}
-	tracked := make(map[string]bool, len(snapshot.Files))
-	for _, sf := range snapshot.Files {
-		tracked[sf.Path] = true
+	untracked, err := scope.untracked(paths)
+	if err != nil {
+		return rep, false, err
 	}
-	for _, p := range paths {
-		if !tracked[p] && f.Delete(p) {
+	for _, p := range untracked {
+		if f.Delete(p) {
 			rep.Deleted++
 		}
 	}

@@ -68,13 +68,15 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
 - `StoreChunkFrom(hash, reader)` stores an object from a stream without
   holding it in memory: a `.tmp-*` file in the object's directory, hashed
   while written, renamed only when the hash matches. `StatEntries(paths)`
-  reads single `stat_cache` rows (`StatCacheGet`) for callers that touch a few
-  files. `.nipa/writes/` holds the working-copy write markers
+  reads `stat_cache` rows by path (`StatCacheListByPaths`, `pathBatch` = 500
+  paths per query) for callers that touch a few files. `.nipa/writes/` holds the working-copy write markers
   (`BeginWorkingWrite` / `MarkInterruptedWrite`, `writemark.go`): one locked
   file per running write, so an unlocked one identifies a killed write.
   Explicit `Chmod`s (objects, config) pass through `fsperm.Mask`.
 - Object GC: `PruneObjects(keep)` deletes every object not in `keep` plus
-  `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps the
+  `.tmp-*` files older than an hour; a push that knows which objects it can
+  have orphaned deletes just those instead (`usecase.pruneAfterPush`,
+  `docs/internals/client.md`). `usecase.pruneCache` (`gc.go`) keeps the
   chunks of the `Snapshot()` files `cachedInPristine` accepts (zstd text, or
   raw content covered by a pin), so binaries are not kept twice, and it is a
   no-op while `merge_state`,
@@ -162,6 +164,25 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   indexed; stored paths carry a leading slash, the root is `""`) and
   `SnapshotFile(path)` one row (`FileGet`), so per-directory callers never load
   the whole snapshot.
+- Scoped reads (`scoped.go`), for commands whose cost must follow the change
+  and not the repository (`usecase.trackedScope`, `Push.stagedBase`, the
+  post-push prune): `SnapshotFiles(paths)` returns the tracked rows among the
+  given paths (`FileListByPaths`, `IN (sqlc.slice)`, `pathBatch` paths per
+  query; untracked and empty paths are absent); `SnapshotFilesUnder(dir)` the
+  rows below a directory at any depth, sorted, and `TracksUnder(dir)` whether
+  there is one (`FileListInRange`/`FileFirstInRange`: a range of the `files`
+  primary key from `/<dir>/` up to `/<dir>0`, the next byte after the slash,
+  so there is no `LIKE`: `%` and `_` in names are plain bytes and `a` never
+  matches `ab`); `SnapshotTreeHash()` the `tree_hash` meta row, what
+  `Snapshot().TreeHash` holds. `FilesWithChunk(hash)` returns the files whose
+  chunk list holds a chunk (`FileListByChunk`: `instr` on the `chunks` blob,
+  re-checked on hash boundaries in Go). There is no chunk index, so this one
+  is a table scan inside SQLite that returns only matching rows (about 16 ms
+  on 100,000 files, against ~370 ms for `Snapshot()` plus the cache listing);
+  a chunk-to-file index would need a schema change. `RemoveObjects(hashes)`
+  deletes named objects through the objects root (`openRealDir`), skipping
+  missing ones and linked fan-out folders, and returns the count and bytes
+  freed.
 - There is no schema migration: the local DB is recreated from scratch (an old
   clone just needs to be deleted and re-cloned).
 - The `localRepo` interface (used by `usecase.Repo.Clone`): `Init(target)` /

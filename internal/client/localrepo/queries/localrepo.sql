@@ -159,3 +159,31 @@ ORDER BY path;
 -- name: StatCacheDelete :exec
 DELETE FROM stat_cache
 WHERE path = sqlc.arg(path);
+
+-- name: FileListByPaths :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path IN (sqlc.slice('paths'));
+
+-- name: FileListInRange :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE path >= sqlc.arg(lower) AND path < sqlc.arg(upper)
+ORDER BY path;
+
+-- name: FileFirstInRange :one
+SELECT path
+FROM files
+WHERE path >= sqlc.arg(lower) AND path < sqlc.arg(upper)
+ORDER BY path
+LIMIT 1;
+
+-- name: FileListByChunk :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE instr(chunks, CAST(sqlc.arg(chunk) AS BLOB)) > 0;
+
+-- name: StatCacheListByPaths :many
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+WHERE path IN (sqlc.slice('paths'));

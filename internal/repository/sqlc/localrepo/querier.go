@@ -10,10 +10,14 @@ import (
 
 type Querier interface {
 	FileDelete(ctx context.Context, path string) error
+	FileFirstInRange(ctx context.Context, arg FileFirstInRangeParams) (string, error)
 	FileGet(ctx context.Context, path string) (FileGetRow, error)
 	FileHashesByTree(ctx context.Context, treePath string) ([]FileHashesByTreeRow, error)
 	FileList(ctx context.Context) ([]File, error)
+	FileListByChunk(ctx context.Context, chunk []byte) ([]FileListByChunkRow, error)
+	FileListByPaths(ctx context.Context, paths []string) ([]FileListByPathsRow, error)
 	FileListByTree(ctx context.Context, treePath string) ([]FileListByTreeRow, error)
+	FileListInRange(ctx context.Context, arg FileListInRangeParams) ([]FileListInRangeRow, error)
 	FileSearchPaths(ctx context.Context, arg FileSearchPathsParams) ([]FileSearchPathsRow, error)
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaDelete(ctx context.Context, key string) error
@@ -31,6 +35,7 @@ type Querier interface {
 	StatCacheDelete(ctx context.Context, path string) error
 	StatCacheGet(ctx context.Context, path string) (StatCache, error)
 	StatCacheList(ctx context.Context) ([]StatCache, error)
+	StatCacheListByPaths(ctx context.Context, paths []string) ([]StatCache, error)
 	StatCacheSweep(ctx context.Context) error
 	StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error
 	TreeNodeChildHashes(ctx context.Context, parentPath string) ([]TreeNodeChildHashesRow, error)
