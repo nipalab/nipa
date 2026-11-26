@@ -13,12 +13,17 @@ import (
 )
 
 // syncedTreeKey is the meta row that says which commit's tree the stored rows
-// hold and which sparse set that tree was fetched with.
+// hold, which sparse set that tree was fetched with and, when the server sent
+// one, the view token of the manifest.
 const syncedTreeKey = "synced_tree"
 
 type syncedTreeRecord struct {
 	Commit string   `json:"commit"`
 	Sparse []string `json:"sparse"`
+	// View is the server's view token (base64 in JSON), absent when the
+	// manifest came without one. It depends on the read rules, the sparse set
+	// and the recursive flag, never on the commit.
+	View []byte `json:"view,omitempty"`
 }
 
 // canonicalSparse is the stable form of a sparse set: sorted, without
@@ -35,14 +40,22 @@ func canonicalSparse(sparse []string) []string {
 	return slices.Compact(out)
 }
 
-// SaveSyncedTree is SaveTree for a tree that is commitID's tree fetched with
-// the sparse set: the rows and the synced-tree record land in one
-// transaction. An empty commitID records nothing, like SaveTree.
+// SaveSyncedTree is SaveSyncedTreeView for a manifest that came without a
+// view token: the tree can be recognized as commitID's, but never serves as
+// the base of a delta manifest request.
 func (l *LocalRepo) SaveSyncedTree(root *domain.TreeNode, commitID string, sparse []string) error {
+	return l.SaveSyncedTreeView(root, commitID, sparse, nil)
+}
+
+// SaveSyncedTreeView is SaveTree for a tree that is commitID's tree fetched
+// with the sparse set, view being the token the server returned with that
+// manifest: the rows and the synced-tree record land in one transaction. An
+// empty commitID records nothing, like SaveTree.
+func (l *LocalRepo) SaveSyncedTreeView(root *domain.TreeNode, commitID string, sparse []string, view []byte) error {
 	if commitID == "" {
 		return l.SaveTree(root)
 	}
-	value, err := json.Marshal(syncedTreeRecord{Commit: commitID, Sparse: canonicalSparse(sparse)})
+	value, err := json.Marshal(syncedTreeRecord{Commit: commitID, Sparse: canonicalSparse(sparse), View: view})
 	if err != nil {
 		return err
 	}
@@ -81,5 +94,9 @@ func (l *LocalRepo) LoadSyncedTree() (*clientDomain.SyncedTree, error) {
 	if err := json.Unmarshal([]byte(value), &record); err != nil || record.Commit == "" {
 		return nil, nil
 	}
-	return &clientDomain.SyncedTree{CommitID: record.Commit, Sparse: canonicalSparse(record.Sparse)}, nil
+	synced := &clientDomain.SyncedTree{CommitID: record.Commit, Sparse: canonicalSparse(record.Sparse)}
+	if len(record.View) > 0 {
+		synced.View = record.View
+	}
+	return synced, nil
 }

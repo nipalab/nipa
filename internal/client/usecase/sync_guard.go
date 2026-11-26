@@ -40,20 +40,21 @@ func localChangeConflicts(ctx context.Context, root string, lr any, candidates [
 	if len(candidates) == 0 {
 		return nil, nil
 	}
-	var statCache map[string]clientDomain.StatEntry
-	if loader, ok := lr.(statCacheLoader); ok {
-		cache, err := loader.LoadStatCache()
-		if err != nil {
-			return nil, err
-		}
-		statCache = cache
+	// A few candidates read their own fingerprints; many read the cache once.
+	paths := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		paths = append(paths, c.target.Path)
+	}
+	statCache, err := statEntriesFor(lr, paths)
+	if err != nil {
+		return nil, err
 	}
 
 	var (
 		mu        sync.Mutex
 		conflicts []string
 	)
-	err := runPool(ctx, candidates, func(c overwriteCandidate) error {
+	err = runPool(ctx, candidates, func(c overwriteCandidate) error {
 		if localChangeLost(root, c, statCache) {
 			mu.Lock()
 			conflicts = append(conflicts, c.target.Path)

@@ -20,6 +20,21 @@ func (q *Queries) FileDelete(ctx context.Context, path string) error {
 	return err
 }
 
+const fileDeleteInRange = `-- name: FileDeleteInRange :exec
+DELETE FROM files
+WHERE path >= ?1 AND path < ?2
+`
+
+type FileDeleteInRangeParams struct {
+	Lower string `json:"lower"`
+	Upper string `json:"upper"`
+}
+
+func (q *Queries) FileDeleteInRange(ctx context.Context, arg FileDeleteInRangeParams) error {
+	_, err := q.db.ExecContext(ctx, fileDeleteInRange, arg.Lower, arg.Upper)
+	return err
+}
+
 const fileFirstInRange = `-- name: FileFirstInRange :one
 SELECT path
 FROM files
@@ -874,6 +889,21 @@ WHERE path = ?1
 
 func (q *Queries) TreeNodeDelete(ctx context.Context, path string) error {
 	_, err := q.db.ExecContext(ctx, treeNodeDelete, path)
+	return err
+}
+
+const treeNodeDeleteInRange = `-- name: TreeNodeDeleteInRange :exec
+DELETE FROM tree_nodes
+WHERE path >= ?1 AND path < ?2
+`
+
+type TreeNodeDeleteInRangeParams struct {
+	Lower string `json:"lower"`
+	Upper string `json:"upper"`
+}
+
+func (q *Queries) TreeNodeDeleteInRange(ctx context.Context, arg TreeNodeDeleteInRangeParams) error {
+	_, err := q.db.ExecContext(ctx, treeNodeDeleteInRange, arg.Lower, arg.Upper)
 	return err
 }
 

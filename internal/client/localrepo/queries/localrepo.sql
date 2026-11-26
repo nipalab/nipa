@@ -187,3 +187,11 @@ WHERE instr(chunks, CAST(sqlc.arg(chunk) AS BLOB)) > 0;
 SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache
 WHERE path IN (sqlc.slice('paths'));
+
+-- name: FileDeleteInRange :exec
+DELETE FROM files
+WHERE path >= sqlc.arg(lower) AND path < sqlc.arg(upper);
+
+-- name: TreeNodeDeleteInRange :exec
+DELETE FROM tree_nodes
+WHERE path >= sqlc.arg(lower) AND path < sqlc.arg(upper);

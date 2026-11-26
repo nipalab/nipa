@@ -214,11 +214,14 @@ empty entries ignored). Detached (`runDetached`) the target is the checked-out
 commit itself, so the test is only "not forced + record matches the local
 commit and sparse set"; connect and the login check still run first, as on
 every update. No record (older clone, tree saved by merge/revert) always means
-the full path. The record is written by `SaveSyncedTree(tree, commitID,
-sparse)` in every flow that saves a manifest fetched with `cfg.Sparse`: clone,
-`Run`, `runDetached`, `Switch`, `SwitchTag` and the post-push save (commit =
-the pushed commit; `localrepo.ApplyPush` writes the same record when the push
-is applied locally, see below). Merge and revert keep plain `SaveTree`, which drops the
+the full path. The record is written with the manifest's view token
+(`saveSyncedTree` -> `SaveSyncedTreeView(tree, commitID, sparse, view)`) in
+every flow that saves a manifest fetched with `cfg.Sparse`: clone, `Run`,
+`runDetached`, `Switch`, `SwitchTag` and the post-push save (commit = the
+pushed commit; `localrepo.ApplyPush` writes the same record when the push is
+applied locally and keeps the token of the record it started from, and
+`localrepo.ApplyTreeDelta` writes it with the token of the delta answer, see
+below). Merge and revert keep plain `SaveTree`, which drops the
 record, because their trees are fetched unscoped or built locally. The commit
 id is part of the record (not just the sparse set) because the local commit
 can move without the stored tree: push saves its commit before it saves
@@ -235,6 +238,97 @@ anything drops the record first (`ClearSyncedTree`, via the optional
 and before the first write), so a sync that fails or is killed part way,
 forced or not, leaves no record and the next update syncs fully instead of
 exiting early on a half-written working copy.
+
+Delta sync (`Update.syncTo`, `usecase/sync_delta.go`, span `sync.tree`):
+`Run`, `runDetached`, `Switch` and `SwitchTag` all move the clone through
+`syncTo(goal)`, which costs work in proportion to the change when it can.
+- *Request*. The target commit is known before the manifest is asked for
+  (branch head from `GetBranchByName`, the tag's commit, the checked-out
+  commit), and the manifest is requested by commit id through the optional
+  `deltaManifestClient` (`GetTreeManifestDelta`; only a branch without
+  commits is asked by branch name). When the synced-tree record names a
+  commit, was fetched with a sparse set equal to `cfg.Sparse` and carries a
+  view token (`deltaBase`), the request names it as the base: commit id, the
+  stored view token and the stored root hash (`SnapshotTreeHash`, which lets
+  the server vouch for the root hash of the result). Otherwise no base is
+  sent and the full manifest comes back with its token; the span says why
+  (`nipa.sync.tree_sync` = `full`, `nipa.sync.tree_sync_reason` = `record`
+  no record, `sparse` the sparse set changed, `view` no token stored, `empty`
+  no target commit, `client`/`repo` a transport or repository without the
+  delta calls, which is what the test stubs and older servers' answers look
+  like). A base equal to the target is fine: the delta is an unchanged root.
+- *Declined*. A full manifest in answer to a request that named a base
+  (unknown base commit, the view token is no longer the caller's view) is
+  used as it is through the full path below (`declined`); no second request.
+- *Delta*. `syncDelta`: (1) `PlanTreeDelta` works out, from the stored rows
+  of the changed directories only, the files the delta writes and removes
+  (`docs/internals/localrepo.md`); (2) `syncDeltaWorkingCopy` builds a
+  `syncPlan` from just those and runs it; (3) `ApplyTreeDelta(in, planned)`
+  writes the rows, `tree_hash` and the record in one transaction. The order
+  is the full sync's: working copy first, rows after, with the record dropped
+  in between, so a refused or interrupted sync leaves the stored tree at the
+  base and no record. Span attribute `nipa.sync.tree_sync` = `delta`.
+- *Silent fallback*. A delta that leads to another commit than the one asked
+  for (`commit`), a plan or apply that reports the stored tree is not the
+  base (`base`: `ErrTreeDeltaBase`, e.g. an unchanged file the tree does not
+  hold), a root hash that does not match (`mismatch`), or any other plan or
+  apply failure (`error`) makes `syncTo` fetch the full manifest (no base)
+  and run the full path; `slog.Debug` carries the hashes, the user sees
+  nothing. When the apply fails after the working copy was synced, the full
+  sync finds the files in place. Errors that are not fallbacks, exactly as in
+  the full sync: a failed request, local changes in the way, an unsafe path,
+  download and write failures.
+- *What the working copy sync looks at* (`syncDeltaWorkingCopy`). The same
+  `syncPlan.run` as the full sync (`syncWorkingCopyOpts` builds its plan from
+  the whole manifest and snapshot, the delta from `TreeDeltaChanges`), so the
+  guards and mechanics are shared: `checkWorkingPath` on every written path,
+  `checkSyncTargets` (no write or removal below a link), the local-changes
+  guard on the files it replaces or creates (`localChangeConflicts`, which
+  now reads only those fingerprints with `statEntriesFor`), `ClearSyncedTree`
+  before the first write, pins and direct writes, downloads, `stat_cache`
+  rows of the written files, `removeLeftFiles` (a locally changed file the
+  target removes is kept on disk). It does not load the snapshot or the stat
+  cache, and does not stat untouched files: like the up-to-date exit, an
+  unforced delta sync does not restore a tracked file deleted from disk, and
+  a local edit of a file the delta does not touch is never in the way.
+  Sparse checkouts need nothing special: base and target are fetched with
+  the same sparse set (the view token and `deltaBase` both check it), and
+  ignore rules never applied to sync (tracking wins).
+- *Chunk scope*. The download of a delta sync names the written files as its
+  scope paths (`narrowChunkScope`, up to 256 files, else the checkout's own
+  scope): the server's `VisibleChunks` walk then covers only the directories
+  leading to them instead of the whole commit tree.
+- *Forced* (`WithForce(true)`: `--force`, MCP `force`, always the daemon).
+  The delta is still used for the manifest and the rows. The local-changes
+  guard is off as before, and `syncOptions.restoreMissing` keeps the forced
+  sync's promise that every tracked file exists afterwards: it loads the
+  snapshot once, stats every untouched tracked file and writes the missing
+  ones back from the snapshot rows (`materializedFromSnapshot`, through the
+  object cache). So a forced update still reads all file rows and stats all
+  files, but no longer transfers and decodes the manifest, diffs every row
+  (`syncRows`) or sweeps the object cache; it never exits early. That is
+  what the daemon gains: its updates stay O(files) on the client for the
+  stat pass and the snapshot read only.
+- *Prune*. A delta sync returns a `pushCacheEffect` (the chunks of the rows
+  it replaced or removed and of the files it wrote), and `Run`/`Switch`/
+  `SwitchTag` prune through `pruneAfterPush`: only those objects are checked
+  (`pruneChunks`), with the full sweep as before when more than
+  `maxTargetedPruneChunks` need a lookup and after every full sync.
+- *Left on full manifests*: clone (no base exists; it now asks through
+  `fetchManifest` to get the token), the post-push refetch
+  (`saveLandedTree` fallback; same, by the pushed commit's id),
+  `Update.TargetTree`/`SyncPlan` (a read-only preview that needs the whole
+  target tree to list overwritten paths), merge and revert (they fetch
+  unscoped head trees of two branches to build a three-way result and save
+  with plain `SaveTree`, so there is no recorded base), and
+  `restore`/`RestoreRevision` (path-scoped manifests of an arbitrary
+  commit, not a move of the clone).
+- *Known limits*. A view token is only stored from a fetched manifest: a
+  clone of an empty branch has none until its first full update, also after
+  its own first push. A path that is a file in one commit and a directory in
+  the other fails in `syncPlan.run` ("not a directory" / "file exists") in
+  the delta sync exactly as in the full sync; the stored rows handle the
+  swap, the working-copy write order does not.
 
 Push reads (`Push.stagedBase`): `Run` (through `pushStagedEffect`) and `Plan`
 read the tracked rows of the staged paths (`SnapshotFiles`) and the tree hash
@@ -276,7 +370,9 @@ only accepts a push onto the branch head, so the new tree is the base tree
 plus the pushed files minus the removed paths, and `localrepo.ApplyPush`
 (`docs/internals/localrepo.md`) derives it from the stored rows and checks its
 root against `PushResult.TreeHash`. The manifest is still fetched
-(`GetTreeNodeManifest` + `SaveSyncedTree`, the only path before) in exactly
+(`fetchManifest` by the pushed commit's id + `saveSyncedTree`, which records
+the view token; `GetTreeNodeManifest` + `SaveSyncedTree` for a client without
+the delta call) in exactly
 these cases, silently (`slog.Debug` with the expected and computed hashes;
 span attributes `nipa.push.tree_sync` = `local`/`refetch` and
 `nipa.push.tree_sync_reason`): `sparse`, a sparse checkout (`cfg.Sparse` not

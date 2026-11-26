@@ -400,7 +400,15 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   shared types and `Apply` in `internal/treedelta`). A client that holds the
   recursive manifest of a commit BASE asks for the manifest of a TARGET
   (branch head or `commit_id`) relative to it, so both sides work in
-  proportion to the change. Nothing in the client usecases asks for one yet.
+  proportion to the change. `nipa update` (branch head and detached),
+  `nipa switch` (branch and tag) ask for one whenever the stored tree is
+  recorded with a view token (`Update.syncTo`, `docs/internals/client.md`)
+  and apply it to the stored rows (`localrepo.ApplyTreeDelta`,
+  `docs/internals/localrepo.md`); clone and the post-push refetch use the
+  same call without a base, to get the token with the full manifest. The
+  client always asks by `commit_id` once it knows one (the branch head is
+  resolved first), so a manifest is never saved under the id of a commit it
+  does not belong to when the branch moves meanwhile.
   - *Request*: `base_commit_id` (base36), `base_view` (the view token the
     server returned with the manifest the client holds) and optionally
     `base_tree_hash` (raw root hash of that manifest). Without

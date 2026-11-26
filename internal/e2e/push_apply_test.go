@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/treedelta"
 )
 
 // manifestCountingClient is the real gRPC client, counting the manifests a
@@ -28,6 +30,12 @@ type manifestCountingClient struct {
 func (c *manifestCountingClient) GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
 	c.manifests++
 	return c.Client.GetTreeNodeManifest(ctx, org, project, branch, paths)
+}
+
+// The post-push refetch asks for the manifest with its view token.
+func (c *manifestCountingClient) GetTreeManifestDelta(ctx context.Context, org, project string, target treedelta.Target, paths []string, base treedelta.Base) (*treedelta.Manifest, error) {
+	c.manifests++
+	return c.Client.GetTreeManifestDelta(ctx, org, project, target, paths, base)
 }
 
 func (c *manifestCountingClient) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
@@ -75,8 +83,26 @@ func assertMatchesFreshClone(t *testing.T, grpcClient *clientgrpc.Client, auth *
 	require.Equal(t, manifest.Hash, pushed, "the push response names the head's root tree")
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, target).TreeHash)
 
+	// The working copy was cloned from an empty branch, which leaves no
+	// synced-tree record and so no view token for ApplyPush to carry over; a
+	// fresh clone has one. Everything else must be equal.
 	fresh := cloneWorktree(t, grpcClient, auth, host, branch)
-	require.Equal(t, storedTree(t, fresh), storedTree(t, target))
+	require.Equal(t, withoutView(storedTree(t, fresh)), withoutView(storedTree(t, target)))
+}
+
+// withoutView drops the view token from the synced-tree record of a
+// storedTree dump.
+func withoutView(rows []string) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		if start := strings.Index(row, `,"view":"`); strings.HasPrefix(row, "meta synced_tree=") && start >= 0 {
+			if end := strings.Index(row[start+len(`,"view":"`):], `"`); end >= 0 {
+				row = row[:start] + row[start+len(`,"view":"`)+end+1:]
+			}
+		}
+		out[i] = row
+	}
+	return out
 }
 
 func removeAndStage(t *testing.T, target string, paths ...string) {
@@ -283,6 +309,8 @@ func TestEndToEnd_SparsePushFetchesManifest(t *testing.T) {
 	record, err := lr.LoadSyncedTree()
 	require.NoError(t, err)
 	commitID, _ := pinnedCommit(t, sparse)
+	require.Len(t, record.View, 32, "the refetched manifest's view token is recorded")
+	record.View = nil
 	require.Equal(t, &domain.SyncedTree{CommitID: commitID, Sparse: []string{"src"}}, record)
 }
 

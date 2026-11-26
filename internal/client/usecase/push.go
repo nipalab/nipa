@@ -20,6 +20,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/treedelta"
 )
 
 type pushClient interface {
@@ -428,13 +429,16 @@ func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, bran
 		attribute.String("nipa.push.tree_sync", treeSyncRefetch),
 		attribute.String("nipa.push.tree_sync_reason", reason),
 	)
-	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, sparse)
+	// The manifest of the commit this push created, with the sparse set the
+	// config holds. A client that cannot ask by commit reads the branch head
+	// right after the push made that commit the head.
+	rootTree, view, err := fetchManifest(ctx, p.pushClient, nipaUrl.Org, nipaUrl.Project, treedelta.Target{CommitID: commitID}, sparse, func() (*serverDomain.TreeNode, error) {
+		return p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, sparse)
+	})
 	if err != nil {
 		return false, err
 	}
-	// The manifest is the branch head's, read right after this push made its
-	// commit the head, with the sparse set the config holds.
-	return false, p.localRepo.SaveSyncedTree(rootTree, commitID, sparse)
+	return false, saveSyncedTree(p.localRepo, rootTree, commitID, sparse, view)
 }
 
 // applyFallbackReason names why a local apply gave way to the manifest fetch
