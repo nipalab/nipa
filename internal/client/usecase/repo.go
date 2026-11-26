@@ -13,6 +13,7 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treedelta"
 )
 
 type repoInterface interface {
@@ -93,7 +94,16 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string
 	if err != nil {
 		return err
 	}
-	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, paths)
+	// Asked by commit when the head is known, so the tree saved under that
+	// commit id is its tree even when the branch moves meanwhile; the view
+	// token that comes with it makes the clone a base for delta manifests.
+	manifestTarget := treedelta.Target{CommitID: headCommitID}
+	if headCommitID == "" {
+		manifestTarget.Branch = branch
+	}
+	root, view, err := fetchManifest(ctx, r.repoInterface, org, project, manifestTarget, paths, func() (*serverDomain.TreeNode, error) {
+		return r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, paths)
+	})
 	if err != nil {
 		return err
 	}
@@ -117,7 +127,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string
 	if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
 		return err
 	}
-	if err := r.localRepo.SaveSyncedTree(root, headCommitID, paths); err != nil {
+	if err := saveSyncedTree(r.localRepo, root, headCommitID, paths, view); err != nil {
 		return err
 	}
 	if headCommitID != "" {

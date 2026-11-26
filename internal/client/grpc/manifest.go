@@ -126,10 +126,7 @@ func recvManifestParts(ctx context.Context, client pb.NipaServiceClient, req *pb
 
 // ManifestTarget names the commit a manifest is asked for: CommitID (base36)
 // when set, the head of Branch otherwise.
-type ManifestTarget struct {
-	Branch   string
-	CommitID string
-}
+type ManifestTarget = treedelta.Target
 
 // GetTreeManifestDelta reads the recursive manifest of target, as a delta
 // against the manifest the caller holds when base names one and the server

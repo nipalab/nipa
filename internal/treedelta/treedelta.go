@@ -67,6 +67,13 @@ type Base struct {
 	TreeHash *domain.Hash
 }
 
+// Target names the commit a manifest is asked for: CommitID (base36) when
+// set, the head of Branch otherwise.
+type Target struct {
+	Branch   string
+	CommitID string
+}
+
 // Manifest is the answer to a manifest request that may be served as a delta:
 // exactly one of Full and Delta describes the target, except that both are
 // nil when there is no tree at all (a branch without commits).

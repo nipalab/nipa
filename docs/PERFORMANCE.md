@@ -52,6 +52,7 @@ baseline table. They are skipped unless the env var is set, so CI stays fast.
 | `make bench-scale-files files=10000` | wide-tree scale on SQLite: initial and one-file push, recursive manifest, commit and merge-request diff, clone, `ApplyPush` alone, `SaveTree` with 5 changes | per change that touches these paths |
 | `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker); `NIPA_BENCH_LATENCY=500us` adds a one-way delay in front of postgres | per change that touches these paths |
 | `make bench-small-change files=100000` | client-side cost of `nipa add` and of the local side of `nipa push` for one changed file in a working copy of N tracked text files (real localrepo, stubbed server; median of `NIPA_BENCH_RUNS`, default 5, with the costliest local calls) | per change that touches add, push or the post-push prune |
+| `make bench-small-update files=100000` | `nipa update` and `nipa switch` across a handful of changed files in a clone of N files (1,676 directories), through a real server over loopback: a client without delta manifests vs the shipped one, unforced and forced, each split into time inside server calls and client-local time (median of `NIPA_BENCH_RUNS`, default 5) | per change that touches update, switch or the manifest paths |
 | `make bench-manifest` | one full recursive manifest of a 1,649-directory / ~97.6k-file tree, per-directory walk vs the level-batched loader: Go benchmark on SQLite, then a timed harness on postgres (Docker) | per change that touches manifest loading or the tree queries |
 
 Expected shape (loopback, modern laptop): encode is roughly 0.5–1 GiB/s for
@@ -133,8 +134,52 @@ sweep, and a push of binaries or of new files runs none.
 `TestSmallChange_ReadsDoNotGrowWithTheRepository` asserts that neither command loads the
 snapshot, the stat cache or the cache listing and that the by-path reads
 return the same rows at 200 and 4,000 files. Directory adds read the range of
-the snapshot below the directory; `nipa add .`, `status`, `diff`, a real
-`update` and `switch` still read everything.
+the snapshot below the directory; `nipa add .`, `status`, `diff`, and an
+`update` or `switch` that cannot use a delta manifest still read everything
+(next section).
+
+### Small update in a large clone (100,000 files, 1,676 directories)
+
+An update or switch whose target differs from the clone by a few files used
+to fetch the whole manifest, compare it with every stored row and every
+working file, and sweep the object cache. With delta manifests
+(`docs/internals/client.md`, "Delta sync") the server sends the changed
+directories and the client applies them to its rows.
+`TestEndToEnd_SmallUpdateScale` (`make bench-small-update files=100000`)
+pushes 100,000 single-chunk text files in 25 x 66 leaf directories to a real
+SQLite `nipad` in process, keeps two clones, and for every run commits a
+change of 5 files (3 modified, 1 added, 1 removed) before each timed command,
+so every timed update is the first request for its commit. "Full" is the
+client without the delta call (the code path before this change), "delta" the
+shipped client. Recorded 2026-11-27, loopback gRPC, working copies and the
+server database on tmpfs, median of 5 runs (10 for switch):
+
+| 5 files differ, 100,000 files | Full manifest | Delta manifest |
+|---|---|---|
+| `nipa update`, total | 2,758 ms | 80 ms |
+| ... inside server calls (server + transfer + decode) | 1,267 ms | 12 ms |
+| ...... manifest | 645 ms | 6.3 ms |
+| ...... chunk download of the changed files (incl. the server's `VisibleChunks` walk) | 622 ms | 4.9 ms (scope narrowed to the written files) |
+| ... client-local | 1,490 ms | 68 ms |
+| ...... `SaveSyncedTree` (diff every row) / `PlanTreeDelta` + `ApplyTreeDelta` | 618 ms | 6.3 ms |
+| ...... `Snapshot` (every row) | 280 ms | not read |
+| ...... `PruneObjects` (list the object cache) | 249 ms | not run (targeted prune) |
+| `nipa switch`, total | 1,783 ms | 76 ms |
+| ... inside server calls | 607 ms | 10 ms |
+| ... client-local | 1,176 ms | 66 ms |
+| `nipa update --force` (what the daemon runs), total | 2,613 ms | 433 ms |
+| ... inside server calls | 1,247 ms | 14 ms |
+| ... client-local | 1,366 ms | 419 ms (`Snapshot` 136 ms, prune scans ~60 ms, the remaining ~220 ms not broken down: it holds the stat of every tracked file) |
+| `nipa switch --force`, total | 1,905 ms | 433 ms |
+| `nipa update`, already at the head | 1.2 ms | 1.0 ms |
+
+What is left client-side in the unforced delta case is the targeted prune
+(about 60 of the 68 ms, measured in a second run): one filtered scan of the
+`files` table (`FilesWithChunk`) per replaced or removed chunk that is in the
+object cache, the same residue as after a push. A forced sync keeps its promise to restore every missing tracked file,
+which costs the snapshot read and one stat per file. tmpfs flatters the stat
+and directory-listing costs of the full path and of the forced one; the
+server-side and row costs do not depend on it.
 
 ### Full manifest of a deep tree (1,649 directories, ~97.6k single-chunk files)
 

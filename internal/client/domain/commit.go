@@ -16,6 +16,9 @@ type LocalCommit struct {
 type SyncedTree struct {
 	CommitID string
 	Sparse   []string
+	// View is the view token the server returned with the manifest (nil when
+	// it sent none): what a delta manifest request names as its base view.
+	View []byte
 }
 
 type CommitDetail struct {

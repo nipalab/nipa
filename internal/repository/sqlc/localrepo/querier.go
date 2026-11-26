@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	FileDelete(ctx context.Context, path string) error
+	FileDeleteInRange(ctx context.Context, arg FileDeleteInRangeParams) error
 	FileFirstInRange(ctx context.Context, arg FileFirstInRangeParams) (string, error)
 	FileGet(ctx context.Context, path string) (FileGetRow, error)
 	FileHashesByTree(ctx context.Context, treePath string) ([]FileHashesByTreeRow, error)
@@ -41,6 +42,7 @@ type Querier interface {
 	TreeNodeChildHashes(ctx context.Context, parentPath string) ([]TreeNodeChildHashesRow, error)
 	TreeNodeChildren(ctx context.Context, parentPath string) ([]string, error)
 	TreeNodeDelete(ctx context.Context, path string) error
+	TreeNodeDeleteInRange(ctx context.Context, arg TreeNodeDeleteInRangeParams) error
 	TreeNodeGet(ctx context.Context, path string) (TreeNode, error)
 	TreeNodeList(ctx context.Context) ([]TreeNode, error)
 	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error

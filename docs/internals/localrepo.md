@@ -38,9 +38,13 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   - `meta(key PK, value)` — stores `tree_hash`, the pinned `commit_id` /
     `commit_hash`, the pending `merge_state` / `revert_state` /
     `shelf_state` JSON, and `synced_tree`
-    (`{"commit":"<base36 id>","sparse":["a","b"]}`, sparse sorted and deduped,
-    `[]` for a full checkout): which commit's tree the stored rows hold and the
-    sparse set it was fetched with (`synced.go`).
+    (`{"commit":"<base36 id>","sparse":["a","b"],"view":"<base64>"}`, sparse
+    sorted and deduped, `[]` for a full checkout, `view` left out when the
+    manifest came without a token): which commit's tree the stored rows hold,
+    the sparse set it was fetched with and the server's view token of that
+    manifest (`synced.go`). The token names the view (read rules, sparse set,
+    recursive flag), never the commit; it is what a delta manifest request
+    sends as `base_view` (`docs/internals/protocol.md`).
   - `staged_files(path PK, staged_at)`.
   - `pinned_paths(path PK, pinned_at)` — lock pins (`PinPaths`/`UnpinPaths`/
     `ListPins`), stored normalized like snapshot paths
@@ -114,10 +118,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   changes reads the stored rows and writes ~5 files plus their ancestor nodes
   (~20 ms), not the whole table. `Snapshot()` returns every `files` row. The same transaction drops `stat_cache` rows whose path left `files`.
   `meta_tree_hash` is re-set each save. `SaveTree(nil)` deletes every row.
-  `SaveSyncedTree(root, commitID, sparse)` is `SaveTree` plus the `synced_tree`
-  record in the same transaction; plain `SaveTree` (and an empty `commitID`)
-  deletes the record, so it can only ever describe the rows it was written
-  with. `ClearSyncedTree` deletes only the record (rows stay); a sync calls it
+  `SaveSyncedTreeView(root, commitID, sparse, view)` is `SaveTree` plus the
+  `synced_tree` record in the same transaction (`SaveSyncedTree` is the same
+  without a token, for manifests fetched through a client that returns none);
+  plain `SaveTree` (and an empty `commitID`) deletes the record, so it can
+  only ever describe the rows it was written with. `ClearSyncedTree` deletes only the record (rows stay); a sync calls it
   before writing to the working copy. `LoadSyncedTree` returns nil for a missing or unreadable record, which
   `Update` reads as "unknown, do the full sync" (`docs/internals/client.md`).
   Cached objects are never touched by `SaveTree`; only the GC above removes them.
@@ -146,7 +151,60 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `chunker.IsLockablePath`, `chunker.NormalizeEncoding`, directory mode 0),
   deletes the `stat_cache` rows of the removed paths (`StatCacheDelete`, not
   the full sweep), and sets `tree_hash` and the `synced_tree` record
-  (commit = the pushed commit, `[]`).
+  (commit = the pushed commit, `[]`, and the view token of the record it was
+  applied to: a push changes none of what the token names, and the root hash
+  check proved the rows are the new head's whole tree; if the rules changed
+  meanwhile the server compares the token with the caller's current view and
+  declines the delta). A first push onto an empty branch has no record to take
+  a token from, so that clone gets one with its first fetched manifest.
+- `PlanTreeDelta(clientDomain.TreeDeltaApply)` / `ApplyTreeDelta(in, planned)`
+  (`tree_delta.go`) apply a delta manifest (`treedelta.Delta`, the answer of
+  `GetTreeManifestDelta`) to the stored rows instead of saving the target's
+  manifest. Both run `planTreeDelta` in a transaction; the plan only reads,
+  the apply also writes, so the caller can sync the working copy in between
+  (rows are saved after the working copy, as in the full sync).
+  - *Base check* (`checkDeltaBase`, `clientDomain.ErrTreeDeltaBase`): the
+    `synced_tree` record names `BaseCommitID` with the same sparse set.
+    `ApplyTreeDelta` with a `planned` result also accepts a missing record
+    (the sync between plan and apply drops it, `ClearSyncedTree`) and then
+    relies on `tree_hash` still being `planned.BaseTreeHash` and on the
+    changes leading to `planned.TreeHash` again; any tree saved in between
+    changes `tree_hash`. With `planned == nil` the record alone decides.
+  - *Plan* (`treeDeltaPlan.dir`, recursive over the changed directories
+    only): reads the directory's row, its files (`FileHashesByTree`: path,
+    hash, mode) and its children's hashes (`TreeNodeChildHashes`). A file
+    listed `unchanged` must be held (else `ErrTreeDeltaBase`: the base was
+    not the stored tree); a file listed in full becomes a row
+    (`deltaFileRow`, the row `flattenTree` writes); held files not listed are
+    deleted. A directory listed `unchanged` keeps its stored hash and rows,
+    or stays absent when the tree does not hold it ("keep what you hold, if
+    anything"), or is removed when it is held with the empty-tree hash; a
+    changed one recurses; held directories not listed leave with their whole
+    subtree (range delete on the path prefix, `FileDeleteInRange` /
+    `TreeNodeDeleteInRange`). Hashes are recomputed bottom-up with
+    `treehash.TreeHash` over mode classes mapped by `treedelta.HashMode`; a
+    changed directory that ends up without entries is dropped (the root never
+    is). An `unchanged` root changes no row and no `tree_hash`.
+  - *Verification*: when the delta carries `RootHash` the computed root must
+    equal it, and with `planned` it must equal `planned.TreeHash`; otherwise
+    `*clientDomain.TreeDeltaMismatchError` (expected, computed) and nothing
+    is written. A delta without a root hash (a filtered or sparse view, an
+    unprovable tree) is applied unverified: the computed hashes are the only
+    ones, exactly as `treedelta.Apply` documents.
+  - *Result* (`clientDomain.TreeDeltaChanges`): `Written` (path, the
+    manifest file, and the stored row it replaces or nil when added; a file
+    sent in full that equals the stored row costs no write and is not
+    listed), `Removed` (the stored rows that leave, read by path, or by range
+    for a subtree), `BaseTreeHash` and `TreeHash`. These are the only files a
+    caller has to materialize or delete.
+  - *Writes*: subtree range deletes, then the node upserts (parents first),
+    file upserts, file deletes and node deletes; `stat_cache` rows of the
+    removed paths (`StatCacheDelete`); `tree_hash`; the `synced_tree` record
+    with the answer's view token. The result equals what
+    `SaveSyncedTreeView` writes for the target's manifest (unit test
+    `TestApplyTreeDelta_EqualsSavingTheManifest`, end to end
+    `TestEndToEnd_DeltaUpdateProperty`). Reads and writes follow the changed
+    directories, never the tree (`TestApplyTreeDelta_CostFollowsTheChange`).
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a
   tracked file whose `(size, mtime)` match a fresh fingerprint (`mtime < cached_at`)
   is trusted without reading, while misses are rehashed (bounded worker pool in

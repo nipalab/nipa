@@ -42,10 +42,6 @@ func (l *LocalRepo) ApplyPush(in clientDomain.PushApply) error {
 	if in.CommitID == "" || len(sparse) > 0 {
 		return clientDomain.ErrPushApplyBase
 	}
-	record, err := json.Marshal(syncedTreeRecord{Commit: in.CommitID, Sparse: sparse})
-	if err != nil {
-		return err
-	}
 
 	ctx := context.Background()
 	tx, err := l.db.Begin()
@@ -55,7 +51,17 @@ func (l *LocalRepo) ApplyPush(in clientDomain.PushApply) error {
 	defer func() { _ = tx.Rollback() }()
 	q := sqlcLocalrepo.New(tx)
 
-	if err := checkPushBase(ctx, q, in.BaseCommitID); err != nil {
+	view, err := checkPushBase(ctx, q, in.BaseCommitID)
+	if err != nil {
+		return err
+	}
+	// The view token is kept: it names the read rules, the sparse set and the
+	// recursive flag, none of which a push changes, and the tree this apply
+	// leaves is the new head's manifest in that same view (the root hash check
+	// below). Should the rules have changed since, the server compares the
+	// token with the current view and declines the delta.
+	record, err := json.Marshal(syncedTreeRecord{Commit: in.CommitID, Sparse: sparse, View: view})
+	if err != nil {
 		return err
 	}
 	plan, err := planPushApply(ctx, q, in.Files, in.Removed)
@@ -88,39 +94,39 @@ func (l *LocalRepo) ApplyPush(in clientDomain.PushApply) error {
 // record says it is the full tree of baseCommitID, or, for a push onto an
 // empty branch, when nothing is stored at all. Trees saved without a record
 // (merge and revert build theirs locally, without directory hashes) and
-// sparse trees are refused.
-func checkPushBase(ctx context.Context, q *sqlcLocalrepo.Queries, baseCommitID string) error {
+// sparse trees are refused. It returns the view token of the accepted record.
+func checkPushBase(ctx context.Context, q *sqlcLocalrepo.Queries, baseCommitID string) ([]byte, error) {
 	var record *syncedTreeRecord
 	value, err := q.MetaGet(ctx, syncedTreeKey)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 	case err != nil:
-		return err
+		return nil, err
 	default:
 		var stored syncedTreeRecord
 		if json.Unmarshal([]byte(value), &stored) != nil || stored.Commit == "" {
-			return clientDomain.ErrPushApplyBase
+			return nil, clientDomain.ErrPushApplyBase
 		}
 		record = &stored
 	}
 
 	if baseCommitID == "" {
 		if record != nil {
-			return clientDomain.ErrPushApplyBase
+			return nil, clientDomain.ErrPushApplyBase
 		}
 		_, err := q.TreeNodeGet(ctx, "")
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+			return nil, nil
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return clientDomain.ErrPushApplyBase
+		return nil, clientDomain.ErrPushApplyBase
 	}
 	if record == nil || record.Commit != baseCommitID || len(canonicalSparse(record.Sparse)) > 0 {
-		return clientDomain.ErrPushApplyBase
+		return nil, clientDomain.ErrPushApplyBase
 	}
-	return nil
+	return record.View, nil
 }
 
 // pushApplyPlan is the set of row changes a push causes, and the root hash

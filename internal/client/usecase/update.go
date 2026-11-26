@@ -128,9 +128,10 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 func (u *Update) RunResult(ctx context.Context, root string, progress ...DownloadProgress) (result UpdateResult, err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.update")
 	defer func() { obs.FinishSpan(span, err) }()
+	var effect *pushCacheEffect
 	defer func() {
 		if !result.UpToDate {
-			pruneAfterSuccess(u.localRepo, err)
+			pruneAfterPush(u.localRepo, effect, err)
 		}
 	}()
 
@@ -162,7 +163,8 @@ func (u *Update) RunResult(ctx context.Context, root string, progress ...Downloa
 		return result, err
 	}
 	if cfg.Head != nil {
-		return u.runDetached(ctx, root, cfg, nu, progress...)
+		result, effect, err = u.runDetached(ctx, root, cfg, nu, progress...)
+		return result, err
 	}
 
 	headCommitID, err := u.branchHead(ctx, nu, cfg.Branch)
@@ -185,20 +187,8 @@ func (u *Update) RunResult(ctx context.Context, root string, progress ...Downloa
 			}
 		}
 	}
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, cfg.Sparse)
+	effect, err = u.syncTo(ctx, root, nu, cfg.Sparse, syncGoal{commitID: headCommitID, branch: cfg.Branch}, progress...)
 	if err != nil {
-		return result, err
-	}
-	scope := clientDomain.ChunkScope{
-		Org:       nu.Org,
-		Project:   nu.Project,
-		CommitIDs: commitIDs(headCommitID),
-		Paths:     cfg.Sparse,
-	}
-	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return result, err
-	}
-	if err := u.localRepo.SaveSyncedTree(tree, headCommitID, cfg.Sparse); err != nil {
 		return result, err
 	}
 	if headCommitID == "" {
@@ -233,43 +223,31 @@ func sameSparseSet(a, b []string) bool {
 	return slices.Equal(canonical(a), canonical(b))
 }
 
-func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain.Config, nu *clientDomain.NipaUrl, progress ...DownloadProgress) (UpdateResult, error) {
+func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain.Config, nu *clientDomain.NipaUrl, progress ...DownloadProgress) (UpdateResult, *pushCacheEffect, error) {
 	var result UpdateResult
 	localCommit, err := u.localRepo.LoadCommit()
 	if err != nil {
-		return result, err
+		return result, nil, err
 	}
 	if localCommit == nil || localCommit.CommitID == "" {
-		return result, clientDomain.NewUserError("no commit checked out; run nipa switch to a branch first")
+		return result, nil, clientDomain.NewUserError("no commit checked out; run nipa switch to a branch first")
 	}
 	if !u.force {
 		// A commit's tree never changes, so the checked-out commit synced with
 		// the same sparse set leaves nothing to fetch.
 		upToDate, err := u.syncedAt(localCommit.CommitID, cfg.Sparse)
 		if err != nil {
-			return result, err
+			return result, nil, err
 		}
 		if upToDate {
-			return UpdateResult{UpToDate: true}, nil
+			return UpdateResult{UpToDate: true}, nil, nil
 		}
 	}
-	tree, err := u.client.GetCommitTreeManifest(ctx, nu.Org, nu.Project, localCommit.CommitID, cfg.Sparse)
+	effect, err := u.syncTo(ctx, root, nu, cfg.Sparse, syncGoal{commitID: localCommit.CommitID, detached: true}, progress...)
 	if err != nil {
-		return result, err
+		return result, nil, err
 	}
-	scope := clientDomain.ChunkScope{
-		Org:       nu.Org,
-		Project:   nu.Project,
-		CommitIDs: commitIDs(localCommit.CommitID),
-		Paths:     cfg.Sparse,
-	}
-	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return result, err
-	}
-	if err := u.localRepo.SaveSyncedTree(tree, localCommit.CommitID, cfg.Sparse); err != nil {
-		return result, err
-	}
-	return result, u.localRepo.SaveCommit(localCommit.CommitID, localCommit.CommitHash)
+	return result, effect, u.localRepo.SaveCommit(localCommit.CommitID, localCommit.CommitHash)
 }
 
 func (u *Update) branchHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) (string, error) {
@@ -338,7 +316,8 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	ctx, span := obs.StartSpan(ctx, "nipa.switch",
 		attribute.String(obs.AttrBranch, branch))
 	defer func() { obs.FinishSpan(span, err) }()
-	defer func() { pruneAfterSuccess(u.localRepo, err) }()
+	var effect *pushCacheEffect
+	defer func() { pruneAfterPush(u.localRepo, effect, err) }()
 
 	if err := u.localRepo.Init(root); err != nil {
 		return err
@@ -380,20 +359,8 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err != nil {
 		return err
 	}
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, cfg.Sparse)
+	effect, err = u.syncTo(ctx, root, nu, cfg.Sparse, syncGoal{commitID: headCommitID, branch: branch}, progress...)
 	if err != nil {
-		return err
-	}
-	scope := clientDomain.ChunkScope{
-		Org:       nu.Org,
-		Project:   nu.Project,
-		CommitIDs: commitIDs(headCommitID),
-		Paths:     cfg.Sparse,
-	}
-	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return err
-	}
-	if err := u.localRepo.SaveSyncedTree(tree, headCommitID, cfg.Sparse); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch, Sparse: cfg.Sparse}); err != nil {
@@ -409,7 +376,8 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	ctx, span := obs.StartSpan(ctx, "nipa.switch",
 		attribute.String("nipa.tag", tagName))
 	defer func() { obs.FinishSpan(span, err) }()
-	defer func() { pruneAfterSuccess(u.localRepo, err) }()
+	var effect *pushCacheEffect
+	defer func() { pruneAfterPush(u.localRepo, effect, err) }()
 
 	if err := u.localRepo.Init(root); err != nil {
 		return err
@@ -449,20 +417,8 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	if err != nil {
 		return err
 	}
-	tree, err := u.client.GetCommitTreeManifest(ctx, nu.Org, nu.Project, tag.CommitID, cfg.Sparse)
+	effect, err = u.syncTo(ctx, root, nu, cfg.Sparse, syncGoal{commitID: tag.CommitID, detached: true}, progress...)
 	if err != nil {
-		return err
-	}
-	scope := clientDomain.ChunkScope{
-		Org:       nu.Org,
-		Project:   nu.Project,
-		CommitIDs: commitIDs(tag.CommitID),
-		Paths:     cfg.Sparse,
-	}
-	if err := u.sync(ctx, root, tree, scope, progress...); err != nil {
-		return err
-	}
-	if err := u.localRepo.SaveSyncedTree(tree, tag.CommitID, cfg.Sparse); err != nil {
 		return err
 	}
 	cfg.Head = &clientDomain.HeadRef{Kind: clientDomain.HeadKindTag, Name: tag.Name}
@@ -494,6 +450,9 @@ type syncOptions struct {
 	// keepLocalChanges refuses the sync, before anything is written, when it
 	// would replace a locally changed or untracked working file.
 	keepLocalChanges bool
+	// restoreMissing makes a delta sync also write back every tracked file
+	// that is gone from disk, which the full sync always does.
+	restoreMissing bool
 }
 
 // syncWorkingCopy brings the working copy to tree, replacing whatever is in
@@ -532,11 +491,7 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 
 	// Only the files this sync rewrites get their chunk lists copied out of
 	// the tree; an unchanged file costs one hash over its chunk hashes.
-	var jobs, directJobs []materializeJob
-	var jobFiles []materializedFile
-	var want []domain.Hash
-	var replaced []overwriteCandidate
-	cached := make(map[domain.Hash]struct{})
+	plan := newSyncPlan(pins, opts)
 	present := make(map[string]struct{}, len(baseByPath))
 	walkTreeFiles(tree, "", func(path string, file *domain.File) {
 		present[path] = struct{}{}
@@ -547,34 +502,63 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 			// it once if it has none.
 			return
 		}
-		f := materializedFromTree(path, file)
-		if opts.keepLocalChanges {
-			replaced = append(replaced, overwriteCandidate{target: f, base: base, tracked: tracked})
-		}
-		job := materializeJob{file: f, prevMode: base.Mode}
-		if directEligible(f, pins) {
-			directJobs = append(directJobs, job)
-		} else {
-			jobs = append(jobs, job)
-			for _, h := range f.ChunkHashes {
-				cached[h] = struct{}{}
-			}
-		}
-		jobFiles = append(jobFiles, f)
-		want = append(want, f.ChunkHashes...)
+		plan.write(materializedFromTree(path, file), base, tracked)
 	})
-
-	var removals []clientDomain.SnapshotFile
 	for path, base := range baseByPath {
 		if _, kept := present[path]; !kept {
-			removals = append(removals, base)
+			plan.removals = append(plan.removals, base)
 		}
 	}
+	return plan.run(ctx, client, lr, root, scope, progress...)
+}
+
+// syncPlan is what a sync does to the working copy: the files it writes and
+// the tracked files it removes.
+type syncPlan struct {
+	pins []string
+	opts syncOptions
+	// jobs are written from the object cache, directJobs straight into their
+	// working files; jobFiles lists both.
+	jobs, directJobs []materializeJob
+	jobFiles         []materializedFile
+	want             []domain.Hash
+	replaced         []overwriteCandidate
+	cached           map[domain.Hash]struct{}
+	removals         []clientDomain.SnapshotFile
+}
+
+func newSyncPlan(pins []string, opts syncOptions) *syncPlan {
+	return &syncPlan{pins: pins, opts: opts, cached: make(map[domain.Hash]struct{})}
+}
+
+// write plans the materialization of f over base, the version last synced
+// (tracked false when the path is new to the stored tree).
+func (p *syncPlan) write(f materializedFile, base clientDomain.SnapshotFile, tracked bool) {
+	if p.opts.keepLocalChanges {
+		p.replaced = append(p.replaced, overwriteCandidate{target: f, base: base, tracked: tracked})
+	}
+	job := materializeJob{file: f, prevMode: base.Mode}
+	if directEligible(f, p.pins) {
+		p.directJobs = append(p.directJobs, job)
+	} else {
+		p.jobs = append(p.jobs, job)
+		for _, h := range f.ChunkHashes {
+			p.cached[h] = struct{}{}
+		}
+	}
+	p.jobFiles = append(p.jobFiles, f)
+	p.want = append(p.want, f.ChunkHashes...)
+}
+
+// run carries the plan out: the guards first (link targets, local changes),
+// then the downloads, the writes, the removals and the fingerprints.
+func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
+	jobs, directJobs, jobFiles, cached, removals := p.jobs, p.directJobs, p.jobFiles, p.cached, p.removals
 	if err := checkSyncTargets(root, jobFiles, removals); err != nil {
 		return err
 	}
 
-	conflicts, err := localChangeConflicts(ctx, root, lr, replaced)
+	conflicts, err := localChangeConflicts(ctx, root, lr, p.replaced)
 	if err != nil {
 		return err
 	}
@@ -587,11 +571,12 @@ func syncWorkingCopyOpts(ctx context.Context, client chunkDownloader, lr working
 		}
 	}
 
-	missing, err := lr.MissingChunks(want)
+	missing, err := lr.MissingChunks(p.want)
 	if err != nil {
 		return err
 	}
-	want = nil
+	// Release the hash list before the downloads; nothing reads it after this.
+	p.want = nil
 
 	direct, err := newDirectPlan(root, directJobs)
 	if err != nil {

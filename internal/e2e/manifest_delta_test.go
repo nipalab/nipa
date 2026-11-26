@@ -104,6 +104,9 @@ var (
 type deltaGen struct {
 	rng  *rand.Rand
 	tick int
+	// noSwaps keeps mutate from turning a file into a directory of the same
+	// name or the reverse.
+	noSwaps bool
 }
 
 func (g *deltaGen) pick(list []string) string { return list[g.rng.Intn(len(list))] }
@@ -179,11 +182,11 @@ func (g *deltaGen) mutate(m deltaModel) {
 			g.transplant(m, g.pick(dirs), false)
 		case op == 9 && len(dirs) > 0:
 			m.removeDir(g.pick(dirs))
-		case op == 10:
+		case op == 10 && !g.noSwaps:
 			// A file becomes a directory of the same name.
 			path := g.pick(paths)
 			m.set(path+"/"+g.pick(deltaFileNames), g.file())
-		case op == 11 && len(dirs) > 0:
+		case op == 11 && len(dirs) > 0 && !g.noSwaps:
 			// A directory becomes a file of the same name.
 			m.set(g.pick(dirs), g.file())
 		default:
@@ -312,9 +315,12 @@ type deltaHarness struct {
 	ctx    context.Context
 	db     *sql.DB
 	uc     serverapp.Usecases
+	host   string
 	admin  *clientgrpc.Client
 	user   *clientgrpc.Client
 	filter string
+	// The token stores of the two sessions, for building client usecases.
+	adminStore, userStore *memoryStore
 }
 
 func newDeltaHarness(t *testing.T) *deltaHarness {
@@ -322,7 +328,7 @@ func newDeltaHarness(t *testing.T) *deltaHarness {
 	ctx := context.Background()
 	dbConn := openTestDB(t)
 	host, uc := startTestServerWithUsecases(t, dbConn)
-	admin, _ := loginE2EClient(t, ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	admin, adminStore := loginE2EClient(t, ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
 
 	passwordHasher := hasher.NewHasher(1)
 	t.Cleanup(passwordHasher.Close)
@@ -333,10 +339,10 @@ func newDeltaHarness(t *testing.T) *deltaHarness {
 		deltaUserID, "Delta Reader", "delta@example.com", passwordHash,
 	)
 	require.NoError(t, err)
-	h := &deltaHarness{t: t, ctx: ctx, db: dbConn, uc: uc, admin: admin}
+	h := &deltaHarness{t: t, ctx: ctx, db: dbConn, uc: uc, host: host, admin: admin, adminStore: adminStore}
 	// The user needs a rule to log in to anything; setFilter replaces it.
 	h.setFilter(deltaFilter{name: "bootstrap", rules: []string{""}})
-	h.user, _ = loginE2EClient(t, ctx, host, "delta@example.com", "regular-pass")
+	h.user, h.userStore = loginE2EClient(t, ctx, host, "delta@example.com", "regular-pass")
 	return h
 }
 
