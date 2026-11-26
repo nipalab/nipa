@@ -1044,8 +1044,8 @@ func TestPush_RefetchRecordsTheViewToken(t *testing.T) {
 	auth := NewAuth(nil, &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: signTestToken(t, "secret")}}, nil)
 
 	require.NoError(t, NewPush(auth, client, keeper).Run(context.Background(), root, "msg"))
-	require.Equal(t, 1, client.scriptedDeltaClient.calls)
-	require.Equal(t, treedelta.Target{CommitID: treeSyncCommit.Base36()}, client.scriptedDeltaClient.target, "the pushed commit, by id")
+	require.Equal(t, 1, client.calls)
+	require.Equal(t, treedelta.Target{CommitID: treeSyncCommit.Base36()}, client.target, "the pushed commit, by id")
 	require.Zero(t, stub.manifestCalls, "the plain branch manifest is not used")
 	require.Equal(t, []byte("pushed-view"), keeper.view)
 	require.Equal(t, treeSyncCommit.Base36(), local.syncedTree.CommitID)

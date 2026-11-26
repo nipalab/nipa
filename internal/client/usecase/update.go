@@ -553,7 +553,7 @@ func (p *syncPlan) write(f materializedFile, base clientDomain.SnapshotFile, tra
 // run carries the plan out: the guards first (link targets, local changes),
 // then the downloads, the writes, the removals and the fingerprints.
 func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
-	jobs, directJobs, jobFiles, want, cached, removals := p.jobs, p.directJobs, p.jobFiles, p.want, p.cached, p.removals
+	jobs, directJobs, jobFiles, cached, removals := p.jobs, p.directJobs, p.jobFiles, p.cached, p.removals
 	if err := checkSyncTargets(root, jobFiles, removals); err != nil {
 		return err
 	}
@@ -571,11 +571,12 @@ func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCo
 		}
 	}
 
-	missing, err := lr.MissingChunks(want)
+	missing, err := lr.MissingChunks(p.want)
 	if err != nil {
 		return err
 	}
-	want = nil
+	// Release the hash list before the downloads; nothing reads it after this.
+	p.want = nil
 
 	direct, err := newDirectPlan(root, directJobs)
 	if err != nil {
