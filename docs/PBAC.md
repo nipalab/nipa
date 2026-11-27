@@ -149,7 +149,34 @@ Signed URLs are capabilities: the `/api/chunks` (download) and
 works without a session until it expires — also after the right it was signed
 under is revoked: a revoke stops new URLs, it does not cancel issued ones, which
 stay valid for at most `CHUNK_PRESIGN_TTL_SECONDS` (default 3600 s; lower it to
-shorten that window). Bundle URLs bind the project, the
+shorten that window).
+
+**Packs and path rules.** With `CHUNK_PACKS=on` (`nipad-ee`, S3, proxy
+uploads) one pack object holds every chunk of one upload bundle, so chunks of
+folders with different read rules share an object, and the store's presigned
+URL of a pack authorizes the whole object (the `Range` is not signed). Such a
+URL is therefore issued only to a caller who may read every path of the
+project (`PathFilter.Unrestricted`: admin, org owner, a rule on the project
+root, or a root path default with no default below it that withholds read).
+Everyone else gets, for a packed chunk, the server's own signed
+`/api/chunks/{org}/{project}/{hash}` URL, which serves exactly that chunk and
+shows no pack id, offset or pack size; they pay one request per chunk through
+the server instead of ranged GETs to the store. The test is
+`ee/e2e/path_access_packs_test.go`. Loose objects (free `nipad`, S3 direct
+mode, own-storage projects) hold one chunk each and are not affected.
+Remaining exposure, by design: a pack URL issued to a whole-project reader
+stays valid for the presign TTL after that reader is restricted, and covers
+the whole pack (not only the chunks they asked for), including bytes of
+uploads that were never committed. Separately, dedup is per project and has
+no possession proof: a caller with write on any path learns from
+`GetChunkUploadUrls` (`already_stored`) whether a chunk hash exists anywhere
+in the project, and may reference an existing hash in a file it pushes to a
+path it can read, which makes knowing a hidden chunk's hash equivalent to
+reading it. Hashes of hidden chunks are not served (manifests and download
+URLs are filtered, and a file hash is a hash over chunk hashes), so this
+needs the content or its hash from elsewhere.
+
+Bundle URLs bind the project, the
 largest body and the most chunks per body, and every chunk of a bundle is
 BLAKE3-checked before anything is stored; chunk metadata rows are only written
 by `ConfirmChunkUploads` after the content exists.

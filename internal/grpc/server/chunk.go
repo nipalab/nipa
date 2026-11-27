@@ -63,6 +63,9 @@ func (n *nipaServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUpl
 
 // GetChunkDownloadUrls returns signed download paths for one page of chunk
 // hashes the caller may read. Hashes outside the visible trees are omitted.
+// Chunks stored in a pack come as ranges of the pack object only for a caller
+// who may read every path of the project; a path-restricted caller gets a
+// signed server path per chunk instead (usecase.ChunkReadScope).
 func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkDownloadUrlsRequest) (*pb.GetChunkDownloadUrlsResponse, error) {
 	if err := checkChunkProtocol(req.GetChunkProtocol()); err != nil {
 		return nil, err
@@ -85,7 +88,13 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 			hashes = append(hashes, hash)
 		}
 	}
-	urls, next, err := n.uc.Chunk().PresignDownloadURLs(ctx, org, project, hashes, int(req.GetPageSize()), req.GetPageToken())
+	// A caller limited to some paths must not get a URL of a pack object:
+	// it would let them read the chunks of every other path in that pack.
+	scope, err := n.uc.Branch().ChunkReadScope(ctx, project.ID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	urls, next, err := n.uc.Chunk().PresignDownloadURLs(ctx, org, project, hashes, int(req.GetPageSize()), req.GetPageToken(), scope)
 	if err != nil {
 		return nil, handleError(err)
 	}

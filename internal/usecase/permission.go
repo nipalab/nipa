@@ -232,6 +232,39 @@ func (f *PathFilter) All() bool {
 	return f.all || (f.set != nil && f.set.orgOwner)
 }
 
+// Unrestricted reports whether the filter's permission is held on every path
+// of the project, now and for any path added later: an allow-all filter, a
+// rule on the project root (rules only add), or a root path default with no
+// default anywhere that withholds the permission (the deepest default wins,
+// so one denying default below the root hides its folder). It errs on the
+// side of false: a caller it reports false for is treated as path-restricted.
+func (f *PathFilter) Unrestricted() bool {
+	if f == nil {
+		return false
+	}
+	if f.All() {
+		return true
+	}
+	if f.set == nil || f.permission == 0 {
+		return false
+	}
+	for _, rule := range f.set.rules {
+		if rule.PathPrefix == "" && rule.Permission.Has(f.permission) {
+			return true
+		}
+	}
+	root := false
+	for _, def := range f.set.defaults {
+		if !def.Permission.Has(f.permission) {
+			return false
+		}
+		if def.PathPrefix == "" {
+			root = true
+		}
+	}
+	return root
+}
+
 // Allow reports whether path carries every bit of the filter's permission.
 func (f *PathFilter) Allow(path string) bool {
 	if f == nil {

@@ -672,14 +672,40 @@ func (c *Chunk) directUploads(resolved ProjectStore) (storage.DirectTransferStor
 	return direct, true
 }
 
+// ChunkReadScope is how much of a project's content the caller of a chunk
+// download may read. The zero value is the restricted one, so a caller that
+// does not say is never handed a whole pack.
+type ChunkReadScope int
+
+const (
+	// ChunkReadPaths: the caller's read right covers only some paths. The
+	// hashes it asks for were filtered to those paths, but a pack object
+	// holds chunks of any path, so it must never get a URL of one.
+	ChunkReadPaths ChunkReadScope = iota
+	// ChunkReadProject: the caller may read every path of the project, so
+	// every byte of every pack.
+	ChunkReadProject
+)
+
 // PresignDownloadURLs signs one page of download paths for hashes the caller
 // may read. Stores implementing storage.DirectTransferStore hand out absolute
-// backend presigned URLs so clients fetch content directly from the backend.
-// A packed chunk gets its pack's presigned URL (signed once per pack per
-// page and shared by all its chunks) with the chunk's offset and length, for
-// a Range request; a loose chunk gets its own object's URL with no range.
-func (c *Chunk) PresignDownloadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
-	urls, next, err := c.presignDownloadURLs(ctx, org, project, hashes, pageSize, pageToken)
+// backend presigned URLs so clients fetch content directly from the backend;
+// a loose chunk gets its own object's URL with no range.
+//
+// A packed chunk depends on scope, because the store's presigned URL of a
+// pack authorizes the whole object (the Range header is the client's choice
+// and not part of the signature) and a pack mixes chunks of every path of
+// the push that wrote it:
+//
+//   - ChunkReadProject: the pack's presigned URL (signed once per pack per
+//     page and shared by all its chunks) with the chunk's offset and length,
+//     for a Range request straight to the store;
+//   - ChunkReadPaths: the server's own signed path for that one hash
+//     (chunkurl.DownloadPath, served by the pack-aware Chunk.Download, which
+//     reads exactly the chunk's bytes), with no range. The answer names no
+//     pack, offset or pack size.
+func (c *Chunk) PresignDownloadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, pageSize int, pageToken string, scope ChunkReadScope) ([]ChunkURL, string, error) {
+	urls, next, err := c.presignDownloadURLs(ctx, org, project, hashes, pageSize, pageToken, scope)
 	result := "ok"
 	if err != nil {
 		result = "error"
@@ -688,7 +714,7 @@ func (c *Chunk) PresignDownloadURLs(ctx context.Context, org *domain.Organizatio
 	return urls, next, err
 }
 
-func (c *Chunk) presignDownloadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+func (c *Chunk) presignDownloadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, pageSize int, pageToken string, scope ChunkReadScope) ([]ChunkURL, string, error) {
 	page, next, err := paginate(hashes, pageSize, pageToken, c.transfer.MaxPageSize)
 	if err != nil {
 		return nil, "", err
@@ -706,19 +732,28 @@ func (c *Chunk) presignDownloadURLs(ctx context.Context, org *domain.Organizatio
 	urls := make([]ChunkURL, 0, len(page))
 	packURLs := make(map[snow.ID]string)
 	for _, hash := range page {
-		if record, ok := records[hash]; ok && record.Location.Packed() {
+		record, ok := records[hash]
+		switch {
+		case !ok || !record.Location.Packed():
+			path, err := c.downloadPath(ctx, store, org.Slug, project, hash, expiry)
+			if err != nil {
+				return nil, "", err
+			}
+			urls = append(urls, ChunkURL{Hash: hash, URL: path})
+		case scope == ChunkReadProject:
 			url, err := c.packDownloadURL(ctx, store.(storage.PackStore), project.ID, record.Location.PackID, packURLs)
 			if err != nil {
 				return nil, "", err
 			}
 			urls = append(urls, ChunkURL{Hash: hash, URL: url, Offset: record.Location.Offset, Length: record.SizeBytes})
-			continue
+		default:
+			// The download that follows reads this row's range: keep the
+			// location so it needs no lookup of its own.
+			if packed, ok := resolved.Store.(*packedStore); ok {
+				packed.cache.put(project.ID, hash, record)
+			}
+			urls = append(urls, ChunkURL{Hash: hash, URL: chunkurl.DownloadPath(c.transfer.SigningKey, org.Slug, project.Slug, hash.String(), expiry)})
 		}
-		path, err := c.downloadPath(ctx, store, org.Slug, project, hash, expiry)
-		if err != nil {
-			return nil, "", err
-		}
-		urls = append(urls, ChunkURL{Hash: hash, URL: path})
 	}
 	return urls, next, nil
 }

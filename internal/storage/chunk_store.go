@@ -115,6 +115,9 @@ type PackStore interface {
 
 	// PresignPackDownload returns an absolute URL for reading the object at
 	// key; clients send a Range header with it to read part of the object.
+	// The URL authorizes the whole object, whatever Range the holder sends,
+	// and a pack holds chunks of any path: hand it only to a caller who may
+	// read every path of the project (usecase.ChunkReadProject).
 	PresignPackDownload(ctx context.Context, key string, expires time.Duration) (string, error)
 
 	// DeletePack removes the object at key; a missing object is not an

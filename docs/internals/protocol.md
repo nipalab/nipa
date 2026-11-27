@@ -338,10 +338,36 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   pack state; `Size` the row's size. Browser, diff, blame and merges read
   through `ProjectChunkReader`/`Chunk.Download` unchanged; presign, confirm
   and writes use the raw store (`unwrapStore`). **Downloads**:
-  `PresignedChunkUrl.offset`/`length` (protocol 4): a packed chunk gets its
-  pack's presigned GET (signed once per pack per page) with its offset and
-  length, a loose chunk its own URL with 0/0 (the local store's signed
-  server path is always loose). The client (`internal/client/grpc/ranges.go`)
+  `PresignedChunkUrl.offset`/`length` (protocol 4): a loose chunk gets its
+  own URL with 0/0 (the local store's signed server path is always loose); a
+  packed chunk depends on the caller's read scope
+  (`Branch.ChunkReadScope` -> `usecase.ChunkReadScope`, passed to
+  `Chunk.PresignDownloadURLs`), because a pack holds the chunks of every
+  path of the bundle that wrote it and its presigned GET authorizes the
+  whole object (SigV4 signs `host` only; the `Range` is the client's
+  choice). A caller who may read every path (`PathFilter.Unrestricted`:
+  admin, org owner, a rule on the project root, or a root path default that
+  no deeper default withholds; `ChunkReadProject`) gets the pack's presigned
+  GET (signed once per pack per page) with the chunk's offset and length. A
+  path-restricted caller (`ChunkReadPaths`, the zero value) never gets a
+  pack URL: each packed chunk gets the server's signed single-chunk path
+  (`chunkurl.DownloadPath`, `/api/chunks/{org}/{project}/{hash}`, HMAC over
+  op, org, project, hash and expiry) with 0/0, so the answer names no pack,
+  offset or pack size, and `ChunkHandler.GetChunk` -> `Chunk.Download` ->
+  `packedStore` reads exactly that chunk's range (one `GetRange`,
+  BLAKE3-checked; presign leaves the row's location in the location cache).
+  This needs no wire or client change (the client already takes relative
+  loose URLs from free servers), so the chunk protocol stays 4. Cost, for
+  restricted readers only: one GET per packed chunk through the server (no
+  range merging, bytes proxied, `chunk_ip` rate limit) instead of a few
+  ranged GETs to the store; measured on loopback MinIO, 3040 files / 52 MiB:
+  0.42 s in 8 GETs for a whole-project reader, 1.0 s in 3067 GETs for a
+  restricted one. Never hand `PresignPackDownload` output to a caller that
+  is not `ChunkReadProject`. A possible follow-up that keeps restricted
+  readers on the store: presign each visible range with `Range` as a signed
+  header (`PresignHeader`; MinIO then answers 403/400 to any other or no
+  `Range`, AWS SigV4 specifies the same; not verified on R2), which needs
+  the client to send the server's header verbatim (protocol bump). The client (`internal/client/grpc/ranges.go`)
   validates the range, then `planDownloads` groups a window's packed jobs by
   URL, sorts by offset and merges neighbours while the gap is
   `<= maxRangeGap` (1 MiB) and the span `<= maxRangeSpan` (32 MiB); each
