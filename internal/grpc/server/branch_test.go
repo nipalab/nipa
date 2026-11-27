@@ -146,6 +146,8 @@ func newTestBranchUc(t *testing.T) (*usecase.Branch, *MockpermissionUsecase, *Mo
 	repo := NewMockbranchRepository(ctrl)
 	repo.EXPECT().RequiredReviewers(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().RequiredChecks(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredReviewersByBranches(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredChecksByBranches(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
 	return usecase.NewBranch(perm, repo, node), perm, repo

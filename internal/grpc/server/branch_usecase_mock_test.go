@@ -468,6 +468,21 @@ func (mr *MockbranchRepositoryMockRecorder) RequiredChecks(ctx, branchID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiredChecks", reflect.TypeOf((*MockbranchRepository)(nil).RequiredChecks), ctx, branchID)
 }
 
+// RequiredChecksByBranches mocks base method.
+func (m *MockbranchRepository) RequiredChecksByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequiredChecksByBranches", ctx, branchIDs)
+	ret0, _ := ret[0].(map[snow.ID][]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RequiredChecksByBranches indicates an expected call of RequiredChecksByBranches.
+func (mr *MockbranchRepositoryMockRecorder) RequiredChecksByBranches(ctx, branchIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiredChecksByBranches", reflect.TypeOf((*MockbranchRepository)(nil).RequiredChecksByBranches), ctx, branchIDs)
+}
+
 // RequiredReviewers mocks base method.
 func (m *MockbranchRepository) RequiredReviewers(ctx context.Context, branchID snow.ID) ([]domain.ReviewActor, error) {
 	m.ctrl.T.Helper()
@@ -481,6 +496,21 @@ func (m *MockbranchRepository) RequiredReviewers(ctx context.Context, branchID s
 func (mr *MockbranchRepositoryMockRecorder) RequiredReviewers(ctx, branchID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiredReviewers", reflect.TypeOf((*MockbranchRepository)(nil).RequiredReviewers), ctx, branchID)
+}
+
+// RequiredReviewersByBranches mocks base method.
+func (m *MockbranchRepository) RequiredReviewersByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]domain.ReviewActor, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequiredReviewersByBranches", ctx, branchIDs)
+	ret0, _ := ret[0].(map[snow.ID][]domain.ReviewActor)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RequiredReviewersByBranches indicates an expected call of RequiredReviewersByBranches.
+func (mr *MockbranchRepositoryMockRecorder) RequiredReviewersByBranches(ctx, branchIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiredReviewersByBranches", reflect.TypeOf((*MockbranchRepository)(nil).RequiredReviewersByBranches), ctx, branchIDs)
 }
 
 // SetBranchProtection mocks base method.

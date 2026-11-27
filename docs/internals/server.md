@@ -403,6 +403,17 @@ dismissing them), `require_status_checks` plus required check names, and named
 `required_reviewers` whose live approval the review gate demands
 (`blocked_by: "required_reviewers"`). `Branch.Delete` refuses protected
 branches (409) until they are unprotected.
+The protection lists live in child tables (`branches_required_reviewers`,
+`branches_required_checks`) and are not part of a branch row: the repository's
+single-branch getters (`GetBranchByName`, `GetByProjectIDAndID`,
+`GetDefaultBranch`) never read them, so push/manifest/update branch resolution
+pays nothing for them. `Branch.ListBranches` attaches them for the whole page
+with `RequiredReviewersByBranches` / `RequiredChecksByBranches` (one statement
+each per 500 branch ids, keyed by branch id, same per-branch order as the
+single-branch `RequiredReviewers` / `RequiredChecks`), so a listing costs three
+statements however many branches it returns; never load them per listed
+branch. The single-branch loaders stay for `SetProtection` and the merge gates
+(`reviewBlockedBy`, `MergeRequestCheck.BlockedBy`), which read one branch.
 
 Status checks: `merge_request_checks` rows are keyed by (request, head commit,
 name) and written by `MergeRequestCheck.Report` (`POST .../checks`, gRPC

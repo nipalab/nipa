@@ -36,6 +36,8 @@ type branchRepository interface {
 	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protection domain.BranchProtection) error
 	RequiredReviewers(ctx context.Context, branchID snow.ID) ([]domain.ReviewActor, error)
 	RequiredChecks(ctx context.Context, branchID snow.ID) ([]string, error)
+	RequiredReviewersByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]domain.ReviewActor, error)
+	RequiredChecksByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]string, error)
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
@@ -154,10 +156,8 @@ func (b *Branch) ListBranches(ctx context.Context, projectID snow.ID, limit int,
 	if err != nil {
 		return nil, err
 	}
-	for _, branch := range branches {
-		if err := b.attachProtection(ctx, branch); err != nil {
-			return nil, err
-		}
+	if err := b.attachProtections(ctx, branches); err != nil {
+		return nil, err
 	}
 	return branches, nil
 }
@@ -417,6 +417,37 @@ func (b *Branch) attachProtection(ctx context.Context, branch *domain.Branch) er
 	}
 	branch.RequiredReviewers = reviewers
 	branch.RequiredChecks = checks
+	return nil
+}
+
+// attachProtections is attachProtection for a whole listing: it loads the
+// protection lists of every branch with one repository call per list instead
+// of one pair per branch, and leaves each branch exactly as attachProtection
+// would.
+func (b *Branch) attachProtections(ctx context.Context, branches []*domain.Branch) error {
+	if len(branches) == 0 {
+		return nil
+	}
+	ids := make([]snow.ID, len(branches))
+	for i, branch := range branches {
+		ids[i] = branch.ID
+	}
+	reviewers, err := b.branchRepo.RequiredReviewersByBranches(ctx, ids)
+	if err != nil {
+		return err
+	}
+	checks, err := b.branchRepo.RequiredChecksByBranches(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, branch := range branches {
+		branch.RequiredReviewers = reviewers[branch.ID]
+		if branch.RequiredReviewers == nil {
+			// RequiredReviewers returns an empty, non-nil list.
+			branch.RequiredReviewers = []domain.ReviewActor{}
+		}
+		branch.RequiredChecks = checks[branch.ID]
+	}
 	return nil
 }
 

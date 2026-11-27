@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,8 @@ func newManageBranchFixture(t *testing.T) (*Branch, *MockpermissionUsecase, *Moc
 	repo := NewMockbranchRepository(ctrl)
 	repo.EXPECT().RequiredReviewers(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().RequiredChecks(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredReviewersByBranches(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredChecksByBranches(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	return NewBranch(perm, repo, newTestBranchNode(t)), perm, repo
 }
 
@@ -502,21 +505,6 @@ func TestBranch_SetProtection_ReloadError(t *testing.T) {
 	require.EqualError(t, err, "boom")
 }
 
-func TestBranch_ListBranches_AttachError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
-	repo := NewMockbranchRepository(ctrl)
-	uc := NewBranch(perm, repo, newTestBranchNode(t))
-
-	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
-	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 10, gomock.Any(), gomock.Any()).
-		Return([]*domain.Branch{{ID: 3, ProjectID: 1, Name: "release"}}, nil)
-	repo.EXPECT().RequiredReviewers(gomock.Any(), snow.ID(3)).Return(nil, errors.New("boom"))
-
-	_, err := uc.ListBranches(permissionCtx(42), snow.ID(1), 10, nil, 0)
-	require.EqualError(t, err, "boom")
-}
-
 func TestBranch_SetProtection_ComparesLists(t *testing.T) {
 	t.Run("different values force a write", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -662,5 +650,90 @@ func TestBranch_FastForwardForMergeRequest_Protected(t *testing.T) {
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
 		_, err := uc.FastForwardForMergeRequest(context.Background(), snow.ID(1), "main", "feature")
 		require.True(t, domain.IsErrorNoPermission(err))
+	})
+}
+
+func TestBranch_ListBranches_AttachesProtectionInBatches(t *testing.T) {
+	// The mock has no per-branch expectations, so any RequiredReviewers or
+	// RequiredChecks call fails the test: a listing costs one call per list
+	// however many branches it returns.
+	for _, n := range []int{1, 15, 200} {
+		t.Run(fmt.Sprintf("%d branches", n), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			perm := NewMockpermissionUsecase(ctrl)
+			repo := NewMockbranchRepository(ctrl)
+			uc := NewBranch(perm, repo, newTestBranchNode(t))
+
+			branches := make([]*domain.Branch, 0, n)
+			ids := make([]snow.ID, 0, n)
+			for i := 1; i <= n; i++ {
+				branches = append(branches, &domain.Branch{ID: snow.ID(i), ProjectID: 1, Name: fmt.Sprintf("b%d", i)})
+				ids = append(ids, snow.ID(i))
+			}
+			last := snow.ID(n)
+			reviewers := []domain.ReviewActor{{UserID: 7, Name: "ann"}, {UserID: 8, Name: "bob"}}
+
+			perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+			repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 500, gomock.Any(), gomock.Any()).Return(branches, nil)
+			repo.EXPECT().RequiredReviewersByBranches(gomock.Any(), ids).
+				Return(map[snow.ID][]domain.ReviewActor{last: reviewers}, nil).Times(1)
+			repo.EXPECT().RequiredChecksByBranches(gomock.Any(), ids).
+				Return(map[snow.ID][]string{last: {"build", "test"}}, nil).Times(1)
+
+			got, err := uc.ListBranches(permissionCtx(42), snow.ID(1), 500, nil, 0)
+			require.NoError(t, err)
+			require.Len(t, got, n)
+			for _, branch := range got[:n-1] {
+				// Same values the per-branch loaders give a branch without lists.
+				require.NotNil(t, branch.RequiredReviewers)
+				require.Empty(t, branch.RequiredReviewers)
+				require.Nil(t, branch.RequiredChecks)
+			}
+			require.Equal(t, reviewers, got[n-1].RequiredReviewers)
+			require.Equal(t, []string{"build", "test"}, got[n-1].RequiredChecks)
+		})
+	}
+}
+
+func TestBranch_ListBranches_EmptySkipsProtection(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 10, gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	got, err := uc.ListBranches(permissionCtx(42), snow.ID(1), 10, nil, 0)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestBranch_ListBranches_AttachError(t *testing.T) {
+	newFixture := func(t *testing.T) (*Branch, *MockbranchRepository) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 10, gomock.Any(), gomock.Any()).
+			Return([]*domain.Branch{{ID: 3, ProjectID: 1, Name: "release"}}, nil)
+		return NewBranch(perm, repo, newTestBranchNode(t)), repo
+	}
+
+	t.Run("reviewers", func(t *testing.T) {
+		uc, repo := newFixture(t)
+		repo.EXPECT().RequiredReviewersByBranches(gomock.Any(), []snow.ID{3}).Return(nil, errors.New("boom"))
+
+		_, err := uc.ListBranches(permissionCtx(42), snow.ID(1), 10, nil, 0)
+		require.EqualError(t, err, "boom")
+	})
+
+	t.Run("checks", func(t *testing.T) {
+		uc, repo := newFixture(t)
+		repo.EXPECT().RequiredReviewersByBranches(gomock.Any(), []snow.ID{3}).Return(nil, nil)
+		repo.EXPECT().RequiredChecksByBranches(gomock.Any(), []snow.ID{3}).Return(nil, errors.New("boom"))
+
+		_, err := uc.ListBranches(permissionCtx(42), snow.ID(1), 10, nil, 0)
+		require.EqualError(t, err, "boom")
 	})
 }

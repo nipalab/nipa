@@ -58,6 +58,18 @@ JOIN users u ON u.id = br.user_id
 WHERE br.branch_id = sqlc.arg(branch_id)
 ORDER BY u.id;
 
+-- The *ListByBranches queries are the batched twins of
+-- BranchRequiredReviewerList and BranchRequiredCheckList: one statement serves
+-- a whole branch listing. Rows carry branch_id so the caller can group them,
+-- and keep the per-branch order of the single-branch queries (br.user_id is
+-- u.id, and ordering by it follows the primary key without a sort).
+-- name: BranchRequiredReviewerListByBranches :many
+SELECT br.branch_id, u.id AS user_id, u.name AS user_name, u.photo_url AS user_photo_url
+FROM branches_required_reviewers br
+JOIN users u ON u.id = br.user_id
+WHERE br.branch_id = ANY(sqlc.arg(branch_ids)::bigint[])
+ORDER BY br.branch_id, br.user_id;
+
 -- name: BranchRequiredReviewerClear :exec
 DELETE FROM branches_required_reviewers WHERE branch_id = sqlc.arg(branch_id);
 
@@ -66,6 +78,11 @@ INSERT INTO branches_required_reviewers (branch_id, user_id) VALUES (sqlc.arg(br
 
 -- name: BranchRequiredCheckList :many
 SELECT name FROM branches_required_checks WHERE branch_id = sqlc.arg(branch_id) ORDER BY name;
+
+-- name: BranchRequiredCheckListByBranches :many
+SELECT branch_id, name FROM branches_required_checks
+WHERE branch_id = ANY(sqlc.arg(branch_ids)::bigint[])
+ORDER BY branch_id, name;
 
 -- name: BranchRequiredCheckClear :exec
 DELETE FROM branches_required_checks WHERE branch_id = sqlc.arg(branch_id);

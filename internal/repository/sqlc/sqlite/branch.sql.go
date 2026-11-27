@@ -8,6 +8,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const branchCreate = `-- name: BranchCreate :exec
@@ -268,6 +269,45 @@ func (q *Queries) BranchRequiredCheckList(ctx context.Context, branchID int64) (
 	return items, nil
 }
 
+const branchRequiredCheckListByBranches = `-- name: BranchRequiredCheckListByBranches :many
+SELECT branch_id, name FROM branches_required_checks
+WHERE branch_id IN (/*SLICE:branch_ids*/?)
+ORDER BY branch_id, name
+`
+
+func (q *Queries) BranchRequiredCheckListByBranches(ctx context.Context, branchIds []int64) ([]BranchesRequiredCheck, error) {
+	query := branchRequiredCheckListByBranches
+	var queryParams []interface{}
+	if len(branchIds) > 0 {
+		for _, v := range branchIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:branch_ids*/?", strings.Repeat(",?", len(branchIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:branch_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BranchesRequiredCheck
+	for rows.Next() {
+		var i BranchesRequiredCheck
+		if err := rows.Scan(&i.BranchID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const branchRequiredReviewerAdd = `-- name: BranchRequiredReviewerAdd :exec
 INSERT INTO branches_required_reviewers (branch_id, user_id) VALUES (?1, ?2)
 `
@@ -315,6 +355,64 @@ func (q *Queries) BranchRequiredReviewerList(ctx context.Context, branchID int64
 	for rows.Next() {
 		var i BranchRequiredReviewerListRow
 		if err := rows.Scan(&i.UserID, &i.UserName, &i.UserPhotoUrl); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const branchRequiredReviewerListByBranches = `-- name: BranchRequiredReviewerListByBranches :many
+SELECT br.branch_id, u.id AS user_id, u.name AS user_name, u.photo_url AS user_photo_url
+FROM branches_required_reviewers br
+JOIN users u ON u.id = br.user_id
+WHERE br.branch_id IN (/*SLICE:branch_ids*/?)
+ORDER BY br.branch_id, br.user_id
+`
+
+type BranchRequiredReviewerListByBranchesRow struct {
+	BranchID     int64          `json:"branch_id"`
+	UserID       int64          `json:"user_id"`
+	UserName     string         `json:"user_name"`
+	UserPhotoUrl sql.NullString `json:"user_photo_url"`
+}
+
+// The *ListByBranches queries are the batched twins of
+// BranchRequiredReviewerList and BranchRequiredCheckList: one statement serves
+// a whole branch listing. Rows carry branch_id so the caller can group them,
+// and keep the per-branch order of the single-branch queries (br.user_id is
+// u.id, and ordering by it follows the primary key without a sort).
+func (q *Queries) BranchRequiredReviewerListByBranches(ctx context.Context, branchIds []int64) ([]BranchRequiredReviewerListByBranchesRow, error) {
+	query := branchRequiredReviewerListByBranches
+	var queryParams []interface{}
+	if len(branchIds) > 0 {
+		for _, v := range branchIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:branch_ids*/?", strings.Repeat(",?", len(branchIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:branch_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BranchRequiredReviewerListByBranchesRow
+	for rows.Next() {
+		var i BranchRequiredReviewerListByBranchesRow
+		if err := rows.Scan(
+			&i.BranchID,
+			&i.UserID,
+			&i.UserName,
+			&i.UserPhotoUrl,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
