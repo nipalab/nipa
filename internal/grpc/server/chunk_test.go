@@ -318,6 +318,39 @@ func TestGetChunkDownloadUrlsHandler(t *testing.T) {
 	verifySignedURL(t, res.GetUrls()[0].GetUrl(), "org", "proj", chunkurl.OpDownload, 0)
 }
 
+// The read scope is resolved from the caller's rules after the visible set;
+// when the rules cannot be read no URL is issued at all.
+func TestGetChunkDownloadUrlsHandler_ReadScopeError(t *testing.T) {
+	chunk, _, _ := newChunkUsecase(t)
+	hash := chunker.Sum([]byte("public bytes"))
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	gomock.InOrder(
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(usecase.AllowAllFilter(), nil),
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(nil, domain.NewErrorDatabase("rules unavailable")),
+	)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	repo := NewMockbranchRepository(ctrl)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(7)).Return(&domain.Commit{ID: 7, ProjectID: 42, TreeID: 5}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(5)).Return([]*domain.File{{
+		ID: 1, Name: "a.txt", TreeID: 5, Chunks: []domain.Chunk{{ID: 1, Hash: hash}},
+	}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(5)).Return(nil, nil)
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+
+	srv := New(&mockUsecaseContainer{branch: usecase.NewBranch(perm, repo, node), common: newTestCommon(), chunk: chunk})
+	res, err := srv.GetChunkDownloadUrls(context.Background(), &pb.GetChunkDownloadUrlsRequest{
+		Context:       testChunkContext(),
+		CommitIds:     []string{snow.ID(7).Base36()},
+		Hashes:        []string{hash.String()},
+		ChunkProtocol: chunkproof.Protocol,
+	})
+	require.Error(t, err)
+	require.Nil(t, res)
+}
+
 func TestGetChunkDownloadUrlsHandler_MissingContext(t *testing.T) {
 	chunk, _, _ := newChunkUsecase(t)
 	branch, _, _ := newTestBranchUc(t)

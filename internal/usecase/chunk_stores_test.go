@@ -180,7 +180,7 @@ func TestChunk_ReadOnlyRefusesWrites(t *testing.T) {
 	got, err := f.uc.Download(ctx, testProject.ID, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
-	urls, _, err := f.uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{hash}, 10, "")
+	urls, _, err := f.uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{hash}, 10, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 }
@@ -194,7 +194,7 @@ func TestChunk_ResolverErrors(t *testing.T) {
 
 	_, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 1}}, 10, "")
 	require.ErrorIs(t, err, wantErr)
-	_, _, err = uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{hash}, 10, "")
+	_, _, err = uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{hash}, 10, "", ChunkReadProject)
 	require.ErrorIs(t, err, wantErr)
 	_, err = uc.Download(ctx, testProject.ID, hash)
 	require.ErrorIs(t, err, wantErr)

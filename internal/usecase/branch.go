@@ -900,6 +900,22 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 	})
 }
 
+// ChunkReadScope reports how much of the project's content the caller may
+// read: ChunkReadProject when the read right covers every path
+// (PathFilter.Unrestricted), ChunkReadPaths otherwise. Chunk downloads use it
+// to decide whether the caller may be handed a URL of a whole pack object,
+// which holds chunks of any path.
+func (b *Branch) ChunkReadScope(ctx context.Context, projectID snow.ID) (ChunkReadScope, error) {
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return ChunkReadPaths, err
+	}
+	if filter.Unrestricted() {
+		return ChunkReadProject, nil
+	}
+	return ChunkReadPaths, nil
+}
+
 // visibleChunks walks the commits under filter. It must not consult the
 // permission usecase itself: the cache stores its answer under the
 // fingerprint of the filter it was given.

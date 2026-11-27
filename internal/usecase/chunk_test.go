@@ -497,7 +497,7 @@ func TestChunk_PresignDownloadURLs(t *testing.T) {
 	h1 := chunker.Sum([]byte("one"))
 	h2 := chunker.Sum([]byte("two"))
 
-	urls, next, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{h1, h2}, 10, "")
+	urls, next, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{h1, h2}, 10, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Empty(t, next)
 	require.Len(t, urls, 2)
@@ -517,7 +517,7 @@ func TestChunk_PresignDownloadURLsDirectStore(t *testing.T) {
 
 	h1 := chunker.Sum([]byte("one"))
 	h2 := chunker.Sum([]byte("two"))
-	urls, next, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{h1, h2}, 10, "")
+	urls, next, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{h1, h2}, 10, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Empty(t, next)
 	require.Len(t, urls, 2)
@@ -534,7 +534,7 @@ func TestChunk_PresignDownloadURLsDirectStoreError(t *testing.T) {
 	}
 	uc, _ := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{chunker.Sum([]byte("x"))}, 10, "")
+	_, _, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{chunker.Sum([]byte("x"))}, 10, "", ChunkReadProject)
 	require.Error(t, err)
 	var domainErr *domain.Error
 	require.ErrorAs(t, err, &domainErr)
@@ -670,7 +670,7 @@ func TestChunk_PresignUploadURLsStoreError(t *testing.T) {
 func TestChunk_PresignDownloadURLsInvalidToken(t *testing.T) {
 	uc, _, _ := newChunkFixture(t)
 
-	_, _, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{chunker.Sum([]byte("x"))}, 10, "bad")
+	_, _, err := uc.PresignDownloadURLs(context.Background(), &domain.Organization{Slug: "acme"}, &domain.Project{ID: snow.ID(1), Slug: "game"}, []domain.Hash{chunker.Sum([]byte("x"))}, 10, "bad", ChunkReadProject)
 	require400(t, err, "invalid page token")
 }
 

@@ -428,7 +428,7 @@ func TestChunk_PresignDownload_PackRanges(t *testing.T) {
 	repo.recordAt(testProject.ID, c, 30, ChunkLocation{PackID: 7, Offset: 14})
 	repo.recordAt(testProject.ID, loose, 40, ChunkLocation{})
 
-	urls, next, err := uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{a, b, c, loose, unknown}, 0, "")
+	urls, next, err := uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{a, b, c, loose, unknown}, 0, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Empty(t, next)
 	packA := "https://s3.example.com/" + storage.PackKey(testProject.ID, 7)
@@ -447,7 +447,7 @@ func TestChunk_PresignDownload_NoLookupWithoutPacks(t *testing.T) {
 	store := newStubChunkStore()
 	uc, repo := newLinkFixture(t, store)
 	repo.sizesErr = errors.New("must not be queried")
-	urls, _, err := uc.PresignDownloadURLs(context.Background(), testOrg, testProject, []domain.Hash{{1}}, 0, "")
+	urls, _, err := uc.PresignDownloadURLs(context.Background(), testOrg, testProject, []domain.Hash{{1}}, 0, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 	require.Zero(t, urls[0].Length)
@@ -455,7 +455,7 @@ func TestChunk_PresignDownload_NoLookupWithoutPacks(t *testing.T) {
 	ext := newFakePackStore()
 	uc.WithChunkStores(fakeChunkStores{projects: map[snow.ID]ProjectStore{testProject.ID: {Store: ext, External: true}}})
 	ext.downloadURL = "https://byo.example.com/x"
-	urls, _, err = uc.PresignDownloadURLs(context.Background(), testOrg, testProject, []domain.Hash{{1}}, 0, "")
+	urls, _, err = uc.PresignDownloadURLs(context.Background(), testOrg, testProject, []domain.Hash{{1}}, 0, "", ChunkReadProject)
 	require.NoError(t, err)
 	require.Equal(t, "https://byo.example.com/x", urls[0].URL, "own storage never has packed rows")
 }
@@ -464,13 +464,13 @@ func TestChunk_PresignDownload_PackErrors(t *testing.T) {
 	ctx := context.Background()
 	uc, repo, _ := newPackFixture(t)
 	repo.sizesErr = errors.New("db down")
-	_, _, err := uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{{1}}, 0, "")
+	_, _, err := uc.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{{1}}, 0, "", ChunkReadProject)
 	require.ErrorIs(t, err, repo.sizesErr)
 
 	failing := &failingPresignPackStore{fakePackStore: newFakePackStore()}
 	uc2, repo2 := newLinkFixture(t, failing)
 	repo2.recordAt(testProject.ID, domain.Hash{1}, 10, ChunkLocation{PackID: 7, Offset: 4})
-	_, _, err = uc2.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{{1}}, 0, "")
+	_, _, err = uc2.PresignDownloadURLs(ctx, testOrg, testProject, []domain.Hash{{1}}, 0, "", ChunkReadProject)
 	requireInternal(t, err, "presign download for pack")
 }
 
