@@ -130,6 +130,69 @@ func serveStubborn(t *testing.T, endpoint string, shutdownErr error) {
 	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: l.Addr().(*net.TCPAddr).Port, Token: "t", Version: "v0.1.0"}))
 }
 
+type exitingDaemon struct {
+	stubbornDaemon
+	exit func()
+}
+
+func (d *exitingDaemon) Shutdown(context.Context, *daemonpb.ShutdownRequest) (*daemonpb.ShutdownResponse, error) {
+	go d.exit()
+	return &daemonpb.ShutdownResponse{}, nil
+}
+
+// serveExiting publishes an old daemon that, once asked to shut down, stops
+// answering at once but withdraws its endpoint record only after linger, like
+// a real daemon still running its exit cleanup.
+func serveExiting(t *testing.T, endpoint string, linger time.Duration) {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := grpc.NewServer()
+	exited := make(chan struct{})
+	d := &exitingDaemon{exit: func() {
+		defer close(exited)
+		srv.GracefulStop()
+		time.Sleep(linger)
+		_ = daemon.RemoveEndpoint(endpoint, "t")
+	}}
+	daemonpb.RegisterNipaDaemonServer(srv, d)
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(func() {
+		srv.Stop()
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+		}
+	})
+	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: l.Addr().(*net.TCPAddr).Port, Token: "t", Version: "v0.1.0"}))
+}
+
+func TestConnect_WaitsForRetiredDaemonToWithdrawEndpoint(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	serveExiting(t, endpoint, 400*time.Millisecond)
+	start := func(_, _, endpoint string) error {
+		_, err := os.Stat(endpoint)
+		require.ErrorIs(t, err, os.ErrNotExist, "the retired daemon's exit cleanup could delete the new record")
+		go serveDaemonVersion(t, endpoint, "v0.2.0")
+		return nil
+	}
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, Binary: "nipa", MinVersion: "0.2.0", start: start})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.True(t, conn.Started)
+	require.Equal(t, "v0.2.0", conn.Version)
+}
+
+func TestWithdrawn(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	require.True(t, withdrawn(endpoint, "t"), "a missing record is withdrawn")
+	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: 1, Token: "other"}))
+	require.True(t, withdrawn(endpoint, "t"), "a record of another daemon is withdrawn")
+	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: 1, Token: "t"}))
+	require.False(t, withdrawn(endpoint, "t"))
+}
+
 func TestConnect_KeepsOutdatedDaemonThatRefusesShutdown(t *testing.T) {
 	endpoint := filepath.Join(t.TempDir(), "daemon.json")
 	serveStubborn(t, endpoint, status.Error(codes.PermissionDenied, "busy"))

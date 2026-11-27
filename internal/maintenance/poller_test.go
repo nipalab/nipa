@@ -204,3 +204,52 @@ func TestPollerStopWithoutStart(t *testing.T) {
 	_, _, poller := newTestPoller(t, "")
 	require.NoError(t, poller.Stop(context.Background()))
 }
+
+func TestPollerDoesNotPublishOverALaterReload(t *testing.T) {
+	ctx := context.Background()
+	svc := NewService().WithClock(fixedClock(testNow))
+	loading, release := make(chan struct{}), make(chan struct{})
+	stale := []Window{projectWindow(2, 10, "acme", "game", Full, testNow)}
+	poller := NewPoller(svc, func(context.Context) ([]Window, error) {
+		close(loading)
+		<-release
+		return stale, nil
+	}, "", time.Millisecond).WithClock(fixedClock(testNow))
+
+	polled := make(chan error, 1)
+	go func() { polled <- poller.Poll(ctx) }()
+	<-loading
+
+	// The window ends while the poll still holds the rows it listed before.
+	reloaded := make(chan error, 1)
+	go func() {
+		reloaded <- svc.Reload(ctx, func(context.Context, *Snapshot) (*Snapshot, error) {
+			return NewSnapshot(nil, testNow), nil
+		})
+	}()
+	select {
+	case <-reloaded:
+		t.Fatal("a reload must wait for the poll in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	require.NoError(t, <-polled)
+	require.NoError(t, <-reloaded)
+
+	w, scope := svc.For("acme", "game")
+	require.Equal(t, Off, w.Mode, "the ended window stays ended")
+	require.Empty(t, scope)
+}
+
+func TestServiceReloadWithoutSnapshotKeepsCurrent(t *testing.T) {
+	ctx := context.Background()
+	svc := NewService().WithClock(fixedClock(testNow))
+	require.NoError(t, svc.Apply(ctx, NewSnapshot([]Window{serverWindow(1, ReadOnly, testNow)}, testNow)))
+
+	err := svc.Reload(ctx, func(context.Context, *Snapshot) (*Snapshot, error) {
+		return nil, errors.New("db down")
+	})
+	require.ErrorContains(t, err, "db down")
+	w, _ := svc.For("", "")
+	require.Equal(t, ReadOnly, w.Mode)
+}

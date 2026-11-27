@@ -82,7 +82,7 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 		if _, err := conn.Client.Shutdown(ctx, &daemonpb.ShutdownRequest{}); err != nil {
 			return conn, nil
 		}
-		waitStopped(ctx, conn, opts.StartTimeout)
+		waitStopped(ctx, conn, path, opts.StartTimeout)
 		_ = conn.Close()
 	}
 
@@ -171,18 +171,18 @@ func attach(ctx context.Context, path string, alive func(int) bool) (*Conn, erro
 	return &Conn{Client: client, Endpoint: *ep, Version: pong.GetVersion(), cc: cc}, nil
 }
 
-// waitStopped waits until a daemon asked to shut down stops answering; a
-// slow drain is not an error, the new daemon replaces the endpoint anyway.
-func waitStopped(ctx context.Context, conn *Conn, timeout time.Duration) {
+// waitStopped waits until a daemon asked to shut down stops answering and
+// has withdrawn its endpoint record. A replacement started earlier could have
+// its fresh record deleted by the old daemon's exit cleanup, which compares
+// the token and removes the file in two steps. A slow drain is not an error,
+// the new daemon replaces the endpoint anyway.
+func waitStopped(ctx context.Context, conn *Conn, path string, timeout time.Duration) {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for {
-		pingCtx, stop := context.WithTimeout(waitCtx, pingTimeout)
-		_, err := conn.Client.Ping(pingCtx, &daemonpb.PingRequest{})
-		stop()
-		if err != nil {
+		if stopped(waitCtx, conn) && withdrawn(path, conn.Endpoint.Token) {
 			return
 		}
 		select {
@@ -191,6 +191,20 @@ func waitStopped(ctx context.Context, conn *Conn, timeout time.Duration) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func stopped(ctx context.Context, conn *Conn) bool {
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	_, err := conn.Client.Ping(pingCtx, &daemonpb.PingRequest{})
+	return err != nil
+}
+
+// withdrawn reports whether the endpoint record at path no longer belongs to
+// the daemon holding token.
+func withdrawn(path, token string) bool {
+	ep, err := daemon.ReadEndpoint(path)
+	return err != nil || !daemon.VerifyToken(token, ep.Token)
 }
 
 func resolveBinary(opts Options) (string, error) {

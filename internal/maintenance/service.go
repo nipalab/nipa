@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -74,11 +75,14 @@ func (s *Snapshot) frozen(now time.Time) bool {
 }
 
 type Service struct {
-	mu    sync.Mutex
-	snap  atomic.Pointer[Snapshot]
-	clock func() time.Time
-	hooks []func(context.Context) error
-	pub   []func(*Snapshot, time.Time)
+	mu sync.Mutex
+	// reload serializes Reload, so a reload that read the stored windows
+	// before a write never publishes over the reload that follows it.
+	reload sync.Mutex
+	snap   atomic.Pointer[Snapshot]
+	clock  func() time.Time
+	hooks  []func(context.Context) error
+	pub    []func(*Snapshot, time.Time)
 }
 
 func NewService() *Service {
@@ -162,6 +166,20 @@ func (s *Service) Apply(ctx context.Context, snap *Snapshot) error {
 		fn(snap, now)
 	}
 	return nil
+}
+
+// Reload builds a snapshot from the current one and publishes it. Reloads run
+// one at a time: without that, a poll that listed the windows just before a
+// write committed could publish after the writer's own reload and bring an
+// ended window back until the next poll. A nil snapshot publishes nothing.
+func (s *Service) Reload(ctx context.Context, build func(ctx context.Context, cur *Snapshot) (*Snapshot, error)) error {
+	s.reload.Lock()
+	defer s.reload.Unlock()
+	snap, err := build(ctx, s.Snapshot())
+	if snap == nil {
+		return err
+	}
+	return errors.Join(err, s.Apply(ctx, snap))
 }
 
 // Check returns the rejection of a request of class to org/project, nil when

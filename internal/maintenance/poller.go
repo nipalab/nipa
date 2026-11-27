@@ -92,20 +92,19 @@ func (p *Poller) pollAndLog(ctx context.Context) {
 
 // Poll runs one reload and publishes the result.
 func (p *Poller) Poll(ctx context.Context) error {
-	var errs []error
-	windows, err := p.load(ctx)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("load maintenance windows: %w", err))
-		windows = p.svc.Snapshot().Windows()
-	}
-	snap := NewSnapshot(windows, p.clock())
-	if err := p.applyFile(snap); err != nil {
-		errs = append(errs, err)
-	}
-	if err := p.svc.Apply(ctx, snap); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
+	return p.svc.Reload(ctx, func(ctx context.Context, cur *Snapshot) (*Snapshot, error) {
+		var errs []error
+		windows, err := p.load(ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("load maintenance windows: %w", err))
+			windows = cur.Windows()
+		}
+		snap := NewSnapshot(windows, p.clock())
+		if err := p.applyFile(snap); err != nil {
+			errs = append(errs, err)
+		}
+		return snap, errors.Join(errs...)
+	})
 }
 
 func (p *Poller) applyFile(snap *Snapshot) error {
