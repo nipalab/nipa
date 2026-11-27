@@ -88,8 +88,9 @@ resolve(claim, project, path) -> Permission:
   of an org can use the projects they create without seeding rules. Plain org
   members get nothing without rules. `Permission.load` resolves this per
   project through `pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`
-  (cached with the rest of the rule set, so owner add/demote/remove surfaces
-  at the next TTL expiry).
+  (cached with the rest of the rule set; `Org` member changes and accepted
+  invitations drop that cache on the instance that served them, other
+  instances see owner add/demote/remove at the next TTL expiry).
 - Effective rules are fetched with one query that joins `group_members` and
   resolves org scope via the project (`pbac.sql`, `PBACRuleListEffective`).
 - `HasProjectAccess(project, bit)` = admin OR org owner OR any rule/default
@@ -97,8 +98,14 @@ resolve(claim, project, path) -> Permission:
 - `HasPathAccess(project, path, bit)` checks `resolve`.
 - A path with `Read` denied returns **404** (do not disclose existence); a path
   readable but not writable returns **403**.
-- Results are cached per `(project, user)` with a TTL and a per-project version
-  counter bumped by every rule mutation.
+- Results are cached per `(project, user)` in each server process with a 30 s
+  TTL (`permissionCacheTTL`) and a per-project version counter bumped by every
+  rule, path default, group-membership and org-member mutation that process
+  serves. A change is therefore enforced at once by the instance that made it
+  and within 30 s by every other `nipad-ee` instance (the free `nipad` is
+  single-instance, so always at once). Nothing derived from the rules may be
+  cached for longer or keyed without them: the chunk download set is cached
+  under a fingerprint of the compiled read filter, like manifest view tokens.
 
 `FilterTree` prunes a manifest to permitted paths, keeping file-less "trail"
 nodes so a grant below a denied directory stays reachable.
@@ -129,14 +136,20 @@ Admin mutations invalidate the project cache.
 trees the client is materializing, and optional path prefixes. The server unions
 the readable chunks of those trees (reusing the manifest walk) and signs URLs
 only for hashes in that set; anything else is omitted so hidden content cannot
-be probed by hash. Merge, revert and diff pass every commit involved (target,
+be probed by hash. The set follows the caller's rules as closely as every
+other check does (see Evaluation): the server keeps it for the download
+windows of one clone, keyed by the rules it was computed under, so a revoke or
+a grant applies to the next request, not after a cache lifetime. Merge, revert and diff pass every commit involved (target,
 source, base/parent), because three-way materialization mixes chunks from
 several trees. `GetChunkUploadUrls`/`ConfirmChunkUploads` only need project
 write, so content can be uploaded before a push that is then validated per path.
 Signed URLs are capabilities: the `/api/chunks` (download) and
 `/api/chunk-bundles` (upload) HTTP endpoints verify the HMAC signature
 (project, hash or bundle limits, expiry) instead of the Bearer token, so a URL
-works without a session until it expires. Bundle URLs bind the project, the
+works without a session until it expires — also after the right it was signed
+under is revoked: a revoke stops new URLs, it does not cancel issued ones, which
+stay valid for at most `CHUNK_PRESIGN_TTL_SECONDS` (default 3600 s; lower it to
+shorten that window). Bundle URLs bind the project, the
 largest body and the most chunks per body, and every chunk of a bundle is
 BLAKE3-checked before anything is stored; chunk metadata rows are only written
 by `ConfirmChunkUploads` after the content exists.
@@ -153,8 +166,9 @@ the group must exist and belong to the rule's organization. Deleting an
 org-wide rule requires a global admin too, so a project admin cannot remove a
 rule that governs every project in the org. Group create/list/member management
 requires a global admin or an owner of the group's organization
-(`org_members.role = 'owner'`). Every rule, default and group-membership change
-invalidates the permission cache immediately.
+(`org_members.role = 'owner'`). Every rule, default, group-membership and org-member change
+invalidates the permission cache of the instance that served it immediately;
+other instances follow within the 30 s TTL.
 
 The CLI exposes this as `nipa acl list|grant|revoke|my`,
 `nipa permission list|set|remove` and `nipa group create|list|add-member|remove-member`,

@@ -197,7 +197,7 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 	commits := deltaHistory(t, h, gen, seed, commitCount)
 	url := "http://" + h.host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
-	views, moves, deltas, failed, restored, skipped := 0, 0, 0, 0, 0, 0
+	views, moves, deltas, failed, restored := 0, 0, 0, 0, 0
 	for fi, filter := range deltaFilters {
 		if !filter.admin {
 			h.setFilter(filter)
@@ -213,18 +213,12 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 			// What a fresh clone of each commit holds in this view. A commit
 			// whose manifest the view cannot have (a sparse path the commit
 			// lacks) has the manifest's error instead, which a move to it
-			// must end with too. A commit whose manifest is fine but whose
-			// clone fails while downloading is left out as a target
-			// (unclonable): nothing can say what a clone of it holds, and
-			// whether a move to it fails depends on what is cached. That
-			// happens here because the test changes the reader's rules every
-			// few seconds while the server keeps its answer to "which chunks
-			// may this caller download for this commit" for two minutes
-			// (usecase.visibleChunksTTL), so a chunk the new rules show can
-			// still be refused.
+			// must end with too. A commit whose manifest is fine always
+			// clones: the test changes the reader's rules every few seconds,
+			// and the chunks a caller may download follow the rules at once
+			// (the answer is cached under the fingerprint of the rules).
 			fresh := map[int]*cloneState{}
 			freshErr := map[int]error{}
-			unclonable := map[int]bool{}
 			freshOf := func(i int) (*cloneState, error) {
 				if _, ok := fresh[i]; ok {
 					return fresh[i], freshErr[i]
@@ -235,14 +229,9 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 					return nil, err
 				}
 				target := filepath.Join(t.TempDir(), "fresh")
-				err := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo()).
-					Clone(h.ctx, url, h.host, e2eOrgSlug, e2eProjectSlug, fmt.Sprintf("c%d", i), sparse, target)
-				if err != nil {
-					t.Logf("%s: commit #%d cannot be cloned: %v", view, i, err)
-					unclonable[i] = true
-					skipped++
-					return nil, nil
-				}
+				require.NoError(t, clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo()).
+					Clone(h.ctx, url, h.host, e2eOrgSlug, e2eProjectSlug, fmt.Sprintf("c%d", i), sparse, target),
+					"%s: commit #%d has a manifest, so it must clone", view, i)
 				state := cloneStateOf(t, target)
 				fresh[i] = &state
 				return fresh[i], nil
@@ -279,9 +268,6 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 				kind := []string{"update", "tag", "branch"}[gen.rng.Intn(3)]
 				label := fmt.Sprintf("%s, move %d: %s #%d -> #%d", view, step, kind, at, j)
 				want, wantErr := freshOf(j)
-				if unclonable[j] {
-					continue
-				}
 
 				// Switching to the branch the clone is on does nothing at all.
 				noop := kind == "branch" && !detached && branch == fmt.Sprintf("c%d", j)
@@ -352,8 +338,8 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 	}
 
 	deltaUpdateMoves.Add(int64(moves))
-	t.Logf("seed %d: %d views, %d moves (%d refused like the manifest), %d deltas applied, %d deleted files restored by forced moves, %d unclonable commits left out",
-		seed, views, moves, failed, deltas, restored, skipped)
+	t.Logf("seed %d: %d views, %d moves (%d refused like the manifest), %d deltas applied, %d deleted files restored by forced moves",
+		seed, views, moves, failed, deltas, restored)
 	require.Greater(t, views, len(deltaFilters)*len(deltaUpdateSparseSets)/2, "most views must be readable for some commit")
 	require.Greater(t, deltas, moves/2, "most moves must go through a delta")
 	require.Positive(t, restored)

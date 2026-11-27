@@ -3,6 +3,7 @@ package usecase
 import (
 	"container/list"
 	"context"
+	"crypto/sha256"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,7 +34,9 @@ type visibleEntry struct {
 
 // visibleChunkCache keeps recent VisibleChunks answers so the download
 // windows of one clone walk the commit trees once. Entries expire ttl after
-// their last use and the total number of cached hashes is bounded.
+// their last use and the total number of cached hashes is bounded. The cache
+// has no invalidation and needs none: an answer is a pure function of its key
+// (see visibleChunksKey), so the idle ttl only bounds memory.
 type visibleChunkCache struct {
 	mu        sync.Mutex
 	ttl       time.Duration
@@ -54,24 +57,35 @@ func newVisibleChunkCache(ttl time.Duration, maxHashes int, now func() time.Time
 	}
 }
 
-func visibleChunksKey(claim domain.Claims, projectID snow.ID, commitIDs, paths []string) string {
+// visibleChunksKey names everything a VisibleChunks answer depends on: the
+// project, the commits, the sparse prefixes and the fingerprint of the read
+// filter the trees are walked under (PathFilter.appendFingerprint, the
+// encoding manifest view tokens use). It holds no caller identity: who asks
+// does not matter, only which paths their rules let through, so the key
+// changes with the rules and a stale answer cannot be reached. It reports
+// false for a filter that has no fingerprint; such an answer must not be
+// cached.
+func visibleChunksKey(filter *PathFilter, projectID snow.ID, commitIDs, paths []string) (string, bool) {
+	fingerprint, ok := filter.appendFingerprint(nil)
+	if !ok {
+		return "", false
+	}
 	commits := slices.Clone(commitIDs)
 	slices.Sort(commits)
 	commits = slices.Compact(commits)
 	prefixes := slices.Clone(paths)
 	slices.Sort(prefixes)
+	// The fingerprint grows with the rule set; its digest keeps keys short.
+	view := sha256.Sum256(fingerprint)
 	var b strings.Builder
-	b.WriteString(strconv.FormatInt(claim.UserID.Int64(), 10))
-	b.WriteString("|")
-	b.WriteString(strconv.FormatBool(claim.IsAdmin))
-	b.WriteString(strconv.FormatBool(claim.IsSuperAdmin))
+	b.Write(view[:])
 	b.WriteString("|")
 	b.WriteString(strconv.FormatInt(projectID.Int64(), 10))
 	b.WriteString("|")
 	b.WriteString(strings.Join(commits, ","))
 	b.WriteString("|")
 	b.WriteString(strings.Join(prefixes, "\x00"))
-	return b.String()
+	return b.String(), true
 }
 
 // get returns the cached answer for key, computing it once when missing.

@@ -115,11 +115,23 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   (project write; refs carry `hash` + exact `size_bytes`) and
   `GetChunkDownloadUrls` (`commit_ids` + optional `paths` prefixes + `hashes`;
   the visible set is the union of the referenced commit trees narrowed by the
-  prefixes — `Branch.VisibleChunks(projectID, commitIDs, paths)`, cached per
-  caller, project, commits and paths in `visibleChunkCache` (2 min idle TTL,
-  `CHUNK_VISIBILITY_CACHE_HASHES` hashes, default 2M, one walk for concurrent misses) so a clone's download windows walk
-  the trees once; a path rule change reaches them after the TTL, project access
-  is checked on every call — and requested hashes are filtered against it first) return one
+  prefixes — `Branch.VisibleChunks(projectID, commitIDs, paths)`, cached in
+  `visibleChunkCache` (2 min idle TTL, `CHUNK_VISIBILITY_CACHE_HASHES` hashes,
+  default 2M, one walk for concurrent misses) so a clone's download windows walk
+  the trees once. The key (`visibleChunksKey`) is project, commits, paths and
+  the SHA-256 of the caller's read filter fingerprint
+  (`PathFilter.appendFingerprint`, the encoding of manifest view tokens) and
+  holds no caller id: the filter is compiled on every call (one
+  `Permission.load`, a map lookup while the 30 s rule cache is warm), so an
+  answer is a pure function of its key, callers with equal rules share an
+  entry, and a grant or revoke changes the key instead of needing an
+  invalidation (the old entry just idles out; a filter without a fingerprint
+  is not cached). Never add an input to the walk without adding it to the key.
+  Chunk visibility is therefore exactly as fresh as `Permission.load`: at once
+  on the instance that served the rule/group/org-member change, at most
+  `permissionCacheTTL` (30 s) later on the other `nipad-ee` instances. URLs
+  already signed keep working until they expire (`CHUNK_PRESIGN_TTL_SECONDS`).
+  Project access is checked on every call — and requested hashes are filtered against the set first) return one
   page of signed paths built by `internal/chunkurl` (downloads:
   `/api/chunks/{org}/{project}/{hash}?op=get&exp=&sig=`; uploads go in bundles,
   below), HMAC-SHA256 with `CHUNK_URL_SIGNING_KEY`,
