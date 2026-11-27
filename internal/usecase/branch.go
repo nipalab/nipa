@@ -875,33 +875,41 @@ func (b *Branch) EnsureProjectAccess(ctx context.Context, projectID snow.ID, per
 // VisibleChunks returns the deduplicated chunk hashes of every readable file
 // across the given commits, narrowed by paths. The result is sorted so callers
 // can binary-search it, and shared with other callers, so it must not be
-// modified. Answers are cached per caller for the download windows of one
-// clone, so a path rule change reaches them after visibleChunksTTL.
+// modified.
+//
+// The caller's read filter is compiled on every call and its fingerprint is
+// part of the cache key, so an answer is only ever reused for a caller whose
+// rules let exactly the same paths through: a grant or a revoke the
+// permission usecase reports changes the key, and the answer computed under
+// the old rules is never served again (it ages out unused). Callers with the
+// same rules share an entry. A filter without a fingerprint is not cached.
 func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	claim, ok := domain.ClaimFromContext(ctx)
-	if !ok || b.visible == nil {
-		return b.visibleChunks(ctx, projectID, commitIDs, paths)
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
 	}
-	key := visibleChunksKey(claim, projectID, commitIDs, paths)
+	key, ok := visibleChunksKey(filter, projectID, commitIDs, paths)
+	if !ok || b.visible == nil {
+		return b.visibleChunks(ctx, projectID, commitIDs, paths, filter)
+	}
 	return b.visible.get(ctx, key, func(ctx context.Context) ([]domain.Hash, error) {
-		return b.visibleChunks(ctx, projectID, commitIDs, paths)
+		return b.visibleChunks(ctx, projectID, commitIDs, paths, filter)
 	})
 }
 
-func (b *Branch) visibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
+// visibleChunks walks the commits under filter. It must not consult the
+// permission usecase itself: the cache stores its answer under the
+// fingerprint of the filter it was given.
+func (b *Branch) visibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string, filter *PathFilter) ([]domain.Hash, error) {
 	if len(commitIDs) == 0 {
 		return nil, domain.NewErrorUser("at least one commit id is required")
 	}
 	sparse, err := domain.NewPrefixSet(paths)
 	if err != nil {
 		return nil, domain.NewErrorUser(err.Error())
-	}
-	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
-	if err != nil {
-		return nil, err
 	}
 
 	seen := map[domain.Hash]struct{}{}

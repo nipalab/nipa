@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -122,41 +123,170 @@ func TestVisibleChunkCache_ConcurrentMissComputesOnce(t *testing.T) {
 }
 
 func TestVisibleChunksKey(t *testing.T) {
-	user := domain.Claims{UserID: 7}
-	base := visibleChunksKey(user, 1, []string{"b", "a", "a"}, []string{"y", "x"})
-	require.Equal(t, base, visibleChunksKey(user, 1, []string{"a", "b"}, []string{"x", "y"}))
-	require.NotEqual(t, base, visibleChunksKey(domain.Claims{UserID: 8}, 1, []string{"a", "b"}, []string{"x", "y"}))
-	require.NotEqual(t, base, visibleChunksKey(domain.Claims{UserID: 7, IsAdmin: true}, 1, []string{"a", "b"}, []string{"x", "y"}))
-	require.NotEqual(t, base, visibleChunksKey(user, 2, []string{"a", "b"}, []string{"x", "y"}))
-	require.NotEqual(t, base, visibleChunksKey(user, 1, []string{"a"}, []string{"x", "y"}))
-	require.NotEqual(t, base, visibleChunksKey(user, 1, []string{"a", "b"}, []string{"x"}))
+	key := func(f *PathFilter, project snow.ID, commits, paths []string) string {
+		t.Helper()
+		k, ok := visibleChunksKey(f, project, commits, paths)
+		require.True(t, ok)
+		return k
+	}
+	reader := restrictedReadFilter("a", "b")
+	base := key(reader, 1, []string{"b", "a", "a"}, []string{"y", "x"})
+	require.Equal(t, base, key(reader, 1, []string{"a", "b"}, []string{"x", "y"}), "order and duplicates do not matter")
+	require.Equal(t, base, key(restrictedReadFilter("b", "a", "a"), 1, []string{"a", "b"}, []string{"x", "y"}), "the same rules in another order")
+	require.NotEqual(t, base, key(reader, 2, []string{"a", "b"}, []string{"x", "y"}))
+	require.NotEqual(t, base, key(reader, 1, []string{"a"}, []string{"x", "y"}))
+	require.NotEqual(t, base, key(reader, 1, []string{"a", "b"}, []string{"x"}))
+
+	// Every change of what the filter lets through changes the key.
+	require.NotEqual(t, base, key(restrictedReadFilter("a"), 1, []string{"a", "b"}, []string{"x", "y"}), "a rule revoked")
+	require.NotEqual(t, base, key(restrictedReadFilter("a", "b", "c"), 1, []string{"a", "b"}, []string{"x", "y"}), "a rule granted")
+	require.NotEqual(t, base, key(AllowAllFilter(), 1, []string{"a", "b"}, []string{"x", "y"}), "an admin")
+	denied := &PathFilter{permission: domain.PermissionRead, set: &permissionSet{
+		rules:    reader.set.rules,
+		defaults: []*domain.ProjectPathPermission{{PathPrefix: "", Permission: domain.PermissionRead}},
+	}}
+	require.NotEqual(t, base, key(denied, 1, []string{"a", "b"}, []string{"x", "y"}), "a path default added")
+	owner := &PathFilter{permission: domain.PermissionRead, set: &permissionSet{orgOwner: true}}
+	require.Equal(t, key(AllowAllFilter(), 1, []string{"a"}, nil), key(owner, 1, []string{"a"}, nil), "everyone who reads everything shares a key")
+
+	// Rules that grant no read never matter.
+	writeOnly := &PathFilter{permission: domain.PermissionRead, set: &permissionSet{
+		rules: append([]*domain.PBACRule{{PathPrefix: "z", Permission: domain.PermissionWrite}}, reader.set.rules...),
+	}}
+	require.Equal(t, base, key(writeOnly, 1, []string{"a", "b"}, []string{"x", "y"}))
+
+	_, ok := visibleChunksKey(nil, 1, []string{"a"}, nil)
+	require.False(t, ok, "a nil filter has no key")
+	_, ok = visibleChunksKey(&PathFilter{}, 1, []string{"a"}, nil)
+	require.False(t, ok, "a filter without a rule set has no key")
 }
 
-func TestBranch_VisibleChunks_CachesPerCaller(t *testing.T) {
+// rulePerm is a permission usecase whose read rules per user can be changed
+// between calls, like an admin granting and revoking.
+type rulePerm struct {
+	prefixes map[snow.ID][]string
+	compiled int
+}
+
+func (p *rulePerm) filter(ctx context.Context) *PathFilter {
+	claim, _ := domain.ClaimFromContext(ctx)
+	return restrictedReadFilter(p.prefixes[claim.UserID]...)
+}
+
+func (p *rulePerm) HasProjectAccess(ctx context.Context, _ snow.ID, _ domain.Permission) bool {
+	claim, _ := domain.ClaimFromContext(ctx)
+	return len(p.prefixes[claim.UserID]) > 0
+}
+
+func (p *rulePerm) HasPathAccess(ctx context.Context, _ snow.ID, path string, _ domain.Permission) bool {
+	return p.filter(ctx).Allow(path)
+}
+
+func (p *rulePerm) CompileFilter(ctx context.Context, _ snow.ID, _ domain.Permission) (*PathFilter, error) {
+	p.compiled++
+	return p.filter(ctx), nil
+}
+
+func (p *rulePerm) AdminHasProject(context.Context, snow.ID) bool { return false }
+
+func TestBranch_VisibleChunks_CachesPerRuleSet(t *testing.T) {
+	repo := newMemTreeRepo()
+	repo.addCommit(1, 1, wideRepo(nil))
+	const alice, bob, carol = snow.ID(1), snow.ID(2), snow.ID(3)
+	perm := &rulePerm{prefixes: map[snow.ID][]string{
+		alice: {"assets"},
+		bob:   {"assets", "code"},
+		carol: {"assets"},
+	}}
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	ctxOf := func(id snow.ID) context.Context {
+		return domain.ContextWithClaim(context.Background(), domain.Claims{UserID: id})
+	}
+	commits := []string{snow.ID(1).Base36()}
+	// ask returns the answer and the directories it had to load.
+	ask := func(id snow.ID) ([]domain.Hash, int) {
+		t.Helper()
+		repo.filesCall = map[int64]int{}
+		got, err := uc.VisibleChunks(ctxOf(id), 1, commits, nil)
+		require.NoError(t, err)
+		return got, repo.loadedDirs()
+	}
+	want := func(id snow.ID) []domain.Hash {
+		t.Helper()
+		return visibleReference(t, uc, repo, []snow.ID{1}, restrictedReadFilter(perm.prefixes[id]...), nil)
+	}
+
+	aliceFirst, walked := ask(alice)
+	require.Equal(t, want(alice), aliceFirst)
+	require.Positive(t, walked)
+	again, walked := ask(alice)
+	require.Equal(t, aliceFirst, again)
+	require.Zero(t, walked, "the second window is served from the cache")
+
+	// Two callers with different rules on the same commit never share.
+	bobFirst, walked := ask(bob)
+	require.Positive(t, walked, "other rules walk the tree again")
+	require.Equal(t, want(bob), bobFirst)
+	require.Greater(t, len(bobFirst), len(aliceFirst))
+	again, _ = ask(alice)
+	require.Equal(t, aliceFirst, again, "and leave the first caller's answer alone")
+
+	// A caller with the same rules as another reuses the walk.
+	carolFirst, walked := ask(carol)
+	require.Equal(t, aliceFirst, carolFirst)
+	require.Zero(t, walked, "equal rules share an entry")
+
+	// Revoke: the cached answer of the wider rules is not served any more.
+	perm.prefixes[bob] = []string{"assets"}
+	revoked, _ := ask(bob)
+	require.Equal(t, aliceFirst, revoked, "a revoke shows on the very next call")
+	require.Less(t, len(revoked), len(bobFirst))
+
+	// Grant: the cached answer of the narrower rules is not served either.
+	perm.prefixes[alice] = []string{"assets", "code", "docs"}
+	granted, walked := ask(alice)
+	require.Equal(t, want(alice), granted, "a grant shows on the very next call")
+	require.Positive(t, walked)
+	require.Greater(t, len(granted), len(bobFirst))
+	stillNarrow, _ := ask(carol)
+	require.Equal(t, aliceFirst, stillNarrow, "a caller whose rules did not change keeps its answer")
+
+	// Granting back what was revoked finds the old entry again.
+	perm.prefixes[bob] = []string{"assets", "code"}
+	back, walked := ask(bob)
+	require.Equal(t, bobFirst, back)
+	require.Zero(t, walked)
+
+	require.Equal(t, 9, perm.compiled, "the filter is compiled on every call, hit or miss")
+}
+
+func TestBranch_VisibleChunks_FilterWithoutFingerprintIsNotCached(t *testing.T) {
 	repo := newMemTreeRepo()
 	repo.addCommit(1, 1, wideRepo(nil))
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
-	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).Times(3)
-	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).Times(2)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).Times(2)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, nil).Times(2)
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1})
 
-	alice := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1})
-	bob := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 2})
-	commits := []string{snow.ID(1).Base36()}
+	for range 2 {
+		got, err := uc.VisibleChunks(ctx, 1, []string{snow.ID(1).Base36()}, nil)
+		require.NoError(t, err)
+		require.Empty(t, got, "a nil filter allows nothing")
+	}
+	require.Empty(t, uc.visible.entries)
+}
 
-	first, err := uc.VisibleChunks(alice, 1, commits, nil)
-	require.NoError(t, err)
-	walked := repo.loadedDirs()
-	again, err := uc.VisibleChunks(alice, 1, commits, nil)
-	require.NoError(t, err)
-	require.Equal(t, first, again)
-	require.Equal(t, walked, repo.loadedDirs(), "the second window is served from the cache")
-
-	repo.filesCall = map[int64]int{}
-	_, err = uc.VisibleChunks(bob, 1, commits, nil)
-	require.NoError(t, err)
-	require.Equal(t, walked, repo.loadedDirs(), "another caller walks the tree again")
+func TestBranch_VisibleChunks_CompileFilterError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	boom := errors.New("rules unavailable")
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, boom)
+	uc := NewBranch(perm, newMemTreeRepo(), newTestBranchNode(t))
+	_, err := uc.VisibleChunks(context.Background(), 1, []string{snow.ID(1).Base36()}, nil)
+	require.ErrorIs(t, err, boom)
 }
 
 func TestBranch_VisibleChunks_ChecksAccessBeforeCache(t *testing.T) {
@@ -253,4 +383,59 @@ func TestVisibleChunkCache_ComputeIsBoundedAndDetached(t *testing.T) {
 	require.True(t, hasDeadline)
 	require.WithinDuration(t, time.Now().Add(visibleChunksComputeTimeout), deadline, 5*time.Second)
 	require.NoError(t, ctxErr)
+}
+
+// benchFilter is a restricted reader with rules read rules and defaults path
+// defaults, more than a project normally has.
+func benchFilter(rules, defaults int) *PathFilter {
+	set := &permissionSet{}
+	for i := range rules {
+		set.rules = append(set.rules, &domain.PBACRule{PathPrefix: "assets/team" + strconv.Itoa(i) + "/textures", Permission: domain.PermissionRead})
+	}
+	for i := range defaults {
+		set.defaults = append(set.defaults, &domain.ProjectPathPermission{PathPrefix: "public/area" + strconv.Itoa(i), Permission: domain.PermissionRead})
+	}
+	return &PathFilter{set: set, permission: domain.PermissionRead}
+}
+
+// BenchmarkVisibleChunksKey is what the rule fingerprint adds to every
+// GetChunkDownloadUrls call, hit or miss.
+func BenchmarkVisibleChunksKey(b *testing.B) {
+	commits := []string{snow.ID(1).Base36(), snow.ID(2).Base36()}
+	for _, size := range []struct{ rules, defaults int }{{0, 1}, {5, 5}, {50, 20}, {500, 100}} {
+		filter := benchFilter(size.rules, size.defaults)
+		b.Run(strconv.Itoa(size.rules)+"rules_"+strconv.Itoa(size.defaults)+"defaults", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, ok := visibleChunksKey(filter, 1, commits, nil); !ok {
+					b.Fatal("no key")
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkBranch_VisibleChunks_Hit is a whole warm call: access check,
+// filter compile, key and cache lookup.
+func BenchmarkBranch_VisibleChunks_Hit(b *testing.B) {
+	repo := newMemTreeRepo()
+	repo.addCommit(1, 1, wideRepo(nil))
+	ctrl := gomock.NewController(b)
+	perm := NewMockpermissionUsecase(ctrl)
+	filter := benchFilter(50, 20)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), gomock.Any(), gomock.Any()).Return(true).AnyTimes()
+	perm.EXPECT().CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).Return(filter, nil).AnyTimes()
+	node, err := snow.NewNode(1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	uc := NewBranch(perm, repo, node)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1})
+	commits := []string{snow.ID(1).Base36()}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := uc.VisibleChunks(ctx, 1, commits, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
