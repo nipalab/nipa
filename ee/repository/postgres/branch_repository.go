@@ -184,6 +184,56 @@ func (b *BranchRepository) RequiredChecks(ctx context.Context, branchID snow.ID)
 	return names, nil
 }
 
+// branchIDBatches turns branch ids into the deduplicated id batches the
+// *ListByBranches statements take.
+func branchIDBatches(branchIDs []snow.ID) [][]int64 {
+	ids := make([]int64, len(branchIDs))
+	for i, id := range branchIDs {
+		ids[i] = id.Int64()
+	}
+	return treeIDBatches(ids)
+}
+
+// RequiredReviewersByBranches is the batched RequiredReviewers: the required
+// reviewers of every given branch keyed by branch id, each list ordered by
+// user id. Branches without required reviewers have no entry.
+func (b *BranchRepository) RequiredReviewersByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]domain.ReviewActor, error) {
+	out := make(map[snow.ID][]domain.ReviewActor)
+	for _, batch := range branchIDBatches(branchIDs) {
+		rows, err := b.queries.BranchRequiredReviewerListByBranches(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range rows {
+			branchID := snow.ID(row.BranchID)
+			out[branchID] = append(out[branchID], domain.ReviewActor{
+				UserID:   snow.ID(row.UserID),
+				Name:     row.UserName,
+				PhotoURL: row.UserPhotoUrl.String,
+			})
+		}
+	}
+	return out, nil
+}
+
+// RequiredChecksByBranches is the batched RequiredChecks: the required check
+// names of every given branch keyed by branch id, each list ordered by name.
+// Branches without required checks have no entry.
+func (b *BranchRepository) RequiredChecksByBranches(ctx context.Context, branchIDs []snow.ID) (map[snow.ID][]string, error) {
+	out := make(map[snow.ID][]string)
+	for _, batch := range branchIDBatches(branchIDs) {
+		rows, err := b.queries.BranchRequiredCheckListByBranches(ctx, batch)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, row := range rows {
+			branchID := snow.ID(row.BranchID)
+			out[branchID] = append(out[branchID], row.Name)
+		}
+	}
+	return out, nil
+}
+
 func (b *BranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
 	return handleError(b.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := b.queries.BranchRemoveDefault(ctx, projectID.Int64()); err != nil {

@@ -23,9 +23,16 @@ type Querier interface {
 	BranchRequiredCheckAdd(ctx context.Context, arg BranchRequiredCheckAddParams) error
 	BranchRequiredCheckClear(ctx context.Context, branchID int64) error
 	BranchRequiredCheckList(ctx context.Context, branchID int64) ([]string, error)
+	BranchRequiredCheckListByBranches(ctx context.Context, branchIds []int64) ([]BranchesRequiredCheck, error)
 	BranchRequiredReviewerAdd(ctx context.Context, arg BranchRequiredReviewerAddParams) error
 	BranchRequiredReviewerClear(ctx context.Context, branchID int64) error
 	BranchRequiredReviewerList(ctx context.Context, branchID int64) ([]BranchRequiredReviewerListRow, error)
+	// The *ListByBranches queries are the batched twins of
+	// BranchRequiredReviewerList and BranchRequiredCheckList: one statement serves
+	// a whole branch listing. Rows carry branch_id so the caller can group them,
+	// and keep the per-branch order of the single-branch queries (br.user_id is
+	// u.id, and ordering by it follows the primary key without a sort).
+	BranchRequiredReviewerListByBranches(ctx context.Context, branchIds []int64) ([]BranchRequiredReviewerListByBranchesRow, error)
 	BranchSetName(ctx context.Context, arg BranchSetNameParams) error
 	BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error
 	BranchSoftDelete(ctx context.Context, arg BranchSoftDeleteParams) (int64, error)
