@@ -488,18 +488,19 @@ func (m *Maintenance) auditEntry(action string, t maintenanceTarget, w domain.Ma
 // apply rebuilds the snapshot from the stored windows and keeps a current
 // file override, so the change is visible here without waiting for a poll.
 func (m *Maintenance) apply(ctx context.Context) {
-	rows, err := m.repo.List(ctx)
+	err := m.svc.Reload(ctx, func(ctx context.Context, cur *maintenance.Snapshot) (*maintenance.Snapshot, error) {
+		rows, err := m.repo.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		snap := maintenance.NewSnapshot(WindowsFromDomain(rows), m.svc.Now())
+		if cur.Source == maintenance.SourceFile {
+			snap.Server, snap.Source, snap.FileError = cur.Server, cur.Source, cur.FileError
+		}
+		return snap, nil
+	})
 	if err != nil {
 		slog.Warn("maintenance: reload after write failed", "error", err)
-		return
-	}
-	cur := m.svc.Snapshot()
-	snap := maintenance.NewSnapshot(WindowsFromDomain(rows), m.svc.Now())
-	if cur.Source == maintenance.SourceFile {
-		snap.Server, snap.Source, snap.FileError = cur.Server, cur.Source, cur.FileError
-	}
-	if err := m.svc.Apply(ctx, snap); err != nil {
-		slog.Warn("maintenance: local apply failed", "error", err)
 	}
 }
 
