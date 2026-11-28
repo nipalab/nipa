@@ -71,6 +71,9 @@ type mediaStore struct {
 	dir   string
 	files map[string]mediaFile
 	order []string
+	// onAdd, when set, runs after a file is published (tests cancel a call
+	// mid-publish with it).
+	onAdd func(token string)
 }
 
 func newToken() string {
@@ -100,7 +103,6 @@ func (m *mediaStore) commit(f *os.File, name string) string {
 
 func (m *mediaStore) add(p, name string, owned bool) string {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.files == nil {
 		m.files = map[string]mediaFile{}
 	}
@@ -108,6 +110,11 @@ func (m *mediaStore) add(p, name string, owned bool) string {
 	m.files[token] = mediaFile{path: p, name: path.Base(name), held: true, owned: owned}
 	m.order = append(m.order, token)
 	m.evictLocked()
+	onAdd := m.onAdd
+	m.mu.Unlock()
+	if onAdd != nil {
+		onAdd(token)
+	}
 	return token
 }
 

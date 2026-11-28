@@ -78,7 +78,14 @@ func (s *Service) VideoDiff(ctx context.Context, root string, old, new *ImageRef
 		}()
 	}
 	wg.Wait()
-	if err := firstVideoError(errs); err != nil {
+	err = firstVideoError(errs)
+	if err == nil {
+		// Cancelled after both copies finished (the derived ctx is only
+		// cancelled by a failure, so this is the caller's): no viewer will
+		// release them.
+		err = ctx.Err()
+	}
+	if err != nil {
 		for _, side := range sides {
 			if side != nil && side.Media != "" {
 				s.media.drop(side.Media)

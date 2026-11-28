@@ -95,6 +95,16 @@ func (s *Service) ModelDiff(ctx context.Context, root string, old, new *ImageRef
 		}
 		*side.dest = m
 	}
+	// A call cancelled while its files were written returns nothing, so no
+	// viewer would ever release what it published.
+	if err := ctx.Err(); err != nil {
+		for _, m := range []*ModelSide{out.Old, out.New} {
+			if m != nil {
+				s.media.drop(m.Tokens...)
+			}
+		}
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -210,6 +220,10 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 	side.Media, side.URL = token, mediaURL(token, ref.Path)
 	side.Tokens = append(side.Tokens, token)
 	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			s.media.drop(side.Tokens...)
+			return nil, err
+		}
 		token, err := s.publishModelFile(f)
 		if err != nil {
 			s.media.drop(side.Tokens...)

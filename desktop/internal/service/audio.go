@@ -85,6 +85,16 @@ func (s *Service) AudioDiff(ctx context.Context, root string, old, new *ImageRef
 		}
 		*side.dest = a
 	}
+	// A call cancelled while its playback copy was written returns nothing,
+	// so no viewer would ever release it.
+	if err := ctx.Err(); err != nil {
+		for _, a := range []*AudioSide{out.Old, out.New} {
+			if a != nil && a.Media != "" {
+				s.media.drop(a.Media)
+			}
+		}
+		return nil, err
+	}
 	return out, nil
 }
 
