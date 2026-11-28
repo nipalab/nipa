@@ -31,6 +31,14 @@ import (
 // (ApplyPushRequest.PathChanges) together with a marker; a commit without a
 // marker (stored before the index, or by a writer that did not compute its
 // changes) is indexed by the first read whose walk crosses it.
+//
+// That read indexes incrementally (indexedPathCommitLog): the unmarked
+// commits of its walk, newest first, in batches of growing size, one write
+// transaction per batch. Before each batch it answers from the part of the
+// walk that is already complete (every commit newer than the next unmarked
+// one) and stops as soon as that part yields the page; only a query that
+// needs older commits indexes deeper. A walk with nothing unmarked costs the
+// one lookup.
 
 // PathChangeKind says what one path change index row records.
 type PathChangeKind int
@@ -58,17 +66,29 @@ type PathChangeRow struct {
 }
 
 // UnindexedCommit is a commit with a first parent that has no path change
-// rows yet, with the root tree nodes of both.
+// rows yet, with the root tree nodes of both and its depth in the walk that
+// found it (0 is the walk's start).
 type UnindexedCommit struct {
 	ID           snow.ID
 	TreeID       int64
 	ParentTreeID int64
+	Depth        int
+}
+
+// CommitPathChanges is the complete set of path change rows of one commit,
+// stored together with its marker (RecordPathChanges).
+type CommitPathChanges struct {
+	CommitID snow.ID
+	Changes  []PathChange
 }
 
 // PathChangeQuery selects, from the first-parent walk of at most ScanLimit
 // commits from StartID, the commits that changed Path (a file or a folder;
 // "" is the whole tree) and the walk's root commit, newest first, at most
-// Limit of them.
+// Limit of them. The root is a commit without a first parent: the last
+// commit of a walk cut short by ScanLimit is listed only when it changed
+// Path, so a walk cut at depth d lists exactly the first d commits' share of
+// the full walk's answer.
 type PathChangeQuery struct {
 	ProjectID snow.ID
 	StartID   snow.ID
@@ -93,6 +113,15 @@ func (q PathChangeQuery) PrefixRange() (from, to string) {
 // The walk costs one index probe per commit inside a single statement, so the
 // cap is far above the 500 commits the tree-comparing scan could afford.
 const maxPathHistoryScan = 10000
+
+// pathIndexFirstBatch and pathIndexMaxBatch bound the unindexed commits one
+// read indexes per write transaction: the first batch is small so a page
+// near the head answers quickly, and each next one doubles up to the cap so a
+// path that changes rarely needs few rounds to reach deep into the walk.
+const (
+	pathIndexFirstBatch = 100
+	pathIndexMaxBatch   = 1600
+)
 
 // pathChangeRowBatch bounds the commits whose rows a path-restricted reader
 // loads at once.
@@ -128,21 +157,59 @@ func (b *Branch) PathCommitLog(ctx context.Context, projectID snow.ID, rev, path
 	if path != "" && !filter.CanDescend(path) {
 		return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
 	}
-	if err := b.indexPathChanges(ctx, projectID, startID); err != nil {
+	q := PathChangeQuery{ProjectID: projectID, StartID: startID, ScanLimit: maxPathHistoryScan, Path: path, Limit: limit}
+	return b.indexedPathCommitLog(ctx, q, filter)
+}
+
+// indexedPathCommitLog answers q after indexing as much of its walk as the
+// answer needs. The unmarked commits come newest first; before indexing the
+// batch that starts at depth d, the walk cut at d (all complete) is asked for
+// the page, and a full page there is the full walk's page too, since entries
+// come in walk order and the cut never lists its last commit as a root. A
+// short page means older commits may belong to it, so the batch is indexed
+// and the next cut tried; once nothing is left unmarked the whole walk is
+// asked.
+func (b *Branch) indexedPathCommitLog(ctx context.Context, q PathChangeQuery, filter *PathFilter) ([]*domain.CommitLogEntry, error) {
+	pending, err := b.branchRepo.UnindexedPathChangeCommits(ctx, q.ProjectID, q.StartID, q.ScanLimit)
+	if err != nil {
 		return nil, err
 	}
-	q := PathChangeQuery{ProjectID: projectID, StartID: startID, ScanLimit: maxPathHistoryScan, Path: path, Limit: limit}
-	if filter.Unrestricted() {
-		entries, err := b.branchRepo.PathChangeLog(ctx, q)
-		if err != nil {
+	size := pathIndexFirstBatch
+	for start := 0; start < len(pending); start += size {
+		if start > 0 {
+			size = min(2*size, pathIndexMaxBatch)
+		}
+		if depth := pending[start].Depth; depth > 0 {
+			cut := q
+			cut.ScanLimit = depth
+			entries, err := b.pathChangePage(ctx, cut, filter)
+			if err != nil {
+				return nil, err
+			}
+			if len(entries) >= q.Limit {
+				return entries, nil
+			}
+		}
+		if err := b.indexPathChanges(ctx, pending[start:min(start+size, len(pending))]); err != nil {
 			return nil, err
 		}
-		if entries == nil {
-			entries = []*domain.CommitLogEntry{}
-		}
-		return entries, nil
 	}
-	return b.restrictedPathCommitLog(ctx, q, filter)
+	return b.pathChangePage(ctx, q, filter)
+}
+
+// pathChangePage answers q from the index as the reader's filter sees it.
+func (b *Branch) pathChangePage(ctx context.Context, q PathChangeQuery, filter *PathFilter) ([]*domain.CommitLogEntry, error) {
+	if !filter.Unrestricted() {
+		return b.restrictedPathCommitLog(ctx, q, filter)
+	}
+	entries, err := b.branchRepo.PathChangeLog(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		entries = []*domain.CommitLogEntry{}
+	}
+	return entries, nil
 }
 
 // restrictedPathCommitLog serves a reader whose rules hide paths: the
@@ -237,25 +304,22 @@ func visibleBelow(base, filePath string, filter *PathFilter) bool {
 	return true
 }
 
-// indexPathChanges indexes the commits of the walk from startID that predate
-// the index (no marker): each one's changes against its first parent come
-// from comparing the two trees, the same result its writer would have
-// recorded. A walk that is fully indexed costs the one lookup.
-func (b *Branch) indexPathChanges(ctx context.Context, projectID, startID snow.ID) error {
-	pending, err := b.branchRepo.UnindexedPathChangeCommits(ctx, projectID, startID, maxPathHistoryScan)
-	if err != nil {
-		return err
-	}
+// indexPathChanges indexes a batch of commits that predate the index (no
+// marker): each one's changes against its first parent come from comparing
+// the two trees, the same result its writer would have recorded, and the
+// whole batch is stored in one transaction. Two reads indexing the same
+// commits at once store the same rows (idempotent inserts), in the same walk
+// order.
+func (b *Branch) indexPathChanges(ctx context.Context, pending []UnindexedCommit) error {
+	batch := make([]CommitPathChanges, 0, len(pending))
 	for _, commit := range pending {
 		changes, err := b.comparePathChanges(ctx, commit.ParentTreeID, commit.TreeID)
 		if err != nil {
 			return err
 		}
-		if err := b.branchRepo.RecordPathChanges(ctx, commit.ID, changes); err != nil {
-			return err
-		}
+		batch = append(batch, CommitPathChanges{CommitID: commit.ID, Changes: changes})
 	}
-	return nil
+	return b.branchRepo.RecordPathChanges(ctx, batch)
 }
 
 // comparePathChanges computes the path change rows between two stored trees.

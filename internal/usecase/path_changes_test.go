@@ -65,12 +65,12 @@ func TestBranch_PathCommitLog_IndexesOldCommits(t *testing.T) {
 		103: {{ID: 5, Name: "x", Hash: domain.Hash{4}}},
 	}, nil)
 	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{103}).Return(nil, nil)
-	repo.EXPECT().RecordPathChanges(gomock.Any(), snow.ID(20), []PathChange{
+	repo.EXPECT().RecordPathChanges(gomock.Any(), []CommitPathChanges{{CommitID: 20, Changes: []PathChange{
 		{Path: "a.txt", Kind: PathChangeFile},
 		{Path: "new", Kind: PathChangeDir},
 		{Path: "new/x", Kind: PathChangeFile},
 		{Path: "run", Kind: PathChangeMode},
-	}).Return(nil)
+	}}}).Return(nil)
 	repo.EXPECT().PathChangeLog(gomock.Any(), gomock.Any()).Return(nil, nil)
 
 	_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "", nil, 0)
@@ -101,7 +101,7 @@ func TestBranch_PathCommitLog_IndexErrors(t *testing.T) {
 			same := &domain.TreeNode{ID: 101, Hash: domain.Hash{1}}
 			repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(same, nil)
 			repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).Return(same, nil)
-			repo.EXPECT().RecordPathChanges(gomock.Any(), snow.ID(20), []PathChange(nil)).Return(wantErr)
+			repo.EXPECT().RecordPathChanges(gomock.Any(), []CommitPathChanges{{CommitID: 20}}).Return(wantErr)
 			return pending
 		},
 	}
@@ -118,6 +118,156 @@ func TestBranch_PathCommitLog_IndexErrors(t *testing.T) {
 			require.ErrorIs(t, err, wantErr)
 		})
 	}
+}
+
+// unchangedPending returns n unindexed commits at depths from..from+n-1
+// whose trees are identical, so indexing them compares nothing and records
+// empty change sets.
+func unchangedPending(repo *MockbranchRepository, from, n int) []UnindexedCommit {
+	same := &domain.TreeNode{ID: 101, Hash: domain.Hash{1}}
+	repo.EXPECT().GetTreeNode(gomock.Any(), gomock.Any()).Return(same, nil).AnyTimes()
+	out := make([]UnindexedCommit, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, UnindexedCommit{ID: snow.ID(5000 - from - i), TreeID: 101, ParentTreeID: 101, Depth: from + i})
+	}
+	return out
+}
+
+func logEntries(n int) []*domain.CommitLogEntry {
+	parent := snow.ID(1)
+	out := make([]*domain.CommitLogEntry, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, &domain.CommitLogEntry{Commit: domain.Commit{ID: snow.ID(9000 - i), Parent1ID: &parent}})
+	}
+	return out
+}
+
+// TestBranch_PathCommitLog_IndexesInGrowingBatches checks that a walk whose
+// answer needs every commit is indexed newest first in batches of 100, 200,
+// 400... (one write each), with the complete part of the walk asked before
+// each batch, and the whole walk asked last.
+func TestBranch_PathCommitLog_IndexesInGrowingBatches(t *testing.T) {
+	perm, repo, uc := newHistoryTestBranch(t)
+	pending := unchangedPending(repo, 0, 350)
+	headID := expectIndexedLog(perm, repo, AllowAllFilter(), pending, nil)
+	var recorded [][]snow.ID
+	repo.EXPECT().RecordPathChanges(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, commits []CommitPathChanges) error {
+		ids := make([]snow.ID, 0, len(commits))
+		for _, c := range commits {
+			require.Empty(t, c.Changes)
+			ids = append(ids, c.CommitID)
+		}
+		recorded = append(recorded, ids)
+		return nil
+	}).Times(3)
+	query := PathChangeQuery{ProjectID: 1, StartID: headID, Path: "a.txt", Limit: 5}
+	var scans []int
+	want := logEntries(2)
+	repo.EXPECT().PathChangeLog(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, q PathChangeQuery) ([]*domain.CommitLogEntry, error) {
+		got := q
+		got.ScanLimit = 0
+		require.Equal(t, query, got)
+		scans = append(scans, q.ScanLimit)
+		return want[:1], nil
+	}).Times(2)
+	repo.EXPECT().PathChangeLog(gomock.Any(), PathChangeQuery{ProjectID: 1, StartID: headID, ScanLimit: maxPathHistoryScan, Path: "a.txt", Limit: 5}).Return(want, nil)
+
+	got, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 5)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+	require.Equal(t, []int{100, 300}, scans, "the walk cut at each next unindexed commit")
+	require.Len(t, recorded, 3)
+	require.Len(t, recorded[0], 100)
+	require.Len(t, recorded[1], 200)
+	require.Len(t, recorded[2], 50)
+	require.Equal(t, pending[0].ID, recorded[0][0], "newest first")
+	require.Equal(t, pending[349].ID, recorded[2][49])
+}
+
+// TestBranch_PathCommitLog_BatchCapsAtMax checks the batch size stops
+// doubling at pathIndexMaxBatch.
+func TestBranch_PathCommitLog_BatchCapsAtMax(t *testing.T) {
+	perm, repo, uc := newHistoryTestBranch(t)
+	pending := unchangedPending(repo, 0, 100+200+400+800+1600+1600+5)
+	expectIndexedLog(perm, repo, AllowAllFilter(), pending, nil)
+	var sizes []int
+	repo.EXPECT().RecordPathChanges(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, commits []CommitPathChanges) error {
+		sizes = append(sizes, len(commits))
+		return nil
+	}).AnyTimes()
+	repo.EXPECT().PathChangeLog(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+	_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 5)
+	require.NoError(t, err)
+	require.Equal(t, []int{100, 200, 400, 800, 1600, 1600, 5}, sizes)
+}
+
+// TestBranch_PathCommitLog_StopsWhenPageIsComplete checks that indexing stops
+// as soon as the complete part of the walk holds the page: before any batch
+// when the unindexed commits start deep enough, and after the first batch.
+func TestBranch_PathCommitLog_StopsWhenPageIsComplete(t *testing.T) {
+	t.Run("before indexing", func(t *testing.T) {
+		perm, repo, uc := newHistoryTestBranch(t)
+		pending := unchangedPending(repo, 40, 500)
+		headID := expectIndexedLog(perm, repo, AllowAllFilter(), pending, nil)
+		want := logEntries(3)
+		repo.EXPECT().PathChangeLog(gomock.Any(), PathChangeQuery{ProjectID: 1, StartID: headID, ScanLimit: 40, Path: "a.txt", Limit: 3}).Return(want, nil)
+
+		got, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 3)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
+	t.Run("after a batch", func(t *testing.T) {
+		perm, repo, uc := newHistoryTestBranch(t)
+		pending := unchangedPending(repo, 0, 500)
+		headID := expectIndexedLog(perm, repo, AllowAllFilter(), pending, nil)
+		repo.EXPECT().RecordPathChanges(gomock.Any(), gomock.Len(100)).Return(nil)
+		want := logEntries(3)
+		repo.EXPECT().PathChangeLog(gomock.Any(), PathChangeQuery{ProjectID: 1, StartID: headID, ScanLimit: 100, Path: "a.txt", Limit: 3}).Return(want, nil)
+
+		got, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 3)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
+	t.Run("restricted reader", func(t *testing.T) {
+		perm, repo, uc := newHistoryTestBranch(t)
+		restricted := NewTestPathFilter([]*domain.PBACRule{{PathPrefix: "pub", Permission: domain.PermissionRead}}, nil)
+		pending := unchangedPending(repo, 0, 500)
+		headID := expectIndexedLog(perm, repo, restricted, pending, nil)
+		repo.EXPECT().RecordPathChanges(gomock.Any(), gomock.Len(100)).Return(nil)
+		candidates := logEntries(3)
+		// The cut walk's candidates are filtered: only two are visible, so
+		// the next batch is indexed and the next cut holds the page.
+		repo.EXPECT().PathChangeLog(gomock.Any(), PathChangeQuery{ProjectID: 1, StartID: headID, ScanLimit: 100, Path: "pub", Limit: 100}).Return(candidates, nil)
+		repo.EXPECT().PathChangeRows(gomock.Any(), gomock.Any(), []snow.ID{9000, 8999, 8998}).Return([]PathChangeRow{
+			{CommitID: 9000, Path: "pub/a", Kind: PathChangeFile},
+			{CommitID: 8999, Path: "secret/b", Kind: PathChangeFile},
+			{CommitID: 8998, Path: "pub/c", Kind: PathChangeFile},
+		}, nil)
+		repo.EXPECT().RecordPathChanges(gomock.Any(), gomock.Len(200)).Return(nil)
+		deeper := logEntries(4)
+		repo.EXPECT().PathChangeLog(gomock.Any(), PathChangeQuery{ProjectID: 1, StartID: headID, ScanLimit: 300, Path: "pub", Limit: 300}).Return(deeper, nil)
+		repo.EXPECT().PathChangeRows(gomock.Any(), gomock.Any(), []snow.ID{9000, 8999, 8998, 8997}).Return([]PathChangeRow{
+			{CommitID: 9000, Path: "pub/a", Kind: PathChangeFile},
+			{CommitID: 8999, Path: "secret/b", Kind: PathChangeFile},
+			{CommitID: 8998, Path: "pub/c", Kind: PathChangeFile},
+			{CommitID: 8997, Path: "pub/d", Kind: PathChangeFile},
+		}, nil)
+
+		got, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "pub", nil, 3)
+		require.NoError(t, err)
+		require.Equal(t, []snow.ID{9000, 8998, 8997}, entryIDsOf(got))
+	})
+}
+
+func TestBranch_PathCommitLog_CutWalkError(t *testing.T) {
+	wantErr := errors.New("db down")
+	perm, repo, uc := newHistoryTestBranch(t)
+	pending := unchangedPending(repo, 10, 5)
+	expectIndexedLog(perm, repo, AllowAllFilter(), pending, nil)
+	repo.EXPECT().PathChangeLog(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+	_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 3)
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestBranch_PathCommitLog_LogErrors(t *testing.T) {

@@ -152,7 +152,17 @@ func (s *BranchRepositorySuite) TestPathChanges_LegacyAndRows() {
 	rows, err := f.repo.PathChangeRows(ctx, usecase.PathChangeQuery{Path: "other"}, nil)
 	require.NoError(t, err)
 	require.Empty(t, rows)
-	require.NoError(t, f.repo.RecordPathChanges(ctx, head, []usecase.PathChange{{Path: "zz/new", Kind: usecase.PathChangeFile}}))
+	require.NoError(t, f.repo.RecordPathChanges(ctx, nil), "an empty batch writes nothing")
+	var rootID int64
+	require.NoError(t, f.repo.db.QueryRow(`SELECT id FROM commits WHERE parent_1_id IS NULL`).Scan(&rootID))
+	root := snow.ID(rootID)
+	require.NoError(t, f.repo.RecordPathChanges(ctx, []usecase.CommitPathChanges{
+		{CommitID: head, Changes: []usecase.PathChange{{Path: "zz/new", Kind: usecase.PathChangeFile}}},
+		{CommitID: root, Changes: []usecase.PathChange{{Path: "zz/root", Kind: usecase.PathChangeFile}}},
+	}), "a batch stores several commits in one transaction")
+	rootRows, err := f.repo.PathChangeRows(ctx, usecase.PathChangeQuery{Path: "zz"}, []snow.ID{root})
+	require.NoError(t, err)
+	require.Equal(t, []usecase.PathChangeRow{{CommitID: root, Path: "zz/root", Kind: usecase.PathChangeFile}}, rootRows)
 	for path, want := range map[string][]string{
 		"":       {"other/f11:1", "zz/new:1"},
 		"other":  {"other/f11:1"},
@@ -166,5 +176,44 @@ func (s *BranchRepositorySuite) TestPathChanges_LegacyAndRows() {
 			paths = append(paths, fmt.Sprintf("%s:%d", row.Path, row.Kind))
 		}
 		require.Equal(t, want, paths, "path %q", path)
+	}
+}
+
+// TestPathChanges_UnindexedDepthAndCutWalk checks that the unindexed lookup
+// reports each commit's depth in the walk, newest first, and that a walk cut
+// short by ScanLimit never lists its last commit as if it were the root.
+func (s *BranchRepositorySuite) TestPathChanges_UnindexedDepthAndCutWalk() {
+	t := s.T()
+	f := newPathHistoryFixture(t)
+	f.history(12)
+	head := mustParseSnowID(t, f.head)
+	_, err := f.repo.db.Exec(`DELETE FROM commit_path_index WHERE commit_id > 0`)
+	require.NoError(t, err)
+
+	pending, err := f.repo.UnindexedPathChangeCommits(f.ctx, 1, head, 10000)
+	require.NoError(t, err)
+	require.Len(t, pending, 11, "every commit but the root")
+	depth := map[snow.ID]int{}
+	for i, commit := range pending {
+		require.Equal(t, i, commit.Depth)
+		depth[commit.ID] = commit.Depth
+	}
+	capped, err := f.repo.UnindexedPathChangeCommits(f.ctx, 1, head, 4)
+	require.NoError(t, err)
+	require.Len(t, capped, 4)
+
+	// src/a.txt changed at depths 1 and 6; the root is at depth 11.
+	for scan, want := range map[int][]int{4: {1}, 7: {1, 6}, 11: {1, 6}, 12: {1, 6, 11}, 10000: {1, 6, 11}} {
+		entries, err := f.repo.PathChangeLog(f.ctx, usecase.PathChangeQuery{ProjectID: 1, StartID: head, ScanLimit: scan, Path: "src/a.txt", Limit: 100})
+		require.NoError(t, err)
+		var depths []int
+		for _, entry := range entries {
+			if entry.Parent1ID == nil {
+				depths = append(depths, len(pending))
+				continue
+			}
+			depths = append(depths, depth[entry.ID])
+		}
+		require.Equal(t, want, depths, "scan limit %d", scan)
 	}
 }

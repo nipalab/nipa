@@ -324,7 +324,8 @@ type Querier interface {
 	PathChangeRows(ctx context.Context, arg PathChangeRowsParams) ([]CommitPathChange, error)
 	// PathChangeUnindexed lists the commits of the same first-parent walk that
 	// have a parent and no commit_path_index marker yet (stored before the index
-	// existed), with their tree and their first parent's tree.
+	// existed), with their tree, their first parent's tree and their depth in
+	// the walk (0 is start_commit_id), newest first.
 	PathChangeUnindexed(ctx context.Context, arg PathChangeUnindexedParams) ([]PathChangeUnindexedRow, error)
 	ProjectChunkRecords(ctx context.Context, arg ProjectChunkRecordsParams) ([]ProjectChunkRecordsRow, error)
 	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)

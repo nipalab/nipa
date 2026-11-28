@@ -461,7 +461,7 @@ func (f *historyFixture) storedPathChanges() []storedPathChange {
 	f.t.Helper()
 	rows, err := f.db.Query(`SELECT commit_id, path, kind FROM commit_path_changes ORDER BY commit_id, path, kind`)
 	require.NoError(f.t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []storedPathChange
 	for rows.Next() {
 		var row storedPathChange
@@ -556,4 +556,125 @@ func TestPathCommitLog_MatchesScan(t *testing.T) {
 		}
 		require.Equal(t, map[int64]bool{1: true, 2: true, 3: true}, kinds)
 	}
+}
+
+func (f *historyFixture) markedCommits() int {
+	f.t.Helper()
+	var n int
+	require.NoError(f.t, f.db.QueryRow(`SELECT COUNT(*) FROM commit_path_index`).Scan(&n))
+	return n
+}
+
+// partialQuery is one page asked of a history whose index was dropped.
+type partialQuery struct {
+	path  string
+	start *snow.ID
+	limit int
+}
+
+// TestPathCommitLog_PartialIndexMatchesFull checks the incremental indexing
+// of commits stored before the index: a page answered after indexing only
+// part of the walk (the read stops once the complete part holds the page)
+// equals the page of the fully indexed walk, for an admin and for a reader
+// whose rules hide paths, including a path that changed only deep in the
+// walk (the read indexes batch after batch to reach it) and one that never
+// existed (the whole walk). The history crosses several batch boundaries.
+func TestPathCommitLog_PartialIndexMatchesFull(t *testing.T) {
+	f := newHistoryFixture(t, 11)
+	const n = 360
+	file := func(content string) historyFile { return historyFile{content: content, mode: 0o644} }
+	f.pushChange("main", map[string]historyFile{"rare/r.txt": file("r0"), "a/f": file("0"), "x/pub/p": file("0"), "x/sec/s": file("0"), "top": file("0")}, nil, "")
+	for i := 1; i < n; i++ {
+		files := map[string]historyFile{"a/f": file(fmt.Sprint(i))}
+		switch {
+		case i == 100:
+			files["rare/r.txt"] = file("r1")
+		case i%37 == 0:
+			files["x/pub/p"] = file(fmt.Sprint(i))
+		case i%3 == 0:
+			files["x/sec/s"] = file(fmt.Sprint(i))
+		}
+		if i%50 == 0 {
+			files["top"] = file(fmt.Sprint(i))
+		}
+		f.pushChange("main", files, nil, "")
+	}
+	chain, err := f.repo.CommitLog(f.ctx, 1, *f.head("main").CommitID, n)
+	require.NoError(t, err)
+	require.Len(t, chain, n)
+	mid := chain[150].ID
+
+	readers := map[string]struct {
+		filter  *usecase.PathFilter
+		queries []partialQuery
+	}{
+		"admin": {usecase.AllowAllFilter(), []partialQuery{
+			{"a/f", nil, 1}, {"a", nil, 120}, {"", nil, 5}, {"x/pub", nil, 3}, {"x/pub", nil, 0},
+			{"rare/r.txt", nil, 1}, {"rare/r.txt", nil, 0}, {"rare", &mid, 2}, {"top", &mid, 1},
+			{"never/there", nil, 0}, {"x", nil, 0},
+		}},
+		"restricted": {restrictedReader(), []partialQuery{
+			{"x", nil, 1}, {"x", nil, 3}, {"x", nil, 0}, {"", nil, 2}, {"", nil, 0},
+			{"a/f", nil, 1}, {"a", &mid, 4}, {"x/pub/p", nil, 0}, {"x/pub/p", &mid, 2},
+		}},
+	}
+	require.Equal(t, n, f.markedCommits(), "every push marked its commit")
+	total := n - 1 // a read never marks the root commit
+	for name, reader := range readers {
+		uc := usecase.NewBranch(&stubPermission{filter: reader.filter}, f.repo, mustSnowNode(t))
+		want := make([][]snow.ID, len(reader.queries))
+		for i, q := range reader.queries {
+			entries, err := uc.PathCommitLog(f.ctx, 1, "main", q.path, q.start, q.limit)
+			require.NoError(t, err, "%s: %+v", name, q)
+			want[i] = entryIDs(entries)
+		}
+		partial := false
+		// Each page from a dropped index: the read indexes only what it needs.
+		for i, q := range reader.queries {
+			f.dropPathIndex()
+			entries, err := uc.PathCommitLog(f.ctx, 1, "main", q.path, q.start, q.limit)
+			require.NoError(t, err, "%s: %+v", name, q)
+			require.Equal(t, want[i], entryIDs(entries), "%s, dropped index: %+v", name, q)
+			if f.markedCommits() < total {
+				partial = true
+			}
+		}
+		require.True(t, partial, "%s: some page must be answered from a partly indexed walk", name)
+		// The pages in sequence over one dropped index, each read finding
+		// the walk as indexed as the reads before it left it.
+		f.dropPathIndex()
+		for i, q := range reader.queries {
+			entries, err := uc.PathCommitLog(f.ctx, 1, "main", q.path, q.start, q.limit)
+			require.NoError(t, err, "%s: %+v", name, q)
+			require.Equal(t, want[i], entryIDs(entries), "%s, sequential: %+v", name, q)
+		}
+		// The pages over a walk with a gap: a read from the middle indexed
+		// the 100 commits below it, the head's part is still unindexed.
+		for i, q := range reader.queries {
+			f.dropPathIndex()
+			_, err := uc.PathCommitLog(f.ctx, 1, "main", "", &mid, 1)
+			require.NoError(t, err)
+			entries, err := uc.PathCommitLog(f.ctx, 1, "main", q.path, q.start, q.limit)
+			require.NoError(t, err, "%s: %+v", name, q)
+			require.Equal(t, want[i], entryIDs(entries), "%s, with a gap: %+v", name, q)
+		}
+	}
+
+	// A page at the head indexes one batch; the rare path (changed at depth
+	// 259) indexes the batches down to its change (100 + 200 commits); a
+	// path that never existed indexes the whole walk.
+	admin := usecase.NewBranch(&stubPermission{filter: usecase.AllowAllFilter()}, f.repo, mustSnowNode(t))
+	f.dropPathIndex()
+	_, err = admin.PathCommitLog(f.ctx, 1, "main", "a/f", nil, 1)
+	require.NoError(t, err)
+	require.Equal(t, 100, f.markedCommits(), "a page at the head indexes one batch")
+	f.dropPathIndex()
+	entries, err := admin.PathCommitLog(f.ctx, 1, "main", "rare/r.txt", nil, 1)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, chain[n-1-100].ID, entries[0].ID)
+	require.Equal(t, 300, f.markedCommits(), "indexed down to the batch holding the rare change")
+	_, err = admin.PathCommitLog(f.ctx, 1, "main", "never/there", nil, 1)
+	require.NoError(t, err)
+	require.Equal(t, total, f.markedCommits())
 }

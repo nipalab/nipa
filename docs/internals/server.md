@@ -604,15 +604,33 @@ commit for folder history); it now reads `commit_path_changes`
   two builds on the same base. A request without `IndexPaths` (a writer that
   did not compute its changes) leaves the commit unmarked, which is safe.
 - **Unindexed commits.** Each read first lists the unmarked commits of its
-  walk (`PathChangeUnindexed`, one statement) and indexes them from their
-  stored trees (`treePathChanges`: the `compareTrees` walk with no filter,
-  which also reports one-sided folders, `walkCompare.dirsToggled`), writing
-  rows and marker idempotently (`RecordPathChanges`, `ON CONFLICT DO
-  NOTHING`). Databases from before migration `000031`/`000022` (e.g. the load
-  test's) are indexed by the first history read over them, once, at the cost
-  of one tree comparison per commit; a fully indexed walk costs that one
-  lookup. The equivalence test drops the index and checks the rows a read
-  computes equal the rows the writers stored.
+  walk with their walk depth, newest first (`PathChangeUnindexed`, one
+  statement), and indexes them from their stored trees (`treePathChanges`:
+  the `compareTrees` walk with no filter, which also reports one-sided
+  folders, `walkCompare.dirsToggled`) incrementally
+  (`indexedPathCommitLog`): in batches of 100, 200, 400 ... capped at 1,600
+  commits, one write transaction per batch (`RecordPathChanges` takes a batch
+  of `CommitPathChanges` and writes rows and markers idempotently, `ON
+  CONFLICT DO NOTHING`, in walk order with each commit's rows sorted, so two
+  concurrent first readers store the same rows and take locks in the same
+  order). Before each batch the read asks the walk cut at the next unmarked
+  commit's depth (`ScanLimit = depth`, every commit in it complete) and
+  answers from it when it already yields the page (the restricted path
+  included, which filters the cut's candidates); a short page means older
+  commits may belong to it, so the batch is indexed and the next cut tried.
+  The cut is exact because entries come in walk order and `PathChangeLog`
+  lists a "root" only when it has no first parent, never the last commit of a
+  window `ScanLimit` truncated. So a page near the head of a 10,000-commit
+  pre-index history indexes 100 commits, and only a path that changed rarely
+  (or never) indexes deep. Databases from before migration `000031`/`000022`
+  (e.g. the load test's) are indexed this way by the history reads over them,
+  once per commit; a fully indexed walk costs the one lookup plus the query.
+  The equivalence tests drop the index and check the rows a read computes
+  equal the rows the writers stored (`TestPathCommitLog_MatchesScan`) and
+  that pages answered from a partly indexed walk (fresh, sequential, and
+  with a gap) equal the fully indexed pages for an admin and a restricted
+  reader, including a rarely changed path that forces indexing deep
+  (`TestPathCommitLog_PartialIndexMatchesFull`).
 - **Reads.** An unrestricted reader (`PathFilter.Unrestricted`) costs one
   statement (`PathChangeLog`): the recursive first-parent walk keeps a commit
   when it is the root or has a row at the path (other than kind 2) or below it,

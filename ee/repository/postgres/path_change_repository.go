@@ -56,7 +56,8 @@ func (b *BranchRepository) PathChangeRows(ctx context.Context, q usecase.PathCha
 }
 
 // UnindexedPathChangeCommits lists the commits with a first parent in the
-// walk from startCommitID that have no path change index marker.
+// walk from startCommitID that have no path change index marker, newest
+// first, with their depth in the walk.
 func (b *BranchRepository) UnindexedPathChangeCommits(ctx context.Context, projectID, startCommitID snow.ID, scanLimit int) ([]usecase.UnindexedCommit, error) {
 	rows, err := b.queries.PathChangeUnindexed(ctx, sqlcPostgres.PathChangeUnindexedParams{
 		ProjectID:     projectID.Int64(),
@@ -67,16 +68,25 @@ func (b *BranchRepository) UnindexedPathChangeCommits(ctx context.Context, proje
 		return nil, handleError(err)
 	}
 	return slices.Map(rows, func(row sqlcPostgres.PathChangeUnindexedRow) usecase.UnindexedCommit {
-		return usecase.UnindexedCommit{ID: snow.ID(row.ID), TreeID: row.TreeID, ParentTreeID: row.ParentTreeID}
+		return usecase.UnindexedCommit{ID: snow.ID(row.ID), TreeID: row.TreeID, ParentTreeID: row.ParentTreeID, Depth: int(row.Depth)}
 	}), nil
 }
 
-// RecordPathChanges stores a commit's path change rows and its marker in one
-// transaction (joining the one the context carries, if any). Rows and marker
-// that already exist are kept, so two reads indexing the same commit agree.
-func (b *BranchRepository) RecordPathChanges(ctx context.Context, commitID snow.ID, changes []usecase.PathChange) error {
+// RecordPathChanges stores the path change rows and markers of several
+// commits in one transaction (joining the one the context carries, if any),
+// in the order given. Rows and markers that already exist are kept, so two
+// reads indexing the same commits agree.
+func (b *BranchRepository) RecordPathChanges(ctx context.Context, commits []usecase.CommitPathChanges) error {
+	if len(commits) == 0 {
+		return nil
+	}
 	return handleError(b.tx.WithinTx(ctx, func(ctx context.Context) error {
-		return writePathIndex(ctx, b.queries, commitID, changes)
+		for _, commit := range commits {
+			if err := writePathIndex(ctx, b.queries, commit.CommitID, commit.Changes); err != nil {
+				return err
+			}
+		}
+		return nil
 	}))
 }
 

@@ -45,9 +45,9 @@ func (c *blameReadCounter) UnindexedPathChangeCommits(ctx context.Context, proje
 	return c.treeReadCounter.UnindexedPathChangeCommits(ctx, projectID, startID, scanLimit)
 }
 
-func (c *blameReadCounter) RecordPathChanges(ctx context.Context, commitID snow.ID, changes []serverusecase.PathChange) error {
+func (c *blameReadCounter) RecordPathChanges(ctx context.Context, commits []serverusecase.CommitPathChanges) error {
 	c.other.Add(1)
-	return c.treeReadCounter.RecordPathChanges(ctx, commitID, changes)
+	return c.treeReadCounter.RecordPathChanges(ctx, commits)
 }
 
 func (c *blameReadCounter) statements() int64 {

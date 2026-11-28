@@ -470,17 +470,17 @@ func (mr *MockbranchRepositoryMockRecorder) PathChangeRows(ctx, q, commitIDs any
 }
 
 // RecordPathChanges mocks base method.
-func (m *MockbranchRepository) RecordPathChanges(ctx context.Context, commitID snow.ID, changes []usecase.PathChange) error {
+func (m *MockbranchRepository) RecordPathChanges(ctx context.Context, commits []usecase.CommitPathChanges) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordPathChanges", ctx, commitID, changes)
+	ret := m.ctrl.Call(m, "RecordPathChanges", ctx, commits)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RecordPathChanges indicates an expected call of RecordPathChanges.
-func (mr *MockbranchRepositoryMockRecorder) RecordPathChanges(ctx, commitID, changes any) *gomock.Call {
+func (mr *MockbranchRepositoryMockRecorder) RecordPathChanges(ctx, commits any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPathChanges", reflect.TypeOf((*MockbranchRepository)(nil).RecordPathChanges), ctx, commitID, changes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPathChanges", reflect.TypeOf((*MockbranchRepository)(nil).RecordPathChanges), ctx, commits)
 }
 
 // RenameBranch mocks base method.

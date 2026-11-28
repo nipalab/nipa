@@ -215,7 +215,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
     WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < CAST(?3 AS INTEGER)
 )
-SELECT c.id, c.tree_id, p.tree_id AS parent_tree_id
+SELECT c.id, c.tree_id, p.tree_id AS parent_tree_id, CAST(cc.depth AS INTEGER) AS depth
 FROM commits c
 JOIN commit_chain cc ON c.id = cc.id
 JOIN commits p ON p.id = c.parent_1_id
@@ -234,11 +234,13 @@ type PathChangeUnindexedRow struct {
 	ID           int64 `json:"id"`
 	TreeID       int64 `json:"tree_id"`
 	ParentTreeID int64 `json:"parent_tree_id"`
+	Depth        int64 `json:"depth"`
 }
 
 // PathChangeUnindexed lists the commits of the same first-parent walk that
 // have a parent and no commit_path_index marker yet (stored before the index
-// existed), with their tree and their first parent's tree.
+// existed), with their tree, their first parent's tree and their depth in
+// the walk (0 is start_commit_id), newest first.
 func (q *Queries) PathChangeUnindexed(ctx context.Context, arg PathChangeUnindexedParams) ([]PathChangeUnindexedRow, error) {
 	rows, err := q.db.QueryContext(ctx, pathChangeUnindexed, arg.ProjectID, arg.StartCommitID, arg.ScanLimit)
 	if err != nil {
@@ -248,7 +250,12 @@ func (q *Queries) PathChangeUnindexed(ctx context.Context, arg PathChangeUnindex
 	var items []PathChangeUnindexedRow
 	for rows.Next() {
 		var i PathChangeUnindexedRow
-		if err := rows.Scan(&i.ID, &i.TreeID, &i.ParentTreeID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.TreeID,
+			&i.ParentTreeID,
+			&i.Depth,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

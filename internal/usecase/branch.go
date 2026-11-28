@@ -66,7 +66,7 @@ type branchRepository interface {
 	PathChangeLog(ctx context.Context, q PathChangeQuery) ([]*domain.CommitLogEntry, error)
 	PathChangeRows(ctx context.Context, q PathChangeQuery, commitIDs []snow.ID) ([]PathChangeRow, error)
 	UnindexedPathChangeCommits(ctx context.Context, projectID, startCommitID snow.ID, scanLimit int) ([]UnindexedCommit, error)
-	RecordPathChanges(ctx context.Context, commitID snow.ID, changes []PathChange) error
+	RecordPathChanges(ctx context.Context, commits []CommitPathChanges) error
 }
 
 type BranchForkPoint struct {
