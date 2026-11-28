@@ -9,6 +9,7 @@ import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { plural, translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 type Mode = "structure" | "text";
 
@@ -19,7 +20,7 @@ export function SceneDiff({ root, diff, layout, comments }: { root: string; diff
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "scene"),
-    queryFn: () => desktop.sceneDiff(root, old, next),
+    queryFn: ({ signal }) => withAbort(signal, desktop.sceneDiff(root, old, next)),
     staleTime: 30_000,
     enabled: mode === "structure",
   });

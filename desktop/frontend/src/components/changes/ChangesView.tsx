@@ -27,6 +27,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import { repoSetting } from "@/lib/settings";
 import { useTranslation } from "react-i18next";
 import { plural, translate } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 const POLL_MS = 30_000;
@@ -133,7 +134,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onShelve, on
 
   const diff = useQuery({
     queryKey: ["diff", root, selected?.path],
-    queryFn: () => desktop.fileDiff(root, selected!.path),
+    queryFn: ({ signal }) => withAbort(signal, desktop.fileDiff(root, selected!.path)),
     enabled: !!selected && !shelfPick,
   });
   const shelfFiles = useQuery({

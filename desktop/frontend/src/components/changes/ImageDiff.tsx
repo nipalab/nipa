@@ -11,6 +11,7 @@ import { drawPixels, loadPixels } from "@/lib/pixels";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 export type CompareMode = "side" | "swipe" | "onion" | "difference" | "blink";
 
@@ -61,7 +62,7 @@ export function ImageDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const surface = picked.path === diff.path ? picked : { level: 0, face: 0 };
   const query = useQuery({
     queryKey: [...viewerKey(root, diff, "image"), surface.level, surface.face],
-    queryFn: () => desktop.imageDiff(root, old, next, { level: surface.level, face: surface.face }),
+    queryFn: ({ signal }) => withAbort(signal, desktop.imageDiff(root, old, next, { level: surface.level, face: surface.face })),
     placeholderData: (prev, prevQuery) => (sameKey(prevQuery?.queryKey, viewerKey(root, diff, "image")) ? keepPreviousData(prev) : undefined),
     staleTime: 30_000,
   });

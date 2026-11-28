@@ -10,13 +10,14 @@ import { formatBytes } from "@/lib/diff";
 import { base64ToBytes, cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "audio"),
-    queryFn: () => desktop.audioDiff(root, old, next),
+    queryFn: ({ signal }) => withAbort(signal, desktop.audioDiff(root, old, next)),
     staleTime: 30_000,
   });
   if (query.isPending) {

@@ -22,10 +22,29 @@ type blobDaemon struct {
 	sizes    map[string]int64
 	reads    []*daemonpb.ReadBlobRequest
 	err      error
+	// onRead runs when a read starts, onDrained when its stream ends.
+	onRead    func(path string)
+	onDrained func(path string)
+}
+
+type drainedStream struct {
+	*listStream[daemonpb.BlobEvent]
+	done func()
+}
+
+func (s *drainedStream) Recv() (*daemonpb.BlobEvent, error) {
+	ev, err := s.listStream.Recv()
+	if err != nil && s.done != nil {
+		s.done()
+	}
+	return ev, err
 }
 
 func (d *blobDaemon) ReadBlob(_ context.Context, req *daemonpb.ReadBlobRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[daemonpb.BlobEvent], error) {
 	d.reads = append(d.reads, req)
+	if d.onRead != nil {
+		d.onRead(req.GetBlob().GetPath())
+	}
 	if d.err != nil {
 		return nil, d.err
 	}
@@ -47,7 +66,11 @@ func (d *blobDaemon) ReadBlob(_ context.Context, req *daemonpb.ReadBlobRequest, 
 		evs = append(evs, &daemonpb.BlobEvent{Event: &daemonpb.BlobEvent_Data{Data: []byte(content[:n])}})
 		content = content[n:]
 	}
-	return &listStream[daemonpb.BlobEvent]{items: evs}, nil
+	stream := &listStream[daemonpb.BlobEvent]{items: evs}
+	if d.onDrained != nil {
+		return &drainedStream{listStream: stream, done: func() { d.onDrained(p) }}, nil
+	}
+	return stream, nil
 }
 
 func newModels(t *testing.T, files map[string]string) (*Service, *blobDaemon) {

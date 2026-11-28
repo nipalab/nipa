@@ -18,6 +18,7 @@ import { AssetInsight } from "./AssetInsight";
 import { ActionBar, type FileAction } from "./FileMenu";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 const VERSIONS = 20;
 
@@ -200,7 +201,7 @@ function Versions({ root, branch, path, busy, onRestore, onShowCommit }: { root:
 function VersionThumb({ root, path, commit }: { root: string; path: string; commit: string }) {
   const thumb = useQuery({
     queryKey: ["commit", root, commit, path, "thumb"],
-    queryFn: () => desktop.imageDiff(root, null, { source: "revision", revision: commit, path }, { maxSize: 128 }),
+    queryFn: ({ signal }) => withAbort(signal, desktop.imageDiff(root, null, { source: "revision", revision: commit, path }, { maxSize: 128 })),
     staleTime: Infinity,
     retry: false,
   });

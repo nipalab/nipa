@@ -94,6 +94,18 @@ thumbnail query; make sure the daemon decode loops check `ctx`; narrow the
 lock so it covers the localrepo handle use and not the decode, or give
 blob reads their own handle.
 
+**Addressed.** Every viewer, thumbnail and `fileDiff`/`conflictDiff` query
+passes react-query's abort `signal` to the call's `cancel()` through
+`withAbort` (`desktop/frontend/src/lib/abort.ts`), which cancels the Go
+context and the daemon RPC. The desktop `copyBlob` stops on `ctx.Err()`,
+including after a read that completed, so a cancelled model, audio, video,
+scene, table or font load never decodes or reads its other side. The daemon
+`Preview` now only reads bytes inside the `serialDiff` lock; decoding (full
+images and embedded thumbnails), downscaling and the compare run after it,
+with `ctx` checked before each decode, side and compare. Thumbnails still
+share the lock for the read itself; their cache and concurrency limit are
+finding 3.
+
 ### 3. Thumbnails decode the full image every time
 
 `Thumbnail` (`desktop/frontend/src/components/files/FileTable.tsx:234`), the

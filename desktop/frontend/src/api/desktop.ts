@@ -215,7 +215,9 @@ export type ChangeSet = {
 };
 
 // Cancellable is a pending call the UI can abort; Wails cancels the Go
-// context, which stops the daemon operation.
+// context, which stops the daemon operation. Wrappers returning one must hand
+// the binding's promise back as is (no .then/await), or .cancel is lost; query
+// callers wire it to react-query's signal with withAbort (lib/abort.ts).
 export type Cancellable<T> = Promise<T> & { cancel?: () => void };
 
 const pendingOp = (op: string | undefined): PendingOp | "" => (op === "merge" || op === "revert" || op === "shelf" ? op : "");
@@ -242,7 +244,7 @@ export const desktop = {
   stage: async (root: string, paths: string[]): Promise<ChangeSet> => changeSet(await Service.Stage(root, paths)),
   unstage: async (root: string, paths: string[]): Promise<ChangeSet> => changeSet(await Service.Unstage(root, paths)),
   discard: async (root: string, paths: string[]): Promise<ChangeSet> => changeSet(await Service.Discard(root, paths)),
-  fileDiff: (root: string, path: string): Promise<FileDiff | null> => Service.FileDiff(root, path),
+  fileDiff: (root: string, path: string): Cancellable<FileDiff | null> => Service.FileDiff(root, path),
   imageDiff: (root: string, old: ImageRef | null, next: ImageRef | null, opts: Partial<ImageOptions> = {}): Cancellable<ImageCompare | null> =>
     Service.ImageDiff(root, old, next, { maxSize: 2048, level: 0, face: 0, ...opts }),
   modelDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<ModelCompare | null> => Service.ModelDiff(root, old, next),
@@ -422,7 +424,7 @@ export const desktop = {
   syncPlan: async (root: string, target: { branch?: string; tag?: string } = {}): Promise<string[]> =>
     (await Service.SyncPlan(root, target.branch ?? "", target.tag ?? ""))?.overwritten ?? [],
   conflictTexts: async (root: string, path: string): Promise<ConflictTexts> => required(await Service.ConflictTexts(root, path), "file versions"),
-  conflictDiff: (root: string, path: string): Promise<FileDiff | null> => Service.ConflictDiff(root, path),
+  conflictDiff: (root: string, path: string): Cancellable<FileDiff | null> => Service.ConflictDiff(root, path),
   mergeScene: async (root: string, path: string): Promise<SceneMerge> => {
     const m = required(await Service.MergeScene(root, path), "scene merge");
     return { ...m, conflicts: m.conflicts ?? [] };

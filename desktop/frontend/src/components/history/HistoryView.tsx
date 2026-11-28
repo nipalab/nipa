@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
 import { ImportedBadge } from "@/components/history/ImportedBadge";
 import { IssueChips } from "@/components/issues/IssueChips";
+import { withAbort } from "@/lib/abort";
 
 type HistoryViewProps = {
   root: string;
@@ -302,7 +303,7 @@ function AssetStrip({ root, path, commits, selected, onSelect }: { root: string;
 function Thumbnail({ root, path, commit }: { root: string; path: string; commit: string }) {
   const thumb = useQuery({
     queryKey: ["commit", root, commit, path, "thumb"],
-    queryFn: () => desktop.imageDiff(root, null, { source: "revision", revision: commit, path }, { maxSize: 128 }),
+    queryFn: ({ signal }) => withAbort(signal, desktop.imageDiff(root, null, { source: "revision", revision: commit, path }, { maxSize: 128 })),
     staleTime: Infinity,
     retry: false,
   });

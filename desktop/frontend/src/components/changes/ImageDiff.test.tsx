@@ -382,3 +382,33 @@ describe("texture surfaces, HDR and layers", () => {
     expect(screen.getByText("Layers · no layer changes")).toBeInTheDocument();
   });
 });
+
+describe("ImageDiff cancellation", () => {
+  const hanging = () => {
+    const p = new Promise<ImageCompare | null>(() => undefined) as Promise<ImageCompare | null> & { cancel: () => void };
+    p.cancel = vi.fn();
+    return p;
+  };
+
+  it("cancels the daemon call when the viewer unmounts", async () => {
+    const call = hanging();
+    api.imageDiff.mockReturnValue(call);
+    const view = renderWithProviders(<ImageDiff root="/r" diff={imageDiff()} />);
+    await waitFor(() => expect(api.imageDiff).toHaveBeenCalledTimes(1));
+    expect(call.cancel).not.toHaveBeenCalled();
+    view.unmount();
+    await waitFor(() => expect(call.cancel).toHaveBeenCalledTimes(1));
+  });
+
+  it("cancels the previous file's call when the selection moves on", async () => {
+    const first = hanging();
+    const second = hanging();
+    api.imageDiff.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const view = renderWithProviders(<ImageDiff root="/r" diff={imageDiff()} />);
+    await waitFor(() => expect(api.imageDiff).toHaveBeenCalledTimes(1));
+    view.rerender(<ImageDiff root="/r" diff={imageDiff({ path: "art/other.png" })} />);
+    await waitFor(() => expect(api.imageDiff).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(first.cancel).toHaveBeenCalledTimes(1));
+    expect(second.cancel).not.toHaveBeenCalled();
+  });
+});

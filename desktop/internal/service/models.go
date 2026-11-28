@@ -210,9 +210,14 @@ func (s *Service) copyBlob(ctx context.Context, client daemonpb.NipaDaemonClient
 	var info *daemonpb.BlobInfo
 	var written int64
 	for {
+		// A cancelled viewer stops here, and a read that completed after the
+		// cancel is not handed on to decoding.
+		if err := ctx.Err(); err != nil {
+			return info, err
+		}
 		ev, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return info, nil
+			return info, ctx.Err()
 		}
 		if err != nil {
 			s.dropIfDisconnected(err)
