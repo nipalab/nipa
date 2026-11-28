@@ -31,6 +31,12 @@ type memTreeRepo struct {
 	filesCall map[int64]int
 	metaCall  int
 	listErr   error
+	// fileChunks holds every file's chunk list by file id, for
+	// ListChunksByFiles; batches counts the batched calls.
+	fileChunks map[int64][]domain.Chunk
+	nextFile   int64
+	batches    int
+	chunkErr   error
 }
 
 func newMemTreeRepo() *memTreeRepo {
@@ -82,10 +88,16 @@ func (r *memTreeRepo) addDir(name string, spec *dirSpec) *domain.TreeNode {
 		chunk := chunker.Sum([]byte(content))
 		fh := treehash.FileHash([]domain.Hash{chunk})
 		fileEntries = append(fileEntries, treehash.FileEntry{Name: n, Hash: fh, Mode: 0o644})
-		files = append(files, &domain.File{
-			Name: n, Mode: 0o644, SizeBytes: int64(len(content)), Hash: fh,
+		r.nextFile++
+		file := &domain.File{
+			ID: r.nextFile, Name: n, Mode: 0o644, SizeBytes: int64(len(content)), Hash: fh,
 			Chunks: []domain.Chunk{{Hash: chunk, SizeBytes: int64(len(content))}},
-		})
+		}
+		if r.fileChunks == nil {
+			r.fileChunks = map[int64][]domain.Chunk{}
+		}
+		r.fileChunks[file.ID] = file.Chunks
+		files = append(files, file)
 	}
 
 	dirNames := make([]string, 0, len(spec.dirs))
@@ -190,6 +202,36 @@ func (r *memTreeRepo) ListFileMetaByTree(_ context.Context, id int64) ([]*domain
 		f.Chunks = nil
 	}
 	return files, nil
+}
+
+// ListFileMetaByTrees counts one directory load per requested id, like
+// ListFilesByTree, and one batch.
+func (r *memTreeRepo) ListFileMetaByTrees(_ context.Context, ids []int64) (map[int64][]*domain.File, error) {
+	r.batches++
+	out := make(map[int64][]*domain.File, len(ids))
+	for _, id := range ids {
+		r.filesCall[id]++
+		for _, f := range r.files[id] {
+			cp := *f
+			cp.Chunks = nil
+			out[id] = append(out[id], &cp)
+		}
+	}
+	return out, nil
+}
+
+func (r *memTreeRepo) ListChunksByFiles(_ context.Context, ids []int64) (map[int64][]domain.Chunk, error) {
+	r.batches++
+	if r.chunkErr != nil {
+		return nil, r.chunkErr
+	}
+	out := make(map[int64][]domain.Chunk, len(ids))
+	for _, id := range ids {
+		if chunks := r.fileChunks[id]; len(chunks) > 0 {
+			out[id] = chunks
+		}
+	}
+	return out, nil
 }
 
 func (r *memTreeRepo) loadedDirs() int {
@@ -355,20 +397,19 @@ func TestChangedTreeEntries_RepositoryErrors(t *testing.T) {
 	t.Run("files", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := NewMockbranchRepository(ctrl)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(1)).Return(nil, boom)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{1, 2}).Return(nil, boom)
 		uc := NewBranch(NewMockpermissionUsecase(ctrl), repo, newTestBranchNode(t))
 		_, _, err := uc.changedTreeEntries(ctx, &domain.TreeNode{ID: 1, Hash: domain.Hash{1}}, &domain.TreeNode{ID: 2, Hash: domain.Hash{2}}, AllowAllFilter())
 		require.ErrorIs(t, err, boom)
 	})
 
-	t.Run("head files", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		repo := NewMockbranchRepository(ctrl)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(1)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(1)).Return(nil, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(2)).Return(nil, boom)
-		uc := NewBranch(NewMockpermissionUsecase(ctrl), repo, newTestBranchNode(t))
-		_, _, err := uc.changedTreeEntries(ctx, &domain.TreeNode{ID: 1, Hash: domain.Hash{1}}, &domain.TreeNode{ID: 2, Hash: domain.Hash{2}}, AllowAllFilter())
+	t.Run("chunks", func(t *testing.T) {
+		repo := newMemTreeRepo()
+		base := repo.addCommit(1, 1, map[string]string{"a/x.txt": "1"})
+		head := repo.addCommit(2, 1, map[string]string{"a/x.txt": "2"})
+		repo.chunkErr = boom
+		uc := NewBranch(NewMockpermissionUsecase(gomock.NewController(t)), repo, newTestBranchNode(t))
+		_, _, err := uc.changedTreeEntries(ctx, mustRoot(t, repo, base.TreeID), mustRoot(t, repo, head.TreeID), AllowAllFilter())
 		require.ErrorIs(t, err, boom)
 	})
 }
@@ -571,7 +612,7 @@ func TestBranch_CommitDiff_ErrorPaths(t *testing.T) {
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Hash: domain.Hash{1}}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Hash: domain.Hash{2}}, nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, boom)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{100, 101}).Return(nil, boom)
 		_, _, err := uc.CommitDiff(ctx, 1, headID, nil)
 		require.ErrorIs(t, err, boom)
 	})
@@ -629,8 +670,27 @@ func TestBranch_TreeDiffBetween_ErrorPaths(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(head, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Hash: domain.Hash{1}}, nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, boom)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{101}).Return(nil, boom)
 		_, err := uc.TreeDiffBetween(ctx, 1, nil, headID)
 		require.ErrorIs(t, err, boom)
 	})
+}
+
+// TestChangedTreeEntries_HiddenChangeIsNotRead pins what a reader with
+// path-restricted read learns from a change under a hidden directory: nothing
+// is reported, and the walk never reads the hidden directory on either side
+// (it stops at the root, whose stored hash changed).
+func TestChangedTreeEntries_HiddenChangeIsNotRead(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemTreeRepo()
+	base := repo.addCommit(1, 1, wideRepo(nil))
+	head := repo.addCommit(2, 1, wideRepo(map[string]string{"code/nested/n1.txt": "secret change"}))
+	uc := NewBranch(NewMockpermissionUsecase(gomock.NewController(t)), repo, newTestBranchNode(t))
+
+	repo.filesCall = map[int64]int{}
+	baseEntries, headEntries, err := uc.changedTreeEntries(ctx, mustRoot(t, repo, base.TreeID), mustRoot(t, repo, head.TreeID), restrictedReadFilter("public"))
+	require.NoError(t, err)
+	require.Empty(t, baseEntries)
+	require.Empty(t, headEntries)
+	require.Equal(t, 2, repo.loadedDirs(), "only the two roots are read")
 }

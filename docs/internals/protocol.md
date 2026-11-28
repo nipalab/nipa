@@ -569,7 +569,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     unsound stored hashes and the query cost.
 - **Manifest loading is level by level** (`Branch.loadTreeManifest` /
   `loadManifestLevel`, used by every manifest caller: `manifestForCommit`,
-  `GetCommit`, merge base trees, `mergeTree`, the restricted web browse
+  `GetCommit`, merge base trees (`GetMergeBase` RPC), the restricted web browse
   paths). Each tree level costs one `ListFilesByTrees` and, when recursive,
   one `ListTreeChildrenByTrees` call for all its directories, so repository
   calls follow the tree depth, not the directory count (a 1,649-directory
@@ -590,7 +590,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   ids): the id is queried once and every further occurrence gets cloned
   `File`/`TreeNode` values, because filtering and `rehashTree` are per path.
   The single-directory `ListFilesByTree`/`ListTreeChildren` stay for the
-  shallow browse, tree-walk diff and push paths. The reference per-directory
+  shallow browse and push paths; tree comparisons (diffs, merges) use the
+  batched `compareTrees` walk (`docs/internals/server.md`). The reference per-directory
   loader lives in `internal/usecase/export_test.go`;
   `manifest_load_test.go` checks the two produce deeply equal trees on a real
   SQLite database.

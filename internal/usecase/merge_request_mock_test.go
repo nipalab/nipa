@@ -295,19 +295,19 @@ func (mr *MockbranchMergerMockRecorder) FastForwardForMergeRequest(ctx, projectI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FastForwardForMergeRequest", reflect.TypeOf((*MockbranchMerger)(nil).FastForwardForMergeRequest), ctx, projectID, targetBranch, sourceBranch)
 }
 
-// GetMergeBase mocks base method.
-func (m *MockbranchMerger) GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error) {
+// GetMergeBaseCommits mocks base method.
+func (m *MockbranchMerger) GetMergeBaseCommits(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMergeBase", ctx, projectID, target, source)
+	ret := m.ctrl.Call(m, "GetMergeBaseCommits", ctx, projectID, target, source)
 	ret0, _ := ret[0].(*MergeBaseInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetMergeBase indicates an expected call of GetMergeBase.
-func (mr *MockbranchMergerMockRecorder) GetMergeBase(ctx, projectID, target, source any) *gomock.Call {
+// GetMergeBaseCommits indicates an expected call of GetMergeBaseCommits.
+func (mr *MockbranchMergerMockRecorder) GetMergeBaseCommits(ctx, projectID, target, source any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMergeBase", reflect.TypeOf((*MockbranchMerger)(nil).GetMergeBase), ctx, projectID, target, source)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMergeBaseCommits", reflect.TypeOf((*MockbranchMerger)(nil).GetMergeBaseCommits), ctx, projectID, target, source)
 }
 
 // MergeForMergeRequest mocks base method.

@@ -140,9 +140,8 @@ func (b *Branch) GetTreeManifestDelta(ctx context.Context, projectID snow.ID, ta
 		return nil, declineOrFail(err)
 	}
 	walk := &deltaWalk{
-		repo:   b.branchRepo,
-		filter: filter,
-		sparse: sparse,
+		repo: b.branchRepo,
+		view: treeView{filter: filter, sparse: sparse},
 		// See deltaWalk.provable.
 		provable: base.TreeHash != nil && *base.TreeHash == baseRoot.Hash,
 	}
@@ -176,12 +175,6 @@ func (b *Branch) manifestTargetCommit(ctx context.Context, projectID snow.ID, ta
 	return b.branchRepo.GetCommit(ctx, *branch.CommitID)
 }
 
-type deltaTreeReader interface {
-	ListTreeChildrenByTrees(ctx context.Context, parentIDs []int64) (map[int64][]*domain.TreeNode, error)
-	ListFileMetaByTrees(ctx context.Context, treeIDs []int64) (map[int64][]*domain.File, error)
-	ListChunksByFiles(ctx context.Context, fileIDs []int64) (map[int64][]domain.Chunk, error)
-}
-
 // deltaWalk computes one delta. What a manifest holds for a tree is a
 // function of the tree and of the view (filter and sparse) only, so for a
 // fixed view:
@@ -195,10 +188,16 @@ type deltaTreeReader interface {
 //     known without reading it, so the delta never says: "unchanged" means
 //     "keep what you hold, if anything", and treedelta.Apply drops the changed
 //     directories that end up empty exactly as loadTreeManifest does.
+//
+// It reads levels with readTreeLevel and filters with treeView, like
+// compareTrees; it keeps its own loop because a delta is a per-directory
+// listing (unchanged markers, visible "same" settling, the root hash proof)
+// whose file equality is manifest equality (binary flag, encoding and size
+// included), while a comparison reports file paths under diff/merge
+// equality.
 type deltaWalk struct {
-	repo   deltaTreeReader
-	filter *PathFilter
-	sparse domain.PrefixSet
+	repo treeBatchReader
+	view treeView
 	// provable says the root hash of the target's full manifest is known to
 	// be its stored root hash. A manifest carries rehashed directories
 	// (rehashTree), which equal the stored hashes only when the view hides
@@ -307,20 +306,11 @@ func (p *deltaPair) settle() {
 // level reads the directories of one level on both sides with one batch each
 // and returns the changed directories below them.
 func (w *deltaWalk) level(ctx context.Context, level []*deltaPair) ([]*deltaPair, error) {
-	ids := make([]int64, 0, 2*len(level))
+	nodes := make([]*domain.TreeNode, 0, 2*len(level))
 	for _, pair := range level {
-		for _, node := range []*domain.TreeNode{pair.base, pair.target} {
-			// The empty tree owns no rows, so there is nothing to resolve.
-			if node != nil && node.Hash != emptyTreeHash {
-				ids = append(ids, node.ID)
-			}
-		}
+		nodes = append(nodes, pair.base, pair.target)
 	}
-	files, err := w.repo.ListFileMetaByTrees(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	children, err := w.repo.ListTreeChildrenByTrees(ctx, ids)
+	files, children, err := readTreeLevel(ctx, w.repo, nodes)
 	if err != nil {
 		return nil, err
 	}
@@ -329,12 +319,12 @@ func (w *deltaWalk) level(ctx context.Context, level []*deltaPair) ([]*deltaPair
 		var baseFiles []*domain.File
 		var baseDirs []*domain.TreeNode
 		if pair.base != nil {
-			baseFiles = w.visibleFiles(pair.path, files[pair.base.ID])
-			baseDirs = w.visibleDirs(pair.path, children[pair.base.ID])
+			baseFiles = w.view.files(pair.path, files[pair.base.ID])
+			baseDirs = w.view.dirs(pair.path, children[pair.base.ID])
 			w.prove(pair.base, baseFiles, baseDirs)
 		}
-		targetFiles := w.visibleFiles(pair.path, files[pair.target.ID])
-		targetDirs := w.visibleDirs(pair.path, children[pair.target.ID])
+		targetFiles := w.view.files(pair.path, files[pair.target.ID])
+		targetDirs := w.view.dirs(pair.path, children[pair.target.ID])
 		w.prove(pair.target, targetFiles, targetDirs)
 
 		pair.entriesSame = len(baseFiles) == len(targetFiles) && len(baseDirs) == len(targetDirs)
@@ -376,41 +366,6 @@ func (w *deltaWalk) level(ctx context.Context, level []*deltaPair) ([]*deltaPair
 		}
 	}
 	return next, nil
-}
-
-// visibleFiles and visibleDirs apply the view exactly as loadManifestLevel
-// does.
-func (w *deltaWalk) visibleFiles(path string, files []*domain.File) []*domain.File {
-	if w.filter.All() && w.sparse.Empty() {
-		return files
-	}
-	kept := make([]*domain.File, 0, len(files))
-	for _, file := range files {
-		filePath := joinTreePath(path, file.Name)
-		if !w.filter.Allow(filePath) {
-			continue
-		}
-		if !w.sparse.Covers(filePath) && !keepRootTeamFile(path, file.Name, w.sparse) {
-			continue
-		}
-		kept = append(kept, file)
-	}
-	return kept
-}
-
-func (w *deltaWalk) visibleDirs(path string, dirs []*domain.TreeNode) []*domain.TreeNode {
-	kept := make([]*domain.TreeNode, 0, len(dirs))
-	for _, dir := range dirs {
-		dirPath := joinTreePath(path, dir.Name)
-		if !w.filter.CanDescend(dirPath) || !w.sparse.CanDescend(dirPath) {
-			continue
-		}
-		if dir.Hash == emptyTreeHash {
-			continue
-		}
-		kept = append(kept, dir)
-	}
-	return kept
 }
 
 // prove ends the root hash proof (deltaWalk.provable) unless node hashes to

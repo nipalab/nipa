@@ -858,7 +858,7 @@ func (r *MergeRequestReview) diff(ctx context.Context, projectID snow.ID, mr *do
 	var baseID *snow.ID
 	target, err := r.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
 	if err == nil && target.CommitID != nil {
-		info, err := r.merger.GetMergeBase(ctx, projectID,
+		info, err := r.merger.GetMergeBaseCommits(ctx, projectID,
 			MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source})
 		if err != nil {
 			return nil, err

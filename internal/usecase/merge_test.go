@@ -51,14 +51,9 @@ func TestBranch_FastForward_PathWriteDenied(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
-		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.FastForward(context.Background(), snow.ID(1), "main", "feature")
@@ -208,14 +203,9 @@ func TestBranch_FastForward_Success(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
-		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).Return(updated, nil)
 
@@ -249,14 +239,9 @@ func TestBranch_FastForward_UpdateConflict(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
-		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).
 		Return(domain.NewErrorConflict("branch has moved; refresh and try again"))
 
@@ -885,8 +870,8 @@ func TestBranch_CommitChanges_Errors(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), commitID).
 			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, wantErr)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{101}).Return(nil, nil)
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{101}).Return(nil, wantErr)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
 		_, err := uc.commitChanges(ctx, projectID, nil, &commitID)

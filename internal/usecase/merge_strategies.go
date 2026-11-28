@@ -116,34 +116,34 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	if err != nil {
 		return nil, err
 	}
-	targetTree, err := b.mergeTree(ctx, projectID, *target.CommitID)
-	if err != nil {
-		return nil, err
-	}
 
 	if opts.Strategy == domain.MergeStrategyRebase && base != nil && *base == *target.CommitID {
 		return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, opts.SourceCommitID)
 	}
 
+	var sourceHead *domain.Commit
+	if opts.Strategy != domain.MergeStrategyRebase {
+		if sourceHead, err = b.commitByIDInProject(ctx, projectID, *source.CommitID); err != nil {
+			return nil, err
+		}
+	}
 	var reqs []ApplyPushRequest
-	var merged map[string]merge.File
-	var stored []ChunkRow
-	switch opts.Strategy {
-	case domain.MergeStrategyMerge, domain.MergeStrategySquash:
-		sourceHead, err := b.commitByIDInProject(ctx, projectID, *source.CommitID)
+	parentID := target.CommitID
+	parentHashes := []domain.Hash{targetHead.Hash}
+	state, stored, err := b.replayMerge(ctx, projectID, opts.Strategy, base, *target.CommitID, *source.CommitID, func(step mergeLanding) error {
+		root, err := buildNewTree(ctx, b.branchRepo, targetHead, step.files, step.removed)
 		if err != nil {
-			return nil, err
+			return mergeTreeClash(err, step.label)
 		}
-		merged, stored, err = b.mergeOnto(ctx, projectID, base, *target.CommitID, *source.CommitID, targetTree)
-		if err != nil {
-			return nil, err
+		if step.commit != nil {
+			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, step.commit.Message, "", root)
+			req.UserID = step.commit.UserID
+			reqs = append(reqs, req)
+			prev := req.CommitID
+			parentID = &prev
+			parentHashes = []domain.Hash{req.CommitHash}
+			return nil
 		}
-		files, removed := mergeDelta(targetTree, merged)
-		root, err := buildNewTree(ctx, b.branchRepo, targetHead, files, removed)
-		if err != nil {
-			return nil, mergeTreeClash(err, "")
-		}
-		parentHashes := []domain.Hash{targetHead.Hash}
 		var parent2ID *snow.ID
 		if opts.Strategy == domain.MergeStrategyMerge {
 			parentHashes = append(parentHashes, sourceHead.Hash)
@@ -157,61 +157,16 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		req := buildApplyRequest(b.snowNode, projectID, target.ID, target.CommitID, parent2ID, parentHashes, message, "", root)
 		req.UserID = opts.Author
 		reqs = append(reqs, req)
-	case domain.MergeStrategyRebase:
-		commits, err := b.rebaseCommits(ctx, projectID, *source.CommitID, base)
-		if err != nil {
-			return nil, err
-		}
-		if len(commits) == 0 {
-			// The source is already contained in the target: nothing to replay.
-			return b.branchRepo.GetByProjectIDAndID(ctx, projectID, target.ID)
-		}
-		parentID := target.CommitID
-		parentHashes := []domain.Hash{targetHead.Hash}
-		current := targetTree
-		for _, commit := range commits {
-			var commitBase map[string]merge.File
-			if commit.Parent1ID != nil {
-				commitBase, err = b.mergeTree(ctx, projectID, *commit.Parent1ID)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				commitBase = map[string]merge.File{}
-			}
-			commitTree, err := b.mergeTree(ctx, projectID, commit.ID)
-			if err != nil {
-				return nil, err
-			}
-			result := merge.ThreeWay(commitBase, current, commitTree)
-			if len(result.Conflicts) > 0 {
-				return nil, conflictError(conflictPaths(result), fmt.Sprintf("commit %s", commit.Hash.String()[:10]))
-			}
-			var added []ChunkRow
-			current, added, err = b.materialize(ctx, projectID, result, current)
-			if err != nil {
-				return nil, err
-			}
-			stored = append(stored, added...)
-			files, removed := mergeDelta(targetTree, current)
-			root, err := buildNewTree(ctx, b.branchRepo, targetHead, files, removed)
-			if err != nil {
-				return nil, mergeTreeClash(err, fmt.Sprintf("commit %s", commit.Hash.String()[:10]))
-			}
-			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, commit.Message, "", root)
-			req.UserID = commit.UserID
-			reqs = append(reqs, req)
-			prev := req.CommitID
-			parentID = &prev
-			parentHashes = []domain.Hash{req.CommitHash}
-			merged = current
-		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	if merged == nil {
-		return nil, domain.NewErrorInternalServer("merge produced no result")
+	if state == nil {
+		// The source is already contained in the target: nothing to replay.
+		return b.branchRepo.GetByProjectIDAndID(ctx, projectID, target.ID)
 	}
-	if err := b.ensureMergedWrites(ctx, projectID, targetTree, merged); err != nil {
+	if err := b.ensureMergedWrites(ctx, projectID, state.target, state.current); err != nil {
 		return nil, err
 	}
 	if err := b.chunkUploads.RecordStoredChunks(ctx, projectID, stored); err != nil {
@@ -223,28 +178,148 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, target.ID)
 }
 
-// mergeOnto runs one three-way merge and materializes text merges. The result
-// is the complete post-merge file set plus the chunks stored for text merges.
-func (b *Branch) mergeOnto(ctx context.Context, projectID snow.ID, baseID *snow.ID, oursID, theirsID snow.ID, ours map[string]merge.File) (map[string]merge.File, []ChunkRow, error) {
-	var base map[string]merge.File
-	if baseID != nil {
-		var err error
-		base, err = b.mergeTree(ctx, projectID, *baseID)
+// mergeLanding is one commit a merge lands, as a change against the target
+// head: commit is the source commit a rebase replays (nil for merge and
+// squash) and label prefixes its conflict errors.
+type mergeLanding struct {
+	files   []*domain.PushFile
+	removed []string
+	label   string
+	commit  *domain.Commit
+}
+
+// replayMerge computes the commits a merge, squash or rebase lands on the
+// target and hands each to land as soon as it is known, so a tree clash in
+// one replayed commit is reported before a later commit is read. A nil state
+// without an error means a rebase with nothing to replay.
+func (b *Branch) replayMerge(ctx context.Context, projectID snow.ID, strategy string, base *snow.ID, targetID, sourceID snow.ID, land func(mergeLanding) error) (*mergeState, []ChunkRow, error) {
+	state := newMergeState()
+	if strategy != domain.MergeStrategyRebase {
+		stored, err := b.mergeStep(ctx, projectID, state, base, targetID, sourceID, "")
 		if err != nil {
 			return nil, nil, err
 		}
-	} else {
-		base = map[string]merge.File{}
+		files, removed := mergeDelta(state.target, state.current)
+		if err := land(mergeLanding{files: files, removed: removed}); err != nil {
+			return nil, nil, err
+		}
+		return state, stored, nil
 	}
-	theirs, err := b.mergeTree(ctx, projectID, theirsID)
+	commits, err := b.rebaseCommits(ctx, projectID, sourceID, base)
 	if err != nil {
 		return nil, nil, err
 	}
+	if len(commits) == 0 {
+		return nil, nil, nil
+	}
+	var stored []ChunkRow
+	for _, commit := range commits {
+		label := fmt.Sprintf("commit %s", commit.Hash.String()[:10])
+		added, err := b.mergeStep(ctx, projectID, state, commit.Parent1ID, targetID, commit.ID, label)
+		if err != nil {
+			return nil, nil, err
+		}
+		stored = append(stored, added...)
+		files, removed := mergeDelta(state.target, state.current)
+		if err := land(mergeLanding{files: files, removed: removed, label: label, commit: commit}); err != nil {
+			return nil, nil, err
+		}
+	}
+	return state, stored, nil
+}
+
+// mergeState is the target side of a merge, read only at the paths the
+// replayed changes touch: target holds the target head's files at those
+// paths and current the merge result so far. At every other path both would
+// equal the target head, so mergeDelta and ensureMergedWrites over these maps
+// give exactly what they give over the full trees.
+type mergeState struct {
+	target, current map[string]merge.File
+	loaded          map[string]struct{}
+}
+
+func newMergeState() *mergeState {
+	return &mergeState{target: map[string]merge.File{}, current: map[string]merge.File{}, loaded: map[string]struct{}{}}
+}
+
+// mergeStep runs one three-way merge of theirs onto the current state, with
+// baseID (nil for the empty tree) as the common ancestor, and materializes
+// text merges. merge.ThreeWay changes nothing at a path where theirs equals
+// the base (it keeps ours, or deletes a file ours does not hold) and raises no
+// conflict there, so it only needs the paths where base and theirs differ:
+// those are read from the three trees, the target head's file at each one
+// (unless an earlier step already read it) seeds the state. label prefixes a
+// conflict error. On error nothing is written.
+func (b *Branch) mergeStep(ctx context.Context, projectID snow.ID, state *mergeState, baseID *snow.ID, targetID, theirsID snow.ID, label string) ([]ChunkRow, error) {
+	changed, err := b.mergeInputs(ctx, projectID, baseID, targetID, theirsID)
+	if err != nil {
+		return nil, err
+	}
+	base := make(map[string]merge.File, len(changed))
+	ours := make(map[string]merge.File, len(changed))
+	theirs := make(map[string]merge.File, len(changed))
+	for _, file := range changed {
+		path := file.path()
+		if _, ok := state.loaded[path]; !ok {
+			state.loaded[path] = struct{}{}
+			if head := file.files[1]; head != nil {
+				state.target[path] = merge.FromFile(path, head)
+				state.current[path] = state.target[path]
+			}
+		}
+		if current, ok := state.current[path]; ok {
+			ours[path] = current
+		}
+		if f := file.files[0]; f != nil {
+			base[path] = merge.FromFile(path, f)
+		}
+		if f := file.files[2]; f != nil {
+			theirs[path] = merge.FromFile(path, f)
+		}
+	}
 	result := merge.ThreeWay(base, ours, theirs)
 	if len(result.Conflicts) > 0 {
-		return nil, nil, conflictError(conflictPaths(result), "")
+		return nil, conflictError(conflictPaths(result), label)
 	}
-	return b.materialize(ctx, projectID, result, ours)
+	var stored []ChunkRow
+	state.current, stored, err = b.materialize(ctx, projectID, result, state.current)
+	if err != nil {
+		return nil, err
+	}
+	return stored, nil
+}
+
+// mergeInputs compares the unfiltered trees of baseID (nil for the empty
+// tree), targetID and theirsID where base and theirs differ: a merge must see
+// every path to preserve it, so no read filter applies. Each entry holds the
+// base, target and theirs file at one path, in that order.
+func (b *Branch) mergeInputs(ctx context.Context, projectID snow.ID, baseID *snow.ID, targetID, theirsID snow.ID) ([]comparedFile, error) {
+	var baseRoot *domain.TreeNode
+	if baseID != nil {
+		root, err := b.commitRoot(ctx, projectID, *baseID)
+		if err != nil {
+			return nil, err
+		}
+		baseRoot = root
+	}
+	theirsRoot, err := b.commitRoot(ctx, projectID, theirsID)
+	if err != nil {
+		return nil, err
+	}
+	targetRoot, err := b.commitRoot(ctx, projectID, targetID)
+	if err != nil {
+		return nil, err
+	}
+	return compareTrees(ctx, b.branchRepo, treeView{filter: AllowAllFilter()},
+		[]*domain.TreeNode{baseRoot, targetRoot, theirsRoot}, []int{0, 2})
+}
+
+func (b *Branch) commitRoot(ctx context.Context, projectID snow.ID, commitID snow.ID) (*domain.TreeNode, error) {
+	commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+	if err != nil {
+		return nil, err
+	}
+	return b.branchRepo.GetTreeNode(ctx, commit.TreeID)
 }
 
 // materialize applies a three-way result to the current file set: taken files
@@ -339,24 +414,6 @@ func (b *Branch) storeMergedContent(ctx context.Context, projectID snow.ID, path
 		ChunkHashes: hashes,
 		ChunkSizes:  sizes,
 	}, stored, nil
-}
-
-// mergeTree loads a commit's complete tree, unfiltered: a merge must see every
-// path to preserve it.
-func (b *Branch) mergeTree(ctx context.Context, projectID snow.ID, commitID snow.ID) (map[string]merge.File, error) {
-	commit, err := b.commitByIDInProject(ctx, projectID, commitID)
-	if err != nil {
-		return nil, err
-	}
-	root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
-	if err != nil {
-		return nil, err
-	}
-	if err := b.loadTreeManifest(ctx, root, "", true, AllowAllFilter(), nil); err != nil {
-		return nil, err
-	}
-	rehashTree(root)
-	return merge.Flatten(root), nil
 }
 
 // rebaseCommits returns the source's first-parent commits that the base does

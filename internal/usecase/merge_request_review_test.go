@@ -48,7 +48,7 @@ func expectDiff(branchRepo *MockbranchRepository, merger *MockbranchMerger, file
 	base, head := snow.ID(12), snow.ID(11)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &base}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1),
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1),
 		MergeRef{CommitID: &base}, MergeRef{CommitID: &head}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 	merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), &base, head).Return(files, nil)

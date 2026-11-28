@@ -618,11 +618,8 @@ func TestBranch_FastForwardForMergeRequest_Protected(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
 			Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).Times(2)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+		expectTreeRows(repo, map[int64][]*domain.File{}, map[int64][]*domain.TreeNode{})
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 		repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
 		repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
 			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead, IsProtected: true}, nil)

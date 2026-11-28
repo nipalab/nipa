@@ -74,7 +74,7 @@ func (f *participantsFixture) expectBranches() {
 	targetHead := snow.ID(12)
 	f.branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	f.branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	f.merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
+	f.merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 }
 

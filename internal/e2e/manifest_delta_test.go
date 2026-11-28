@@ -230,6 +230,12 @@ func (g *deltaGen) transplant(m deltaModel, from string, move bool) {
 // returns its id.
 func deltaPush(t *testing.T, ctx context.Context, c *clientgrpc.Client, before, after deltaModel, baseCommit string) string {
 	t.Helper()
+	return deltaPushTo(t, ctx, c, "main", before, after, baseCommit)
+}
+
+// deltaPushTo is deltaPush onto another branch.
+func deltaPushTo(t *testing.T, ctx context.Context, c *clientgrpc.Client, branch string, before, after deltaModel, baseCommit string) string {
+	t.Helper()
 	var files []*serverDomain.PushFile
 	var chunks []*serverDomain.ChunkData
 	for _, path := range after.paths() {
@@ -265,12 +271,12 @@ func deltaPush(t *testing.T, ctx context.Context, c *clientgrpc.Client, before, 
 	}
 	for _, path := range locked {
 		if old := before[path]; old.binary || after[path].binary {
-			_, _ = c.LockFile(ctx, e2eOrgSlug, e2eProjectSlug, path, "main", 0)
+			_, _ = c.LockFile(ctx, e2eOrgSlug, e2eProjectSlug, path, branch, 0)
 		}
 	}
 	_, _, err := c.UploadChunks(ctx, domain.ChunkScope{Org: e2eOrgSlug, Project: e2eProjectSlug}, chunks)
 	require.NoError(t, err)
-	res, err := c.Push(ctx, e2eOrgSlug, e2eProjectSlug, "main", "", "delta property", files, removed, "", baseCommit)
+	res, err := c.Push(ctx, e2eOrgSlug, e2eProjectSlug, branch, "", "delta property", files, removed, "", baseCommit)
 	require.NoError(t, err)
 	return res.CommitID.Base36()
 }

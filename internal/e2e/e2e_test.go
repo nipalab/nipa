@@ -114,6 +114,14 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 // throughput (bench_test.go) stay serial.
 func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*serverapp.UsecaseDeps)) (string, serverapp.Usecases) {
 	t.Helper()
+	return startTestServerWithRepos(t, dbConn, nil, opts...)
+}
+
+// startTestServerWithRepos is startTestServerWithUsecases with a hook that may
+// replace repositories (e.g. wrap one to count its calls) before the usecases
+// are wired.
+func startTestServerWithRepos(t *testing.T, dbConn *sql.DB, wrap func(*serverusecase.Repositories), opts ...func(*serverapp.UsecaseDeps)) (string, serverapp.Usecases) {
+	t.Helper()
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
@@ -149,7 +157,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 	for _, opt := range opts {
 		opt(&deps)
 	}
-	uc := serverapp.BuildUsecases(serverusecase.Repositories{
+	repos := serverusecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
 		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
 		Project:            sqlite.NewProjectRepository(dbConn),
@@ -173,7 +181,11 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB, opts ...func(*ser
 		Maintenance:        maintenanceRepo,
 		IssueTracker:       sqlite.NewIssueTrackerRepository(dbConn),
 		TreeHash:           sqlite.NewTreeHashRepository(dbConn),
-	}, deps)
+	}
+	if wrap != nil {
+		wrap(&repos)
+	}
+	uc := serverapp.BuildUsecases(repos, deps)
 	reg := serverapp.NewRegistry(uc)
 	authUc, chunkUc := uc.Auth, uc.Chunk
 	for _, d := range reg.Dispatchers() {

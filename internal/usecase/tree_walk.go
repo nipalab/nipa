@@ -2,94 +2,35 @@ package usecase
 
 import (
 	"context"
-	"sort"
 
 	"github.com/nipalab/nipa/internal/diff"
 	"github.com/nipalab/nipa/internal/domain"
 )
 
-// changedTreeEntries flattens only the directories where two trees differ.
-// Both sides are walked in lockstep and a pair of directories with the same
-// stored hash is skipped without any query, so the cost follows the change
-// instead of the repository. Stored hashes cover the unfiltered content and the
-// same filter applies to both sides, so equal hashes are equal after filtering
-// too. Files that are identical on both sides are left out of both maps, which
-// does not change what diff.Compare reports.
+// changedTreeEntries returns, flattened per side, the files that differ
+// between two trees as the caller's filter sees them; a nil root is the empty
+// tree. Files identical on both sides are left out of both maps, which does
+// not change what diff.Compare reports (it only reports paths that differ),
+// so the result is the same as comparing the two full manifests. The walk
+// reads only the directories whose stored hashes differ, level by level with
+// batched reads, and chunk lists only for the files it returns (see
+// compareTrees).
 func (b *Branch) changedTreeEntries(ctx context.Context, base, head *domain.TreeNode, filter *PathFilter) (baseEntries, headEntries map[string]diff.Entry, err error) {
-	baseEntries = map[string]diff.Entry{}
-	headEntries = map[string]diff.Entry{}
-	if err := b.walkChangedTrees(ctx, base, head, "", filter, baseEntries, headEntries); err != nil {
+	changed, err := compareTrees(ctx, b.branchRepo, treeView{filter: filter}, []*domain.TreeNode{base, head}, nil)
+	if err != nil {
 		return nil, nil, err
 	}
+	baseEntries = map[string]diff.Entry{}
+	headEntries = map[string]diff.Entry{}
+	for _, file := range changed {
+		if file.files[0] != nil {
+			diff.AddFileEntries(baseEntries, file.dir, file.files[:1])
+		}
+		if file.files[1] != nil {
+			diff.AddFileEntries(headEntries, file.dir, file.files[1:])
+		}
+	}
 	return baseEntries, headEntries, nil
-}
-
-func (b *Branch) walkChangedTrees(ctx context.Context, base, head *domain.TreeNode, path string, filter *PathFilter, baseOut, headOut map[string]diff.Entry) error {
-	if base == nil && head == nil {
-		return nil
-	}
-	if base != nil && head != nil && base.Hash != (domain.Hash{}) && base.Hash == head.Hash {
-		return nil
-	}
-
-	baseChildren, err := b.collectDirectory(ctx, base, path, filter, baseOut)
-	if err != nil {
-		return err
-	}
-	headChildren, err := b.collectDirectory(ctx, head, path, filter, headOut)
-	if err != nil {
-		return err
-	}
-
-	names := make([]string, 0, len(baseChildren)+len(headChildren))
-	for name := range baseChildren {
-		names = append(names, name)
-	}
-	for name := range headChildren {
-		if _, ok := baseChildren[name]; !ok {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		childPath := joinTreePath(path, name)
-		if !filter.CanDescend(childPath) {
-			continue
-		}
-		if err := b.walkChangedTrees(ctx, baseChildren[name], headChildren[name], childPath, filter, baseOut, headOut); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// collectDirectory adds the readable files of one directory to out and returns
-// its sub-directories by name.
-func (b *Branch) collectDirectory(ctx context.Context, node *domain.TreeNode, path string, filter *PathFilter, out map[string]diff.Entry) (map[string]*domain.TreeNode, error) {
-	if node == nil {
-		return nil, nil
-	}
-	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
-	if err != nil {
-		return nil, err
-	}
-	allowed := files[:0:0]
-	for _, file := range files {
-		if filter.Allow(joinTreePath(path, file.Name)) {
-			allowed = append(allowed, file)
-		}
-	}
-	diff.AddFileEntries(out, path, allowed)
-
-	children, err := b.branchRepo.ListTreeChildren(ctx, node.ID)
-	if err != nil {
-		return nil, err
-	}
-	byName := make(map[string]*domain.TreeNode, len(children))
-	for _, child := range children {
-		byName[child.Name] = child
-	}
-	return byName, nil
 }
 
 // treeVisit identifies a directory by where it sits and what it holds: the

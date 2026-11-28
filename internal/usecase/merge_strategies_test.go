@@ -368,9 +368,7 @@ func TestMergeForMergeRequest_RebaseEmptyReplayIsNoOp(t *testing.T) {
 		}
 		return nil, domain.NewErrorRecordNotFound()
 	}).AnyTimes()
-	repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{5}).Return(nil, nil)
-	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{5}).Return(nil, nil)
+	// Nothing to replay reads no tree at all.
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil)
 
@@ -380,38 +378,98 @@ func TestMergeForMergeRequest_RebaseEmptyReplayIsNoOp(t *testing.T) {
 	require.Equal(t, &targetHead, branch.CommitID)
 }
 
-func TestMergeOnto_NoBase(t *testing.T) {
+func TestMergeStep_NoBase(t *testing.T) {
 	uc, _, repo := newStrategyBranch(t)
-	theirsID := snow.ID(11)
+	theirsID, targetID := snow.ID(11), snow.ID(10)
 	repo.EXPECT().GetCommit(gomock.Any(), theirsID).Return(&domain.Commit{ID: theirsID, ProjectID: 1, TreeID: 5}, nil)
-	repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{5}).Return(nil, nil)
-	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{5}).Return(nil, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), targetID).Return(&domain.Commit{ID: targetID, ProjectID: 1, TreeID: 6}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Name: "root", Hash: domain.Hash{5}}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(6)).Return(&domain.TreeNode{ID: 6, Name: "root", Hash: domain.Hash{6}}, nil)
+	// No base: the walk reads the target and theirs roots, base first.
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{6, 5}).Return(nil, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{6, 5}).Return(nil, nil)
 
-	current := map[string]merge.File{"keep.txt": {Path: "keep.txt", Mode: 1, Hash: domain.Hash{1}}}
-	merged, _, err := uc.mergeOnto(context.Background(), snow.ID(1), nil, snow.ID(10), theirsID, current)
+	state := newMergeState()
+	state.current["keep.txt"] = merge.File{Path: "keep.txt", Mode: 1, Hash: domain.Hash{1}}
+	stored, err := uc.mergeStep(context.Background(), snow.ID(1), state, nil, targetID, theirsID, "")
 	require.NoError(t, err)
-	require.Len(t, merged, 1)
-	require.Contains(t, merged, "keep.txt")
+	require.Empty(t, stored)
+	require.Len(t, state.current, 1)
+	require.Contains(t, state.current, "keep.txt")
 }
 
-func TestMergeOnto_Errors(t *testing.T) {
+func TestMergeInputs_Errors(t *testing.T) {
 	wantErr := errors.New("boom")
-
-	t.Run("base tree", func(t *testing.T) {
+	base := snow.ID(9)
+	commits := map[snow.ID]*domain.Commit{
+		9:  {ID: 9, ProjectID: 1, TreeID: 7},
+		10: {ID: 10, ProjectID: 1, TreeID: 5},
+		11: {ID: 11, ProjectID: 1, TreeID: 6},
+	}
+	setup := func(t *testing.T, failCommit snow.ID, failTree int64) (*Branch, *MockbranchRepository) {
 		uc, _, repo := newStrategyBranch(t)
-		base := snow.ID(9)
-		repo.EXPECT().GetCommit(gomock.Any(), base).Return(nil, wantErr)
+		repo.EXPECT().GetCommit(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id snow.ID) (*domain.Commit, error) {
+			if id == failCommit {
+				return nil, wantErr
+			}
+			return commits[id], nil
+		}).AnyTimes()
+		repo.EXPECT().GetTreeNode(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id int64) (*domain.TreeNode, error) {
+			if id == failTree {
+				return nil, wantErr
+			}
+			return &domain.TreeNode{ID: id, Hash: domain.Hash{byte(id)}}, nil
+		}).AnyTimes()
+		return uc, repo
+	}
 
-		_, _, err := uc.mergeOnto(context.Background(), snow.ID(1), &base, snow.ID(10), snow.ID(11), map[string]merge.File{})
+	for name, fail := range map[string]struct {
+		commit snow.ID
+		tree   int64
+	}{
+		"base commit":   {commit: 9},
+		"theirs commit": {commit: 11},
+		"target commit": {commit: 10},
+		"base tree":     {tree: 7},
+		"theirs tree":   {tree: 6},
+		"target tree":   {tree: 5},
+	} {
+		t.Run(name, func(t *testing.T) {
+			uc, _ := setup(t, fail.commit, fail.tree)
+			_, err := uc.mergeInputs(context.Background(), snow.ID(1), &base, 10, 11)
+			require.ErrorIs(t, err, wantErr)
+		})
+	}
+
+	t.Run("files", func(t *testing.T) {
+		uc, repo := setup(t, 0, 0)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{7, 5, 6}).Return(nil, wantErr)
+		_, err := uc.mergeInputs(context.Background(), snow.ID(1), &base, 10, 11)
 		require.ErrorIs(t, err, wantErr)
 	})
 
-	t.Run("theirs tree", func(t *testing.T) {
-		uc, _, repo := newStrategyBranch(t)
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(nil, wantErr)
+	t.Run("children", func(t *testing.T) {
+		uc, repo := setup(t, 0, 0)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{7, 5, 6}).Return(nil, nil)
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{7, 5, 6}).Return(nil, wantErr)
+		_, err := uc.mergeInputs(context.Background(), snow.ID(1), &base, 10, 11)
+		require.ErrorIs(t, err, wantErr)
+	})
 
-		_, _, err := uc.mergeOnto(context.Background(), snow.ID(1), nil, snow.ID(10), snow.ID(11), map[string]merge.File{})
+	t.Run("chunks", func(t *testing.T) {
+		uc, repo := setup(t, 0, 0)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{7, 5, 6}).
+			Return(map[int64][]*domain.File{6: {{ID: 60, Name: "new.txt", Hash: domain.Hash{6}}}}, nil)
+		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{7, 5, 6}).Return(nil, nil)
+		repo.EXPECT().ListChunksByFiles(gomock.Any(), []int64{60}).Return(nil, wantErr)
+		_, err := uc.mergeInputs(context.Background(), snow.ID(1), &base, 10, 11)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("step", func(t *testing.T) {
+		uc, repo := setup(t, 0, 0)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+		_, err := uc.mergeStep(context.Background(), snow.ID(1), newMergeState(), &base, 10, 11, "")
 		require.ErrorIs(t, err, wantErr)
 	})
 }
@@ -446,7 +504,7 @@ func TestMergeForMergeRequest_RebaseAttributionError(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id int64) (*domain.TreeNode, error) {
 		return &domain.TreeNode{ID: id}, nil
 	}).AnyTimes()
-	repo.EXPECT().ListFilesByTrees(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
@@ -454,45 +512,6 @@ func TestMergeForMergeRequest_RebaseAttributionError(t *testing.T) {
 
 	_, err := uc.MergeForMergeRequest(context.Background(), snow.ID(1), "main", "feature", MergeCommitOptions{Strategy: domain.MergeStrategyRebase})
 	require.ErrorIs(t, err, wantErr, "attribution failure must abort the merge before it lands")
-}
-
-func TestMergeTree_Errors(t *testing.T) {
-	wantErr := errors.New("boom")
-	const treeID = int64(5)
-
-	t.Run("commit lookup", func(t *testing.T) {
-		uc, _, repo := newStrategyBranch(t)
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(nil, wantErr)
-		_, err := uc.mergeTree(context.Background(), snow.ID(1), 11)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("tree lookup", func(t *testing.T) {
-		uc, _, repo := newStrategyBranch(t)
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(&domain.Commit{ID: 11, ProjectID: 1, TreeID: treeID}, nil)
-		repo.EXPECT().GetTreeNode(gomock.Any(), treeID).Return(nil, wantErr)
-		_, err := uc.mergeTree(context.Background(), snow.ID(1), 11)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("files", func(t *testing.T) {
-		uc, _, repo := newStrategyBranch(t)
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(&domain.Commit{ID: 11, ProjectID: 1, TreeID: treeID}, nil)
-		repo.EXPECT().GetTreeNode(gomock.Any(), treeID).Return(&domain.TreeNode{ID: treeID}, nil)
-		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{treeID}).Return(nil, wantErr)
-		_, err := uc.mergeTree(context.Background(), snow.ID(1), 11)
-		require.ErrorIs(t, err, wantErr)
-	})
-
-	t.Run("children", func(t *testing.T) {
-		uc, _, repo := newStrategyBranch(t)
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(&domain.Commit{ID: 11, ProjectID: 1, TreeID: treeID}, nil)
-		repo.EXPECT().GetTreeNode(gomock.Any(), treeID).Return(&domain.TreeNode{ID: treeID}, nil)
-		repo.EXPECT().ListFilesByTrees(gomock.Any(), []int64{treeID}).Return(nil, nil)
-		repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{treeID}).Return(nil, wantErr)
-		_, err := uc.mergeTree(context.Background(), snow.ID(1), 11)
-		require.ErrorIs(t, err, wantErr)
-	})
 }
 
 func TestMaterialize_ContentErrors(t *testing.T) {

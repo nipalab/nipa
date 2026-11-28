@@ -204,10 +204,9 @@ func TestBranch_CommitDiff_RootCommit(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).
 		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
-	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	}}, map[int64][]*domain.TreeNode{})
 
 	files, base, err := uc.CommitDiff(context.Background(), snow.ID(1), commitID, nil)
 	require.NoError(t, err)
@@ -232,15 +231,12 @@ func TestBranch_CommitDiff_ExplicitBase(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), baseID).
 		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
-	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{
+	}, 100: []*domain.File{
 		{ID: 2, Name: "a.txt", Hash: domain.Hash{8}, SizeBytes: 3, Chunks: []domain.Chunk{{Hash: domain.Hash{2}, SizeBytes: 3}}},
-	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
+	}}, map[int64][]*domain.TreeNode{})
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
 
 	files, base, err := uc.CommitDiff(context.Background(), snow.ID(1), headID, &baseID)
 	require.NoError(t, err)
@@ -421,13 +417,10 @@ func TestBranch_CommitDiff_DefaultParent(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), baseID).
 		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
-	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
 
 	files, base, err := uc.CommitDiff(context.Background(), snow.ID(1), headID, nil)
 	require.NoError(t, err)
@@ -470,13 +463,10 @@ func TestBranch_TreeDiffBetween(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
-		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+		expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{
 			{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
-		}, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+		}}, map[int64][]*domain.TreeNode{})
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
 
 		files, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), &baseID, headID)
 		require.NoError(t, err)
@@ -496,10 +486,9 @@ func TestBranch_TreeDiffBetween(t *testing.T) {
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+		expectTreeRows(repo, map[int64][]*domain.File{101: {
 			{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
-		}, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+		}}, nil)
 
 		files, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), nil, headID)
 		require.NoError(t, err)
