@@ -674,6 +674,12 @@ func TestPruneChunks_KeepsWhatTheFullSweepKeeps(t *testing.T) {
 	require.Equal(t, PruneResult{}, result)
 }
 
+// noSetScanRepo is a local repository without the one-scan chunk lookup
+// (FilesWithAnyChunk), as test stubs and older implementations are.
+type noSetScanRepo struct{ *readCountingRepo }
+
+func (noSetScanRepo) FilesWithAnyChunk() {}
+
 func TestPruneChunks_LeavesManyLookupsToTheFullSweep(t *testing.T) {
 	fx := newSmallRepo(t, smallChangeFiles)
 	var orphans []serverDomain.Hash
@@ -682,25 +688,64 @@ func TestPruneChunks_LeavesManyLookupsToTheFullSweep(t *testing.T) {
 		require.NoError(t, fx.lr.StoreChunk(h, []byte("x")))
 		orphans = append(orphans, h)
 	}
-	_, handled, err := pruneChunks(fx.lr, orphans, nil)
+	legacy := noSetScanRepo{&readCountingRepo{LocalRepo: fx.lr}}
+	_, handled, err := pruneChunks(legacy, orphans, nil)
 	require.NoError(t, err)
 	require.False(t, handled)
 	require.True(t, fx.cached(t, orphans), "nothing is deleted before the full sweep takes over")
 
-	counting := &readCountingRepo{LocalRepo: fx.lr}
-	pruneAfterPush(counting, &pushCacheEffect{applied: true, chunks: orphans}, nil)
-	require.Equal(t, 1, counting.sweeps)
+	legacy = noSetScanRepo{&readCountingRepo{LocalRepo: fx.lr}}
+	pruneAfterPush(legacy, &pushCacheEffect{applied: true, chunks: orphans}, nil)
+	require.Equal(t, 1, legacy.sweeps)
 	require.False(t, fx.cached(t, orphans))
 
 	// One fewer is looked up chunk by chunk.
 	for _, h := range orphans[1:] {
 		require.NoError(t, fx.lr.StoreChunk(h, []byte("x")))
 	}
-	counting = &readCountingRepo{LocalRepo: fx.lr}
-	pruneAfterPush(counting, &pushCacheEffect{applied: true, chunks: orphans[1:]}, nil)
-	require.Zero(t, counting.sweeps)
-	require.Equal(t, maxTargetedPruneChunks, counting.chunkScans)
+	legacy = noSetScanRepo{&readCountingRepo{LocalRepo: fx.lr}}
+	pruneAfterPush(legacy, &pushCacheEffect{applied: true, chunks: orphans[1:]}, nil)
+	require.Zero(t, legacy.sweeps)
+	require.Equal(t, maxTargetedPruneChunks, legacy.chunkScans)
 	require.False(t, fx.cached(t, orphans[1:]))
+}
+
+// With the one-scan lookup, any number of chunks is pruned without the full
+// sweep: one scan of the files table for all of them, one FilesWithChunk for
+// a single one.
+func TestPruneChunks_SetScanHandlesManyChunks(t *testing.T) {
+	fx := newSmallRepo(t, smallChangeFiles)
+	var orphans []serverDomain.Hash
+	for i := 0; i < 4*maxTargetedPruneChunks; i++ {
+		h := serverDomain.Hash{0xab, byte(i)}
+		require.NoError(t, fx.lr.StoreChunk(h, []byte("x")))
+		orphans = append(orphans, h)
+	}
+	kept := fx.chunks["a.txt"]
+	require.True(t, fx.cached(t, kept))
+	counting := &readCountingRepo{LocalRepo: fx.lr}
+	pruneAfterPush(counting, &pushCacheEffect{applied: true, chunks: append(append([]serverDomain.Hash(nil), orphans...), kept...)}, nil)
+	require.Zero(t, counting.sweeps)
+	require.Zero(t, counting.snapshots)
+	require.Zero(t, counting.chunkScans)
+	require.Equal(t, 1, counting.setScans)
+	require.False(t, fx.cached(t, orphans))
+	require.True(t, fx.cached(t, kept), "a tracked text file keeps its chunks")
+
+	require.NoError(t, fx.lr.StoreChunk(orphans[0], []byte("x")))
+	counting = &readCountingRepo{LocalRepo: fx.lr}
+	pruneAfterPush(counting, &pushCacheEffect{applied: true, chunks: orphans[:1]}, nil)
+	require.Equal(t, 1, counting.chunkScans)
+	require.Zero(t, counting.setScans)
+	require.False(t, fx.cached(t, orphans[:1]))
+
+	counting = &readCountingRepo{LocalRepo: fx.lr, setScanErr: errors.New("scan failed")}
+	require.NoError(t, fx.lr.StoreChunk(orphans[0], []byte("x")))
+	require.NoError(t, fx.lr.StoreChunk(orphans[1], []byte("x")))
+	_, handled, err := pruneChunks(counting, orphans[:2], nil)
+	require.ErrorContains(t, err, "scan failed")
+	require.False(t, handled)
+	require.True(t, fx.cached(t, orphans[:2]), "a failed lookup deletes nothing")
 }
 
 func TestPruneAfterPush_FullSweepWheneverTheEffectIsNotKnown(t *testing.T) {
@@ -780,8 +825,20 @@ type readCountingRepo struct {
 	pathReads    int
 	dirReads     int
 	chunkScans   int
+	setScans     int
 	rows         int
 	chunkScanErr error
+	setScanErr   error
+}
+
+func (c *readCountingRepo) FilesWithAnyChunk(hashes []serverDomain.Hash) ([]domain.SnapshotFile, error) {
+	c.setScans++
+	if c.setScanErr != nil {
+		return nil, c.setScanErr
+	}
+	rows, err := c.LocalRepo.FilesWithAnyChunk(hashes)
+	c.rows += len(rows)
+	return rows, err
 }
 
 func (c *readCountingRepo) Snapshot() (*domain.Snapshot, error) {

@@ -56,7 +56,15 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 	}
 	statCache := p.statCache
 	if statCache == nil {
-		if statCache, err = p.repo.LoadStatCache(); err != nil {
+		// Only the fingerprints of the files to recapture are looked at:
+		// their own rows when there are few, the whole cache otherwise.
+		var paths []string
+		for _, f := range files {
+			if needsAny(f, missing) {
+				paths = append(paths, f.Path)
+			}
+		}
+		if statCache, err = statEntriesFor(p.repo, paths); err != nil {
 			return err
 		}
 	}

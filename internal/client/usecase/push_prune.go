@@ -8,10 +8,23 @@ import (
 )
 
 // maxTargetedPruneChunks bounds the cached chunks a prune after a push looks
-// up one by one. Each lookup is one filtered scan of the files table (about
-// a twentieth of the full sweep on a 100,000-file clone), so past this many
-// the full sweep, which reads the table once, is the cheaper way.
+// up one by one with FilesWithChunk. Each lookup is one filtered scan of the
+// files table (about a twentieth of the full sweep on a 100,000-file clone),
+// so past this many a repository without FilesWithAnyChunk gets the full
+// sweep, which reads the table once.
 const maxTargetedPruneChunks = 16
+
+// maxSingleChunkLookups is the number of unsettled chunks up to which the
+// prune looks each one up (FilesWithChunk, ~14 ms per 100,000 files, an instr
+// filter inside SQLite) rather than scanning the table once for all of them
+// (FilesWithAnyChunk, ~27 ms per 100,000 files whatever their number).
+const maxSingleChunkLookups = 1
+
+// chunkSetScanner finds the files that list any chunk of a set in one scan of
+// the files table, with memory that follows the matches.
+type chunkSetScanner interface {
+	FilesWithAnyChunk(hashes []domain.Hash) ([]clientDomain.SnapshotFile, error)
+}
 
 // pushCacheEffect is what a successful push can have left unreferenced in
 // the object cache.
@@ -67,9 +80,10 @@ type targetedPruneRepo interface {
 // was applied to the stored tree locally changed only the rows of the paths
 // it sent, so the objects it can have orphaned are known (effect.chunks) and
 // only those are checked and deleted. Every other push — one that concluded
-// a merge or revert (nil effect), saved a fetched manifest, or left more
-// cached chunks to look up than maxTargetedPruneChunks — and every
-// repository without the by-path reads gets the full sweep, as before.
+// a merge or revert (nil effect) or saved a fetched manifest — every
+// repository without the by-path reads, and a repository without the set
+// scan (FilesWithAnyChunk) left with more cached chunks to look up than
+// maxTargetedPruneChunks, gets the full sweep, as before.
 func pruneAfterPush(lr any, effect *pushCacheEffect, err error) {
 	if err != nil {
 		return
@@ -93,9 +107,11 @@ func pruneAfterPush(lr any, effect *pushCacheEffect, err error) {
 // it as a chunk. It never deletes an object outside candidates, and runs
 // under the same guard as the full sweep. changed names the paths whose rows
 // were just rewritten; they are read first because they settle the chunks
-// the push itself stored. Each cached candidate they do not keep costs one
-// FilesWithChunk scan; handled is false when there are more of those than
-// maxTargetedPruneChunks and the caller should run the full sweep instead.
+// the push itself stored. The cached candidates they do not keep are looked
+// up by unkeptChunks: one scan of the files table for all of them, or one
+// FilesWithChunk scan each for a few; handled is false when a repository
+// without the set scan leaves more than maxTargetedPruneChunks and the caller
+// should run the full sweep instead.
 func pruneChunks(lr targetedPruneRepo, candidates []domain.Hash, changed []string) (result PruneResult, handled bool, err error) {
 	cached, err := cachedChunks(lr, candidates)
 	if err != nil {
@@ -136,21 +152,87 @@ func pruneChunks(lr targetedPruneRepo, candidates []domain.Hash, changed []strin
 			unsettled = append(unsettled, h)
 		}
 	}
-	if len(unsettled) > maxTargetedPruneChunks {
-		return PruneResult{}, false, nil
+	orphans, handled, err := unkeptChunks(lr, unsettled, pins)
+	if err != nil || !handled {
+		return PruneResult{}, false, err
 	}
-	var orphans []domain.Hash
-	for _, h := range unsettled {
+	files, freed, err := lr.RemoveObjects(orphans)
+	return PruneResult{Objects: files, Bytes: freed}, true, err
+}
+
+// unkeptChunks returns the chunks of hashes that no tracked file cached in
+// the pristine store lists: a few are looked up one by one, more in one scan
+// of the files table when the repository can (FilesWithAnyChunk). handled is
+// false when there are more than maxTargetedPruneChunks to look up one by
+// one, which is the full sweep's job.
+func unkeptChunks(lr targetedPruneRepo, hashes []domain.Hash, pins []string) (orphans []domain.Hash, handled bool, err error) {
+	if len(hashes) == 0 {
+		return nil, true, nil
+	}
+	if scanner, ok := lr.(chunkSetScanner); ok && len(hashes) > maxSingleChunkLookups {
+		users, err := scanner.FilesWithAnyChunk(hashes)
+		if err != nil {
+			return nil, false, err
+		}
+		wanted := make(map[domain.Hash]bool, len(hashes))
+		for _, h := range hashes {
+			wanted[h] = true
+		}
+		kept := map[domain.Hash]bool{}
+		for _, f := range users {
+			if !cachedInPristine(f, pins) {
+				continue
+			}
+			for _, h := range f.Chunks {
+				if wanted[h] {
+					kept[h] = true
+				}
+			}
+		}
+		for _, h := range hashes {
+			if !kept[h] {
+				orphans = append(orphans, h)
+			}
+		}
+		return orphans, true, nil
+	}
+	if len(hashes) > maxTargetedPruneChunks {
+		return nil, false, nil
+	}
+	for _, h := range hashes {
 		users, err := lr.FilesWithChunk(h)
 		if err != nil {
-			return PruneResult{}, false, err
+			return nil, false, err
 		}
 		if !anyCachedInPristine(users, pins) {
 			orphans = append(orphans, h)
 		}
 	}
-	files, freed, err := lr.RemoveObjects(orphans)
-	return PruneResult{Objects: files, Bytes: freed}, true, err
+	return orphans, true, nil
+}
+
+// pruneCandidates prunes, after a successful command, the cached objects the
+// command can have orphaned (candidates) by the rule of the full sweep,
+// without loading the snapshot or listing the cache, when the repository can
+// scan the files table for a set of chunks (FilesWithAnyChunk). Any other
+// repository, or a prune the targeted path cannot finish, gets the full
+// sweep, which is what these commands ran before.
+func pruneCandidates(lr any, candidates []domain.Hash, err error) {
+	if err != nil {
+		return
+	}
+	repo, ok := lr.(targetedPruneRepo)
+	if _, scans := lr.(chunkSetScanner); ok && scans {
+		_, handled, pruneErr := pruneChunks(repo, candidates, nil)
+		if pruneErr != nil {
+			slog.Warn("local cache prune failed", "error", pruneErr)
+			return
+		}
+		if handled {
+			return
+		}
+	}
+	pruneAfterSuccess(lr, nil)
 }
 
 func anyCachedInPristine(files []clientDomain.SnapshotFile, pins []string) bool {

@@ -183,6 +183,14 @@ SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
 WHERE instr(chunks, CAST(sqlc.arg(chunk) AS BLOB)) > 0;
 
+-- name: FileListByChunkSet :many
+-- nipa_lists_any_chunk is registered by the localrepo package (chunkset.go):
+-- it is 1 when the chunk list holds a hash of the set registered under
+-- set_id, so SQLite filters the table in one pass and returns the matches.
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE nipa_lists_any_chunk(chunks, CAST(sqlc.arg(set_id) AS INTEGER)) = 1;
+
 -- name: StatCacheListByPaths :many
 SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache
