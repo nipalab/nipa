@@ -51,7 +51,7 @@ func TestBranch_FastForward_PathWriteDenied(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{101: {{ID: 1, Name: "a.txt", TreeID: 101}}, 102: {{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
 
@@ -203,7 +203,7 @@ func TestBranch_FastForward_Success(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{101: {{ID: 1, Name: "a.txt", TreeID: 101}}, 102: {{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
@@ -239,7 +239,7 @@ func TestBranch_FastForward_UpdateConflict(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{101: {{ID: 1, Name: "a.txt", TreeID: 101}}, 102: {{ID: 2, Name: "b.txt", TreeID: 102}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).

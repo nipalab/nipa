@@ -34,7 +34,7 @@ func TestBranch_FastForward_FileLocks(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	expectTreeRows(repo, map[int64][]*domain.File{101: []*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, 102: []*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{101: {{ID: 1, Name: "a.txt", TreeID: 101}}, 102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).
 		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
@@ -75,7 +75,7 @@ func TestBranch_FastForward_FileLocksReject(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	expectTreeRows(repo, map[int64][]*domain.File{102: []*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
@@ -488,7 +488,7 @@ func TestBranch_FastForward_FileLocksReleaseError(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	expectTreeRows(repo, map[int64][]*domain.File{102: []*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
+	expectTreeRows(repo, map[int64][]*domain.File{102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
