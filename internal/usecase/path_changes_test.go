@@ -417,3 +417,19 @@ func TestPathChangeQuery_PrefixRange(t *testing.T) {
 	require.Empty(t, to)
 	require.True(t, PathChangeQuery{}.AnyPath())
 }
+
+func TestSortPathChanges_ByPathThenKind(t *testing.T) {
+	changes := []PathChange{
+		{Path: "b", Kind: PathChangeFile},
+		{Path: "a/x", Kind: PathChangeMode},
+		{Path: "a", Kind: PathChangeDir},
+		{Path: "a/x", Kind: PathChangeFile},
+	}
+	sortPathChanges(changes)
+	require.Equal(t, []PathChange{
+		{Path: "a", Kind: PathChangeDir},
+		{Path: "a/x", Kind: PathChangeFile},
+		{Path: "a/x", Kind: PathChangeMode},
+		{Path: "b", Kind: PathChangeFile},
+	}, changes)
+}

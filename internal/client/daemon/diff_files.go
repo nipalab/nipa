@@ -13,7 +13,9 @@ import (
 // maxFileHunkBytes caps the hunk text sent for one file so a single event
 // stays well below the gRPC message limit; larger diffs keep their counts and
 // set hunks_omitted. Files over diff.DefaultBudget are not diffed at all: they
-// set hunks_omitted with approximate counts (counts_approximate).
+// set hunks_omitted with approximate counts (counts_approximate). A text side
+// over its MaxBytes is not even read whole: only enough of it to tell, and
+// the counts are estimated from that prefix.
 const maxFileHunkBytes = 1 << 20
 
 // hunkLineOverhead approximates the encoded framing of one line (kind, line
@@ -31,7 +33,7 @@ var diffStatusNames = map[diff.Status]string{
 // render their own diff views and pick an asset viewer by kind.
 func (s *Server) DiffFiles(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_DiffFilesServer) error {
 	ctx := stream.Context()
-	files, renderOpts, done, err := s.runDiff(ctx, req)
+	files, renderOpts, done, err := s.runDiff(ctx, req, int64(diff.DefaultBudget.MaxBytes))
 	if err != nil {
 		return stream.Send(diffFileFailureEvent(err))
 	}

@@ -46,13 +46,14 @@ func scalePath(i int) string {
 // scaleRepo is a real localrepo holding a synthetic full checkout of n
 // tracked text files: rows, a fresh fingerprint for each and, when asked, one
 // cached object per file, as a clone of a text repository leaves them. Only
-// the files a scenario touches exist on disk.
+// the files a scenario touches exist on disk. extra files are tracked at the
+// root, without a fingerprint.
 type scaleRepo struct {
 	root string
 	lr   *localrepo.LocalRepo
 }
 
-func newScaleRepo(t testing.TB, n int, objects bool) *scaleRepo {
+func newScaleRepo(t testing.TB, n int, objects bool, extra ...*serverDomain.File) *scaleRepo {
 	t.Helper()
 	fx := &scaleRepo{root: t.TempDir(), lr: localrepo.NewLocalRepo()}
 	t.Cleanup(func() { _ = fx.lr.Close() })
@@ -91,6 +92,7 @@ func newScaleRepo(t testing.TB, n int, objects bool) *scaleRepo {
 			cached = append(cached, &serverDomain.ChunkData{Hash: chunk, Data: []byte("x")})
 		}
 	}
+	root.FileChildren = append(root.FileChildren, extra...)
 	require.NoError(t, fx.lr.SaveSyncedTree(root, scaleBaseCommit, nil))
 	require.NoError(t, fx.lr.SaveCommit(scaleBaseCommit, ""))
 	require.NoError(t, fx.lr.SaveStatEntries(stats))

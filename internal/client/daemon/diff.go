@@ -85,7 +85,7 @@ func (s *Server) Diff(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_Diff
 		return stream.Send(diffFailureEvent(clientDomain.NewUserError("unknown diff format " + format)))
 	}
 
-	files, renderOpts, done, err := s.runDiff(ctx, req)
+	files, renderOpts, done, err := s.runDiff(ctx, req, 0)
 	if err != nil {
 		return stream.Send(diffFailureEvent(err))
 	}
@@ -114,7 +114,8 @@ func (s *Server) Diff(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_Diff
 // runDiff validates a diff request, runs it under the shared coordinator slot
 // and returns the files with whitespace-ignored ones filtered out. done
 // releases the slot and the repo reference; it is nil when err is set.
-func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff.FileDiff, diff.Options, func(), error) {
+// maxText caps the text loaded per side (usecase.DiffOptions.MaxTextBytes).
+func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest, maxText int64) ([]diff.FileDiff, diff.Options, func(), error) {
 	renderOpts := diff.Options{
 		Context:           int(req.GetContext()),
 		IgnoreAllSpace:    req.GetIgnoreAllSpace(),
@@ -143,11 +144,12 @@ func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff
 		return nil, renderOpts, nil, err
 	}
 	files, err := rp.diff.Run(ctx, rp.root, revs, usecase.DiffOptions{
-		Staged:    req.GetStaged(),
-		Paths:     req.GetPaths(),
-		MergeBase: mergeBase,
-		NoCache:   req.GetNoCache(),
-		Show:      req.GetShow(),
+		Staged:       req.GetStaged(),
+		Paths:        req.GetPaths(),
+		MergeBase:    mergeBase,
+		NoCache:      req.GetNoCache(),
+		Show:         req.GetShow(),
+		MaxTextBytes: maxText,
 	})
 	if err != nil {
 		done()

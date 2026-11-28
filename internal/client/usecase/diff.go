@@ -7,9 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync/atomic"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/diff"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -53,6 +56,12 @@ type DiffOptions struct {
 	// Show compares the single revision against its first parent, or an
 	// empty tree for a root commit.
 	Show bool
+	// MaxTextBytes caps how much of each text side is loaded for rendering;
+	// 0 loads everything. A side above it holds only its first
+	// MaxTextBytes+1 bytes and the FileDiff is marked Truncated, so its
+	// hunks are omitted. Callers that render under diff.DefaultBudget pass
+	// its MaxBytes: nothing larger could be diffed anyway.
+	MaxTextBytes int64
 }
 
 type Diff struct {
@@ -60,6 +69,8 @@ type Diff struct {
 	client    diffClient
 	localRepo diffLocalRepo
 	opened    atomic.Bool
+	// hashFile replaces hashWorkingFile in tests.
+	hashFile func(abs, rel string, size int64, encoding string) (hashedFile, error)
 }
 
 func NewDiff(auth *Auth, client diffClient, localRepo diffLocalRepo) *Diff {
@@ -140,7 +151,7 @@ func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *cl
 }
 
 func (d *Diff) workingDiff(ctx context.Context, root string, opts DiffOptions) ([]diff.FileDiff, error) {
-	snapshot, err := d.localRepo.Snapshot()
+	snapshot, err := d.workingSnapshot(opts.Paths)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +165,68 @@ func (d *Diff) workingDiff(ctx context.Context, root string, opts DiffOptions) (
 		return nil, err
 	}
 	changes := diff.Compare(oldMap, newMap)
-	if err := d.pristine(root).ensureSnapshotContent(ctx, oldSideFiles(snapshot, changes, opts.Binary)); err != nil {
+	oldSide := oldSideFiles(snapshot, changes, opts.Binary)
+	p := d.pristine(root)
+	if len(oldSide) > 0 && isScoped(opts.Paths) {
+		// Recapture only needs the fingerprints of these files.
+		if getter, ok := d.localRepo.(statEntryGetter); ok {
+			paths := make([]string, len(oldSide))
+			for i, f := range oldSide {
+				paths[i] = f.Path
+			}
+			if p.statCache, err = getter.StatEntries(paths); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := p.ensureSnapshotContent(ctx, oldSide); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
-	return diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents, opts.MaxTextBytes))
+	return d.attach(changes, root, contents, opts), nil
+}
+
+// workingSnapshot returns the synced snapshot a working diff compares
+// against. With path filters and a repository that reads by path, only the
+// rows the filters can match are read (each filter as a file and as a
+// directory, through trackedScope); the root as a filter, or no filter at
+// all, loads everything. The result may hold more rows than the filters
+// match: callers still apply pathMatches.
+func (d *Diff) workingSnapshot(filters []string) (*clientDomain.Snapshot, error) {
+	if !isScoped(filters) {
+		return d.localRepo.Snapshot()
+	}
+	scope, err := newTrackedScope(d.localRepo)
+	if err != nil {
+		return nil, err
+	}
+	// Parents sort before their children, so a directory filter loaded first
+	// covers the filters below it.
+	normalized := make([]string, len(filters))
+	for i, f := range filters {
+		normalized[i] = normalizeFilter(f)
+	}
+	slices.Sort(normalized)
+	normalized = slices.Compact(normalized)
+	// One batched read answers every filter that names a tracked file; only
+	// the others are read as directories.
+	if err := scope.prefetch(normalized); err != nil {
+		return nil, err
+	}
+	for _, f := range normalized {
+		if _, tracked := scope.files[f]; tracked || scope.covers(f) {
+			continue
+		}
+		if _, err := scope.under(f); err != nil {
+			return nil, err
+		}
+	}
+	files := make([]clientDomain.SnapshotFile, 0, len(scope.files))
+	for _, f := range scope.files {
+		files = append(files, f)
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	return &clientDomain.Snapshot{Files: files}, nil
 }
 
 func (d *Diff) pristine(root string) pristine {
@@ -206,8 +274,8 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	if err := d.ensureContent(ctx, changes, true, false, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
-	return diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents, opts.MaxTextBytes))
+	return d.attach(changes, root, contents, opts), nil
 }
 
 func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *clientDomain.Config, revA, revB string, opts DiffOptions) ([]diff.FileDiff, error) {
@@ -251,16 +319,33 @@ func (d *Diff) compareRevisions(ctx context.Context, nu *clientDomain.NipaUrl, b
 	if err := d.ensureContent(ctx, changes, true, true, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader("", nil))
-	return diff.AttachContents(changes, d.attachLoader("", nil, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader("", nil, opts.MaxTextBytes))
+	return d.attach(changes, "", nil, opts), nil
+}
+
+// attach loads the content of each change and marks the FileDiffs whose text
+// exceeded opts.MaxTextBytes as truncated.
+func (d *Diff) attach(changes []diff.Change, root string, contents map[string][]byte, opts DiffOptions) []diff.FileDiff {
+	files := diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary, opts.MaxTextBytes))
+	if opts.MaxTextBytes > 0 {
+		for i := range files {
+			f := &files[i]
+			if int64(len(f.Old)) > opts.MaxTextBytes || int64(len(f.New)) > opts.MaxTextBytes {
+				f.Truncated = true
+			}
+		}
+	}
+	return files
 }
 
 // similarityLoader loads text content for rename detection, preferring the
 // working-tree contents map over the local object cache. Binary files never
-// load content; similarity falls back to chunk overlap.
-func (d *Diff) similarityLoader(root string, contents map[string][]byte) func(diff.Entry) ([]byte, bool) {
+// load content, nor, with maxText above zero, does a text larger than
+// maxText (the cap attach applies to rendered sides); similarity falls back
+// to chunk overlap for them.
+func (d *Diff) similarityLoader(root string, contents map[string][]byte, maxText int64) func(diff.Entry) ([]byte, bool) {
 	return func(e diff.Entry) ([]byte, bool) {
-		if e.IsBinary {
+		if e.IsBinary || (maxText > 0 && e.SizeBytes > maxText) {
 			return nil, false
 		}
 		if contents != nil {
@@ -282,17 +367,26 @@ func (d *Diff) similarityLoader(root string, contents map[string][]byte) func(di
 // attachLoader loads content for rendering. The working-tree contents map is
 // only used for the new side; the old side always comes from the object cache.
 // Binary content is skipped unless loadBinary is set; skipped binaries stay
-// available as metadata.
-func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary bool) func(diff.Entry, bool) ([]byte, bool) {
+// available as metadata. With maxText above zero a text side is read up to
+// maxText+1 bytes, enough to tell it is too large to diff (see attach).
+func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary bool, maxText int64) func(diff.Entry, bool) ([]byte, bool) {
+	limit := int64(-1)
+	if maxText > 0 {
+		limit = maxText
+	}
 	return func(e diff.Entry, isNew bool) ([]byte, bool) {
+		textLimit := limit
+		if e.IsBinary {
+			textLimit = -1
+		}
 		if isNew && root != "" {
 			if content, ok := contents[e.Path]; ok {
-				return content, true
+				return clipText(content, textLimit), true
 			}
 			if e.IsBinary && !loadBinary {
 				return nil, true
 			}
-			content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(e.Path)))
+			content, err := readFileLimit(filepath.Join(root, filepath.FromSlash(e.Path)), textLimit)
 			if err != nil {
 				return nil, false
 			}
@@ -301,12 +395,36 @@ func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary 
 		if e.IsBinary && !loadBinary {
 			return nil, true
 		}
-		content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
+		content, err := diff.LoadContentLimit(d.localRepo.LoadChunk, e, textLimit)
 		if err != nil {
 			return nil, false
 		}
 		return content, true
 	}
+}
+
+// clipText returns content whole, or with limit at least zero and content
+// longer than limit+1 bytes, a copy of its first limit+1 bytes so the caller
+// does not keep the full inline buffer alive.
+func clipText(content []byte, limit int64) []byte {
+	if limit < 0 || int64(len(content)) <= limit+1 {
+		return content
+	}
+	return append([]byte(nil), content[:limit+1]...)
+}
+
+// readFileLimit reads a file whole, or with limit at least zero, at most its
+// first limit+1 bytes.
+func readFileLimit(path string, limit int64) ([]byte, error) {
+	if limit < 0 {
+		return os.ReadFile(path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(io.LimitReader(f, limit+1))
 }
 
 // resolveRevision maps a branch name, a base36 commit ID, or HEAD/@ (the
@@ -470,27 +588,13 @@ func isNotFoundError(err error) bool {
 }
 
 func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map[string]bool, opts DiffOptions) (map[string]diff.Entry, map[string][]byte, error) {
-	protected := make([]string, 0, len(oldMap)+len(staged))
-	for p := range oldMap {
-		protected = append(protected, p)
-	}
-	for p := range staged {
-		protected = append(protected, p)
-	}
-	ignores, err := newIgnoreState(root, protected)
+	paths, err := d.workingCandidates(root, oldMap, staged, opts)
 	if err != nil {
 		return nil, nil, err
 	}
-	paths, err := walkWorkingFiles(root, ignores)
+	statCache, err := d.workingStatCache(paths, opts)
 	if err != nil {
 		return nil, nil, err
-	}
-	var statCache map[string]clientDomain.StatEntry
-	if !opts.NoCache {
-		statCache, err = d.localRepo.LoadStatCache()
-		if err != nil {
-			return nil, nil, err
-		}
 	}
 	newMap := make(map[string]diff.Entry, len(paths))
 	contents := make(map[string][]byte, len(paths))
@@ -505,54 +609,214 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 		if !tracked && !staged[p] {
 			continue
 		}
-		fp := filepath.Join(root, filepath.FromSlash(p))
-		info, err := os.Stat(fp)
+		entry, inline, ok, err := d.scanFile(root, p, old, tracked, statCache, opts.NoCache)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, nil, fmt.Errorf("stat %s: %w", p, err)
+			return nil, nil, err
 		}
-		// A fresh fingerprint matching the old side means the file is
-		// unchanged: reuse its metadata and skip reading the content.
-		if tracked {
-			if entry, cached := statCache[p]; cached && statMatches(entry, info) && entry.Hash == old.Hash {
-				old.Mode = trackedModeFromPerm(info.Mode(), old.Mode)
-				newMap[p] = old
-				continue
-			}
+		if !ok {
+			continue
 		}
-		encoding := ""
-		if tracked {
-			encoding = storedEncoding(old.Encoding)
-		}
-		hf, err := hashWorkingFile(fp, p, info.Size(), encoding)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, nil, fmt.Errorf("read %s: %w", p, err)
-		}
-		hashes, sizes := chunkHashesAndSizes(hf.chunks)
-		mode := serverModeFromPerm(info.Mode())
-		if tracked {
-			mode = trackedModeFromPerm(info.Mode(), old.Mode)
-		}
-		newMap[p] = diff.Entry{
-			Path:        p,
-			Mode:        mode,
-			SizeBytes:   hf.size,
-			IsBinary:    hf.isBinary,
-			Encoding:    hf.encoding,
-			Hash:        hf.hash,
-			ChunkHashes: hashes,
-			ChunkSizes:  sizes,
-		}
-		if hf.inline != nil {
-			contents[p] = hf.inline
+		newMap[p] = entry
+		if inline != nil {
+			contents[p] = inline
 		}
 	}
 	return newMap, contents, nil
+}
+
+// workingCandidates lists the working files a scan visits. Only tracked and
+// staged files ever enter the new side, and tracking exempts them (and their
+// folders) from the ignore rules, so with path filters it checks just the
+// tracked and staged paths the filters match instead of walking the tree:
+// the walk would visit each of them and skip nothing else of interest. Each
+// candidate must be what the walk would have found, a regular file reached
+// through real folders outside .nipa. Without filters it walks as before.
+func (d *Diff) workingCandidates(root string, oldMap map[string]diff.Entry, staged map[string]bool, opts DiffOptions) ([]string, error) {
+	if isScoped(opts.Paths) {
+		return scopedWorkingFiles(root, oldMap, staged, opts)
+	}
+	protected := make([]string, 0, len(oldMap)+len(staged))
+	for p := range oldMap {
+		protected = append(protected, p)
+	}
+	for p := range staged {
+		protected = append(protected, p)
+	}
+	ignores, err := newIgnoreState(root, protected)
+	if err != nil {
+		return nil, err
+	}
+	return walkWorkingFiles(root, ignores)
+}
+
+func scopedWorkingFiles(root string, oldMap map[string]diff.Entry, staged map[string]bool, opts DiffOptions) ([]string, error) {
+	seen := make(map[string]bool)
+	var paths []string
+	consider := func(p string) {
+		if seen[p] || !pathMatches(p, opts.Paths) || (opts.Staged && !staged[p]) {
+			return
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+	for p := range oldMap {
+		consider(p)
+	}
+	for p := range staged {
+		consider(p)
+	}
+	sort.Strings(paths)
+	dirs := make(map[string]bool)
+	out := paths[:0]
+	for _, p := range paths {
+		ok, err := walkReaches(root, p, dirs)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// walkReaches reports whether walkWorkingFiles would list rel: no segment is
+// the metadata folder, every parent is a real folder (the walk does not
+// follow linked ones) and rel itself is a regular file. dirs remembers the
+// parents already checked.
+func walkReaches(root, rel string, dirs map[string]bool) (bool, error) {
+	segs := strings.Split(rel, "/")
+	for _, seg := range segs {
+		if seg == nipaDir || seg == "" {
+			return false, nil
+		}
+	}
+	for i := 1; i < len(segs); i++ {
+		dir := strings.Join(segs[:i], "/")
+		ok, known := dirs[dir]
+		if !known {
+			info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(dir)))
+			switch {
+			case err == nil:
+				ok = info.IsDir()
+			case isMissing(err):
+				ok = false
+			default:
+				return false, err
+			}
+			dirs[dir] = ok
+		}
+		if !ok {
+			return false, nil
+		}
+	}
+	info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		if isMissing(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return info.Mode().IsRegular(), nil
+}
+
+// workingStatCache loads the fingerprints a scan may trust: none with
+// NoCache, the rows of the visited paths when the repository reads by path
+// and the scan is filtered, the whole cache otherwise.
+func (d *Diff) workingStatCache(paths []string, opts DiffOptions) (map[string]clientDomain.StatEntry, error) {
+	if opts.NoCache {
+		return nil, nil
+	}
+	if getter, ok := d.localRepo.(statEntryGetter); ok && isScoped(opts.Paths) {
+		return getter.StatEntries(paths)
+	}
+	return d.localRepo.LoadStatCache()
+}
+
+// scanFile builds the new-side entry of one working file. ok is false when
+// the file vanished. inline is its text content when the hash read it.
+//
+// A fingerprint that still matches its cache entry is trusted: an equal hash
+// means the file is unchanged and the old entry is reused; a different hash
+// on a file that is still binary (one probe of its head) is a modified
+// binary, which a diff renders from size, hash and the binary flag alone, so
+// the cached hash is used and the file is not read. Such an entry has no
+// chunk list; it is always a Modified change at its own path, which rename
+// detection (Added/Deleted pairs only) never compares. A modified text file
+// is hashed, as its content is needed for the hunks anyway.
+func (d *Diff) scanFile(root, p string, old diff.Entry, tracked bool, statCache map[string]clientDomain.StatEntry, noCache bool) (diff.Entry, []byte, bool, error) {
+	fp := filepath.Join(root, filepath.FromSlash(p))
+	info, err := os.Stat(fp)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return diff.Entry{}, nil, false, nil
+		}
+		return diff.Entry{}, nil, false, fmt.Errorf("stat %s: %w", p, err)
+	}
+	if tracked && !noCache {
+		if entry, cached := statCache[p]; cached && statMatches(entry, info) {
+			mode := trackedModeFromPerm(info.Mode(), old.Mode)
+			if entry.Hash == old.Hash {
+				old.Mode = mode
+				return old, nil, true, nil
+			}
+			binary, err := probeBinaryFile(fp)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return diff.Entry{}, nil, false, fmt.Errorf("read %s: %w", p, err)
+			}
+			if err == nil && binary {
+				return diff.Entry{
+					Path:      p,
+					Mode:      mode,
+					SizeBytes: info.Size(),
+					IsBinary:  true,
+					Encoding:  chunker.EncodingRaw,
+					Hash:      entry.Hash,
+				}, nil, true, nil
+			}
+		}
+	}
+	encoding := ""
+	if tracked {
+		encoding = storedEncoding(old.Encoding)
+	}
+	hash := d.hashFile
+	if hash == nil {
+		hash = hashWorkingFile
+	}
+	hf, err := hash(fp, p, info.Size(), encoding)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return diff.Entry{}, nil, false, nil
+		}
+		return diff.Entry{}, nil, false, fmt.Errorf("read %s: %w", p, err)
+	}
+	hashes, sizes := chunkHashesAndSizes(hf.chunks)
+	mode := serverModeFromPerm(info.Mode())
+	if tracked {
+		mode = trackedModeFromPerm(info.Mode(), old.Mode)
+	}
+	return diff.Entry{
+		Path:        p,
+		Mode:        mode,
+		SizeBytes:   hf.size,
+		IsBinary:    hf.isBinary,
+		Encoding:    hf.encoding,
+		Hash:        hf.hash,
+		ChunkHashes: hashes,
+		ChunkSizes:  sizes,
+	}, hf.inline, true, nil
+}
+
+// probeBinaryFile classifies a working file from its head, the way the stat
+// cache's hash was classified (hashWorkingLayout).
+func probeBinaryFile(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	return chunker.ProbeBinary(f)
 }
 
 func snapshotEntries(snapshot *clientDomain.Snapshot, opts DiffOptions, staged map[string]bool) map[string]diff.Entry {
@@ -594,12 +858,29 @@ func filterEntries(entries map[string]diff.Entry, filters []string) map[string]d
 	return out
 }
 
+// normalizeFilter is the form pathMatches compares a path filter in; ""
+// matches everything.
+func normalizeFilter(f string) string {
+	return strings.Trim(strings.TrimPrefix(filepath.ToSlash(f), "./"), "/")
+}
+
+// isScoped reports whether path filters narrow a diff: there is at least one
+// and none of them is the root.
+func isScoped(filters []string) bool {
+	for _, f := range filters {
+		if normalizeFilter(f) == "" {
+			return false
+		}
+	}
+	return len(filters) > 0
+}
+
 func pathMatches(path string, filters []string) bool {
 	if len(filters) == 0 {
 		return true
 	}
 	for _, f := range filters {
-		f = strings.Trim(strings.TrimPrefix(filepath.ToSlash(f), "./"), "/")
+		f = normalizeFilter(f)
 		if f == "" || path == f || strings.HasPrefix(path, f+"/") {
 			return true
 		}

@@ -12,12 +12,18 @@ type FileDiff struct {
 	New            []byte
 	OldUnavailable bool
 	NewUnavailable bool
+	// Truncated is set when a side was larger than its loader's cap: Old or
+	// New then holds only a prefix of that side, enough to tell it exceeds
+	// the cap. Its hunks are omitted and never rendered from the prefix.
+	Truncated bool
 }
 
 // DefaultContext is the default number of context lines around a hunk.
 const DefaultContext = 3
 
 const contentUnavailable = "content not available locally (run 'nipa update' to fetch it)"
+
+const contentTooLarge = "content too large to diff"
 
 // Options controls rendering of diffs.
 type Options struct {
@@ -114,6 +120,9 @@ func filePatch(f FileDiff, hunks func() []Hunk) []string {
 	if f.OldUnavailable || f.NewUnavailable {
 		return append(lines, contentUnavailable)
 	}
+	if f.Truncated {
+		return append(lines, contentTooLarge)
+	}
 
 	hunkLines := renderHunks(hunks())
 	switch {
@@ -153,7 +162,7 @@ func FilterIgnored(files []FileDiff, opts Options) []FileDiff {
 			out = append(out, f)
 			continue
 		}
-		if f.OldUnavailable || f.NewUnavailable || c.Old.IsBinary || c.New.IsBinary {
+		if f.OldUnavailable || f.NewUnavailable || f.Truncated || c.Old.IsBinary || c.New.IsBinary {
 			out = append(out, f)
 			continue
 		}

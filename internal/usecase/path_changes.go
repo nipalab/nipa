@@ -118,7 +118,9 @@ const maxPathHistoryScan = 10000
 // read indexes per write transaction: the first batch is small so a page
 // near the head answers quickly, and each next one doubles up to the cap so a
 // path that changes rarely needs few rounds to reach deep into the walk.
-const (
+// They are variables only so tests can cross batch boundaries with a short
+// history (SetPathIndexBatches); nothing else assigns them.
+var (
 	pathIndexFirstBatch = 100
 	pathIndexMaxBatch   = 1600
 )

@@ -589,8 +589,8 @@ Flow for ignore rules (`.nipaignore` at the repo root, versioned; `.nipa/ignore`
 per clone, never tracked): `internal/client/ignore.New` compiles both files
 (local rules last, so they win) with a pragmatic gitignore subset (`#` comments,
 `!` negation, `*`/`?`, `**`, leading/mid `/` root anchoring, trailing `/` =
-directory-only; last match wins). `WorkingCopy.Status` and `Diff.scanWorking`
-walk the working tree through `walkWorkingFiles`, which drops ignored paths
+directory-only; last match wins). `WorkingCopy.Status` and an unfiltered
+`Diff.scanWorking` walk the working tree through `walkWorkingFiles`, which drops ignored paths
 unless they are tracked or staged (tracking always wins over ignores) and prunes
 ignored directories that contain no protected paths. `nipa add` errors on an
 explicitly ignored target with a `use -f` hint (`AddOptions{Force}` / `nipa add
@@ -725,12 +725,39 @@ deletions and modifications, binaries only with `--ext-diff`, goes through
 `ensureSnapshotContent` like restore, using the `Diff`'s own auth/client as the
 downloader; `ReadBlob` with `BlobSnapshot` does the same): `Snapshot()` (paths, hashes, modes and per-file chunk
 hashes) + `ListStaged()` → `walkWorkingFiles` (shared with `WorkingCopy.Status`).
+With `Paths` (and none of them the root `""`/`./`), the scan is scoped
+instead (`workingSnapshot`/`workingCandidates`): the snapshot rows come from the
+#298 `trackedScope` (each filter read as one row and as one directory range),
+the fingerprints from `StatEntries` for just the candidates (and for the
+old-side files `ensureSnapshotContent` may recapture), and there is no walk:
+only tracked or staged files can enter the new side, and tracking exempts them
+and their folders from the ignore rules, so the candidates are the tracked and
+staged paths `pathMatches` accepts, each kept only if the walk would have
+listed it (`walkReaches`: no `.nipa` segment, real (unlinked) parent folders,
+a regular file). A desktop `FileDiff` click therefore costs a few indexed
+reads and `lstat`s instead of a whole-tree walk; a repository stub without the
+by-path reads still loads the snapshot once.
 Tracked files whose `stat_cache` fingerprint is fresh and whose file hash equals
-the old side are reused without reading; everything else (staged additions,
-stale fingerprints, real changes) is hashed with `chunkFile` → `diff.Compare`
+the old side are reused without reading. A fresh fingerprint with a different
+hash on a file whose head still probes binary (`chunker.ProbeBinary`, as the
+cached hash was classified) is a modified binary: the entry is built from the
+cached hash, the stat size and mode, `IsBinary` and raw encoding, with no chunk
+list and no read, since binaries render from metadata only and a Modified
+change at its own path never takes part in rename detection (only
+Added/Deleted pairs do, where chunk overlap is used). Modified text is still
+hashed, its content is needed for the hunks. Everything else (staged additions,
+stale fingerprints, real changes) is hashed with `hashWorkingFile` (`Diff.hashFile`
+is the test seam) → `diff.Compare`
 over path-keyed `diff.Entry` maps; untracked-unstaged files are excluded, missing
 tracked files are deletions, staged new files are additions. `--no-cache` reads
-every working file. With revisions, each token
+every working file. `DiffOptions.MaxTextBytes` (the daemon's `DiffFiles` passes
+`diff.DefaultBudget.MaxBytes`; the CLI, MCP and the patch `Diff` RPC pass 0)
+caps the text read per side for rendering: a larger side is read only up to
+the cap + 1 byte (`readFileLimit` for the working file,
+`diff.LoadContentLimit` for the cached one), and the `FileDiff` is marked
+`Truncated`, which `FileHunksBudget` reports as omitted with approximate
+counts from the prefixes, `FilePatch` as "content too large to diff", and
+`FilterIgnored` keeps. With revisions, each token
 resolves to a commit ID first (branch name via gRPC `GetBranchByName`, then tag
 name via `GetTagByName`; `HEAD`/`@`
 via localrepo `LoadCommit`, falling back to the configured branch; otherwise

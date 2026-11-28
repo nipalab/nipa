@@ -71,7 +71,9 @@ func FileHunks(f FileDiff, opts Options) []Hunk {
 }
 
 // FileHunksBudget is FileHunks under a budget. A change without renderable
-// text yields an empty result (no hunks, zero counts, not omitted).
+// text yields an empty result (no hunks, zero counts, not omitted). A
+// truncated FileDiff is always omitted, with counts estimated from the loaded
+// prefixes.
 func FileHunksBudget(f FileDiff, opts Options, b Budget) HunkResult {
 	c := f.Change
 	switch c.Status {
@@ -86,6 +88,10 @@ func FileHunksBudget(f FileDiff, opts Options, b Budget) HunkResult {
 	}
 	if c.Old.IsBinary || c.New.IsBinary || f.OldUnavailable || f.NewUnavailable {
 		return HunkResult{}
+	}
+	if f.Truncated {
+		// Only prefixes were loaded: estimate from them and diff nothing.
+		return omittedResult(f.Old, f.New, opts.equalFunc())
 	}
 	return HunksBudget(f.Old, f.New, opts, b)
 }
