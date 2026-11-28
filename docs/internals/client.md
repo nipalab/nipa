@@ -404,7 +404,11 @@ as a file and as a folder; the server refuses that tree (`buildNewTree`, see
   a rename with "file exists". An update of an existing clone onto such a
   commit is refused by `planSwaps`; `markKeptTracked` then labels the tracked
   files the target keeps and says the commit is damaged rather than telling
-  the user to move them.
+  the user to move them. That label applies only where the writes come from
+  the synced commit (update/sync, restore, three-way writes);
+  `RevisionRestore` writes a path from an older commit and uses
+  `planSwapsWith(..., false)`, so a tracked file above it is reported as a
+  plain "untracked or kept file where a folder is needed".
 
 Not handled: case-insensitive renames (`A` -> `a`) are not treated as swaps;
 `internal/merge.ThreeWay` has no file/folder conflict, so a
