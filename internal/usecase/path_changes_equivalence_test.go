@@ -66,6 +66,23 @@ type historyFixture struct {
 	// strategy ("rebase+" is a rebase replaying two commits or more).
 	pushes map[string]int
 	landed map[string]int
+	// scans memoizes the reference scan per reader and query: the history
+	// is fixed once built and the scan never reads the index, so the passes
+	// before and after re-indexing compare against the same answers.
+	scans map[scanKey]scanResult
+}
+
+type scanKey struct {
+	reader string
+	path   string
+	start  snow.ID
+	limit  int
+}
+
+type scanResult struct {
+	ids      []snow.ID
+	err      bool
+	notFound bool
 }
 
 func newHistoryFixture(t *testing.T, seed int64) *historyFixture {
@@ -91,6 +108,7 @@ func newHistoryFixture(t *testing.T, seed int64) *historyFixture {
 		branchID: 100,
 		pushes:   map[string]int{},
 		landed:   map[string]int{},
+		scans:    map[scanKey]scanResult{},
 	}
 }
 
@@ -413,10 +431,28 @@ func entryIDs(entries []*domain.CommitLogEntry) []snow.ID {
 	return out
 }
 
-// requireSameHistory compares the indexed history with the scan for every
-// path, several starts and limits, as reader sees it.
-func (f *historyFixture) requireSameHistory(reader *usecase.PathFilter, label string) int {
+// scan answers a query with the tree-comparing reference scan, once per
+// reader (named by readerName) and query.
+func (f *historyFixture) scan(uc *usecase.Branch, readerName, path string, start *snow.ID, limit int) scanResult {
 	f.t.Helper()
+	key := scanKey{reader: readerName, path: path, limit: limit}
+	if start != nil {
+		key.start = *start
+	}
+	if res, ok := f.scans[key]; ok {
+		return res
+	}
+	want, err := uc.PathCommitLogScan(f.ctx, 1, "main", path, start, limit, 500)
+	res := scanResult{ids: entryIDs(want), err: err != nil, notFound: domain.IsErrorNotFound(err)}
+	f.scans[key] = res
+	return res
+}
+
+// requireSameHistory compares the indexed history with the scan for every
+// path, several starts and limits, as the reader named readerName sees it.
+func (f *historyFixture) requireSameHistory(readerName string, reader *usecase.PathFilter, phase string) int {
+	f.t.Helper()
+	label := readerName + phase
 	perm := &stubPermission{filter: reader}
 	uc := usecase.NewBranch(perm, f.repo, mustSnowNode(f.t))
 	head := f.head("main")
@@ -433,15 +469,15 @@ func (f *historyFixture) requireSameHistory(reader *usecase.PathFilter, label st
 	for _, path := range f.queryPaths() {
 		for _, start := range starts {
 			for _, limit := range []int{1, 0} {
-				want, wantErr := uc.PathCommitLogScan(f.ctx, 1, "main", path, start, limit, 500)
+				want := f.scan(uc, readerName, path, start, limit)
 				got, gotErr := uc.PathCommitLog(f.ctx, 1, "main", path, start, limit)
-				if wantErr != nil {
+				if want.err {
 					require.Error(f.t, gotErr, "%s: %q", label, path)
-					require.Equal(f.t, domain.IsErrorNotFound(wantErr), domain.IsErrorNotFound(gotErr), "%s: %q", label, path)
+					require.Equal(f.t, want.notFound, domain.IsErrorNotFound(gotErr), "%s: %q", label, path)
 					continue
 				}
 				require.NoError(f.t, gotErr, "%s: %q", label, path)
-				require.Equal(f.t, entryIDs(want), entryIDs(got), "%s: path %q start %v limit %d", label, path, start, limit)
+				require.Equal(f.t, want.ids, entryIDs(got), "%s: path %q start %v limit %d", label, path, start, limit)
 				if len(got) > 1 {
 					nonEmpty++
 				}
@@ -507,12 +543,19 @@ func defaultsReader() *usecase.PathFilter {
 // several starts and limits, by an admin and by readers whose rules hide
 // paths. It then drops the index so every commit is indexed again by the
 // first read and checks that the rows the writers stored equal the rows the
-// read computes from the trees.
+// read computes from the trees. The test runs on one goroutine, so under the
+// race detector (which slows the pure-Go SQLite about 25 times and finds
+// nothing here) it runs seed 3 alone: of the four seeds it is the one whose
+// history reaches every writer branch the four reach together, including a
+// rebase replaying several commits and a rebase that fast-forwards.
 func TestPathCommitLog_MatchesScan(t *testing.T) {
 	steps := 60
 	seeds := []int64{1, 2, 3, 4}
 	all := !testing.Short() && !raceEnabled
-	if !all {
+	switch {
+	case raceEnabled:
+		seeds = []int64{3}
+	case !all:
 		seeds = seeds[:2]
 	}
 	landed := map[string]int{}
@@ -525,9 +568,9 @@ func TestPathCommitLog_MatchesScan(t *testing.T) {
 				landed[strategy] += n
 			}
 
-			require.Positive(t, f.requireSameHistory(usecase.AllowAllFilter(), "admin"))
-			f.requireSameHistory(restrictedReader(), "restricted")
-			f.requireSameHistory(defaultsReader(), "defaults")
+			require.Positive(t, f.requireSameHistory("admin", usecase.AllowAllFilter(), ""))
+			f.requireSameHistory("restricted", restrictedReader(), "")
+			f.requireSameHistory("defaults", defaultsReader(), "")
 
 			written := f.storedPathChanges()
 			require.NotEmpty(t, written)
@@ -535,7 +578,7 @@ func TestPathCommitLog_MatchesScan(t *testing.T) {
 				kinds[row.kind] = true
 			}
 			f.dropPathIndex()
-			f.requireSameHistory(restrictedReader(), "restricted, re-indexed")
+			f.requireSameHistory("restricted", restrictedReader(), ", re-indexed")
 			// Side branches hold commits main's first-parent walk never
 			// crosses (a merge commit's second parent); reading their history
 			// indexes them too.
@@ -545,7 +588,7 @@ func TestPathCommitLog_MatchesScan(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, written, f.storedPathChanges(), "rows the writers stored must equal the rows a read computes")
-			f.requireSameHistory(usecase.AllowAllFilter(), "admin, re-indexed")
+			f.requireSameHistory("admin", usecase.AllowAllFilter(), ", re-indexed")
 		})
 	}
 	t.Logf("lands by strategy: %v", landed)
@@ -579,22 +622,34 @@ type partialQuery struct {
 // whose rules hide paths, including a path that changed only deep in the
 // walk (the read indexes batch after batch to reach it) and one that never
 // existed (the whole walk). The history crosses several batch boundaries.
+//
+// The history is 3.6 first batches long with the rare change one batch above
+// the root, so the rare path is reached in the second batch (indexing three
+// first batches) whatever the batch size. Under the race detector, which
+// slows the pure-Go SQLite about 25 times and finds nothing in this
+// single-goroutine test, the batches shrink tenfold and so does the history.
 func TestPathCommitLog_PartialIndexMatchesFull(t *testing.T) {
+	scale := struct{ batch, pubEvery, secEvery, topEvery int }{100, 37, 3, 50}
+	if raceEnabled {
+		scale = struct{ batch, pubEvery, secEvery, topEvery int }{10, 7, 3, 5}
+		usecase.SetPathIndexBatches(t, scale.batch, 16*scale.batch)
+	}
 	f := newHistoryFixture(t, 11)
-	const n = 360
+	n := scale.batch * 36 / 10
+	rareAt := scale.batch
 	file := func(content string) historyFile { return historyFile{content: content, mode: 0o644} }
 	f.pushChange("main", map[string]historyFile{"rare/r.txt": file("r0"), "a/f": file("0"), "x/pub/p": file("0"), "x/sec/s": file("0"), "top": file("0")}, nil, "")
 	for i := 1; i < n; i++ {
 		files := map[string]historyFile{"a/f": file(fmt.Sprint(i))}
 		switch {
-		case i == 100:
+		case i == rareAt:
 			files["rare/r.txt"] = file("r1")
-		case i%37 == 0:
+		case i%scale.pubEvery == 0:
 			files["x/pub/p"] = file(fmt.Sprint(i))
-		case i%3 == 0:
+		case i%scale.secEvery == 0:
 			files["x/sec/s"] = file(fmt.Sprint(i))
 		}
-		if i%50 == 0 {
+		if i%scale.topEvery == 0 {
 			files["top"] = file(fmt.Sprint(i))
 		}
 		f.pushChange("main", files, nil, "")
@@ -602,14 +657,14 @@ func TestPathCommitLog_PartialIndexMatchesFull(t *testing.T) {
 	chain, err := f.repo.CommitLog(f.ctx, 1, *f.head("main").CommitID, n)
 	require.NoError(t, err)
 	require.Len(t, chain, n)
-	mid := chain[150].ID
+	mid := chain[scale.batch*3/2].ID
 
 	readers := map[string]struct {
 		filter  *usecase.PathFilter
 		queries []partialQuery
 	}{
 		"admin": {usecase.AllowAllFilter(), []partialQuery{
-			{"a/f", nil, 1}, {"a", nil, 120}, {"", nil, 5}, {"x/pub", nil, 3}, {"x/pub", nil, 0},
+			{"a/f", nil, 1}, {"a", nil, n / 3}, {"", nil, 5}, {"x/pub", nil, 3}, {"x/pub", nil, 0},
 			{"rare/r.txt", nil, 1}, {"rare/r.txt", nil, 0}, {"rare", &mid, 2}, {"top", &mid, 1},
 			{"never/there", nil, 0}, {"x", nil, 0},
 		}},
@@ -649,7 +704,7 @@ func TestPathCommitLog_PartialIndexMatchesFull(t *testing.T) {
 			require.Equal(t, want[i], entryIDs(entries), "%s, sequential: %+v", name, q)
 		}
 		// The pages over a walk with a gap: a read from the middle indexed
-		// the 100 commits below it, the head's part is still unindexed.
+		// the first batch below it, the head's part is still unindexed.
 		for i, q := range reader.queries {
 			f.dropPathIndex()
 			_, err := uc.PathCommitLog(f.ctx, 1, "main", "", &mid, 1)
@@ -661,19 +716,19 @@ func TestPathCommitLog_PartialIndexMatchesFull(t *testing.T) {
 	}
 
 	// A page at the head indexes one batch; the rare path (changed at depth
-	// 259) indexes the batches down to its change (100 + 200 commits); a
-	// path that never existed indexes the whole walk.
+	// n-1-batch) indexes the batches down to its change (batch + 2*batch
+	// commits); a path that never existed indexes the whole walk.
 	admin := usecase.NewBranch(&stubPermission{filter: usecase.AllowAllFilter()}, f.repo, mustSnowNode(t))
 	f.dropPathIndex()
 	_, err = admin.PathCommitLog(f.ctx, 1, "main", "a/f", nil, 1)
 	require.NoError(t, err)
-	require.Equal(t, 100, f.markedCommits(), "a page at the head indexes one batch")
+	require.Equal(t, scale.batch, f.markedCommits(), "a page at the head indexes one batch")
 	f.dropPathIndex()
 	entries, err := admin.PathCommitLog(f.ctx, 1, "main", "rare/r.txt", nil, 1)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, chain[n-1-100].ID, entries[0].ID)
-	require.Equal(t, 300, f.markedCommits(), "indexed down to the batch holding the rare change")
+	require.Equal(t, chain[n-1-rareAt].ID, entries[0].ID)
+	require.Equal(t, 3*scale.batch, f.markedCommits(), "indexed down to the batch holding the rare change")
 	_, err = admin.PathCommitLog(f.ctx, 1, "main", "never/there", nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, total, f.markedCommits())

@@ -259,7 +259,8 @@ func TestDiff_ModifiedBinaryNowText_Rehashes(t *testing.T) {
 	info, err := os.Stat(fp)
 	require.NoError(t, err)
 	// Same size and mtime, so the fingerprint still matches, but text now.
-	writeRepoFile(t, root, "model.bin", "now plain text")
+	require.Len(t, "text version", int(info.Size()))
+	writeRepoFile(t, root, "model.bin", "text version")
 	require.NoError(t, os.Chtimes(fp, info.ModTime(), info.ModTime()))
 
 	counter := &countingHash{}
@@ -269,7 +270,7 @@ func TestDiff_ModifiedBinaryNowText_Rehashes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"model.bin"}, counter.paths, "text content is read for its hunks")
 	require.False(t, files[0].Change.New.IsBinary)
-	require.Equal(t, []byte("now plain text"), files[0].New)
+	require.Equal(t, []byte("text version"), files[0].New)
 }
 
 func TestDiff_ModifiedText_WithFreshFingerprintStillHashes(t *testing.T) {
@@ -330,6 +331,18 @@ func TestDiff_OversizedText_IsNotReadWhole(t *testing.T) {
 
 	require.False(t, files[1].Truncated)
 	require.Equal(t, []byte("x\n"), files[1].New)
+
+	// A working text small enough to be kept inline is clipped to the cap too.
+	mid := strings.Repeat("inline text line\n", 200)
+	require.Less(t, len(mid), inlineContentMax)
+	writeRepoFile(t, root, "mid.txt", mid)
+	withSnapshotFile(t, stub, "mid.txt", "short\n")
+	files, err = NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{Paths: []string{"mid.txt"}, MaxTextBytes: limit})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.True(t, files[0].Truncated)
+	require.Len(t, files[0].New, limit+1)
+	require.Equal(t, []byte(mid[:limit+1]), files[0].New)
 
 	// Without a cap everything is read, as the CLI does.
 	files, err = NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{Paths: []string{"big.txt"}})

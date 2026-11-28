@@ -366,7 +366,7 @@ func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary 
 		}
 		if isNew && root != "" {
 			if content, ok := contents[e.Path]; ok {
-				return content, true
+				return clipText(content, textLimit), true
 			}
 			if e.IsBinary && !loadBinary {
 				return nil, true
@@ -386,6 +386,16 @@ func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary 
 		}
 		return content, true
 	}
+}
+
+// clipText returns content whole, or with limit at least zero and content
+// longer than limit+1 bytes, a copy of its first limit+1 bytes so the caller
+// does not keep the full inline buffer alive.
+func clipText(content []byte, limit int64) []byte {
+	if limit < 0 || int64(len(content)) <= limit+1 {
+		return content
+	}
+	return append([]byte(nil), content[:limit+1]...)
 }
 
 // readFileLimit reads a file whole, or with limit at least zero, at most its

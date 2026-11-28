@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"testing"
 
 	"github.com/nipalab/nipa/internal/domain"
 )
@@ -10,6 +11,16 @@ import (
 // repositories (they depend on this package) to run against a real database.
 
 var EmptyTreeHash = emptyTreeHash
+
+// SetPathIndexBatches shrinks the path index batches for one test, so a short
+// history crosses several batch boundaries; the sizes are restored at cleanup.
+// Tests that call it must not run in parallel.
+func SetPathIndexBatches(t testing.TB, first, maxBatch int) {
+	t.Helper()
+	oldFirst, oldMax := pathIndexFirstBatch, pathIndexMaxBatch
+	pathIndexFirstBatch, pathIndexMaxBatch = first, maxBatch
+	t.Cleanup(func() { pathIndexFirstBatch, pathIndexMaxBatch = oldFirst, oldMax })
+}
 
 func RehashTree(node *domain.TreeNode) domain.Hash { return rehashTree(node) }
 
