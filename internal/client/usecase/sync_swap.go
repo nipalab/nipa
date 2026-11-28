@@ -55,9 +55,9 @@ type swapBlocker struct {
 // either way. It costs one Lstat per written file and per distinct folder
 // above one, and a walk of each folder that must become a file.
 //
-// planSwaps serves the paths that write a whole snapshot (update/sync, restore
-// of the synced snapshot, the three-way writes), so a tracked file in the way
-// is labelled as a damaged target (markKeptTracked).
+// planSwaps serves the paths that write from the synced commit (update/sync
+// and restore of the synced snapshot), so a tracked file in the way is
+// labelled as a damaged target (markKeptTracked).
 func planSwaps(ctx context.Context, root string, lr any, writes []materializedFile, removals []clientDomain.SnapshotFile) (*swapPlan, error) {
 	return planSwapsWith(ctx, root, lr, writes, removals, true)
 }
@@ -66,6 +66,10 @@ func planSwaps(ctx context.Context, root string, lr any, writes []materializedFi
 // tracked files in the way as kept by a damaged target (markKeptTracked).
 // RevisionRestore passes false: it writes a path from another commit than the
 // synced one, so a tracked file above it says nothing about either commit.
+// The three-way writes (merge, revert, shelve apply; applyThreeWay) pass
+// false too: they write a merge result, not a commit, and merge.ThreeWay has
+// no file/folder clash, so two sound sides (ours adds the file a, theirs
+// a/b) can put a tracked file in the way.
 func planSwapsWith(ctx context.Context, root string, lr any, writes []materializedFile, removals []clientDomain.SnapshotFile, markKept bool) (*swapPlan, error) {
 	plan := &swapPlan{taken: map[string]struct{}{}}
 	if len(writes) == 0 {
@@ -238,13 +242,17 @@ func trackedFileChanged(root string, f clientDomain.SnapshotFile, statCache map[
 // not remove: the target commit keeps it and also holds a file at, or a
 // folder over, the same path. A sound commit cannot; a server without the
 // tree check could store one. It holds only where the writes come from the
-// commit the snapshot is synced to (update/sync, restore, three-way writes),
-// never for RevisionRestore, which writes from an older commit.
+// commit the snapshot is synced to (update/sync, restore of the synced
+// snapshot), never for RevisionRestore, which writes from an older commit,
+// nor for the three-way writes (merge, revert, shelve apply), which write a
+// merge result that two sound commits can make clash.
 const damagedTargetReason = "tracked file the target commit keeps: that commit holds a path as both a file and a folder"
 
 // markKeptTracked tells the blockers that are tracked files apart from
 // untracked ones. It runs on the refusal only and reads the blockers' rows;
-// planSwaps runs it, planSwapsWith only when asked (see damagedTargetReason).
+// planSwaps (update/sync, restore of the synced snapshot) runs it;
+// planSwapsWith only when asked, which RevisionRestore and the three-way
+// writes do not (see damagedTargetReason).
 func markKeptTracked(lr any, blockers []swapBlocker) []swapBlocker {
 	reader, ok := lr.(interface {
 		SnapshotFiles(paths []string) (map[string]clientDomain.SnapshotFile, error)

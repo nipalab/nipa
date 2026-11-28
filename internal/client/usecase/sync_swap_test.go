@@ -601,6 +601,30 @@ func TestApplyThreeWay_SwapRefusesToDeleteContent(t *testing.T) {
 	})
 }
 
+// A merge of two sound commits can still hold a path as a file and as a
+// folder: ours added the file dir, theirs the folder dir/x, and merge.ThreeWay
+// keeps both. The tracked file in the way is refused as content to move, not
+// blamed on a damaged target commit: a three-way result is not a commit.
+func TestApplyThreeWay_TrackedFileBlockingIsNotADamagedTarget(t *testing.T) {
+	fx := newShelfFixture(t, map[string]string{"dir": "mine\n"})
+	snap, err := fx.lr.Snapshot()
+	require.NoError(t, err)
+	baseByPath := map[string]domain.SnapshotFile{}
+	for _, f := range snap.Files {
+		baseByPath[f.Path] = f
+	}
+	ours := threeWaySide(t, fx.lr, map[string]string{"dir": "mine\n"})
+	theirs := threeWaySide(t, fx.lr, map[string]string{"dir/x": "x\n"})
+	result := merge.ThreeWay(map[string]merge.File{}, ours, theirs)
+
+	_, err = applyThreeWay(context.Background(), noDownload{}, fx.lr, fx.root, ours, baseByPath, result, domain.ChunkScope{}, true)
+	require.ErrorContains(t, err, "dir (untracked or kept file where a folder is needed)")
+	require.NotContains(t, err.Error(), "the target commit is damaged")
+	c := &deltaClone{t: t, root: fx.root}
+	require.Equal(t, map[string]string{"dir": "mine\n"}, c.working())
+	require.Empty(t, c.folders())
+}
+
 // Restoring a tracked file where the user put a folder, or below a folder
 // the user replaced by a file: content in the way is refused, an empty
 // folder gives way.

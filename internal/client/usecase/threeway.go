@@ -72,8 +72,11 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		for _, p := range sortedStrings(writes) {
 			targets = append(targets, materializedFile{Path: p})
 		}
+		// The writes are a merge result, not a commit: two sound sides can
+		// clash (ours adds the file a, theirs a/b), so a tracked file in the
+		// way is not blamed on a damaged target (no markKeptTracked).
 		var err error
-		if swaps, err = planSwaps(ctx, root, local, targets, removals); err != nil {
+		if swaps, err = planSwapsWith(ctx, root, local, targets, removals, false); err != nil {
 			return nil, err
 		}
 	}

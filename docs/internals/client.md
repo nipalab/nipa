@@ -405,10 +405,13 @@ as a file and as a folder; the server refuses that tree (`buildNewTree`, see
   commit is refused by `planSwaps`; `markKeptTracked` then labels the tracked
   files the target keeps and says the commit is damaged rather than telling
   the user to move them. That label applies only where the writes come from
-  the synced commit (update/sync, restore, three-way writes);
-  `RevisionRestore` writes a path from an older commit and uses
-  `planSwapsWith(..., false)`, so a tracked file above it is reported as a
-  plain "untracked or kept file where a folder is needed".
+  the synced commit (update/sync and restore of the synced snapshot, through
+  `planSwaps`). `RevisionRestore` writes a path from an older commit, and the
+  three-way writes (merge, revert, shelve apply; `applyThreeWay`) write a
+  merge result in which two sound commits can clash (ours adds the file `a`,
+  theirs `a/b`); both use `planSwapsWith(..., false)`, so a tracked file in
+  the way is reported as a plain "untracked or kept file where a folder is
+  needed".
 
 Not handled: case-insensitive renames (`A` -> `a`) are not treated as swaps;
 `internal/merge.ThreeWay` has no file/folder conflict, so a
