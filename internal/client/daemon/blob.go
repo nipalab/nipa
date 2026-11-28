@@ -9,6 +9,8 @@ import (
 	"io"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -110,8 +112,9 @@ type rawSide struct {
 // Decoders behind a seam so tests can observe when decoding runs relative to
 // the repository lock.
 var (
-	decodeImageAt   = preview.DecodeImageAt
-	decodeThumbnail = preview.DecodeThumbnail
+	decodeImageAt      = preview.DecodeImageAt
+	decodeImageForSize = preview.DecodeImageForSize
+	decodeThumbnail    = preview.DecodeThumbnail
 )
 
 // Preview decodes the requested image sides, sends a downscaled PNG for each
@@ -131,6 +134,9 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 	defer done()
 
 	sel := preview.Select{Level: int(req.GetLevel()), Face: int(req.GetFace())}
+	if side, ref, ok := thumbnailRequest(req, maxSize); ok {
+		return s.previewThumbnail(ctx, stream, rp, side, ref, sel, maxSize)
+	}
 	var sides []decodedSide
 	for _, ref := range []struct {
 		side string
@@ -142,7 +148,7 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		decoded, err := decodePreviewSide(ctx, rp.diff, rp.root, ref.side, ref.ref, sel)
+		decoded, err := decodePreviewSide(ctx, rp.diff, rp.root, ref.side, ref.ref, sel, 0)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
@@ -156,7 +162,11 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := sendPreviewSide(stream, side, maxSize); err != nil {
+		rendered, err := renderPreviewSide(side, maxSize)
+		if err != nil {
+			return err
+		}
+		if err := sendRenderedSide(stream, side.side, rendered); err != nil {
 			return err
 		}
 	}
@@ -190,7 +200,8 @@ func previewOptions(req *daemonpb.PreviewRequest) (int, uint8, error) {
 
 // decodePreviewSide reads one side under the runner (which holds the
 // repository lock for the read only) and decodes it after the read returns.
-func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string, ref *daemonpb.BlobRef, sel preview.Select) (decodedSide, error) {
+// A positive thumbSize lets textures decode the smallest mip that covers it.
+func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string, ref *daemonpb.BlobRef, sel preview.Select, thumbSize int) (decodedSide, error) {
 	raw, err := readPreviewSide(ctx, runner, root, ref)
 	if err != nil {
 		return decodedSide{side: side}, err
@@ -202,7 +213,7 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 	if raw.thumbnail {
 		out.image, err = decodeThumbnailSide(raw.entry.Path, raw.data)
 	} else {
-		out.image, err = decodeImageSide(raw.entry.Path, raw.data, sel)
+		out.image, err = decodeImageSide(raw.entry.Path, raw.data, sel, thumbSize)
 	}
 	return out, err
 }
@@ -237,8 +248,14 @@ func readPreviewSide(ctx context.Context, runner DiffRunner, root string, ref *d
 	return raw, err
 }
 
-func decodeImageSide(path string, data []byte, sel preview.Select) (*preview.Image, error) {
-	img, err := decodeImageAt(path, data, sel)
+func decodeImageSide(path string, data []byte, sel preview.Select, thumbSize int) (*preview.Image, error) {
+	var img *preview.Image
+	var err error
+	if thumbSize > 0 {
+		img, err = decodeImageForSize(path, data, sel, thumbSize)
+	} else {
+		img, err = decodeImageAt(path, data, sel)
+	}
 	switch {
 	case errors.Is(err, preview.ErrUnsupported):
 		return nil, unsupportedPreview(fmt.Sprintf("%s: %s", path, unsupportedReason(err)))
@@ -270,7 +287,15 @@ func unsupportedReason(err error) string {
 	return "unsupported image format"
 }
 
-func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide, maxSize int) error {
+// renderedSide is one side as sent: its info (without the side name) and
+// its encoded PNG. It is what the thumbnail cache stores.
+type renderedSide struct {
+	info *daemonpb.ImagePreview
+	png  []byte
+}
+
+// renderPreviewSide downscales and encodes a decoded side.
+func renderPreviewSide(side decodedSide, maxSize int) (renderedSide, error) {
 	img := side.image
 	scaled := preview.Downscale(img.Pixels, maxSize)
 	previewW, previewH := scaled.Rect.Dx(), scaled.Rect.Dy()
@@ -283,12 +308,12 @@ func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide,
 	var buf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.BestSpeed}
 	if err := enc.Encode(&buf, encoded); err != nil {
-		return err
+		return renderedSide{}, err
 	}
+	width, height := img.SurfaceSize()
 	info := &daemonpb.ImagePreview{
-		Side:          side.side,
-		Width:         int32(img.Width()),
-		Height:        int32(img.Height()),
+		Width:         int32(width),
+		Height:        int32(height),
 		Format:        img.Format,
 		BitDepth:      int32(img.BitDepth),
 		HasAlpha:      img.HasAlpha,
@@ -305,13 +330,20 @@ func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide,
 		Layers:        layersToPB(img.Layers),
 		Thumbnail:     side.thumbnail,
 	}
+	return renderedSide{info: info, png: buf.Bytes()}, nil
+}
+
+// sendRenderedSide sends a side's info and then its PNG in chunks.
+func sendRenderedSide(stream daemonpb.NipaDaemon_PreviewServer, side string, r renderedSide) error {
+	info := proto.Clone(r.info).(*daemonpb.ImagePreview)
+	info.Side = side
 	if err := stream.Send(&daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Image{Image: info}}); err != nil {
 		return err
 	}
-	data := buf.Bytes()
+	data := r.png
 	for len(data) > 0 {
 		n := min(len(data), blobChunkBytes)
-		chunk := &daemonpb.PreviewData{Side: side.side, Png: data[:n]}
+		chunk := &daemonpb.PreviewData{Side: side, Png: data[:n]}
 		if err := stream.Send(&daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Data{Data: chunk}}); err != nil {
 			return err
 		}

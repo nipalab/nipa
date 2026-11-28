@@ -6,7 +6,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   visual diffs (design and PR roadmap in `docs/DESKTOP.md`) — `Classify`
   (viewer kind by extension + binary flag), `DecodeImage`/`DecodeImageAt`
   (PNG/JPEG/GIF/BMP/TIFF/WebP via stdlib + `golang.org/x/image`; own decoders
-  for TGA, DDS and KTX2 with BC1–BC7/BC6H and mip/face `Select`, EXR, Radiance
+  for TGA, DDS and KTX2 with BC1–BC7/BC6H and mip/face `Select`;
+  `DecodeImageForSize` is the thumbnail variant: DDS/KTX2 decode the smallest
+  mip whose longer side still covers the requested size and report the
+  selected level and its size through `Image.SurfaceSize`, other formats
+  decode in full; EXR, Radiance
   HDR and PSD/PSB composite + layer list; float sources keep `Image.HDR`;
   `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
   `DecodeAudio` WAV/AIFF/FLAC/Vorbis/MP3 analysis (peaks, spectrogram,

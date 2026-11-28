@@ -208,6 +208,32 @@ func clampIndex(v, n int) int { return min(max(v, 0), max(n-1, 0)) }
 
 var errTruncatedTexture = errors.New("preview: truncated texture data")
 
+// thumbnailLevel picks the smallest mip level at or below the selected one
+// whose longer side still covers size, so a downscale to size never upsamples
+// and never decodes more pixels than it needs.
+func (t *texture) thumbnailLevel(sel Select, size int) int {
+	level := clampIndex(sel.Level, t.levels)
+	for level+1 < t.levels && max(mipSize(t.width, level+1), mipSize(t.height, level+1)) >= size {
+		level++
+	}
+	return level
+}
+
+// decodeForSize decodes the surface sel names from the smallest mip that
+// covers size. The result reports the selected level and its dimensions in
+// SurfaceWidth/SurfaceHeight while Pixels holds the smaller mip.
+func (t *texture) decodeForSize(sel Select, size int) (*Image, error) {
+	selected := clampIndex(sel.Level, t.levels)
+	level := t.thumbnailLevel(sel, size)
+	img, err := t.decode(Select{Level: level, Face: sel.Face})
+	if err != nil || level == selected {
+		return img, err
+	}
+	img.Level = selected
+	img.SurfaceWidth, img.SurfaceHeight = mipSize(t.width, selected), mipSize(t.height, selected)
+	return img, nil
+}
+
 func (t *texture) decode(sel Select) (*Image, error) {
 	level, face := clampIndex(sel.Level, t.levels), clampIndex(sel.Face, t.faces)
 	w, h := mipSize(t.width, level), mipSize(t.height, level)

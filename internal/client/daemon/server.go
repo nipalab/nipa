@@ -67,6 +67,9 @@ type Options struct {
 	Runners      Runners // per-root long-operation usecase factories
 	Accounts     Accounts
 	PruneQuiet   time.Duration // quiet period before GUI reads are pruned from the cache; defaults to 30 s
+	// ThumbnailCacheDir holds rendered thumbnails; empty uses
+	// thumbcache.DefaultDir ($NIPA_THUMBNAIL_CACHE_DIR or <user cache>/nipa/thumbs).
+	ThumbnailCacheDir string
 }
 
 // Server hosts the loopback gRPC API for GUI clients. It owns no working-copy
@@ -85,6 +88,7 @@ type Server struct {
 	grpc     *grpc.Server
 	bridge   *jsonBridge
 	repos    *registry
+	thumbs   *thumbnails
 	ready    chan struct{}
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -149,6 +153,7 @@ func NewServer(opts Options) (*Server, error) {
 		accounts:     opts.Accounts,
 		listener:     listener,
 		repos:        newRegistry(opts.Runners),
+		thumbs:       newThumbnails(opts.ThumbnailCacheDir),
 		ready:        make(chan struct{}),
 		stop:         make(chan struct{}),
 		eventEvery:   eventEvery,

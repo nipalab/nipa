@@ -38,7 +38,26 @@ non-image or unsupported formats). `SerialDiff` serializes one repository's
 each side's bytes inside the `ReadBlob` callback and decodes
 (`decodeImageAt`/`decodeThumbnail`, test seams), downscales and compares
 after it returns, outside the lock; it checks `ctx` before each decode, each
-side and the compare, so a cancelled call stops early. `WatchChanges` streams coalesced change
+side and the compare, so a cancelled call stops early. A thumbnail
+(`thumbnail.go`: one side and `max_size` <= `maxThumbnailSize` 256) first
+resolves the side with `DiffRunner.StatBlob` (`usecase.Diff.StatBlob`: a plain
+stat for working files, which `SerialDiff` runs without its lock; the tree,
+snapshot or shelf entry for stored versions, no chunk download) and looks the
+rendering up in the on-disk `internal/client/thumbcache` (opened lazily at
+`Options.ThumbnailCacheDir`, default `$NIPA_THUMBNAIL_CACHE_DIR` or
+`<user cache>/nipa/thumbs`, shared by every repo and daemon, 256 MiB, oldest
+mtime evicted, a hit touches the entry). The key is
+`thumbnailFormatVersion` + content hash + extension + size for stored
+versions, or absolute path + size + mtime_ns for working files, plus
+max_size/level/face; bump `thumbnailFormatVersion` when a decoder, the
+downscale or the record changes. A hit replays the stored `ImagePreview`
+(side relabelled) and PNG without reading, decoding or taking a slot. A miss
+takes one of `thumbnailDecodeSlots` (2, ctx-aware), re-checks the cache,
+reads and decodes (`decodeImageForSize` seam: DDS/KTX2 from the smallest
+covering mip), and stores the rendering only if the read matches the stat
+(size and hash, and a working file re-stats the same); write errors are
+ignored and failures are never cached. Two-sided and larger previews skip
+all of this. `WatchChanges` streams coalesced change
 notices per root (watcher batch paths after the stat refresh; empty = refresh
 all after ops and stage/restore) for the GUI, and `Status` reports `added`
 (staged paths the snapshot does not track). An fsnotify watcher debounces events into

@@ -16,7 +16,7 @@ import (
 
 // newTestClone builds a minimal real clone: config plus a snapshot tracking
 // tracked.txt, so status runs against the actual localrepo/SQLite stack.
-func newTestClone(t *testing.T) string {
+func newTestClone(t testing.TB) string {
 	t.Helper()
 	root := t.TempDir()
 	lr := localrepo.NewLocalRepoWithTarget(root)

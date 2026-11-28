@@ -21,6 +21,14 @@ import (
 type stubDiffRunner struct {
 	run      func(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
 	readBlob func(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error
+	statBlob func(ctx context.Context, root string, req usecase.BlobRequest) (usecase.BlobStat, error)
+}
+
+func (s *stubDiffRunner) StatBlob(ctx context.Context, root string, req usecase.BlobRequest) (usecase.BlobStat, error) {
+	if s.statBlob != nil {
+		return s.statBlob(ctx, root, req)
+	}
+	return usecase.BlobStat{}, errors.New("stat not stubbed")
 }
 
 func (s *stubDiffRunner) ReadBlob(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
