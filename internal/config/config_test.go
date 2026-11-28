@@ -49,6 +49,7 @@ CHUNK_MAX_PAGE_SIZE: 50
 CHUNK_VERIFY_CONCURRENCY: 16
 PUSH_MAX_FILES: 300
 CHUNK_VISIBILITY_CACHE_HASHES: 400
+CHUNK_VISIBILITY_TIMEOUT_SECONDS: 45
 EMAIL_SENDER: smtp
 EMAIL_FROM: Nipa <noreply@example.com>
 EMAIL_REPLY_TO: support@example.com
@@ -105,6 +106,7 @@ func TestLoadConfig_FromYAML(t *testing.T) {
 	require.Equal(t, 16, cfg.ChunkVerifyConcurrency)
 	require.Equal(t, 300, cfg.PushMaxFiles)
 	require.Equal(t, 400, cfg.ChunkVisibilityCacheHashes)
+	require.Equal(t, 45, cfg.ChunkVisibilityTimeoutSeconds)
 	require.Equal(t, "smtp", cfg.EmailSender)
 	require.Equal(t, "Nipa <noreply@example.com>", cfg.EmailFrom)
 	require.Equal(t, "support@example.com", cfg.EmailReplyTo)
@@ -145,6 +147,7 @@ func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
 	require.Equal(t, 64, cfg.ChunkVerifyConcurrency)
 	require.Equal(t, 2_000_000, cfg.PushMaxFiles)
 	require.Equal(t, 2_000_000, cfg.ChunkVisibilityCacheHashes)
+	require.Equal(t, 30, cfg.ChunkVisibilityTimeoutSeconds)
 	require.Empty(t, cfg.ChunkURLSigningKey)
 	require.Equal(t, "info", cfg.LogLevel)
 	require.Equal(t, "console", cfg.LogFormat)

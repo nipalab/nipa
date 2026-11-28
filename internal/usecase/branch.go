@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 )
@@ -84,6 +85,7 @@ type Branch struct {
 	chunkUploads   chunkUploader
 	audit          AuditRecorder
 	visible        *visibleChunkCache
+	chunkRows      chunkRowLookup
 	storage        storageWriteGate
 }
 
@@ -124,8 +126,41 @@ func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode s
 // WithVisibleChunksCacheHashes overrides DefaultVisibleChunksCacheHashes;
 // zero or less keeps the default.
 func (b *Branch) WithVisibleChunksCacheHashes(n int) *Branch {
-	if n > 0 {
-		b.visible = newVisibleChunkCache(visibleChunksTTL, n, time.Now)
+	if n > 0 && b.visible != nil {
+		b.visible.setMaxHashes(n)
+	}
+	return b
+}
+
+// chunkRowLookup reads the project's chunk rows by hash (the push
+// repository); DownloadableChunks uses it for callers who may read every path.
+type chunkRowLookup interface {
+	ProjectChunkRecords(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]ChunkRecord, error)
+}
+
+// WithChunkRows lets DownloadableChunks answer callers who may read every
+// path from the project's chunk rows instead of a tree walk.
+func (b *Branch) WithChunkRows(rows chunkRowLookup) *Branch {
+	b.chunkRows = rows
+	return b
+}
+
+// WithVisibleChunksTimeout overrides how long one visible-set walk may run
+// (DefaultVisibleChunksComputeTimeout); zero or less keeps the current value.
+func (b *Branch) WithVisibleChunksTimeout(d time.Duration) *Branch {
+	if d > 0 && b.visible != nil {
+		b.visible.mu.Lock()
+		b.visible.timeout = d
+		b.visible.mu.Unlock()
+	}
+	return b
+}
+
+// WithMetrics reports visible-set cache hits, misses, oversize answers and
+// compute times.
+func (b *Branch) WithMetrics(m *obs.Metrics) *Branch {
+	if b.visible != nil {
+		b.visible.metrics = m
 	}
 	return b
 }
@@ -891,13 +926,85 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 	if err != nil {
 		return nil, err
 	}
+	return b.cachedVisibleChunks(ctx, projectID, commitIDs, paths, filter)
+}
+
+// cachedVisibleChunks answers visibleChunks through the cache when filter
+// has a fingerprint.
+func (b *Branch) cachedVisibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string, filter *PathFilter) ([]domain.Hash, error) {
 	key, ok := visibleChunksKey(filter, projectID, commitIDs, paths)
 	if !ok || b.visible == nil {
 		return b.visibleChunks(ctx, projectID, commitIDs, paths, filter)
 	}
-	return b.visible.get(ctx, key, func(ctx context.Context) ([]domain.Hash, error) {
+	req := visibleRequest{projectID: projectID, commits: len(commitIDs), paths: len(paths)}
+	return b.visible.get(ctx, key, req, func(ctx context.Context) ([]domain.Hash, error) {
 		return b.visibleChunks(ctx, projectID, commitIDs, paths, filter)
 	})
+}
+
+// DownloadableChunks returns the hashes, in request order and without
+// duplicates, that the caller may download for the given commits and sparse
+// paths, together with the caller's ChunkReadScope. The commits and paths are
+// validated the same way for every caller.
+//
+// A caller whose read right covers every path (ChunkReadProject) may read
+// every commit of the project, and is handed whole pack URLs anyway, so the
+// check for them is the project's chunk rows: one indexed lookup of the
+// requested hashes, with no tree walk and no cache, so the cost follows the
+// page and not the repository. A path-restricted caller gets the hashes of
+// the visible set VisibleChunks computes.
+func (b *Branch) DownloadableChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string, hashes []domain.Hash) ([]domain.Hash, ChunkReadScope, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, ChunkReadPaths, domain.NewErrorNoPermission()
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, ChunkReadPaths, err
+	}
+	scope := ChunkReadPaths
+	if filter.Unrestricted() {
+		scope = ChunkReadProject
+	}
+	if scope == ChunkReadProject && b.chunkRows != nil {
+		if _, _, err := b.resolveVisibleCommits(ctx, projectID, commitIDs, paths); err != nil {
+			return nil, scope, err
+		}
+		records, err := b.chunkRows.ProjectChunkRecords(ctx, projectID, hashes)
+		if err != nil {
+			return nil, scope, err
+		}
+		return keepHashes(hashes, func(hash domain.Hash) bool {
+			_, ok := records[hash]
+			return ok
+		}), scope, nil
+	}
+	allowed, err := b.cachedVisibleChunks(ctx, projectID, commitIDs, paths, filter)
+	if err != nil {
+		return nil, scope, err
+	}
+	return keepHashes(hashes, func(hash domain.Hash) bool { return hashInSorted(allowed, hash) }), scope, nil
+}
+
+// keepHashes returns the hashes keep accepts, in order, each once.
+func keepHashes(hashes []domain.Hash, keep func(domain.Hash) bool) []domain.Hash {
+	out := make([]domain.Hash, 0, len(hashes))
+	kept := make(map[domain.Hash]struct{}, len(hashes))
+	for _, hash := range hashes {
+		if _, ok := kept[hash]; ok || !keep(hash) {
+			continue
+		}
+		kept[hash] = struct{}{}
+		out = append(out, hash)
+	}
+	return out
+}
+
+// hashInSorted reports whether hash is in the sorted hashes.
+func hashInSorted(hashes []domain.Hash, hash domain.Hash) bool {
+	index := sort.Search(len(hashes), func(i int) bool {
+		return bytes.Compare(hashes[i][:], hash[:]) >= 0
+	})
+	return index < len(hashes) && hashes[index] == hash
 }
 
 // ChunkReadScope reports how much of the project's content the caller may
@@ -920,40 +1027,59 @@ func (b *Branch) ChunkReadScope(ctx context.Context, projectID snow.ID) (ChunkRe
 // permission usecase itself: the cache stores its answer under the
 // fingerprint of the filter it was given.
 func (b *Branch) visibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string, filter *PathFilter) ([]domain.Hash, error) {
-	if len(commitIDs) == 0 {
-		return nil, domain.NewErrorUser("at least one commit id is required")
-	}
-	sparse, err := domain.NewPrefixSet(paths)
+	commits, sparse, err := b.resolveVisibleCommits(ctx, projectID, commitIDs, paths)
 	if err != nil {
-		return nil, domain.NewErrorUser(err.Error())
+		return nil, err
 	}
-
-	seen := map[domain.Hash]struct{}{}
-	visited := map[treeVisit]struct{}{}
-	for _, raw := range commitIDs {
-		commitID, err := snow.ParseBase36(raw)
-		if err != nil {
-			return nil, domain.NewErrorUser(fmt.Sprintf("invalid commit id %q", raw))
-		}
-		commit, err := b.commitByIDInProject(ctx, projectID, commitID)
-		if err != nil {
-			return nil, err
-		}
+	roots := make([]*domain.TreeNode, 0, len(commits))
+	for _, commit := range commits {
 		root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
 		if err != nil {
 			return nil, err
 		}
-		if err := b.collectVisibleChunks(ctx, root, "", filter, sparse, visited, seen); err != nil {
-			return nil, err
-		}
+		roots = append(roots, root)
 	}
-
+	seen := map[domain.Hash]struct{}{}
+	if err := b.collectVisibleChunks(ctx, roots, filter, sparse, seen); err != nil {
+		return nil, err
+	}
 	out := make([]domain.Hash, 0, len(seen))
 	for hash := range seen {
 		out = append(out, hash)
 	}
 	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
 	return out, nil
+}
+
+// resolveVisibleCommits validates a chunk visibility request: at least one
+// commit, every commit of the project, and parseable sparse prefixes. It
+// returns every distinct commit once, in request order, and the sparse set.
+func (b *Branch) resolveVisibleCommits(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]*domain.Commit, domain.PrefixSet, error) {
+	if len(commitIDs) == 0 {
+		return nil, nil, domain.NewErrorUser("at least one commit id is required")
+	}
+	sparse, err := domain.NewPrefixSet(paths)
+	if err != nil {
+		return nil, nil, domain.NewErrorUser(err.Error())
+	}
+	commits := make([]*domain.Commit, 0, len(commitIDs))
+	resolved := make(map[snow.ID]struct{}, len(commitIDs))
+	for _, raw := range commitIDs {
+		commitID, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, nil, domain.NewErrorUser(fmt.Sprintf("invalid commit id %q", raw))
+		}
+		if _, ok := resolved[commitID]; ok {
+			continue
+		}
+		resolved[commitID] = struct{}{}
+		commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+		if err != nil {
+			return nil, nil, err
+		}
+		commits = append(commits, commit)
+	}
+	return commits, sparse, nil
 }
 
 func rehashTree(node *domain.TreeNode) domain.Hash {

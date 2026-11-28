@@ -4,6 +4,8 @@ import (
 	"container/list"
 	"context"
 	"crypto/sha256"
+	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,12 +13,15 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 const visibleChunksTTL = 2 * time.Minute
 
-const visibleChunksComputeTimeout = 30 * time.Second
+// DefaultVisibleChunksComputeTimeout bounds one visible-set walk
+// (CHUNK_VISIBILITY_TIMEOUT_SECONDS overrides it).
+const DefaultVisibleChunksComputeTimeout = 30 * time.Second
 
 // DefaultVisibleChunksCacheHashes bounds the chunk hashes the download
 // visibility cache keeps per server process (32 bytes each).
@@ -37,24 +42,59 @@ type visibleEntry struct {
 // their last use and the total number of cached hashes is bounded. The cache
 // has no invalidation and needs none: an answer is a pure function of its key
 // (see visibleChunksKey), so the idle ttl only bounds memory.
+//
+// An answer bigger than the whole bound cannot be kept, so every request for
+// it walks the trees again. That is reported, not silent: the oversize
+// lookup is counted and logged once per key and ttl, naming the size and the
+// bound (CHUNK_VISIBILITY_CACHE_HASHES).
 type visibleChunkCache struct {
 	mu        sync.Mutex
 	ttl       time.Duration
+	timeout   time.Duration
 	maxHashes int
 	now       func() time.Time
 	entries   map[string]*visibleEntry
 	lru       *list.List
 	size      int
+	// oversize remembers when an oversize answer was last reported, so the
+	// warning is not repeated for every download window.
+	oversize map[string]time.Time
+	metrics  *obs.Metrics
+	logger   *slog.Logger
+}
+
+// visibleRequest describes a lookup for the log lines of the cache.
+type visibleRequest struct {
+	projectID snow.ID
+	commits   int
+	paths     int
 }
 
 func newVisibleChunkCache(ttl time.Duration, maxHashes int, now func() time.Time) *visibleChunkCache {
 	return &visibleChunkCache{
 		ttl:       ttl,
+		timeout:   DefaultVisibleChunksComputeTimeout,
 		maxHashes: maxHashes,
 		now:       now,
 		entries:   map[string]*visibleEntry{},
 		lru:       list.New(),
+		oversize:  map[string]time.Time{},
 	}
+}
+
+// setMaxHashes changes the bound and evicts down to it.
+func (c *visibleChunkCache) setMaxHashes(n int) {
+	c.mu.Lock()
+	c.maxHashes = n
+	c.evict()
+	c.mu.Unlock()
+}
+
+func (c *visibleChunkCache) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
 }
 
 // visibleChunksKey names everything a VisibleChunks answer depends on: the
@@ -91,7 +131,7 @@ func visibleChunksKey(filter *PathFilter, projectID snow.ID, commitIDs, paths []
 // get returns the cached answer for key, computing it once when missing.
 // Concurrent callers of a missing key wait for the same computation; a failed
 // computation is not kept.
-func (c *visibleChunkCache) get(ctx context.Context, key string, compute func(context.Context) ([]domain.Hash, error)) ([]domain.Hash, error) {
+func (c *visibleChunkCache) get(ctx context.Context, key string, req visibleRequest, compute func(context.Context) ([]domain.Hash, error)) ([]domain.Hash, error) {
 	c.mu.Lock()
 	now := c.now()
 	if e, ok := c.entries[key]; ok {
@@ -101,32 +141,89 @@ func (c *visibleChunkCache) get(ctx context.Context, key string, compute func(co
 				c.lru.MoveToFront(e.elem)
 			}
 			c.mu.Unlock()
+			c.metrics.ObserveVisibleChunksLookup("hit")
 			return e.wait(ctx)
 		}
 		c.remove(e)
 	}
 	e := &visibleEntry{key: key, done: make(chan struct{})}
 	c.entries[key] = e
+	timeout := c.timeout
 	c.mu.Unlock()
 
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), visibleChunksComputeTimeout)
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	started := time.Now()
 	e.hashes, e.err = compute(cctx)
+	elapsed := time.Since(started)
+	timedOut := e.err != nil && errors.Is(cctx.Err(), context.DeadlineExceeded)
 	cancel()
 	e.weight = len(e.hashes) + 1 + len(key)/32
+	c.observeCompute(req, e.err, timedOut, elapsed, timeout)
 
 	c.mu.Lock()
+	var warnOversize bool
 	switch {
-	case e.err != nil || e.weight > c.maxHashes:
+	case e.err != nil:
 		delete(c.entries, key)
+	case e.weight > c.maxHashes:
+		delete(c.entries, key)
+		warnOversize = c.markOversize(key)
 	default:
 		e.used = c.now()
 		e.elem = c.lru.PushFront(e)
 		c.size += e.weight
 		c.evict()
 	}
+	maxHashes := c.maxHashes
 	c.mu.Unlock()
 	close(e.done)
+
+	switch {
+	case e.err != nil:
+		c.metrics.ObserveVisibleChunksLookup("error")
+	case e.weight > maxHashes:
+		c.metrics.ObserveVisibleChunksLookup("oversize")
+		if warnOversize {
+			c.log().Warn("visible chunk set is larger than the whole visibility cache; every download window recomputes it",
+				"project_id", req.projectID.Base36(), "commits", req.commits, "paths", req.paths,
+				"hashes", len(e.hashes), "cache_hashes", maxHashes, "compute", elapsed,
+				"hint", "raise CHUNK_VISIBILITY_CACHE_HASHES")
+		}
+	default:
+		c.metrics.ObserveVisibleChunksLookup("miss")
+	}
 	return e.wait(ctx)
+}
+
+func (c *visibleChunkCache) observeCompute(req visibleRequest, err error, timedOut bool, elapsed, timeout time.Duration) {
+	switch {
+	case timedOut:
+		c.metrics.ObserveVisibleChunksCompute("timeout", elapsed)
+		c.log().Warn("visible chunk set computation timed out",
+			"project_id", req.projectID.Base36(), "commits", req.commits, "paths", req.paths,
+			"timeout", timeout, "hint", "raise CHUNK_VISIBILITY_TIMEOUT_SECONDS")
+	case err != nil:
+		c.metrics.ObserveVisibleChunksCompute("error", elapsed)
+	default:
+		c.metrics.ObserveVisibleChunksCompute("ok", elapsed)
+	}
+}
+
+// markOversize reports whether an oversize answer for key should be logged:
+// once per key and ttl. Expired marks are dropped, so the map stays small.
+// The caller holds c.mu.
+func (c *visibleChunkCache) markOversize(key string) bool {
+	now := c.now()
+	for k, at := range c.oversize {
+		if now.Sub(at) >= c.ttl {
+			delete(c.oversize, k)
+		}
+	}
+	if _, ok := c.oversize[key]; ok {
+		return false
+	}
+	c.oversize[key] = now
+	return true
 }
 
 func (e *visibleEntry) wait(ctx context.Context) ([]domain.Hash, error) {

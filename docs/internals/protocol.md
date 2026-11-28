@@ -114,11 +114,30 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
 - **Chunk transfer is presigned HTTP, not gRPC streaming.** `GetChunkUploadUrls`
   (project write; refs carry `hash` + exact `size_bytes`) and
   `GetChunkDownloadUrls` (`commit_ids` + optional `paths` prefixes + `hashes`;
-  the visible set is the union of the referenced commit trees narrowed by the
-  prefixes — `Branch.VisibleChunks(projectID, commitIDs, paths)`, cached in
-  `visibleChunkCache` (2 min idle TTL, `CHUNK_VISIBILITY_CACHE_HASHES` hashes,
-  default 2M, one walk for concurrent misses) so a clone's download windows walk
-  the trees once. The key (`visibleChunksKey`) is project, commits, paths and
+  the handler makes one `Branch.DownloadableChunks` call, which compiles the
+  read filter once and returns the allowed hashes plus the `ChunkReadScope`.
+  Commits (non-empty, base36, of the project) and prefixes are validated for
+  every caller. A caller whose read right covers every path
+  (`PathFilter.Unrestricted`, the same callers who get whole pack URLs) is
+  checked against the project's chunk rows only
+  (`ProjectChunkRecords`, wired with `Branch.WithChunkRows(repos.Push)`): one
+  indexed lookup per page, no walk, no cache, so it does not grow with the
+  repository. A chunk uploaded but not yet committed is therefore downloadable by
+  such a caller who knows its hash; they can read every commit anyway. A
+  path-restricted caller gets the visible set: the union of the referenced
+  commit trees narrowed by the rules and the prefixes —
+  `Branch.VisibleChunks(projectID, commitIDs, paths)`. The walk
+  (`collectVisibleChunks`) goes level by level over all commits at once with
+  `ListFileMetaByTrees`, `ListChunksByFiles` (readable files only) and
+  `ListTreeChildrenByTrees`, so it costs about three statements per tree level,
+  not per directory. It is cached in `visibleChunkCache` (2 min idle TTL,
+  `CHUNK_VISIBILITY_CACHE_HASHES` hashes, default 2M, one walk for concurrent
+  misses, compute bounded by `CHUNK_VISIBILITY_TIMEOUT_SECONDS`, default 30) so
+  a clone's download windows walk the trees once. An answer bigger than the
+  whole cache cannot be kept and is recomputed per window. The server logs that
+  once per key and TTL and counts it as
+  `nipa_visible_chunks_cache_total{result="oversize"}`; a compute timeout is
+  logged as well. The key (`visibleChunksKey`) is project, commits, paths and
   the SHA-256 of the caller's read filter fingerprint
   (`PathFilter.appendFingerprint`, the encoding of manifest view tokens) and
   holds no caller id: the filter is compiled on every call (one
@@ -131,7 +150,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   on the instance that served the rule/group/org-member change, at most
   `permissionCacheTTL` (30 s) later on the other `nipad-ee` instances. URLs
   already signed keep working until they expire (`CHUNK_PRESIGN_TTL_SECONDS`).
-  Project access is checked on every call — and requested hashes are filtered against the set first) return one
+  Project access is checked on every call — and requested hashes are filtered first) return one
   page of signed paths built by `internal/chunkurl` (downloads:
   `/api/chunks/{org}/{project}/{hash}?op=get&exp=&sig=`; uploads go in bundles,
   below), HMAC-SHA256 with `CHUNK_URL_SIGNING_KEY`,

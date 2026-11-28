@@ -40,47 +40,104 @@ type treeVisit struct {
 	hash domain.Hash
 }
 
-// collectVisibleChunks adds the chunk hashes of every readable file below node
-// to seen. Directories already recorded in visited are skipped, which makes
-// repeated work across commits that share subtrees free.
-func (b *Branch) collectVisibleChunks(ctx context.Context, node *domain.TreeNode, path string, filter *PathFilter, sparse domain.PrefixSet, visited map[treeVisit]struct{}, seen map[domain.Hash]struct{}) error {
-	key := treeVisit{path: path, hash: node.Hash}
-	if node.Hash != (domain.Hash{}) {
-		if _, ok := visited[key]; ok {
-			return nil
-		}
-		visited[key] = struct{}{}
+// collectVisibleChunks adds the chunk hashes of every readable file below
+// roots to seen. It walks all roots together, level by level: a level costs
+// one file metadata batch, one chunk batch for the files the caller may read
+// and one children batch, so the number of repository calls follows the tree
+// depth instead of the directory count. Directories already recorded in
+// visited (same path, same content) are skipped, which makes subtrees shared
+// across commits free, and directories outside the filter or the sparse
+// prefixes are never queried.
+func (b *Branch) collectVisibleChunks(ctx context.Context, roots []*domain.TreeNode, filter *PathFilter, sparse domain.PrefixSet, seen map[domain.Hash]struct{}) error {
+	visited := map[treeVisit]struct{}{}
+	level := make([]manifestEntry, 0, len(roots))
+	for _, root := range roots {
+		level = append(level, manifestEntry{node: root})
 	}
-
-	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		filePath := joinTreePath(path, file.Name)
-		if !filter.Allow(filePath) {
-			continue
-		}
-		if !sparse.Covers(filePath) && !keepRootTeamFile(path, file.Name, sparse) {
-			continue
-		}
-		for _, chunk := range file.Chunks {
-			seen[chunk.Hash] = struct{}{}
-		}
-	}
-
-	children, err := b.branchRepo.ListTreeChildren(ctx, node.ID)
-	if err != nil {
-		return err
-	}
-	for _, child := range children {
-		childPath := joinTreePath(path, child.Name)
-		if !filter.CanDescend(childPath) || !sparse.CanDescend(childPath) {
-			continue
-		}
-		if err := b.collectVisibleChunks(ctx, child, childPath, filter, sparse, visited, seen); err != nil {
+	for len(level) > 0 {
+		next, err := b.collectVisibleLevel(ctx, level, filter, sparse, visited, seen)
+		if err != nil {
 			return err
 		}
+		level = next
 	}
 	return nil
+}
+
+// collectVisibleLevel reads one level of the visible-chunk walk and returns
+// the directories of the next one.
+func (b *Branch) collectVisibleLevel(ctx context.Context, level []manifestEntry, filter *PathFilter, sparse domain.PrefixSet, visited map[treeVisit]struct{}, seen map[domain.Hash]struct{}) ([]manifestEntry, error) {
+	entries := level[:0:0]
+	ids := make([]int64, 0, len(level))
+	queued := make(map[int64]struct{}, len(level))
+	for _, entry := range level {
+		if entry.node.Hash == emptyTreeHash {
+			continue
+		}
+		if entry.node.Hash != (domain.Hash{}) {
+			key := treeVisit{path: entry.path, hash: entry.node.Hash}
+			if _, ok := visited[key]; ok {
+				continue
+			}
+			visited[key] = struct{}{}
+		}
+		entries = append(entries, entry)
+		if _, ok := queued[entry.node.ID]; !ok {
+			queued[entry.node.ID] = struct{}{}
+			ids = append(ids, entry.node.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	files, err := b.branchRepo.ListFileMetaByTrees(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	var fileIDs []int64
+	wanted := map[int64]struct{}{}
+	for _, entry := range entries {
+		for _, file := range files[entry.node.ID] {
+			if _, ok := wanted[file.ID]; ok {
+				continue
+			}
+			filePath := joinTreePath(entry.path, file.Name)
+			if !filter.Allow(filePath) {
+				continue
+			}
+			if !sparse.Covers(filePath) && !keepRootTeamFile(entry.path, file.Name, sparse) {
+				continue
+			}
+			wanted[file.ID] = struct{}{}
+			fileIDs = append(fileIDs, file.ID)
+		}
+	}
+	if len(fileIDs) > 0 {
+		chunks, err := b.branchRepo.ListChunksByFiles(ctx, fileIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, list := range chunks {
+			for _, chunk := range list {
+				seen[chunk.Hash] = struct{}{}
+			}
+		}
+	}
+
+	children, err := b.branchRepo.ListTreeChildrenByTrees(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	var next []manifestEntry
+	for _, entry := range entries {
+		for _, child := range children[entry.node.ID] {
+			childPath := joinTreePath(entry.path, child.Name)
+			if !filter.CanDescend(childPath) || !sparse.CanDescend(childPath) {
+				continue
+			}
+			next = append(next, manifestEntry{node: child, path: childPath})
+		}
+	}
+	return next, nil
 }

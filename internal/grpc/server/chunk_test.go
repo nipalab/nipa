@@ -160,15 +160,13 @@ func newVisibleChunkBranch(t *testing.T, visible domain.Hash) *usecase.Branch {
 		GetTreeNode(gomock.Any(), int64(5)).
 		Return(&domain.TreeNode{ID: 5, Name: "root"}, nil)
 	repo.EXPECT().
-		ListFilesByTree(gomock.Any(), int64(5)).
-		Return([]*domain.File{{
-			ID:     1,
-			Name:   "a.txt",
-			TreeID: 5,
-			Chunks: []domain.Chunk{{ID: 1, Hash: visible}},
-		}}, nil)
+		ListFileMetaByTrees(gomock.Any(), []int64{5}).
+		Return(map[int64][]*domain.File{5: {{ID: 1, Name: "a.txt", TreeID: 5}}}, nil)
 	repo.EXPECT().
-		ListTreeChildren(gomock.Any(), int64(5)).
+		ListChunksByFiles(gomock.Any(), []int64{1}).
+		Return(map[int64][]domain.Chunk{1: {{ID: 1, Hash: visible}}}, nil)
+	repo.EXPECT().
+		ListTreeChildrenByTrees(gomock.Any(), []int64{5}).
 		Return(nil, nil)
 	return branch
 }
@@ -318,25 +316,56 @@ func TestGetChunkDownloadUrlsHandler(t *testing.T) {
 	verifySignedURL(t, res.GetUrls()[0].GetUrl(), "org", "proj", chunkurl.OpDownload, 0)
 }
 
-// The read scope is resolved from the caller's rules after the visible set;
-// when the rules cannot be read no URL is issued at all.
+// A caller who may read every path is checked against the project's chunk
+// rows only: no tree is walked, and a hash without a row is left out.
+func TestGetChunkDownloadUrlsHandler_UnrestrictedUsesChunkRows(t *testing.T) {
+	chunk, store, rows := newChunkUsecase(t)
+	stored := []byte("stored bytes")
+	storedHash := chunker.Sum(stored)
+	require.NoError(t, store.Put(context.Background(), testChunkProject, storedHash, stored))
+	require.NoError(t, rows.InsertChunkRows(context.Background(), testChunkProject, []usecase.ChunkRow{{Hash: storedHash, SizeBytes: int64(len(stored))}}))
+	unknownHash := chunker.Sum([]byte("never uploaded"))
+
+	branch, perm, repo := newTestBranchUc(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), testChunkProject, domain.PermissionRead).Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(7)).Return(&domain.Commit{ID: 7, ProjectID: 42, TreeID: 5}, nil)
+	srv := New(&mockUsecaseContainer{branch: branch.WithChunkRows(rows), common: newTestCommon(), chunk: chunk})
+
+	res, err := srv.GetChunkDownloadUrls(context.Background(), &pb.GetChunkDownloadUrlsRequest{
+		Context:       testChunkContext(),
+		CommitIds:     []string{snow.ID(7).Base36()},
+		Hashes:        []string{unknownHash.String(), storedHash.String()},
+		ChunkProtocol: chunkproof.Protocol,
+	})
+	require.NoError(t, err)
+	require.Len(t, res.GetUrls(), 1)
+	require.Equal(t, storedHash.String(), res.GetUrls()[0].GetHash())
+	verifySignedURL(t, res.GetUrls()[0].GetUrl(), "org", "proj", chunkurl.OpDownload, 0)
+}
+
+func TestGetChunkDownloadUrlsHandler_InvalidHash(t *testing.T) {
+	chunk, _, _ := newChunkUsecase(t)
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+	_, err := srv.GetChunkDownloadUrls(context.Background(), &pb.GetChunkDownloadUrlsRequest{
+		Context:       testChunkContext(),
+		CommitIds:     []string{snow.ID(7).Base36()},
+		Hashes:        []string{"not-a-hash"},
+		ChunkProtocol: chunkproof.Protocol,
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// The caller's rules are compiled once per request; when they cannot be read
+// no URL is issued at all.
 func TestGetChunkDownloadUrlsHandler_ReadScopeError(t *testing.T) {
 	chunk, _, _ := newChunkUsecase(t)
 	hash := chunker.Sum([]byte("public bytes"))
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
-	gomock.InOrder(
-		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(usecase.AllowAllFilter(), nil),
-		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(nil, domain.NewErrorDatabase("rules unavailable")),
-	)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(nil, domain.NewErrorDatabase("rules unavailable"))
 	repo := NewMockbranchRepository(ctrl)
-	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(7)).Return(&domain.Commit{ID: 7, ProjectID: 42, TreeID: 5}, nil)
-	repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(5)).Return([]*domain.File{{
-		ID: 1, Name: "a.txt", TreeID: 5, Chunks: []domain.Chunk{{ID: 1, Hash: hash}},
-	}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(5)).Return(nil, nil)
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
 

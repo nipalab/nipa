@@ -27,6 +27,8 @@ type Metrics struct {
 	chunkVerifyFailures *prometheus.CounterVec
 	chunkGCChunks       *prometheus.CounterVec
 	chunkGCBytes        *prometheus.CounterVec
+	visibleChunks       *prometheus.CounterVec
+	visibleCompute      *prometheus.HistogramVec
 	push                *prometheus.CounterVec
 	webhookDeliveries   *prometheus.CounterVec
 	mailDeliveries      *prometheus.CounterVec
@@ -100,6 +102,19 @@ func NewMetrics() *Metrics {
 			Name:      "bytes_total",
 			Help:      "Stored chunk bytes the garbage collector marked, adopted, deleted or would delete (dry run), by phase.",
 		}, []string{"phase"}),
+		visibleChunks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "visible_chunks",
+			Name:      "cache_total",
+			Help:      "Chunk download visibility cache lookups by result (hit, miss, oversize, error).",
+		}, []string{"result"}),
+		visibleCompute: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "visible_chunks",
+			Name:      "compute_seconds",
+			Help:      "Time to compute one visible chunk set (tree walk) by result.",
+			Buckets:   []float64{0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		}, []string{"result"}),
 		push: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "push",
@@ -173,6 +188,8 @@ func NewMetrics() *Metrics {
 		m.chunkVerifyFailures,
 		m.chunkGCChunks,
 		m.chunkGCBytes,
+		m.visibleChunks,
+		m.visibleCompute,
 		m.push,
 		m.webhookDeliveries,
 		m.mailDeliveries,
@@ -219,6 +236,24 @@ func (m *Metrics) ObserveChunkOp(op, result string) {
 		return
 	}
 	m.chunkOps.WithLabelValues(op, result).Inc()
+}
+
+// ObserveVisibleChunksLookup records one visibility cache lookup: hit, miss,
+// oversize (computed but too big to keep) or error.
+func (m *Metrics) ObserveVisibleChunksLookup(result string) {
+	if m == nil {
+		return
+	}
+	m.visibleChunks.WithLabelValues(result).Inc()
+}
+
+// ObserveVisibleChunksCompute records how long one visible set took to
+// compute, by result (ok, error, timeout).
+func (m *Metrics) ObserveVisibleChunksCompute(result string, d time.Duration) {
+	if m == nil {
+		return
+	}
+	m.visibleCompute.WithLabelValues(result).Observe(d.Seconds())
 }
 
 // ObserveChunkBytes adds transferred chunk bytes for an operation.

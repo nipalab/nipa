@@ -74,6 +74,20 @@ func TestMetrics_ObserveChunkPushMail(t *testing.T) {
 	require.Equal(t, 1.0, testutil.ToFloat64(m.mailDeliveries.WithLabelValues("delivered")))
 }
 
+func TestMetrics_VisibleChunks(t *testing.T) {
+	m := NewMetrics()
+	m.ObserveVisibleChunksLookup("miss")
+	m.ObserveVisibleChunksLookup("oversize")
+	m.ObserveVisibleChunksLookup("oversize")
+	m.ObserveVisibleChunksCompute("ok", 2*time.Second)
+
+	require.Equal(t, 1.0, testutil.ToFloat64(m.visibleChunks.WithLabelValues("miss")))
+	require.Equal(t, 2.0, testutil.ToFloat64(m.visibleChunks.WithLabelValues("oversize")))
+	body := scrapeMetrics(t, m)
+	require.Contains(t, body, `nipa_visible_chunks_cache_total{result="oversize"} 2`)
+	require.Contains(t, body, `nipa_visible_chunks_compute_seconds_count{result="ok"} 1`)
+}
+
 func TestMetrics_RegisterGauges(t *testing.T) {
 	m := NewMetrics()
 	m.RegisterWebhookQueue(func() float64 { return 7 })
@@ -108,6 +122,8 @@ func TestMetrics_NilSafety(t *testing.T) {
 		m.ObserveChunkOp("put", "ok")
 		m.ObserveChunkBytes("put", 1)
 		m.ObserveChunkVerifyFailure("store")
+		m.ObserveVisibleChunksLookup("hit")
+		m.ObserveVisibleChunksCompute("ok", time.Second)
 		m.ObservePush("ok")
 		m.ObserveWebhookDelivery("delivered")
 		m.ObserveMailDelivery("delivered")

@@ -169,9 +169,14 @@ CHUNK_STORE_WRITE_CONCURRENCY: 64
 # Most files plus removed paths one push may carry (default 2000000).
 PUSH_MAX_FILES: 2000000
 # Chunk hashes the clone download cache keeps per server (32 bytes each,
-# default 2000000 = 64 MiB). A clone whose visible chunks exceed it still
-# works but re-walks the tree for every download window.
+# default 2000000 = 64 MiB). Only path-restricted readers use it (readers of
+# every path are checked against the chunk rows instead). A visible set that
+# exceeds it still works but re-walks the tree for every download window; the
+# server logs a warning and counts nipa_visible_chunks_cache_total{result="oversize"}.
 CHUNK_VISIBILITY_CACHE_HASHES: 2000000
+# Longest one visible chunk set computation (tree walk) may run, in seconds
+# (default 30, <= 0 means the default).
+CHUNK_VISIBILITY_TIMEOUT_SECONDS: 30
 # Enterprise storage accounting and quota (`nipad-ee` only, see
 # docs/CLOUD_STORAGE_QUOTA.md). Empty disables the ledger and its
 # /orgs/{org}/storage and /billing/me routes; `cloud` tracks usage per
