@@ -29,7 +29,13 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   glyph sheets, metrics, added/removed code points), embedded `.blend`/
   `.uasset`/`.umap` thumbnails in `ImageDiff` and the Files grid
   (`lib/files.ts` `hasEmbeddedThumbnail`, daemon `Preview` sets
-  `ImagePreview.thumbnail`, "Thumbnail only" note),
+  `ImagePreview.thumbnail`, "Thumbnail only" note); every viewer,
+  thumbnail and `fileDiff`/`conflictDiff` query wraps its `Cancellable` call
+  with `withAbort(signal, ...)` (`lib/abort.ts`), so an abandoned query
+  cancels the Wails call, its Go context and the daemon RPC (`copyBlob`
+  stops on `ctx.Err()`, also after a completed read, so nothing is decoded),
+  and `desktop.ts` wrappers must return the binding promise unwrapped to keep
+  `.cancel`,
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
   (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
   per-clone `.meta` index dropped on `.meta` change notices; Godot

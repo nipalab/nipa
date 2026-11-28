@@ -11,6 +11,7 @@ import { clampTime, formatAudio, formatBitrate, formatFrameRate, formatResolutio
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 type Side = "old" | "new";
 
@@ -19,7 +20,7 @@ export function VideoDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "video"),
-    queryFn: () => desktop.videoDiff(root, old, next),
+    queryFn: ({ signal }) => withAbort(signal, desktop.videoDiff(root, old, next)),
     staleTime: 30_000,
     gcTime: 0,
     refetchOnWindowFocus: false,

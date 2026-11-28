@@ -11,6 +11,7 @@ import { canPreview, kindName, lockFor, lockState, thumbKey, type Row, type Sort
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 const ROW_HEIGHT = 28;
 const HEADER_HEIGHT = 32;
@@ -231,7 +232,7 @@ function BigIcon({ row }: { row: Row }) {
 export function Thumbnail({ root, row }: { root: string; row: Row }) {
   const thumb = useQuery({
     queryKey: ["thumb", root, row.path, thumbKey(row)],
-    queryFn: () => desktop.imageDiff(root, null, { source: "working", path: row.path }, { maxSize: 128 }),
+    queryFn: ({ signal }) => withAbort(signal, desktop.imageDiff(root, null, { source: "working", path: row.path }, { maxSize: 128 })),
     staleTime: Infinity,
     gcTime: 10 * 60_000,
     retry: false,

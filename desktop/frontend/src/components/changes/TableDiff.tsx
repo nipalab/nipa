@@ -13,6 +13,7 @@ import { changedColumns, columnChanges, filterRows, isChange, nextChange, visibl
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { plural, translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 type Mode = "table" | "text";
 
@@ -31,7 +32,7 @@ function FileTableDiff({ root, diff, layout, comments }: TableDiffProps) {
   const base = viewerKey(root, diff, "table");
   const query = useQuery({
     queryKey: [...base, sheet],
-    queryFn: () => desktop.tableDiff(root, old, next, sheet),
+    queryFn: ({ signal }) => withAbort(signal, desktop.tableDiff(root, old, next, sheet)),
     staleTime: 30_000,
     enabled: mode === "table",
     placeholderData: (prev, prevQuery) => (base.every((v, i) => prevQuery?.queryKey[i] === v) ? keepPreviousData(prev) : undefined),

@@ -99,8 +99,25 @@ type decodedSide struct {
 	thumbnail bool
 }
 
+// rawSide is one preview side as read from the repository: the entry and its
+// bytes, not yet decoded.
+type rawSide struct {
+	entry     diff.Entry
+	data      []byte
+	thumbnail bool
+}
+
+// Decoders behind a seam so tests can observe when decoding runs relative to
+// the repository lock.
+var (
+	decodeImageAt   = preview.DecodeImageAt
+	decodeThumbnail = preview.DecodeThumbnail
+)
+
 // Preview decodes the requested image sides, sends a downscaled PNG for each
-// and, when both are present, the pixel diff statistics.
+// and, when both are present, the pixel diff statistics. Only reading the
+// bytes holds the repository's diff lock; decoding, downscaling and the
+// compare run outside it, and a cancelled call stops between those steps.
 func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemon_PreviewServer) error {
 	ctx := stream.Context()
 	maxSize, threshold, err := previewOptions(req)
@@ -122,19 +139,31 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 		if ref.ref == nil {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		decoded, err := decodePreviewSide(ctx, rp.diff, rp.root, ref.side, ref.ref, sel)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			return stream.Send(previewFailureEvent(err))
 		}
 		sides = append(sides, decoded)
 	}
 
 	for _, side := range sides {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := sendPreviewSide(stream, side, maxSize); err != nil {
 			return err
 		}
 	}
 	if len(sides) == 2 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		d := preview.CompareImages(sides[0].image, sides[1].image, threshold)
 		return stream.Send(&daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Diff{Diff: imageDiffToPB(d)}})
 	}
@@ -159,12 +188,38 @@ func previewOptions(req *daemonpb.PreviewRequest) (int, uint8, error) {
 	return maxSize, uint8(threshold), nil
 }
 
+// decodePreviewSide reads one side under the runner (which holds the
+// repository lock for the read only) and decodes it after the read returns.
 func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string, ref *daemonpb.BlobRef, sel preview.Select) (decodedSide, error) {
-	out := decodedSide{side: side}
+	raw, err := readPreviewSide(ctx, runner, root, ref)
+	if err != nil {
+		return decodedSide{side: side}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return decodedSide{side: side}, err
+	}
+	out := decodedSide{side: side, entry: raw.entry, thumbnail: raw.thumbnail}
+	if raw.thumbnail {
+		out.image, err = decodeThumbnailSide(raw.entry.Path, raw.data)
+	} else {
+		out.image, err = decodeImageSide(raw.entry.Path, raw.data, sel)
+	}
+	return out, err
+}
+
+// readPreviewSide copies a side's bytes out of the repository, with the same
+// size limits as before, and does nothing else inside the read callback.
+func readPreviewSide(ctx context.Context, runner DiffRunner, root string, ref *daemonpb.BlobRef) (rawSide, error) {
+	var raw rawSide
 	err := runner.ReadBlob(ctx, root, blobRequest(ref), func(e diff.Entry, r io.Reader) error {
-		out.entry = e
+		raw.entry = e
 		if preview.HasEmbeddedThumbnail(e.Path) {
-			return decodeThumbnailSide(&out, e.Path, r)
+			data, err := io.ReadAll(io.LimitReader(r, maxThumbnailScanBytes))
+			if err != nil {
+				return err
+			}
+			raw.data, raw.thumbnail = data, true
+			return nil
 		}
 		if kind := preview.Classify(e.Path, true); kind != preview.KindImage {
 			return unsupportedPreview(fmt.Sprintf("no preview for %s files", kind))
@@ -176,37 +231,36 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 		if len(data) > maxPreviewInputBytes {
 			return unsupportedPreview(fmt.Sprintf("%s is too large to preview", e.Path))
 		}
-		img, err := preview.DecodeImageAt(e.Path, data, sel)
-		switch {
-		case errors.Is(err, preview.ErrUnsupported):
-			return unsupportedPreview(fmt.Sprintf("%s: %s", e.Path, unsupportedReason(err)))
-		case errors.Is(err, preview.ErrTooLarge):
-			return unsupportedPreview(fmt.Sprintf("%s is too large to preview", e.Path))
-		case err != nil:
-			return clientDomain.NewUserError(err.Error())
-		}
-		out.image = img
+		raw.data = data
 		return nil
 	})
-	return out, err
+	return raw, err
 }
 
-func decodeThumbnailSide(out *decodedSide, path string, r io.Reader) error {
-	data, err := io.ReadAll(io.LimitReader(r, maxThumbnailScanBytes))
-	if err != nil {
-		return err
+func decodeImageSide(path string, data []byte, sel preview.Select) (*preview.Image, error) {
+	img, err := decodeImageAt(path, data, sel)
+	switch {
+	case errors.Is(err, preview.ErrUnsupported):
+		return nil, unsupportedPreview(fmt.Sprintf("%s: %s", path, unsupportedReason(err)))
+	case errors.Is(err, preview.ErrTooLarge):
+		return nil, unsupportedPreview(fmt.Sprintf("%s is too large to preview", path))
+	case err != nil:
+		return nil, clientDomain.NewUserError(err.Error())
 	}
-	img, err := preview.DecodeThumbnail(path, data)
+	return img, nil
+}
+
+func decodeThumbnailSide(path string, data []byte) (*preview.Image, error) {
+	img, err := decodeThumbnail(path, data)
 	switch {
 	case errors.Is(err, preview.ErrNoThumbnail):
-		return unsupportedPreview(fmt.Sprintf("%s has no embedded thumbnail", path))
+		return nil, unsupportedPreview(fmt.Sprintf("%s has no embedded thumbnail", path))
 	case errors.Is(err, preview.ErrUnsupported):
-		return unsupportedPreview(fmt.Sprintf("%s: this file version has no readable thumbnail", path))
+		return nil, unsupportedPreview(fmt.Sprintf("%s: this file version has no readable thumbnail", path))
 	case err != nil:
-		return unsupportedPreview(fmt.Sprintf("%s: %s", path, strings.TrimPrefix(err.Error(), "preview: ")))
+		return nil, unsupportedPreview(fmt.Sprintf("%s: %s", path, strings.TrimPrefix(err.Error(), "preview: ")))
 	}
-	out.image, out.thumbnail = img, true
-	return nil
+	return img, nil
 }
 
 func unsupportedReason(err error) string {

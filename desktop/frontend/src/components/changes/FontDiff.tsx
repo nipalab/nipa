@@ -9,13 +9,14 @@ import { fontRows, formatRange, sampleChars, type CodeRange } from "@/lib/font";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 export function FontDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "font"),
-    queryFn: () => desktop.fontDiff(root, old, next),
+    queryFn: ({ signal }) => withAbort(signal, desktop.fontDiff(root, old, next)),
     staleTime: 30_000,
   });
   if (query.isPending) {

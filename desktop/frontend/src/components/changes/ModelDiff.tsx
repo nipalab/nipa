@@ -11,13 +11,14 @@ import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { t } = useTranslation();
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "model"),
-    queryFn: () => desktop.modelDiff(root, old, next),
+    queryFn: ({ signal }) => withAbort(signal, desktop.modelDiff(root, old, next)),
     staleTime: 30_000,
   });
   if (query.isPending) {

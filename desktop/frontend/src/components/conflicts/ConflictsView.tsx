@@ -15,6 +15,7 @@ import { PaneResizer } from "@/components/ui/resize-handle";
 import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { Trans, useTranslation } from "react-i18next";
 import { translate } from "@/i18n";
+import { withAbort } from "@/lib/abort";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 
@@ -125,7 +126,7 @@ type ResolverProps = { root: string; file: ConflictFile; set: ConflictSet; busy:
 
 function VersionResolver({ root, file, set, busy, onResolve }: ResolverProps) {
   const { t } = useTranslation();
-  const compare = useQuery({ queryKey: ["conflict-diff", root, file.path, set.ours.id, set.theirs.id], queryFn: () => desktop.conflictDiff(root, file.path) });
+  const compare = useQuery({ queryKey: ["conflict-diff", root, file.path, set.ours.id, set.theirs.id], queryFn: ({ signal }) => withAbort(signal, desktop.conflictDiff(root, file.path)) });
   const [layout, setLayoutState] = useState<DiffLayout>(() => (readSetting(LAYOUT_KEY) === "split" ? "split" : "unified"));
   const setLayout = (next: DiffLayout) => {
     setLayoutState(next);

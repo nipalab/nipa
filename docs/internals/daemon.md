@@ -33,7 +33,12 @@ asset in a commit listing cannot exhaust the daemon. `ReadBlob` streams one file
 offline `snapshot`, or a `revision` whose chunks are downloaded first) through
 `usecase.Diff.ReadBlob`, and `Preview` decodes old/new images with
 `internal/preview` into downscaled PNG chunks plus pixel-diff stats (415 for
-non-image or unsupported formats). `WatchChanges` streams coalesced change
+non-image or unsupported formats). `SerialDiff` serializes one repository's
+`Run`/`ReadBlob` calls (one shared localrepo handle), so `Preview` only reads
+each side's bytes inside the `ReadBlob` callback and decodes
+(`decodeImageAt`/`decodeThumbnail`, test seams), downscales and compares
+after it returns, outside the lock; it checks `ctx` before each decode, each
+side and the compare, so a cancelled call stops early. `WatchChanges` streams coalesced change
 notices per root (watcher batch paths after the stat refresh; empty = refresh
 all after ops and stage/restore) for the GUI, and `Status` reports `added`
 (staged paths the snapshot does not track). An fsnotify watcher debounces events into
