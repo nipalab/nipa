@@ -1,6 +1,6 @@
 # Desktop app: large asset performance
 
-Status: findings 1, 2, 3, 5 and 6 addressed; 4 and 7 are still open.
+Status: findings 1, 2, 3, 5, 6 and 7 addressed; 4 is still open.
 Written 2026-11-28 on branch `update-by-delta`.
 
 This lists where the desktop app (and the `nipa serve` daemon behind it) gets
@@ -233,6 +233,20 @@ size limit before it reaches finding 1.
 Fix direction: scope the walk to the requested paths (as #298 did for add,
 push and prune), and reuse the stat-cache hash for modified binaries, where
 the diff only needs size, hash and the binary flag.
+
+**Addressed.** A diff with path filters no longer walks the tree: it reads
+the snapshot rows and fingerprints of the named paths through #298's
+`trackedScope` and `StatEntries`, and checks only the tracked and staged
+paths the filters match (each with the `lstat`s the walk would have done).
+Tracking already exempts those from the ignore rules, so results are the
+same as the filtered walk. A modified file whose fingerprint is fresh and
+whose head still probes binary takes its hash from the stat cache and is not
+read; text is still hashed for its hunks, and `--no-cache` always rehashes.
+`DiffFiles` reads at most 16 MiB + 1 byte of each text side and reports a
+larger one with hunks omitted and approximate counts. One modified 256 MB
+binary among 10,000 files: 314 ms and 296 MB allocated per click before,
+0.7 ms and 30 KB after (`BenchmarkFileDiffModifiedBinary`); with
+`--no-cache` 270 ms (the hash), and an unfiltered diff 75 ms (the walk).
 
 ## Already in good shape
 

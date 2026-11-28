@@ -135,6 +135,7 @@ func TestServer_DiffPatchStreamsAPatch(t *testing.T) {
 	require.Equal(t, []string{"a.txt"}, gotOpts.Paths)
 	require.True(t, gotOpts.Staged)
 	require.True(t, gotOpts.NoCache)
+	require.Zero(t, gotOpts.MaxTextBytes, "a rendered patch is not capped")
 	require.Empty(t, gotRevs)
 	require.Contains(t, stream.output(), "diff --nipa a/a.txt b/a.txt")
 	require.Contains(t, stream.output(), "new file mode 100644")

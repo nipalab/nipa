@@ -309,3 +309,31 @@ func TestServer_DiffFilesStreamErrors(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, srv2.DiffFiles(&daemonpb.DiffRequest{Root: root2}, &diffFilesTestStream{ctx: ctx}), context.Canceled)
 }
+
+func TestServer_DiffFilesCapsTextAndOmitsTruncated(t *testing.T) {
+	truncated := diff.FileDiff{
+		Change: diff.Change{
+			Path:   "big.txt",
+			Status: diff.Modified,
+			Old:    diff.Entry{Path: "big.txt", Mode: 2, SizeBytes: 64 << 20, Hash: serverDomain.Hash{1}},
+			New:    diff.Entry{Path: "big.txt", Mode: 2, SizeBytes: 65 << 20, Hash: serverDomain.Hash{2}},
+		},
+		Old:       []byte("a\nb\n"),
+		New:       []byte("a\nc\n"),
+		Truncated: true,
+	}
+	srv, root, gotOpts := diffFilesServer(t, truncated)
+	stream := runDiffFiles(t, srv, &daemonpb.DiffRequest{Root: root, Paths: []string{"big.txt"}})
+	require.Nil(t, stream.failure())
+	require.EqualValues(t, diff.DefaultBudget.MaxBytes, gotOpts.MaxTextBytes, "no side larger than the budget is read whole")
+
+	files := stream.files()
+	require.Len(t, files, 1)
+	f := files[0]
+	require.True(t, f.GetHunksOmitted())
+	require.True(t, f.GetCountsApproximate())
+	require.Empty(t, f.GetHunks())
+	require.EqualValues(t, 1, f.GetAdditions())
+	require.EqualValues(t, 1, f.GetDeletions())
+	require.False(t, f.GetContentUnavailable())
+}

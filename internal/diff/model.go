@@ -148,6 +148,35 @@ func LoadContent(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry) ([]
 	return out, nil
 }
 
+// LoadContentLimit is LoadContent that stops once it holds more than limit
+// bytes: the result is the whole file when it is at most limit bytes long,
+// otherwise its first limit+1 bytes, so a caller can tell the file exceeds
+// the limit without reassembling all of it. A limit below zero means none.
+func LoadContentLimit(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry, limit int64) ([]byte, error) {
+	if limit < 0 || e.SizeBytes <= limit {
+		out, err := LoadContent(loadChunk, e)
+		if err != nil || limit < 0 || int64(len(out)) <= limit {
+			return out, err
+		}
+		return out[:limit+1], nil
+	}
+	out := make([]byte, 0, min(limit+1, maxPreallocBytes))
+	for _, h := range e.ChunkHashes {
+		data, err := loadChunk(h)
+		if err != nil {
+			return nil, fmt.Errorf("load chunk %s for %s: %w", h, e.Path, err)
+		}
+		out, err = chunker.DecodeAppend(out, e.Encoding, data)
+		if err != nil {
+			return nil, fmt.Errorf("decode chunk %s for %s: %w", h, e.Path, err)
+		}
+		if int64(len(out)) > limit {
+			return out[:limit+1], nil
+		}
+	}
+	return out, nil
+}
+
 // AttachContents builds renderable FileDiffs, loading each side through load.
 // isNew reports whether the entry is the new side of the change; a side whose
 // loader returns false is marked unavailable.
