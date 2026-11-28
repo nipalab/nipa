@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileDiff, ModelSide, ModelStats } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ modelDiff: vi.fn() }));
+const api = vi.hoisted(() => ({ modelDiff: vi.fn(), hasMedia: vi.fn(), releaseMedia: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 const loader = vi.hoisted(() => ({ loadModel: vi.fn(), sceneStats: vi.fn() }));
 vi.mock("@/lib/modelLoad", async (orig) => ({ ...(await orig<typeof import("@/lib/modelLoad")>()), ...loader }));
@@ -43,7 +43,7 @@ const stats = (over: Partial<ModelStats> = {}): ModelStats => ({
   ...over,
 });
 
-const side = (over: Partial<ModelSide> = {}): ModelSide => ({ path: "hero.glb", format: "glb", size: 2048, stats: stats(), data: "AAAA", files: {}, missing: [], ...over });
+const side = (over: Partial<ModelSide> = {}): ModelSide => ({ path: "hero.glb", format: "glb", size: 2048, stats: stats(), url: "/nipa-media/m1/hero.glb", media: "m1", tokens: ["m1"], files: {}, missing: [], ...over });
 
 const diff: FileDiff = {
   path: "art/hero.glb",
@@ -63,6 +63,8 @@ beforeEach(() => {
   stageFactory.createStage.mockReturnValue(stage);
   loader.loadModel.mockImplementation(async () => loaded(["Run"]));
   loader.sceneStats.mockReturnValue(stats({ generator: "", vertices: 8 }));
+  api.hasMedia.mockResolvedValue(true);
+  api.releaseMedia.mockResolvedValue(undefined);
 });
 
 describe("ModelDiff", () => {
@@ -122,6 +124,19 @@ describe("ModelDiff", () => {
     renderWithProviders(<DiffViewer root="/r" diff={diff} layout="unified" onLayout={vi.fn()} />);
     expect(await screen.findByText("There is no preview for this model.")).toBeInTheDocument();
   });
+
+  it("reloads the comparison once when its files were evicted", async () => {
+    api.modelDiff.mockResolvedValueOnce({ old: null, new: side({ media: "gone", tokens: ["gone"] }) }).mockResolvedValue({ old: null, new: side({ media: "fresh", tokens: ["fresh"] }) });
+    loader.loadModel.mockImplementation(async (s: ModelSide) => {
+      if (s.media === "gone") throw new Error("HTTP 404");
+      return loaded();
+    });
+    api.hasMedia.mockImplementation(async (token: string) => token !== "gone");
+    renderWithProviders(<DiffViewer root="/r" diff={diff} layout="unified" onLayout={vi.fn()} />);
+    await waitFor(() => expect(api.modelDiff).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(stage.setModels).toHaveBeenLastCalledWith(null, expect.objectContaining({ object: expect.any(Group) })));
+    expect(api.releaseMedia).toHaveBeenCalledWith(["gone"]);
+  });
 });
 
 describe("ModelCompareView", () => {
@@ -136,13 +151,13 @@ describe("ModelCompareView", () => {
   it("warns about large, unknown, broken and incomplete models", async () => {
     loader.loadModel.mockRejectedValueOnce(new Error("bad glTF")).mockRejectedValueOnce("odd");
     renderWithProviders(
-      <ModelCompareView compare={{ old: side({ missing: ["tex/a.png"] }), new: side({ path: "hero.blend", format: "blend", data: "AAAA" }) }} />,
+      <ModelCompareView compare={{ old: side({ missing: ["tex/a.png"] }), new: side({ path: "hero.blend", format: "blend" }) }} />,
     );
     expect(await screen.findByText(/Before: bad glTF/)).toBeInTheDocument();
     expect(screen.getByText(/BLEND models cannot be shown yet/)).toBeInTheDocument();
     expect(screen.getByText(/Before: missing tex\/a.png/)).toBeInTheDocument();
 
-    renderWithProviders(<ModelCompareView compare={{ old: side({ tooLarge: true, data: "", size: 1 << 30 }), new: null }} />);
+    renderWithProviders(<ModelCompareView compare={{ old: side({ tooLarge: true, url: "", size: 1 << 30 }), new: null }} />);
     expect(screen.getByText(/the model and its files are too large to show \(1.0 GB\)/)).toBeInTheDocument();
     expect(screen.getByText("No 3D preview for this model.")).toBeInTheDocument();
   });
@@ -159,6 +174,63 @@ describe("ModelCompareView", () => {
     });
     renderWithProviders(<ModelCompareView compare={{ old: side(), new: null }} />);
     expect(screen.getByText(/not available here: plain/)).toBeInTheDocument();
+  });
+
+  it("fetches each side from its media URL and releases every token on close", async () => {
+    const files = { "tex/skin.png": "/nipa-media/t2/skin.png" };
+    const { unmount } = renderWithProviders(
+      <ModelCompareView compare={{ old: side({ media: "m0", url: "/nipa-media/m0/hero.glb", tokens: ["m0"] }), new: side({ media: "m1", tokens: ["m1", "t2"], files }) }} />,
+    );
+    await waitFor(() => expect(loader.loadModel).toHaveBeenCalledTimes(2));
+    expect(loader.loadModel).toHaveBeenCalledWith(expect.objectContaining({ url: "/nipa-media/m1/hero.glb", files }), expect.any(AbortSignal));
+    expect(api.releaseMedia).not.toHaveBeenCalled();
+    unmount();
+    expect(api.releaseMedia).toHaveBeenCalledWith(["m0", "m1", "t2"]);
+  });
+
+  it("aborts the fetch of a side that is no longer shown", async () => {
+    let signal: AbortSignal | undefined;
+    loader.loadModel.mockImplementationOnce((_side: ModelSide, s: AbortSignal) => {
+      signal = s;
+      return new Promise(() => {});
+    });
+    const { unmount } = renderWithProviders(<ModelCompareView compare={{ old: null, new: side() }} />);
+    await waitFor(() => expect(signal).toBeDefined());
+    unmount();
+    expect(signal!.aborted).toBe(true);
+  });
+
+  it("reloads once when the prepared files were evicted, then says the preview expired", async () => {
+    loader.loadModel.mockRejectedValue(new Error("the file could not be loaded (HTTP 404)"));
+    api.hasMedia.mockResolvedValue(false);
+    const onExpired = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const first = renderWithProviders(<ModelCompareView compare={{ old: null, new: side() }} onExpired={onExpired} />);
+    await waitFor(() => expect(onExpired).toHaveBeenCalledTimes(1));
+    expect(api.hasMedia).toHaveBeenCalledWith("m1");
+    expect(screen.queryByText(/HTTP 404/)).not.toBeInTheDocument();
+    first.unmount();
+    renderWithProviders(<ModelCompareView compare={{ old: null, new: side() }} onExpired={onExpired} />);
+    expect(await screen.findByText("After: the preview files are no longer available, reopen the file.")).toBeInTheDocument();
+  });
+
+  it("does not reload a viewer closed while its files' availability is checked", async () => {
+    loader.loadModel.mockRejectedValue(new Error("the file could not be loaded (HTTP 404)"));
+    let answer!: (alive: boolean) => void;
+    api.hasMedia.mockImplementation(() => new Promise<boolean>((r) => (answer = r)));
+    const onExpired = vi.fn().mockReturnValue(true);
+    const view = renderWithProviders(<ModelCompareView compare={{ old: null, new: side() }} onExpired={onExpired} />);
+    await waitFor(() => expect(api.hasMedia).toHaveBeenCalledWith("m1"));
+    view.unmount();
+    await act(async () => answer(false));
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it("shows the load error when the availability check fails or the side has no token", async () => {
+    loader.loadModel.mockRejectedValue(new Error("network down"));
+    api.hasMedia.mockRejectedValue(new Error("no bridge"));
+    renderWithProviders(<ModelCompareView compare={{ old: side(), new: side({ media: "" }) }} />);
+    expect(await screen.findByText("Before: network down")).toBeInTheDocument();
+    expect(await screen.findByText("After: network down")).toBeInTheDocument();
   });
 
   it("drops a stale load when the side changes", async () => {

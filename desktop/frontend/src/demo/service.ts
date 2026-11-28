@@ -346,7 +346,9 @@ const modelSide = (path: string, radius: number, tube: number, triangles: number
     min: [-1.2, -0.3, -1.2],
     max: [1.2, 0.3, 1.2],
   },
-  data: torusGlb(radius, tube),
+  url: `data:model/gltf-binary;base64,${torusGlb(radius, tube)}`,
+  media: "",
+  tokens: [],
   files: null,
   missing: null,
 });

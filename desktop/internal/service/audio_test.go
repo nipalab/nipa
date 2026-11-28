@@ -4,6 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,9 +55,12 @@ func TestService_AudioDiff(t *testing.T) {
 	spec, err := base64.StdEncoding.DecodeString(n.Spectrogram)
 	require.NoError(t, err)
 	assert.Len(t, spec, n.SpecColumns*n.SpecRows)
-	wav, err := base64.StdEncoding.DecodeString(n.Playback)
-	require.NoError(t, err)
-	assert.Equal(t, "RIFF", string(wav[:4]))
+	require.True(t, strings.HasPrefix(n.PlaybackURL, MediaPrefix+n.Media+"/hit.wav"))
+	wav := served(t, svc, n.PlaybackURL)
+	assert.Equal(t, "RIFF", wav[:4])
+	rec := httptest.NewRecorder()
+	MediaMiddleware(svc)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodHead, n.PlaybackURL, nil))
+	assert.Equal(t, "audio/wav", rec.Header().Get("Content-Type"))
 	assert.Equal(t, int64(len(toneWAV(8000, 1, 0.5))), n.Size)
 
 	o := out.Old

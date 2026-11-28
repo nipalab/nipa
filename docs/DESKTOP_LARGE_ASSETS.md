@@ -1,7 +1,7 @@
 # Desktop app: large asset performance
 
-Status: finding 1 addressed (bounded line diff); the other findings are
-still open. Written 2026-11-28 on branch `update-by-delta`.
+Status: findings 1, 2, 3, 5 and 6 addressed; 4 and 7 are still open.
+Written 2026-11-28 on branch `update-by-delta`.
 
 This lists where the desktop app (and the `nipa serve` daemon behind it) gets
 slow, freezes or runs out of memory when a diff or preview involves a big
@@ -181,6 +181,22 @@ already does, and have the viewers `fetch` them as `ArrayBuffer`. Move model
 parsing to a worker where the loader allows. Set a short `gcTime` on these
 queries.
 
+**Addressed.** `ModelDiff` and `AudioDiff` no longer return bytes. The
+model, each referenced file and the playback WAV go to the media store
+(`desktop/internal/service/media.go`) and the results carry URLs on the
+`/nipa-media/` route (`url`, `files` name→URL, `playbackUrl`) plus tokens
+(`media`, `tokens`). A working-copy model and its textures are registered
+in place, so neither is copied nor (for textures) read. The viewers
+`fetch(url, { signal })` the model, MTL libraries and WAV into an
+`ArrayBuffer`; three.js loaders get dependency URLs from the
+`LoadingManager` URL modifier. They release their tokens on close, ask
+`HasMedia` after a load error and reload once when files were evicted, and
+the queries use `gcTime` 30 s. The model read for stats (up to 256 MB) now
+sizes its buffer from the reported length instead of doubling; the whole
+file is still needed by `preview.DecodeModel`. Only the small spectrogram
+is still base64. Not done: model parsing in a worker, and the webview-side
+profile of a 50 MB `.glb` (see open questions).
+
 ### 6. Video is fully copied before the first frame
 
 `loadVideo` (`desktop/internal/service/videos.go:79`) copies each side to a
@@ -191,6 +207,15 @@ copy holds the repository lock from finding 2.
 Fix direction: serve the working file directly from the repository through
 the media route, copy only the stored side, copy both sides in parallel, and
 return stats early so the UI can show progress.
+
+**Addressed.** A working-copy side is registered with the media store by
+path and served in place: no copy, no 4 GB limit. The path must resolve
+(symlinks followed) inside the clone root, outside `.nipa/`, and be a
+regular file; the store never deletes such a file, it only drops the token.
+Stored sides are copied concurrently, and the first failure cancels the
+other and removes both. Stats are probed from the served file either way.
+Early stats (before the copy ends) were not done; the stored-side copy
+still holds the daemon's repository lock while it reads.
 
 ### 7. Each click on a modified file re-walks the tree and re-hashes it
 
@@ -233,7 +258,8 @@ the diff only needs size, hash and the binary flag.
 ## Open questions
 
 - Webview costs in finding 5 are unmeasured. Profile a 50 MB `.glb` in the
-  running app before and after.
+  running app before and after. Still open after the move to the media
+  route: parsing remains on the UI thread.
 - Cold-disk and Windows numbers will be worse than the table; hashing and
   video copy are the most sensitive.
 - Whether the server-side callers of `internal/diff` need the same guard as

@@ -213,7 +213,9 @@ describe("lock warning bookkeeping", () => {
     lockFiles = [{ path: "hero.png", state: "needed", held_by: "", held_by_name: "" }];
     const repo = await open();
     const needed = () => fake.messages.filter((m) => m.text.startsWith("hero.png changed")).length;
-    await waitFor(() => calls("LockStatus").length > 0);
+    // open() fires refreshLocks without awaiting it: wait for its warning to land, not
+    // just for the LockStatus call, or that warning arrives after the reset below.
+    await waitFor(() => needed() > 0);
     fake.messages = [];
     repo["warned"].clear();
 

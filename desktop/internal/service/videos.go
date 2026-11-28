@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/preview"
@@ -44,8 +45,10 @@ type VideoCompare struct {
 	New *VideoSide `json:"new"`
 }
 
-// VideoDiff copies the old and/or new version of a video to a temp file the
-// webview plays through MediaMiddleware, with container stats read in Go.
+// VideoDiff prepares the old and/or new version of a video for the webview,
+// which plays them through MediaMiddleware, with container stats read in Go.
+// A working-copy side is served in place; stored sides are copied to temp
+// files, both at once.
 func (s *Service) VideoDiff(ctx context.Context, root string, old, new *ImageRef) (*VideoCompare, error) {
 	if old == nil && new == nil {
 		return nil, errors.New("nothing to compare")
@@ -54,25 +57,85 @@ func (s *Service) VideoDiff(ctx context.Context, root string, old, new *ImageRef
 	if err != nil {
 		return nil, err
 	}
-	out := &VideoCompare{}
-	for _, side := range []struct {
-		ref  *ImageRef
-		dest **VideoSide
-	}{{old, &out.Old}, {new, &out.New}} {
-		if side.ref == nil {
+	// The first failure cancels the other side's copy.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	refs := [2]*ImageRef{old, new}
+	var sides [2]*VideoSide
+	var errs [2]error
+	var wg sync.WaitGroup
+	for i, ref := range refs {
+		if ref == nil {
 			continue
 		}
-		v, err := s.loadVideo(ctx, client, root, side.ref)
-		if err != nil {
-			return nil, err
-		}
-		*side.dest = v
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sides[i], errs[i] = s.loadVideo(ctx, client, root, ref)
+			if errs[i] != nil {
+				cancel()
+			}
+		}()
 	}
-	return out, nil
+	wg.Wait()
+	err = firstVideoError(errs)
+	if err == nil {
+		// Cancelled after both copies finished (the derived ctx is only
+		// cancelled by a failure, so this is the caller's): no viewer will
+		// release them.
+		err = ctx.Err()
+	}
+	if err != nil {
+		for _, side := range sides {
+			if side != nil && side.Media != "" {
+				s.media.drop(side.Media)
+			}
+		}
+		return nil, err
+	}
+	return &VideoCompare{Old: sides[0], New: sides[1]}, nil
+}
+
+// firstVideoError prefers the error that caused the cancel over the
+// context.Canceled it then produced on the other side.
+func firstVideoError(errs [2]error) error {
+	var canceled error
+	for _, err := range errs {
+		switch {
+		case err == nil:
+		case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
+			canceled = err
+		default:
+			return err
+		}
+	}
+	if canceled != nil {
+		return canceled
+	}
+	return nil
 }
 
 func (s *Service) loadVideo(ctx context.Context, client daemonpb.NipaDaemonClient, root string, ref *ImageRef) (*VideoSide, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	side := &VideoSide{Path: ref.Path, Format: modelFormat(ref.Path)}
+	// A working-copy file is already on disk: serve it where it is. When it
+	// cannot be served in place (missing, outside the clone) the daemon read
+	// below reports why.
+	if isWorking(ref) {
+		if full, size, err := resolveWorkingFile(root, ref.Path); err == nil {
+			f, err := os.Open(full)
+			if err == nil {
+				side.Size = size
+				probeVideo(side, f)
+				_ = f.Close()
+				side.Media = s.media.register(full, ref.Path)
+				side.URL = mediaURL(side.Media, ref.Path)
+				return side, nil
+			}
+		}
+	}
 	f, err := s.media.create(ref.Path)
 	if err != nil {
 		return nil, err
@@ -97,15 +160,7 @@ func (s *Service) loadVideo(ctx context.Context, client daemonpb.NipaDaemonClien
 		return nil, err
 	}
 	side.Size = st.Size()
-	if stats, err := preview.ProbeVideo(ref.Path, f, side.Size); err != nil {
-		side.StatsError = strings.TrimPrefix(err.Error(), "preview: ")
-	} else {
-		side.Stats = &VideoStats{
-			Container: stats.Container, Duration: stats.Duration, Width: stats.Width, Height: stats.Height,
-			VideoCodec: stats.VideoCodec, FrameRate: stats.FrameRate, AudioCodec: stats.AudioCodec,
-			SampleRate: stats.SampleRate, Channels: stats.Channels, Bitrate: stats.Bitrate, Tracks: stats.Tracks,
-		}
-	}
+	probeVideo(side, f)
 	if err := f.Close(); err != nil {
 		return nil, err
 	}
@@ -113,4 +168,17 @@ func (s *Service) loadVideo(ctx context.Context, client daemonpb.NipaDaemonClien
 	side.Media = s.media.commit(f, ref.Path)
 	side.URL = mediaURL(side.Media, ref.Path)
 	return side, nil
+}
+
+func probeVideo(side *VideoSide, f *os.File) {
+	stats, err := preview.ProbeVideo(side.Path, f, side.Size)
+	if err != nil {
+		side.StatsError = strings.TrimPrefix(err.Error(), "preview: ")
+		return
+	}
+	side.Stats = &VideoStats{
+		Container: stats.Container, Duration: stats.Duration, Width: stats.Width, Height: stats.Height,
+		VideoCodec: stats.VideoCodec, FrameRate: stats.FrameRate, AudioCodec: stats.AudioCodec,
+		SampleRate: stats.SampleRate, Channels: stats.Channels, Bitrate: stats.Bitrate, Tracks: stats.Tracks,
+	}
 }

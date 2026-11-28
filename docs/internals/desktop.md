@@ -10,21 +10,28 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   Wails-bound API, plain Go behind seams (Changes screen: status/stage/
   discard/`FileDiff`/push/update, image compare via `ImageDiff` over the daemon
   `Preview` stream, 3D model compare via `ModelDiff` over `ReadBlob` +
-  `preview.DecodeModel` rendered with three.js, audio compare via `AudioDiff`
+  `preview.DecodeModel` rendered with three.js (model and referenced files
+  served on the media route below: `url`, `files` name→URL, `tokens`; the
+  viewer `fetch`es them, never base64), audio compare via `AudioDiff`
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
-  WebAudio), CSV/TSV and `.xlsx` cell diffs via `TableDiff`
+  WebAudio, the WAV served as `playbackUrl` on the media route; only the
+  small spectrogram stays base64), CSV/TSV and `.xlsx` cell diffs via `TableDiff`
   (`preview.ParseSheets` + `DiffSheets`/`DiffTables`, `sheet` selector and
   `sheets[]` for workbook tabs; `TableDiff.tsx` filters rows by text/column,
   "Changed columns only", previous/next change, sticky key column,
   per-column changed counts through `lib/table.ts`),
-  video compare via `VideoDiff` (each side streamed into a private temp
-  folder, `service/media.go`, served to the webview at
+  video compare via `VideoDiff` (stored sides streamed concurrently into a
+  private temp folder, `service/media.go`, working-copy sides registered in
+  place without a copy (`resolveWorkingFile`: EvalSymlinks inside the root,
+  not `.nipa/`, regular file; registered files are never deleted, only their
+  token), all served to the webview at
   `/nipa-media/<token>/<name>` by `service.MediaMiddleware` on the Wails
-  asset server with range requests; `preview.ProbeVideo` container stats;
+  asset server with range requests and a per-extension MIME type; `preview.ProbeVideo` container stats;
   `VideoDiff.tsx` synced side-by-side playback, frame step, A/B audio,
   "Open externally" through `OpenMedia`; files are held until the viewer
   calls `ReleaseMedia` on close and only released ones are evicted, a
-  playback error checks `HasMedia` and reloads once), font compare via `FontDiff`
+  playback error checks `HasMedia` and reloads once; model and audio viewers
+  follow the same release/`HasMedia`/reload-once rules with `gcTime` 30 s), font compare via `FontDiff`
   (`preview.DecodeFont`/`RenderFontSheet`/`CompareFonts`; `FontDiff.tsx`
   glyph sheets, metrics, added/removed code points), embedded `.blend`/
   `.uasset`/`.umap` thumbnails in `ImageDiff` and the Files grid
@@ -33,7 +40,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   thumbnail and `fileDiff`/`conflictDiff` query wraps its `Cancellable` call
   with `withAbort(signal, ...)` (`lib/abort.ts`), so an abandoned query
   cancels the Wails call, its Go context and the daemon RPC (`copyBlob`
-  stops on `ctx.Err()`, also after a completed read, so nothing is decoded),
+  stops on `ctx.Err()`, also after a completed read, so nothing is decoded;
+  `AudioDiff`/`ModelDiff`/`VideoDiff` re-check it after publishing and drop
+  every media token of a cancelled call, since no viewer would release them),
   and `desktop.ts` wrappers must return the binding promise unwrapped to keep
   `.cancel`,
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`

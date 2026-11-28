@@ -5,7 +5,7 @@ import type { AudioSide, AudioStats, FileDiff } from "@/api/desktop";
 import type { AudioContextLike } from "@/lib/audio";
 import { renderWithProviders } from "@/test/render";
 
-const api = vi.hoisted(() => ({ audioDiff: vi.fn() }));
+const api = vi.hoisted(() => ({ audioDiff: vi.fn(), hasMedia: vi.fn(), releaseMedia: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { AudioCompareView } from "./AudioDiff";
@@ -40,7 +40,8 @@ const side = (over: Partial<AudioSide> = {}): AudioSide => ({
   specRows: 2,
   specMinHz: 23.4,
   specMaxHz: 24000,
-  playback: "UklGRg==",
+  playbackUrl: "/nipa-media/a1/hit.wav",
+  media: "a1",
   ...over,
 });
 
@@ -94,8 +95,15 @@ function fakeAudio(decodeError?: Error) {
   return { make: () => ctx as unknown as AudioContextLike, ctx, started, gains, end: () => ended?.() };
 }
 
+const fetchMock = vi.fn();
+const wav = (status = 200) => ({ ok: status === 200, status, arrayBuffer: async () => new ArrayBuffer(8) });
+
 beforeEach(() => {
   vi.resetAllMocks();
+  api.hasMedia.mockResolvedValue(true);
+  api.releaseMedia.mockResolvedValue(undefined);
+  fetchMock.mockImplementation(async () => wav());
+  vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx2d as unknown as CanvasRenderingContext2D);
   vi.stubGlobal(
     "ImageData",
@@ -173,8 +181,8 @@ describe("AudioCompareView", () => {
     renderWithProviders(
       <AudioCompareView
         compare={{
-          old: side({ stats: null, error: "invalid audio: not a WAV file", peaks: [], playback: "" }),
-          new: side({ stats: stats({ truncated: true, clipped: 1200, channels: 6 }), playbackTruncated: true, playback: "" }),
+          old: side({ stats: null, error: "invalid audio: not a WAV file", peaks: [], playbackUrl: "", media: "" }),
+          new: side({ stats: stats({ truncated: true, clipped: 1200, channels: 6 }), playbackTruncated: true, playbackUrl: "", media: "" }),
         }}
       />,
     );
@@ -196,6 +204,41 @@ describe("AudioCompareView", () => {
     expect(await screen.findByText("decode failed")).toBeInTheDocument();
   });
 
+  it("fetches playback from the media URLs and releases them on close", async () => {
+    const audio = fakeAudio();
+    const { unmount } = renderWithProviders(
+      <AudioCompareView compare={{ old: side({ media: "a0", playbackUrl: "/nipa-media/a0/hit.wav" }), new: side() }} makeContext={audio.make} />,
+    );
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledWith("/nipa-media/a0/hit.wav", { signal: expect.any(AbortSignal) });
+    expect(fetchMock).toHaveBeenCalledWith("/nipa-media/a1/hit.wav", { signal: expect.any(AbortSignal) });
+    expect(audio.ctx.decodeAudioData).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+    const signal = fetchMock.mock.calls[0][1].signal as AbortSignal;
+    unmount();
+    expect(signal.aborted).toBe(true);
+    expect(api.releaseMedia).toHaveBeenCalledWith(["a0", "a1"]);
+  });
+
+  it("shows the fetch error while the file is still available", async () => {
+    fetchMock.mockImplementation(async () => wav(500));
+    renderWithProviders(<AudioCompareView compare={{ old: null, new: side() }} makeContext={fakeAudio().make} />);
+    expect(await screen.findByText("the file could not be loaded (HTTP 500)")).toBeInTheDocument();
+    expect(api.hasMedia).toHaveBeenCalledWith("a1");
+  });
+
+  it("reloads once when a playback file was evicted, then says it expired", async () => {
+    fetchMock.mockImplementation(async () => wav(404));
+    api.hasMedia.mockResolvedValue(false);
+    const onExpired = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const first = renderWithProviders(<AudioCompareView compare={{ old: null, new: side() }} makeContext={fakeAudio().make} onExpired={onExpired} />);
+    await act(async () => {});
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/HTTP 404/)).not.toBeInTheDocument();
+    first.unmount();
+    renderWithProviders(<AudioCompareView compare={{ old: null, new: side() }} makeContext={fakeAudio().make} onExpired={onExpired} />);
+    expect(await screen.findByText("The playback files are no longer available, reopen the file.")).toBeInTheDocument();
+  });
+
   it("explains a missing audio device", async () => {
     vi.stubGlobal("AudioContext", undefined);
     renderWithProviders(<AudioCompareView compare={{ old: side(), new: null }} />);
@@ -213,6 +256,16 @@ describe("AudioDiff", () => {
     expect(screen.getByText("Analysing audio…")).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "Audio details" })).toBeInTheDocument();
     expect(api.audioDiff).toHaveBeenCalledWith("/work/game", { source: "snapshot", path: "sfx/hit.wav" }, { source: "working", path: "sfx/hit.wav" });
+  });
+
+  it("reloads the comparison once when its playback file was evicted", async () => {
+    api.audioDiff.mockResolvedValueOnce({ old: null, new: side({ media: "gone", playbackUrl: "/nipa-media/gone/hit.wav" }) }).mockResolvedValue({ old: null, new: side({ media: "fresh" }) });
+    fetchMock.mockImplementation(async (url: string) => wav(url.includes("gone") ? 404 : 200));
+    api.hasMedia.mockImplementation(async (token: string) => token !== "gone");
+    vi.stubGlobal("AudioContext", undefined);
+    show();
+    await vi.waitFor(() => expect(api.audioDiff).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(api.releaseMedia).toHaveBeenCalledWith(["gone"]));
   });
 
   it("falls back to metadata on errors and empty results", async () => {

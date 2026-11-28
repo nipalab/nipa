@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"io"
 	"path"
@@ -42,7 +41,9 @@ type ModelStats struct {
 }
 
 // ModelSide is one version of a model with what the viewer needs to render
-// it: its bytes and the files it references, all base64.
+// it. The bytes are not in the result: the webview fetches the model from
+// URL and each referenced file from Files (name as referenced -> URL), all
+// served by MediaMiddleware.
 type ModelSide struct {
 	Path   string `json:"path"`
 	Format string `json:"format"` // extension without the dot
@@ -51,9 +52,13 @@ type ModelSide struct {
 	// then counts from the loaded scene. StatsError says why.
 	Stats      *ModelStats       `json:"stats"`
 	StatsError string            `json:"statsError,omitempty"`
-	Data       string            `json:"data"`
+	URL        string            `json:"url"`
+	Media      string            `json:"media"` // the model's token, for HasMedia
 	Files      map[string]string `json:"files"`
-	Missing    []string          `json:"missing"`
+	// Tokens lists every media token of this side (the model and its
+	// files), for ReleaseMedia when the viewer closes.
+	Tokens  []string `json:"tokens"`
+	Missing []string `json:"missing"`
 	// TooLarge means the model and its files exceed the render budget; only
 	// the stats are returned.
 	TooLarge bool `json:"tooLarge,omitempty"`
@@ -83,22 +88,50 @@ func (s *Service) ModelDiff(ctx context.Context, root string, old, new *ImageRef
 		}
 		m, err := s.loadModel(ctx, client, root, side.ref)
 		if err != nil {
+			if out.Old != nil {
+				s.media.drop(out.Old.Tokens...)
+			}
 			return nil, err
 		}
 		*side.dest = m
 	}
+	// A call cancelled while its files were written returns nothing, so no
+	// viewer would ever release what it published.
+	if err := ctx.Err(); err != nil {
+		for _, m := range []*ModelSide{out.Old, out.New} {
+			if m != nil {
+				s.media.drop(m.Tokens...)
+			}
+		}
+		return nil, err
+	}
 	return out, nil
 }
 
+// modelFile is one file a model side publishes: a working-copy file served
+// in place (full) or bytes read through the daemon.
+type modelFile struct {
+	name string
+	full string
+	data []byte
+}
+
 func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClient, root string, ref *ImageRef) (*ModelSide, error) {
+	empty := func(size int64) *ModelSide {
+		return &ModelSide{Path: ref.Path, Format: modelFormat(ref.Path), Size: size, Files: map[string]string{}, Tokens: []string{}, Missing: []string{}}
+	}
+	// Stats need the whole file in memory; readBlob sizes its buffer from the
+	// reported size, so a model is held once, never in a grown copy.
 	info, data, err := s.readBlob(ctx, client, root, blobRef(ref), maxModelBytes)
 	if errors.Is(err, errBlobTooLarge) {
-		return &ModelSide{Path: ref.Path, Format: modelFormat(ref.Path), Size: info.GetSizeBytes(), StatsError: "the model is too large to read", Files: map[string]string{}, Missing: []string{}, TooLarge: true}, nil
+		side := empty(info.GetSizeBytes())
+		side.StatsError, side.TooLarge = "the model is too large to read", true
+		return side, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	side := &ModelSide{Path: ref.Path, Format: modelFormat(ref.Path), Size: int64(len(data)), Files: map[string]string{}, Missing: []string{}}
+	side := empty(int64(len(data)))
 	var deps []string
 	stats, err := preview.DecodeModel(ref.Path, data)
 	if err != nil {
@@ -107,8 +140,9 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 		side.Stats = toModelStats(stats)
 		deps = stats.Dependencies
 	}
-	budget := maxRenderBytes - len(data)
-	files := map[string][]byte{}
+	working := isWorking(ref)
+	budget := int64(maxRenderBytes - len(data))
+	var files []modelFile
 	seen := map[string]bool{}
 	i := 0
 	for ; i < len(deps) && budget >= 0 && len(files)+len(side.Missing) < maxModelFiles; i++ {
@@ -122,8 +156,23 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 			side.Missing = append(side.Missing, dep)
 			continue
 		}
+		isMTL := strings.EqualFold(path.Ext(dep), ".mtl")
+		// A working model's textures are working files too: serve them in
+		// place without reading them. Material libraries are read anyway,
+		// for the textures they name.
+		if working && !isMTL {
+			if real, size, err := resolveWorkingFile(root, full); err == nil {
+				if size > budget {
+					budget = -1
+					continue
+				}
+				budget -= size
+				files = append(files, modelFile{name: dep, full: real})
+				continue
+			}
+		}
 		depRef := blobRef(&ImageRef{Source: ref.Source, Revision: ref.Revision, Path: full})
-		_, content, err := s.readBlob(ctx, client, root, depRef, int64(max(budget, 0))+1)
+		_, content, err := s.readBlob(ctx, client, root, depRef, max(budget, 0)+1)
 		switch {
 		case errors.Is(err, errBlobMissing):
 			side.Missing = append(side.Missing, dep)
@@ -134,9 +183,9 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 		case err != nil:
 			return nil, err
 		}
-		budget -= len(content)
-		files[dep] = content
-		if strings.EqualFold(path.Ext(dep), ".mtl") {
+		budget -= int64(len(content))
+		files = append(files, modelFile{name: dep, data: content})
+		if isMTL {
 			for _, tex := range preview.MaterialLibraryDependencies(content) {
 				deps = append(deps, path.Join(path.Dir(dep), tex))
 			}
@@ -155,11 +204,42 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 			side.Missing = append(side.Missing, dep)
 		}
 	}
-	side.Data = base64.StdEncoding.EncodeToString(data)
-	for name, content := range files {
-		side.Files[name] = base64.StdEncoding.EncodeToString(content)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	main := modelFile{name: ref.Path, data: data}
+	if working {
+		if real, _, err := resolveWorkingFile(root, ref.Path); err == nil {
+			main = modelFile{name: ref.Path, full: real}
+		}
+	}
+	token, err := s.publishModelFile(main)
+	if err != nil {
+		return nil, err
+	}
+	side.Media, side.URL = token, mediaURL(token, ref.Path)
+	side.Tokens = append(side.Tokens, token)
+	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			s.media.drop(side.Tokens...)
+			return nil, err
+		}
+		token, err := s.publishModelFile(f)
+		if err != nil {
+			s.media.drop(side.Tokens...)
+			return nil, err
+		}
+		side.Tokens = append(side.Tokens, token)
+		side.Files[f.name] = mediaURL(token, f.name)
 	}
 	return side, nil
+}
+
+func (s *Service) publishModelFile(f modelFile) (string, error) {
+	if f.full != "" {
+		return s.media.register(f.full, f.name), nil
+	}
+	return s.media.write(f.name, f.data)
 }
 
 func modelFormat(p string) string { return strings.TrimPrefix(strings.ToLower(path.Ext(p)), ".") }
@@ -233,6 +313,11 @@ func (s *Service) copyBlob(ctx context.Context, client daemonpb.NipaDaemonClient
 			info = ev.GetInfo()
 			if info.GetSizeBytes() > limit {
 				return info, errBlobTooLarge
+			}
+			// A buffer sized up front holds the file once instead of
+			// doubling while it grows.
+			if g, ok := w.(interface{ Grow(int) }); ok && info.GetSizeBytes() > 0 {
+				g.Grow(int(info.GetSizeBytes()))
 			}
 		default:
 			written += int64(len(ev.GetData()))

@@ -360,8 +360,8 @@ export function GeneratedFolders(root: string, paths: string[] | null): $Cancell
 
 /**
  * HasMedia reports whether a prepared media file is still available; the
- * viewer asks after a playback error to tell an evicted file from a format
- * the webview cannot decode.
+ * viewer asks after a load error to tell an evicted file from a format the
+ * webview cannot decode.
  */
 export function HasMedia(token: string): $CancellablePromise<boolean> {
     return $Call.ByID(4191817772, token);
@@ -1034,8 +1034,10 @@ export function UploadWorkers(): $CancellablePromise<number> {
 }
 
 /**
- * VideoDiff copies the old and/or new version of a video to a temp file the
- * webview plays through MediaMiddleware, with container stats read in Go.
+ * VideoDiff prepares the old and/or new version of a video for the webview,
+ * which plays them through MediaMiddleware, with container stats read in Go.
+ * A working-copy side is served in place; stored sides are copied to temp
+ * files, both at once.
  */
 export function VideoDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.VideoCompare | null> {
     return $Call.ByID(7493248, root, old, $new);

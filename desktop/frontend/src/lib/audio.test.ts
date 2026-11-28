@@ -79,7 +79,7 @@ describe("createPlayer", () => {
     const p = createPlayer(() => ctx, ended);
     p.play(1);
     expect(sources).toHaveLength(0);
-    await p.load(new Uint8Array(4), new Uint8Array(6));
+    await p.load(new ArrayBuffer(4), new ArrayBuffer(6));
     expect(p.duration()).toBe(6);
 
     p.play(1);
@@ -125,7 +125,7 @@ describe("createPlayer", () => {
   it("falls back to the only version there is", async () => {
     const { ctx, sources } = fakeContext();
     const p = createPlayer(() => ctx);
-    await p.load(new Uint8Array(3), null);
+    await p.load(new ArrayBuffer(3), null);
     p.play(0);
     expect(sources).toHaveLength(1);
     sources[0].onended?.();

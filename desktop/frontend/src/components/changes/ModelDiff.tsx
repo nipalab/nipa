@@ -5,13 +5,14 @@ import { desktop, type FileDiff, type ModelCompare, type ModelSide, type ModelSt
 import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { formatBytes } from "@/lib/diff";
-import { clipName, loadModel, renderableFormats, sceneStats, type LoadedModel } from "@/lib/modelLoad";
+import { clipName, disposeModel, loadModel, renderableFormats, sceneStats, type LoadedModel } from "@/lib/modelLoad";
 import { createStage, type Shading, type Stage, type StageMode } from "@/lib/modelStage";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
 import { withAbort } from "@/lib/abort";
+import { mediaExpired } from "@/lib/media";
 
 export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { t } = useTranslation();
@@ -20,7 +21,12 @@ export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
     queryKey: viewerKey(root, diff, "model"),
     queryFn: ({ signal }) => withAbort(signal, desktop.modelDiff(root, old, next)),
     staleTime: 30_000,
+    // The result only holds media URLs; the files behind them are released
+    // when the viewer closes, so cached results are not kept long.
+    gcTime: 30_000,
+    refetchOnWindowFocus: false,
   });
+  const reloaded = useRef<string | null>(null);
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -30,38 +36,83 @@ export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
   }
   if (query.isError) return <MetaDiff diff={diff} detail={translate("modelDiff.theModelCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
   if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail={translate("modelDiff.thereIsNoPreviewFor")} />;
-  return <ModelCompareView compare={query.data} />;
+  const data = query.data;
+  const reload = () => {
+    if (reloaded.current === diff.path) return false;
+    reloaded.current = diff.path;
+    void query.refetch();
+    return true;
+  };
+  return <ModelCompareView key={`${data.old?.media ?? ""}:${data.new?.media ?? ""}`} compare={data} onExpired={reload} />;
 }
 
-type SideState = { model: LoadedModel | null; error: string | null; loading: boolean };
+type SideState = { model: LoadedModel | null; error: string | null; expired: boolean; loading: boolean };
 
-const renderable = (side: ModelSide | null) => !!side && !side.tooLarge && !!side.data && renderableFormats.includes(side.format);
+const renderable = (side: ModelSide | null) => !!side && !side.tooLarge && !!side.url && renderableFormats.includes(side.format);
 
-function useLoadedSide(side: ModelSide | null): SideState {
-  const [state, setState] = useState<SideState>({ model: null, error: null, loading: renderable(side) });
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+type MediaHooks = {
+  hasMedia: (token: string) => Promise<boolean>;
+  onExpired?: () => boolean;
+};
+
+// useLoadedSide fetches and parses one side. A load that fails because the
+// prepared files were evicted reloads the comparison once (onExpired) and
+// otherwise says the preview expired.
+function useLoadedSide(side: ModelSide | null, { hasMedia, onExpired }: MediaHooks): SideState {
+  const [state, setState] = useState<SideState>({ model: null, error: null, expired: false, loading: renderable(side) });
+  const expiredRef = useRef(onExpired);
+  expiredRef.current = onExpired;
   useEffect(() => {
     if (!side || !renderable(side)) {
-      setState({ model: null, error: null, loading: false });
+      setState({ model: null, error: null, expired: false, loading: false });
       return;
     }
-    let live = true;
-    setState({ model: null, error: null, loading: true });
-    loadModel(side).then(
-      (model) => live && setState({ model, error: null, loading: false }),
-      (err: unknown) => live && setState({ model: null, error: err instanceof Error ? err.message : String(err), loading: false }),
+    const abort = new AbortController();
+    setState({ model: null, error: null, expired: false, loading: true });
+    const fail = (error: string, expired = false) => !abort.signal.aborted && setState({ model: null, error, expired, loading: false });
+    loadModel(side, abort.signal).then(
+      (model) => {
+        if (abort.signal.aborted) disposeModel(model);
+        else setState({ model, error: null, expired: false, loading: false });
+      },
+      (err: unknown) => {
+        if (abort.signal.aborted) return;
+        void mediaExpired([side.media], hasMedia).then((expired) => {
+          // Aborted while asking: a reload would publish media no view releases.
+          if (abort.signal.aborted) return;
+          if (!expired) fail(errorText(err));
+          else if (!expiredRef.current?.()) fail(errorText(err), true);
+        });
+      },
     );
-    return () => {
-      live = false;
-    };
-  }, [side]);
+    return () => abort.abort();
+  }, [side, hasMedia]);
   return state;
 }
 
-export function ModelCompareView({ compare }: { compare: ModelCompare }) {
+type CompareProps = {
+  compare: ModelCompare;
+  hasMedia?: (token: string) => Promise<boolean>;
+  release?: (tokens: string[]) => Promise<void>;
+  // onExpired reloads the comparison when a prepared file was evicted; it
+  // returns false when a reload was already tried.
+  onExpired?: () => boolean;
+};
+
+export function ModelCompareView({ compare, hasMedia = desktop.hasMedia, release = desktop.releaseMedia, onExpired }: CompareProps) {
   const { t } = useTranslation();
   const { old, new: next } = compare;
-  const oldState = useLoadedSide(old);
-  const newState = useLoadedSide(next);
+  const tokens = [...(old?.tokens ?? []), ...(next?.tokens ?? [])].join(" ");
+  useEffect(() => {
+    if (!tokens) return;
+    return () => {
+      release(tokens.split(" ")).catch(() => undefined);
+    };
+  }, [tokens, release]);
+  const oldState = useLoadedSide(old, { hasMedia, onExpired });
+  const newState = useLoadedSide(next, { hasMedia, onExpired });
   const both = !!oldState.model && !!newState.model;
   const [mode, setMode] = useState<StageMode>("side");
   const [shading, setShading] = useState<Shading>("shaded");
@@ -115,7 +166,8 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
     if (!side) continue;
     if (side.tooLarge) notices.push(<Notice key={`${label}-big`}>{t("modelDiff.tooLarge", { label, size: formatBytes(side.size) })}</Notice>);
     else if (!renderableFormats.includes(side.format)) notices.push(<Notice key={`${label}-fmt`}>{t("modelDiff.format", { label, format: side.format.toUpperCase() })}</Notice>);
-    if (state.error) notices.push(<Notice key={`${label}-err`}>{t("modelDiff.error", { label, error: state.error })}</Notice>);
+    if (state.expired) notices.push(<Notice key={`${label}-err`}>{t("modelDiff.expired", { label })}</Notice>);
+    else if (state.error) notices.push(<Notice key={`${label}-err`}>{t("modelDiff.error", { label, error: state.error })}</Notice>);
     if (side.missing?.length) notices.push(<Notice key={`${label}-missing`}>{t("modelDiff.missing", { label, files: side.missing.join(", ") })}</Notice>);
   }
   if (stageError) notices.push(<Notice key="stage">{t("modelDiff.noStage", { error: stageError })}</Notice>);
