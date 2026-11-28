@@ -75,6 +75,7 @@ type Config struct {
 	ChunkStoreWriteConcurrency      int     `mapstructure:"CHUNK_STORE_WRITE_CONCURRENCY"`
 	PushMaxFiles                    int     `mapstructure:"PUSH_MAX_FILES"`
 	ChunkVisibilityCacheHashes      int     `mapstructure:"CHUNK_VISIBILITY_CACHE_HASHES"`
+	ChunkVisibilityTimeoutSeconds   int     `mapstructure:"CHUNK_VISIBILITY_TIMEOUT_SECONDS"`
 	StorageLedger                   string  `mapstructure:"STORAGE_LEDGER"`
 	StorageLedgerDefaultQuotaBytes  int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
 	StoragePurgeRetentionDays       int     `mapstructure:"STORAGE_PURGE_RETENTION_DAYS"`
@@ -180,6 +181,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_STORE_WRITE_CONCURRENCY", DefaultChunkStoreWriteConcurrency)
 	v.SetDefault("PUSH_MAX_FILES", 2_000_000)
 	v.SetDefault("CHUNK_VISIBILITY_CACHE_HASHES", 2_000_000)
+	v.SetDefault("CHUNK_VISIBILITY_TIMEOUT_SECONDS", 30)
 	v.SetDefault("DATABASE_MAX_OPEN_CONNS", DefaultDatabaseMaxOpenConns)
 	v.SetDefault("DATABASE_MAX_IDLE_CONNS", 0)
 	v.SetDefault("DATABASE_CONN_MAX_LIFETIME_SECONDS", DefaultDatabaseConnMaxLifetimeSeconds)

@@ -770,19 +770,20 @@ func TestBranch_VisibleChunks(t *testing.T) {
 	commitID := snow.ID(7)
 	visible := domain.Hash{0x01}
 	shared := domain.Hash{0x02}
-	hidden := domain.Hash{0x03}
 
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{
-		{ID: 1, Name: "README.md", TreeID: 100, Chunks: []domain.Chunk{{Hash: hidden}}},
+	// README.md is outside the rules: its chunks are never read.
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.File{
+		100: {{ID: 1, Name: "README.md", TreeID: 100}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{{ID: 200, Name: "assets"}}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{
-		{ID: 2, Name: "wood.png", TreeID: 200, Chunks: []domain.Chunk{{Hash: visible}, {Hash: shared}}},
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.TreeNode{100: {{ID: 200, Name: "assets"}}}, nil)
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{200}).Return(map[int64][]*domain.File{
+		200: {{ID: 2, Name: "wood.png", TreeID: 200}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+	repo.EXPECT().ListChunksByFiles(gomock.Any(), []int64{2}).Return(map[int64][]domain.Chunk{2: {{Hash: visible}, {Hash: shared}}}, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{200}).Return(nil, nil)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{commitID.Base36()}, nil)
@@ -797,21 +798,22 @@ func TestBranch_VisibleChunks_SparseKeepsRootIgnoreFile(t *testing.T) {
 
 	commitID := snow.ID(7)
 	ignoreHash := domain.Hash{0x01}
-	readmeHash := domain.Hash{0x02}
 	assetHash := domain.Hash{0x03}
 
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{
-		{ID: 1, Name: ".nipaignore", TreeID: 100, Chunks: []domain.Chunk{{Hash: ignoreHash}}},
-		{ID: 2, Name: "README.md", TreeID: 100, Chunks: []domain.Chunk{{Hash: readmeHash}}},
+	// README.md is outside the sparse prefixes: its chunks are never read.
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.File{
+		100: {{ID: 1, Name: ".nipaignore", TreeID: 100}, {ID: 2, Name: "README.md", TreeID: 100}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{{ID: 200, Name: "assets"}}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{
-		{ID: 3, Name: "wood.png", TreeID: 200, Chunks: []domain.Chunk{{Hash: assetHash}}},
+	repo.EXPECT().ListChunksByFiles(gomock.Any(), []int64{1}).Return(map[int64][]domain.Chunk{1: {{Hash: ignoreHash}}}, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{100}).Return(map[int64][]*domain.TreeNode{100: {{ID: 200, Name: "assets"}}}, nil)
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{200}).Return(map[int64][]*domain.File{
+		200: {{ID: 3, Name: "wood.png", TreeID: 200}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+	repo.EXPECT().ListChunksByFiles(gomock.Any(), []int64{3}).Return(map[int64][]domain.Chunk{3: {{Hash: assetHash}}}, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{200}).Return(nil, nil)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{commitID.Base36()}, []string{"assets"})

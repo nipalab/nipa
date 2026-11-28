@@ -548,7 +548,7 @@ func TestBranch_VisibleChunks_Errors(t *testing.T) {
 		repo := NewMockbranchRepository(ctrl)
 		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(1)).Return(&domain.Commit{ID: 1, ProjectID: 1, TreeID: 5}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(5)).Return(&domain.TreeNode{ID: 5, Hash: domain.Hash{1}}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(5)).Return(nil, boom)
+		repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{5}).Return(nil, boom)
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
 		_, err := uc.VisibleChunks(ctx, 1, []string{snow.ID(1).Base36()}, nil)
 		require.ErrorIs(t, err, boom)

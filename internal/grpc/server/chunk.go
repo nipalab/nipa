@@ -1,10 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"sort"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,7 +60,8 @@ func (n *nipaServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUpl
 }
 
 // GetChunkDownloadUrls returns signed download paths for one page of chunk
-// hashes the caller may read. Hashes outside the visible trees are omitted.
+// hashes the caller may read (usecase.Branch.DownloadableChunks); other hashes
+// are omitted.
 // Chunks stored in a pack come as ranges of the pack object only for a caller
 // who may read every path of the project; a path-restricted caller gets a
 // signed server path per chunk instead (usecase.ChunkReadScope).
@@ -74,23 +73,14 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 	if err != nil {
 		return nil, err
 	}
-	allowed, err := n.uc.Branch().VisibleChunks(ctx, project.ID, req.GetCommitIds(), req.GetPaths())
+	requested, err := toChunkHashes(req.GetHashes())
 	if err != nil {
 		return nil, handleError(err)
 	}
-	hashes := make([]domain.Hash, 0, len(req.GetHashes()))
-	for _, raw := range req.GetHashes() {
-		hash, err := domain.ParseHashHex(raw)
-		if err != nil {
-			return nil, handleError(domain.NewErrorUser("invalid chunk hash"))
-		}
-		if hashInSet(allowed, hash) {
-			hashes = append(hashes, hash)
-		}
-	}
 	// A caller limited to some paths must not get a URL of a pack object:
-	// it would let them read the chunks of every other path in that pack.
-	scope, err := n.uc.Branch().ChunkReadScope(ctx, project.ID)
+	// it would let them read the chunks of every other path in that pack, so
+	// the scope travels with the allowed hashes.
+	hashes, scope, err := n.uc.Branch().DownloadableChunks(ctx, project.ID, req.GetCommitIds(), req.GetPaths(), requested)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -196,11 +186,4 @@ func toPBChunkURLs(urls []usecase.ChunkURL) []*pb.PresignedChunkUrl {
 		})
 	}
 	return out
-}
-
-func hashInSet(hashes []domain.Hash, hash domain.Hash) bool {
-	index := sort.Search(len(hashes), func(i int) bool {
-		return bytes.Compare(hashes[i][:], hash[:]) >= 0
-	})
-	return index < len(hashes) && hashes[index] == hash
 }

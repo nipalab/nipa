@@ -146,6 +146,8 @@ with the standard Go/process/build-info collectors and:
 | `nipa_chunk_verify_failures_total` | counter | `stage=store\|confirm\|download` | `usecase.Chunk` verification paths |
 | `nipa_chunk_gc_chunks_total` | counter | `phase=marked\|adopted\|deleted\|dry_run` | `ee/chunkgc.Collector` (`nipad-ee`; dry_run = would delete) |
 | `nipa_chunk_gc_bytes_total` | counter | `phase=marked\|adopted\|deleted\|dry_run` | stored bytes of the same chunks |
+| `nipa_visible_chunks_cache_total` | counter | `result=hit\|miss\|oversize\|error` | `usecase.Branch` download visibility cache (path-restricted readers; `oversize` = set larger than `CHUNK_VISIBILITY_CACHE_HASHES`, recomputed per window) |
+| `nipa_visible_chunks_compute_seconds` | histogram | `result=ok\|error\|timeout` | one visible-set tree walk (`timeout` = `CHUNK_VISIBILITY_TIMEOUT_SECONDS` hit) |
 | `nipa_push_total` | counter | `result=ok\|error` | `usecase.Push.Push` |
 | `nipa_webhook_deliveries_total` | counter | `result=delivered\|retry\|failed` | `internal/webhook/dispatcher.go` |
 | `nipa_webhook_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |
