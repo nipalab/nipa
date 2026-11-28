@@ -40,7 +40,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   thumbnail and `fileDiff`/`conflictDiff` query wraps its `Cancellable` call
   with `withAbort(signal, ...)` (`lib/abort.ts`), so an abandoned query
   cancels the Wails call, its Go context and the daemon RPC (`copyBlob`
-  stops on `ctx.Err()`, also after a completed read, so nothing is decoded),
+  stops on `ctx.Err()`, also after a completed read, so nothing is decoded;
+  `AudioDiff`/`ModelDiff`/`VideoDiff` re-check it after publishing and drop
+  every media token of a cancelled call, since no viewer would release them),
   and `desktop.ts` wrappers must return the binding promise unwrapped to keep
   `.cancel`,
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
