@@ -64,6 +64,11 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 		CommitID:   commitID,
 		CommitHash: commitHash,
 		TreeHash:   treeHash,
+		View: serverDomain.PushView{
+			Token:        res.GetView(),
+			Unrestricted: res.GetViewUnrestricted(),
+			HidesPushed:  res.GetViewHidesPushed(),
+		},
 	}, nil
 }
 

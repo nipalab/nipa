@@ -22,6 +22,10 @@ type PushApply struct {
 	Sparse []string
 	// TreeHash is the new head's root tree hash, from the push response.
 	TreeHash serverDomain.Hash
+	// View is what the push response says about the pusher's full manifest
+	// view; it decides the view token the applied tree is recorded with
+	// (localrepo.ApplyPush).
+	View serverDomain.PushView
 }
 
 // ErrPushApplyBase means the stored tree is not known to be the full tree of

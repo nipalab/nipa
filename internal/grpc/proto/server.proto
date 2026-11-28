@@ -291,6 +291,17 @@ message PushResponse {
     string commit_id = 1;
     string commit_hash = 2;
     string tree_hash = 3;
+    // view is the token GetTreeManifest returns for the pusher's full,
+    // recursive, unsparse manifest (the view the client applies a push to
+    // locally), so a clone that never fetched a manifest can name its pushed
+    // commit as a delta base. Empty when the server has none to give.
+    bytes view = 4;
+    // view_unrestricted: that view hides no path of any commit, so a tree
+    // whose root hash equals tree_hash is that view of the new commit.
+    bool view_unrestricted = 5;
+    // view_hides_pushed: the pusher cannot read some pushed path, so the
+    // pushed tree is not their view of the new commit.
+    bool view_hides_pushed = 6;
 }
 
 // Import writes commits from another version control system (docs/GIT_IMPORT.md).

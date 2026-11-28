@@ -133,6 +133,7 @@ func TestEndToEnd_Merge_FastForward(t *testing.T) {
 	after := cloneWorktree(t, grpcClient, auth, host, "main")
 	assertFileContent(t, after, "a.txt", "feature content\n")
 	assertFileContent(t, after, "b.txt", "added on feature\n")
+	require.Equal(t, storedTree(t, after), storedTree(t, mainDir), "the fast-forward records the head's manifest with its view token")
 }
 
 func TestEndToEnd_Merge_CleanThreeWay(t *testing.T) {

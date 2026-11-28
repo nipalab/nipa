@@ -1,6 +1,7 @@
 package localrepo
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -51,15 +52,11 @@ func (l *LocalRepo) ApplyPush(in clientDomain.PushApply) error {
 	defer func() { _ = tx.Rollback() }()
 	q := sqlcLocalrepo.New(tx)
 
-	view, err := checkPushBase(ctx, q, in.BaseCommitID)
+	stored, err := checkPushBase(ctx, q, in.BaseCommitID)
 	if err != nil {
 		return err
 	}
-	// The view token is kept: it names the read rules, the sparse set and the
-	// recursive flag, none of which a push changes, and the tree this apply
-	// leaves is the new head's manifest in that same view (the root hash check
-	// below). Should the rules have changed since, the server compares the
-	// token with the current view and declines the delta.
+	view := pushApplyView(stored, in)
 	record, err := json.Marshal(syncedTreeRecord{Commit: in.CommitID, Sparse: sparse, View: view})
 	if err != nil {
 		return err
@@ -88,6 +85,40 @@ func (l *LocalRepo) ApplyPush(in clientDomain.PushApply) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// pushApplyView returns the view token the applied tree is recorded with,
+// given the token of the base record (stored) and what the push response said
+// about the pusher's full, recursive, unsparse view. A token may only be
+// recorded with a tree that is exactly the manifest of the commit in that
+// view, since a delta against it is applied to the stored rows. The apply
+// already proved that the rows hash to the commit's stored root, so they are
+// the commit's whole tree; what is left to know is whether the view hides any
+// of it:
+//   - No token in the response (an older server): the stored one is kept, as
+//     before the response carried one.
+//   - A pushed path the pusher cannot read: the rows hold a file the view
+//     hides, so no token is recorded and the next move fetches the manifest.
+//   - An unrestricted view hides nothing: its token is recorded, whatever the
+//     base record held (none after an empty clone or a plain save, or one
+//     from older rules).
+//   - A restricted view: every pushed path is readable, so the rows are the
+//     view when the base rows were, which holds for a push onto an empty
+//     branch (no rows) and for a base recorded with this very token. Any other
+//     base (no token, or one from other rules) may hold paths the current view
+//     hides: nothing is recorded, which costs what the stale token would have
+//     cost, a full manifest on the next move.
+func pushApplyView(stored []byte, in clientDomain.PushApply) []byte {
+	switch {
+	case len(in.View.Token) == 0:
+		return stored
+	case in.View.HidesPushed:
+		return nil
+	case in.View.Unrestricted, in.BaseCommitID == "", bytes.Equal(stored, in.View.Token):
+		return in.View.Token
+	default:
+		return nil
+	}
 }
 
 // checkPushBase accepts the stored tree as the push base when the synced-tree

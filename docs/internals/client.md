@@ -221,10 +221,14 @@ the full path. The record is written with the manifest's view token
 every flow that saves a manifest fetched with `cfg.Sparse`: clone, `Run`,
 `runDetached`, `Switch`, `SwitchTag` and the post-push save (commit = the
 pushed commit; `localrepo.ApplyPush` writes the same record when the push is
-applied locally and keeps the token of the record it started from, and
-`localrepo.ApplyTreeDelta` writes it with the token of the delta answer, see
-below). Merge and revert keep plain `SaveTree`, which drops the
-record, because their trees are fetched unscoped or built locally. The commit
+applied locally, with the view token of the push response when that response
+vouches for the applied tree being the pusher's view, see "Post-push tree
+save" below, and `localrepo.ApplyTreeDelta` writes it with the token of the
+delta answer, see below) and a fast-forward merge (`Merge.fastForward` asks
+for the new head by commit id and records it with its token, sparse set
+empty because the merge fetches unscoped). The rest of merge and revert keep
+plain `SaveTree`, which drops the record, because their trees are fetched
+unscoped by branch name or built locally. The commit
 id is part of the record (not just the sparse set) because the local commit
 can move without the stored tree: push saves its commit before it saves
 the tree, and `Switch`/`SwitchTag` save the tree before config and commit, so
@@ -325,9 +329,25 @@ Delta sync (`Update.syncTo`, `usecase/sync_delta.go`, span `sync.tree`):
   with plain `SaveTree`, so there is no recorded base), and
   `restore`/`RestoreRevision` (path-scoped manifests of an arbitrary
   commit, not a move of the clone).
-- *Known limits*. A view token is only stored from a fetched manifest: a
-  clone of an empty branch has none until its first full update, also after
-  its own first push.
+- *Where the token comes from*. A fetched manifest (clone, full sync, the
+  post-push refetch, a fast-forward) or a delta answer carries it; a push
+  applied locally takes it from the push response (`PushResult.View`,
+  `localrepo.ApplyPush`). So a clone of an empty project (or branch), which
+  never fetched a manifest, has a token after its first push and moves by
+  delta from its first update or switch on
+  (`TestEndToEnd_EmptyClonePushKeepsDeltaBase`; at 100,000 files the first
+  switch went from a full sync to a delta, numbers in
+  `TestEndToEnd_SmallUpdateScale`'s "first switch after an empty-clone push").
+- *Known limits* (each costs one full manifest on the next update or switch,
+  which then stores a token again): a push of a path the pusher cannot read
+  (the applied tree holds a file the view hides, so no token is recorded); a
+  path-restricted pusher whose base record has no token or another view's
+  token (the push cannot vouch for rows it did not see fetched under the
+  current rules); a changed sparse set (`sparse`: deltas need base and target
+  in one view); the trees merge and revert save with plain `SaveTree`
+  (conflicted merge/revert, `--no-commit`, merge/revert `--abort`, revert
+  `--skip`), until the push that completes them refetches the manifest
+  (`base`), which stores the token.
 
 File/folder swaps (`usecase/sync_swap.go`): a path that is a file in one
 commit and a folder in the other is freed by `syncPlan.run` for the full and
@@ -472,7 +492,14 @@ merge/revert or `--no-commit`), or, with no base commit, anything is stored;
 manifest, a server tree still carrying legacy pre-mode directory hashes, any
 disagreement); `error`/`config`, the apply or the config read failed. The
 commit already landed, so no failure of the local apply fails the push: only
-the manifest fetch and its save can. Callers: plain `nipa push`, clean
+the manifest fetch and its save can. The view token recorded with a local
+apply comes from the push response (`PushResult.View`: the token of the
+pusher's full, recursive, unsparse manifest, whether that view hides nothing
+at all and whether it hides a pushed path); `localrepo.ApplyPush` records it
+only when the applied tree is provably that view of the new commit
+(`docs/internals/localrepo.md`), so a clone that never fetched a manifest
+(an empty-project clone) still gets a delta base from its first push. The
+refetch records the manifest's own token, never the response's. Callers: plain `nipa push`, clean
 reverts (each target of a sequence) and clean three-way merges push a delta
 onto a synced head and apply locally; the push that resolves a conflicted
 merge or revert falls back (`base`). `ClearStaged` and the pin release follow

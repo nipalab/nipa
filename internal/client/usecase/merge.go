@@ -11,6 +11,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/merge"
+	"github.com/nipalab/nipa/internal/treedelta"
 )
 
 type mergeClient interface {
@@ -191,25 +192,45 @@ func (m *Merge) fastForward(ctx context.Context, root string, url *domain.NipaUr
 	if err != nil {
 		return nil, err
 	}
-	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, nil)
+	// Asked by the commit the branch now points at, like a clone: the tree is
+	// then recorded as that commit's full manifest with its view token, so
+	// the next update or switch can ask for a delta against it.
+	commitID := commitIDString(branch)
+	target := treedelta.Target{CommitID: commitID}
+	if commitID == "" {
+		target.Branch = targetBranch
+	}
+	targetTree, view, err := fetchManifest(ctx, m.client, url.Org, url.Project, target, nil, func() (*serverDomain.TreeNode, error) {
+		return m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, nil)
+	})
 	if err != nil {
 		return nil, err
 	}
 	scope := domain.ChunkScope{
 		Org:       url.Org,
 		Project:   url.Project,
-		CommitIDs: commitIDs(commitIDString(branch)),
+		CommitIDs: commitIDs(commitID),
 	}
 	if err := syncWorkingCopy(ctx, m.client, m.localRepo, root, targetTree, scope); err != nil {
 		return nil, err
 	}
-	if err := m.localRepo.SaveTree(targetTree); err != nil {
+	if err := m.saveFastForwardTree(targetTree, commitID, view); err != nil {
 		return nil, err
 	}
 	if err := m.localRepo.SaveCommit(commitIDString(branch), sourceCommitHash); err != nil {
 		return nil, err
 	}
 	return &Outcome{FastForwarded: true}, nil
+}
+
+// saveFastForwardTree saves the fast-forwarded head's manifest, recorded as
+// that commit's tree (fetched without a sparse set) when the repository keeps
+// the record.
+func (m *Merge) saveFastForwardTree(tree *serverDomain.TreeNode, commitID string, view []byte) error {
+	if saver, ok := m.localRepo.(syncedTreeSaver); ok {
+		return saveSyncedTree(saver, tree, commitID, nil, view)
+	}
+	return m.localRepo.SaveTree(tree)
 }
 
 func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl, targetBranch, sourceBranch string, info *domain.MergeBaseInfo, opts MergeOptions) (*Outcome, error) {

@@ -327,6 +327,10 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		}
 	}
 
+	view, err := p.pushView(ctx, projectID, files)
+	if err != nil {
+		return nil, err
+	}
 	root, err := buildNewTree(ctx, p.branchRepo, headCommit, files, removed)
 	if err != nil {
 		return nil, err
@@ -369,7 +373,40 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		CommitID:   req.CommitID,
 		CommitHash: req.CommitHash,
 		TreeHash:   root.Hash,
+		View:       view,
 	}, nil
+}
+
+// pushView describes the pusher's full, recursive, unsparse manifest view:
+// its token, computed exactly as ManifestView computes it for a request
+// without paths, whether it hides anything at all, and whether it hides a
+// pushed path. A client that applies the push to its stored tree records the
+// token with the result when that tree is provably this view of the new
+// commit (localrepo.ApplyPush), so its next update or switch can ask for a
+// delta without having fetched a manifest first.
+//
+// The read filter comes from the rule set the write check just loaded (the
+// permission usecase caches it per project and user), so this costs the
+// fingerprint, one SHA-256 and, for a path-restricted reader, one Allow per
+// pushed file: nothing proportional to the repository.
+func (p *Push) pushView(ctx context.Context, projectID snow.ID, files []*domain.PushFile) (domain.PushView, error) {
+	filter, err := p.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return domain.PushView{}, err
+	}
+	view := domain.PushView{
+		Token:        manifestView(filter, nil, true),
+		Unrestricted: filter.Unrestricted(),
+	}
+	if !view.Unrestricted {
+		for _, file := range files {
+			if !filter.Allow(file.Path) {
+				view.HidesPushed = true
+				break
+			}
+		}
+	}
+	return view, nil
 }
 
 func touchedPushPaths(files []*domain.PushFile, removed []string) []string {

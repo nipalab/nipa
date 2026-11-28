@@ -63,6 +63,10 @@ func (n *nipaServer) PushStream(stream grpc.ClientStreamingServer[pb.PushStreamR
 		CommitId:   result.CommitID.Base36(),
 		CommitHash: result.CommitHash.String(),
 		TreeHash:   result.TreeHash.String(),
+
+		View:             result.View.Token,
+		ViewUnrestricted: result.View.Unrestricted,
+		ViewHidesPushed:  result.View.HidesPushed,
 	})
 }
 
