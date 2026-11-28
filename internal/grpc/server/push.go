@@ -49,6 +49,10 @@ func (n *nipaServer) Push(ctx context.Context, req *pb.PushRequest) (*pb.PushRes
 		CommitId:   result.CommitID.Base36(),
 		CommitHash: result.CommitHash.String(),
 		TreeHash:   result.TreeHash.String(),
+
+		View:             result.View.Token,
+		ViewUnrestricted: result.View.Unrestricted,
+		ViewHidesPushed:  result.View.HidesPushed,
 	}, nil
 }
 

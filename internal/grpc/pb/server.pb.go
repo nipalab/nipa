@@ -2150,12 +2150,23 @@ func (*PushStreamRequest_Chunks) isPushStreamRequest_Part() {}
 func (*PushStreamRequest_Removed) isPushStreamRequest_Part() {}
 
 type PushResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CommitId      string                 `protobuf:"bytes,1,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
-	CommitHash    string                 `protobuf:"bytes,2,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
-	TreeHash      string                 `protobuf:"bytes,3,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	CommitId   string                 `protobuf:"bytes,1,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
+	CommitHash string                 `protobuf:"bytes,2,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
+	TreeHash   string                 `protobuf:"bytes,3,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"`
+	// view is the token GetTreeManifest returns for the pusher's full,
+	// recursive, unsparse manifest (the view the client applies a push to
+	// locally), so a clone that never fetched a manifest can name its pushed
+	// commit as a delta base. Empty when the server has none to give.
+	View []byte `protobuf:"bytes,4,opt,name=view,proto3" json:"view,omitempty"`
+	// view_unrestricted: that view hides no path of any commit, so a tree
+	// whose root hash equals tree_hash is that view of the new commit.
+	ViewUnrestricted bool `protobuf:"varint,5,opt,name=view_unrestricted,json=viewUnrestricted,proto3" json:"view_unrestricted,omitempty"`
+	// view_hides_pushed: the pusher cannot read some pushed path, so the
+	// pushed tree is not their view of the new commit.
+	ViewHidesPushed bool `protobuf:"varint,6,opt,name=view_hides_pushed,json=viewHidesPushed,proto3" json:"view_hides_pushed,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PushResponse) Reset() {
@@ -2207,6 +2218,27 @@ func (x *PushResponse) GetTreeHash() string {
 		return x.TreeHash
 	}
 	return ""
+}
+
+func (x *PushResponse) GetView() []byte {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
+func (x *PushResponse) GetViewUnrestricted() bool {
+	if x != nil {
+		return x.ViewUnrestricted
+	}
+	return false
+}
+
+func (x *PushResponse) GetViewHidesPushed() bool {
+	if x != nil {
+		return x.ViewHidesPushed
+	}
+	return false
 }
 
 // Import writes commits from another version control system (docs/GIT_IMPORT.md).
@@ -13686,12 +13718,15 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x05files\x18\x02 \x01(\v2\x16.greet.PushStreamFilesH\x00R\x05files\x121\n" +
 	"\x06chunks\x18\x03 \x01(\v2\x17.greet.PushStreamChunksH\x00R\x06chunks\x124\n" +
 	"\aremoved\x18\x04 \x01(\v2\x18.greet.PushStreamRemovedH\x00R\aremovedB\x06\n" +
-	"\x04part\"i\n" +
+	"\x04part\"\xd6\x01\n" +
 	"\fPushResponse\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
 	"commitHash\x12\x1b\n" +
-	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\"\x96\x01\n" +
+	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\x12\x12\n" +
+	"\x04view\x18\x04 \x01(\fR\x04view\x12+\n" +
+	"\x11view_unrestricted\x18\x05 \x01(\bR\x10viewUnrestricted\x12*\n" +
+	"\x11view_hides_pushed\x18\x06 \x01(\bR\x0fviewHidesPushed\"\x96\x01\n" +
 	"\x13ImportLookupRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x18\n" +
 	"\aorigins\x18\x02 \x03(\tR\aorigins\x124\n" +

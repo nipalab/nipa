@@ -83,11 +83,11 @@ func assertMatchesFreshClone(t *testing.T, grpcClient *clientgrpc.Client, auth *
 	require.Equal(t, manifest.Hash, pushed, "the push response names the head's root tree")
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, target).TreeHash)
 
-	// The working copy was cloned from an empty branch, which leaves no
-	// synced-tree record and so no view token for ApplyPush to carry over; a
-	// fresh clone has one. Everything else must be equal.
+	// The working copy was cloned from an empty branch, so the view token in
+	// its synced-tree record came with the push responses; it must be the one
+	// a fresh clone gets with the manifest.
 	fresh := cloneWorktree(t, grpcClient, auth, host, branch)
-	require.Equal(t, withoutView(storedTree(t, fresh)), withoutView(storedTree(t, target)))
+	require.Equal(t, storedTree(t, fresh), storedTree(t, target))
 }
 
 // withoutView drops the view token from the synced-tree record of a

@@ -244,8 +244,10 @@ func TestEndToEnd_SmallUpdateScale(t *testing.T) {
 	t.Logf("tree: %d files in %d directories", total, 1+smallUpdateTops+smallUpdateTops*smallUpdateLeaves)
 
 	// change commits a handful of files: three modified, one added and the
-	// file added by the previous change removed.
+	// file added by the previous change removed. Its pushes are timed: a push
+	// of a handful of files into a clone of N files.
 	generation, added := 0, ""
+	var pushes []time.Duration
 	change := func() {
 		generation++
 		var staged []string
@@ -262,8 +264,29 @@ func TestEndToEnd_SmallUpdateScale(t *testing.T) {
 		writeFile(t, seed, added, fmt.Sprintf("added in generation %d\n", generation))
 		staged = append(staged, added)
 		stagePaths(t, seed, staged)
+		start := time.Now()
 		require.NoError(t, pusher.Run(ctx, seed, fmt.Sprintf("change %d", generation)))
+		pushes = append(pushes, time.Since(start))
 	}
+
+	// The seed is a clone of an empty project that only ever pushed: its
+	// first switch away from its own commits is what every project creator
+	// does first. It used to find no view token in the stored tree (no
+	// manifest had ever been fetched) and fetch the full manifest; the token
+	// now comes with the push response.
+	_, err = grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "first", "main", "", "")
+	require.NoError(t, err)
+	change()
+	firstClock := &rpcClock{}
+	firstRepo := &phasedRepo{LocalRepo: localrepo.NewLocalRepo(), phases: map[string]time.Duration{}}
+	firstUpdate := clientusecase.NewUpdate(auth, &deltaManifestClient{fullManifestClient{c: grpcClient, clock: firstClock}}, firstRepo)
+	start := time.Now()
+	require.NoError(t, firstUpdate.Switch(ctx, seed, "first"))
+	firstTotal := time.Since(start)
+	firstServer, firstRPCs := firstClock.reset()
+	require.NoError(t, firstRepo.Close())
+	logUpdateSample(t, "first switch after an empty-clone push (5 files apart)", updateSample{total: firstTotal, server: firstServer, rpcs: firstRPCs, phases: firstRepo.phases})
+	require.NoError(t, clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo()).Switch(ctx, seed, "main"))
 
 	type clone struct {
 		label  string
@@ -360,6 +383,9 @@ func TestEndToEnd_SmallUpdateScale(t *testing.T) {
 	require.Equal(t, withoutView(storedTree(t, clones[0].dir)), withoutView(storedTree(t, clones[1].dir)))
 	require.Equal(t, workingTree(t, clones[0].dir), workingTree(t, clones[1].dir))
 
+	sort.Slice(pushes, func(i, j int) bool { return pushes[i] < pushes[j] })
+	t.Logf("push of a handful of files (%d pushes): median %s, min %s, max %s", len(pushes),
+		pushes[len(pushes)/2].Round(100*time.Microsecond), pushes[0].Round(100*time.Microsecond), pushes[len(pushes)-1].Round(100*time.Microsecond))
 	t.Logf("%d files, median of %d runs (switch: %d)", total, runs, 2*runs)
 	for _, scenario := range scenarios {
 		for _, c := range clones {

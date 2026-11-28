@@ -42,7 +42,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     sorted and deduped, `[]` for a full checkout, `view` left out when the
     manifest came without a token): which commit's tree the stored rows hold,
     the sparse set it was fetched with and the server's view token of that
-    manifest (`synced.go`). The token names the view (read rules, sparse set,
+    manifest, or of the push response when a push was applied locally
+    (`synced.go`, `ApplyPush` below). The token names the view (read rules, sparse set,
     recursive flag), never the commit; it is what a delta manifest request
     sends as `base_view` (`docs/internals/protocol.md`).
   - `staged_files(path PK, staged_at)`.
@@ -147,17 +148,31 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   file and rebuilt directory, never the whole tree. If the computed root is
   not `TreeHash` it returns `*clientDomain.PushApplyMismatchError`
   (expected, computed) before any write. On a match it writes rows identical
-  to what `SaveSyncedTree` writes from the new head's manifest
+  to what `SaveSyncedTreeView` writes from the new head's manifest
   (`pushedFileRow`: mode as `domain.ClassifyPerm` class, binary forced for
   `chunker.IsLockablePath`, `chunker.NormalizeEncoding`, directory mode 0),
   deletes the `stat_cache` rows of the removed paths (`StatCacheDelete`, not
   the full sweep), and sets `tree_hash` and the `synced_tree` record
-  (commit = the pushed commit, `[]`, and the view token of the record it was
-  applied to: a push changes none of what the token names, and the root hash
-  check proved the rows are the new head's whole tree; if the rules changed
-  meanwhile the server compares the token with the caller's current view and
-  declines the delta). A first push onto an empty branch has no record to take
-  a token from, so that clone gets one with its first fetched manifest.
+  (commit = the pushed commit, `[]`, and the view token `pushApplyView`
+  picks). A token may only sit next to rows that are exactly the manifest of
+  the commit in that view, because a delta against it is applied to those
+  rows and "unchanged" keeps whatever they hold. The root hash check proved
+  the rows are the new commit's whole stored tree, so what remains is whether
+  the view hides any of it. `PushApply.View` (the push response's
+  `serverDomain.PushView`, `docs/internals/protocol.md`) decides: no token in
+  the response (an older server) keeps the base record's token as before; a
+  pushed path the pusher cannot read (`HidesPushed`) records none (the rows
+  hold a file the manifest hides; a delta would keep it for good when its
+  directory never changes again, `TestEndToEnd_PushOfUnreadablePathDropsDeltaBase`);
+  an unrestricted view records the response's token whatever the base held
+  (none after an empty clone, a plain `SaveSyncedTree` or a refetch through a
+  token-less client, or one from older rules); a restricted view records it
+  only when the base rows were that view already: a push onto an empty branch
+  (no rows) or a base recorded with the same token. Any other restricted base
+  records none, which costs what keeping a stale token would: the server
+  would decline it, so the next move fetches the full manifest. The decision
+  is in memory, no extra query.
+  (`TestApplyPush_RecordsTheViewThePushVouchesFor`.)
 - `PlanTreeDelta(clientDomain.TreeDeltaApply)` / `ApplyTreeDelta(in, planned)`
   (`tree_delta.go`) apply a delta manifest (`treedelta.Delta`, the answer of
   `GetTreeManifestDelta`) to the stored rows instead of saving the target's

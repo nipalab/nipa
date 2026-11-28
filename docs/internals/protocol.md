@@ -409,7 +409,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   the first message of a client stream for its org/project. The header carries
   `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
-  full server tree) and `parent_2_commit_hash` for merge commits. The daemon
+  full server tree) and `parent_2_commit_hash` for merge commits. The
+  `PushResponse` (unary and stream alike) carries `commit_id`, `commit_hash`,
+  `tree_hash` and the pusher's view (`usecase.Push.pushView`, see "Delta
+  manifests" below): `view`, `view_unrestricted`, `view_hides_pushed`. The
+  daemon
   loopback (`daemon.MaxMessageBytes`, 256 MiB) applies to the daemon server,
   the JSON bridge client and the desktop connector. `Transport.Connect` adds a
   `MaxRecvMessageBytes` (64 MiB) default `MaxCallRecvMsgSize` so remaining
@@ -494,6 +498,41 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     does. A nil filter has no fingerprint and never gets a delta. Bump
     `manifestViewVersion` when manifest filtering itself changes (e.g. a new
     always-kept root team file).
+  - *View token in the push response* (`Push.pushView`, `PushResult.View`,
+    `PushResponse.view`/`view_unrestricted`/`view_hides_pushed`). A client
+    that applies its push locally (`localrepo.ApplyPush`) never fetches the
+    new commit's manifest, so before this a clone that had never fetched one
+    (an empty-project clone) had no token and its first update or switch was
+    a full sync (`make bench-small-update files=100000`, "first switch after
+    an empty-clone push", 5 files apart: 2.62 s full before, 76 ms delta
+    after; a load test saw 8.08 s against 0.54-0.71 s). The
+    push now answers with the token `GetTreeManifest` hands the same caller
+    for a full checkout: `manifestView(CompileFilter(read), no paths,
+    recursive)`, the view the client applies pushes to (only full checkouts
+    apply locally; sparse ones refetch and get the token with that manifest).
+    Two flags say what the token is worth for the pushed tree:
+    `view_unrestricted` (`PathFilter.Unrestricted`: the view hides no path of
+    any commit, so a tree whose root equals `tree_hash` is that view of the
+    commit) and `view_hides_pushed` (a pushed path fails `filter.Allow`: the
+    pusher wrote a path they cannot read, so the pushed tree is not their
+    view). The client decides with its base record (`pushApplyView`,
+    `docs/internals/localrepo.md`); an empty `view` (an older server) keeps
+    the old behaviour. The base root-hash check of a delta does not protect
+    against a wrong token here: the client's root equals the stored base root
+    exactly when it holds the whole tree, hidden file included, and the delta
+    then reports the hidden file's directory unchanged, so it would stay. Cost
+    per push: `CompileFilter` reuses the rule set the write check just loaded
+    (`Permission.load` caches it per project and user), then the
+    fingerprint, one SHA-256 and, for a path-restricted reader, one `Allow`
+    per pushed file (the same order as the per-file write check
+    `checkPushContent` already does); no repository call. Measured with
+    `BenchmarkPush_View`: 0.76 µs for an allow-all caller, 9 µs for 50 rules
+    and 5 files, 8.8 ms for 50 rules and 10,000 files. End to end at
+    100,000 files the push is unchanged within noise: one-file push in
+    `TestEndToEnd_WideTreeScale` median of 5, 330 ms before and 332 ms after;
+    the 5-file pushes of `TestEndToEnd_SmallUpdateScale` median of 26,
+    104.8 ms before and 106.9 ms after. A failed
+    `CompileFilter` fails the push before anything is written.
   - *Declining* is never an error; the handler then runs the ordinary full
     manifest path, so its answer (including every error) is the one a client
     without the new fields gets. The server declines when: the request is

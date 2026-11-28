@@ -425,6 +425,7 @@ func (p *Push) saveLandedTree(ctx context.Context, nipaUrl *domain.NipaUrl, bran
 				BaseCommitID: baseCommitID,
 				CommitID:     commitID,
 				TreeHash:     result.TreeHash,
+				View:         result.View,
 			})
 			if applyErr == nil {
 				span.SetAttributes(attribute.String("nipa.push.tree_sync", treeSyncLocal))

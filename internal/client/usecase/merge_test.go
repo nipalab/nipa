@@ -276,6 +276,8 @@ func TestMerge_Run_FastForward(t *testing.T) {
 	require.Equal(t, id.Base36(), local.savedCommitID)
 	require.Equal(t, ffHash.String(), local.savedCommitHash)
 	require.NotNil(t, local.tree, "local snapshot must be refreshed after the pointer move")
+	require.Equal(t, &domain.SyncedTree{CommitID: id.Base36(), Sparse: []string{}}, local.syncedTree,
+		"the tree is recorded as the new head's")
 }
 
 func TestMerge_Run_FFOnlyNotPossible(t *testing.T) {
