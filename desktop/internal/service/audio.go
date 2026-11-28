@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"math"
+	"path"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -32,7 +33,8 @@ type AudioStats struct {
 
 // AudioSide is one analysed version of an audio file. Peaks holds min/max
 // pairs per bucket and channel, Spectrogram is base64 bytes, SpecRows rows of
-// SpecColumns (row 0 lowest), Playback a base64 16-bit WAV.
+// SpecColumns (row 0 lowest). PlaybackURL serves a 16-bit WAV copy through
+// MediaMiddleware (Media is its token, for HasMedia and ReleaseMedia).
 type AudioSide struct {
 	Path              string      `json:"path"`
 	Format            string      `json:"format"`
@@ -46,7 +48,8 @@ type AudioSide struct {
 	SpecRows          int         `json:"specRows"`
 	SpecMinHz         float64     `json:"specMinHz"`
 	SpecMaxHz         float64     `json:"specMaxHz"`
-	Playback          string      `json:"playback"`
+	PlaybackURL       string      `json:"playbackUrl"`
+	Media             string      `json:"media"`
 	PlaybackTruncated bool        `json:"playbackTruncated,omitempty"`
 }
 
@@ -75,6 +78,9 @@ func (s *Service) AudioDiff(ctx context.Context, root string, old, new *ImageRef
 		}
 		a, err := s.loadAudio(ctx, client, root, side.ref)
 		if err != nil {
+			if out.Old != nil && out.Old.Media != "" {
+				s.media.drop(out.Old.Media)
+			}
 			return nil, err
 		}
 		*side.dest = a
@@ -108,8 +114,18 @@ func (s *Service) loadAudio(ctx context.Context, client daemonpb.NipaDaemonClien
 	side.Peaks = a.Peaks
 	side.Spectrogram = base64.StdEncoding.EncodeToString(a.Spectrogram)
 	side.SpecColumns, side.SpecRows, side.SpecMinHz, side.SpecMaxHz = a.SpecColumns, a.SpecRows, a.SpecMinHz, a.SpecMaxHz
-	side.Playback = base64.StdEncoding.EncodeToString(a.Playback)
 	side.PlaybackTruncated = a.PlaybackTruncated
+	if len(a.Playback) > 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		name := strings.TrimSuffix(path.Base(ref.Path), path.Ext(ref.Path)) + ".wav"
+		token, err := s.media.write(name, a.Playback)
+		if err != nil {
+			return nil, err
+		}
+		side.Media, side.PlaybackURL = token, mediaURL(token, name)
+	}
 	return side, nil
 }
 

@@ -88,7 +88,7 @@ export type AudioContextLike = {
 };
 
 export type Player = {
-  load(old: Uint8Array | null, next: Uint8Array | null): Promise<void>;
+  load(old: ArrayBuffer | null, next: ArrayBuffer | null): Promise<void>;
   play(from: number): void;
   pause(): void;
   seek(to: number): void;
@@ -154,8 +154,7 @@ export function createPlayer(makeContext: () => AudioContextLike, onEnded: () =>
   return {
     async load(old, next) {
       if (!ctx) ctx = makeContext();
-      const decode = (bytes: Uint8Array | null) =>
-        bytes && bytes.length > 0 ? ctx!.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer) : Promise.resolve(null);
+      const decode = (bytes: ArrayBuffer | null) => (bytes && bytes.byteLength > 0 ? ctx!.decodeAudioData(bytes) : Promise.resolve(null));
       [buffers.old, buffers.new] = await Promise.all([decode(old), decode(next)]);
       if (!buffers.new) side = "old";
     },

@@ -128,33 +128,49 @@ Sonar never compile it.
   glTF buffers and images, OBJ `mtllib` libraries and their `map_*` textures —
   resolved next to the model and refused when they leave the repository;
   absent files are listed as `missing`. Stats come from
-  `preview.DecodeModel`; the model is read up to 256 MiB and returned
-  base64 only while it and its files fit 64 MiB (`tooLarge` otherwise, stats
-  still shown). `src/lib/modelLoad.ts` parses glTF/GLB, OBJ+MTL, FBX and
-  USD/USDA/USDC/USDZ from memory (a `LoadingManager` URL modifier serves the
-  referenced files as data URLs) and counts the scene itself for formats
-  without Go stats. `src/lib/modelStage.ts` drives one WebGL renderer with a
+  `preview.DecodeModel`; the model is read up to 256 MiB (into a buffer
+  sized from the reported length, so it is held once) and served only while
+  it and its files fit 64 MiB (`tooLarge` otherwise, stats still shown).
+  Nothing crosses the bridge as base64: the result carries `url` for the
+  model and `files` (name as referenced → URL) on the media route
+  (`/nipa-media/<token>/<name>`, see the video viewer), plus `media` and
+  `tokens` for `HasMedia`/`ReleaseMedia`. A working-copy model and its
+  textures are served in place (textures are not even read; only `.mtl`
+  libraries are, for the textures they name); stored versions are written
+  to the media temp folder. `src/lib/modelLoad.ts` fetches the model with
+  `fetch(url, { signal })` and parses glTF/GLB, OBJ+MTL, FBX and
+  USD/USDA/USDC/USDZ (a `LoadingManager` URL modifier points the referenced
+  files at their media URLs and anything else at an empty placeholder) and
+  counts the scene itself for formats without Go stats. `src/lib/modelStage.ts` drives one WebGL renderer with a
   shared camera and `OrbitControls`: side by side (two scissored viewports)
   or overlay (the old model as an orange wireframe on top of the new one),
   shaded/wireframe/both, synced animation playback by clip name, camera fit
   to the union of both bounds. The panel diffs vertices, triangles, meshes,
   materials, textures, bones, animations, morph targets, bounds and the
-  exporter, and lists added/removed material and animation names.
+  exporter, and lists added/removed material and animation names. The
+  viewer releases its tokens on close, a load error asks `HasMedia` and
+  reloads once when the files were evicted, and the answer stays cached
+  30 s (`gcTime`).
 - Audio viewer (`AudioDiff.tsx`): `AudioDiff` in the service reads each side
   (up to 256 MiB) and runs `preview.DecodeAudio` in the app process, so the
   webview never needs OGG/FLAC/MP3 codecs: per-channel min/max waveform
   peaks, a log-frequency spectrogram, stats and a 16-bit WAV copy for
-  playback (at most 48 MiB: stereo, then mono, then cut short). Both sides
+  playback (at most 48 MiB: stereo, then mono, then cut short), written to
+  the media temp folder and returned as `playbackUrl` + `media` (the
+  spectrogram stays base64, it is small). The viewer fetches the WAV with
+  `fetch(url, { signal })` for WebAudio, releases it on close and reloads
+  once when it was evicted. Both sides
   stack on one time axis (shorter files draw shorter) with a shared playhead;
   click to seek. `src/lib/audio.ts` plays both versions through WebAudio in
   lockstep and only changes which one is audible (A/B), so switching never
   loses the position. The panel diffs duration, rate, channels, encoding,
   sample peak, RMS and integrated loudness (LUFS) and flags clipping,
   truncated analysis and shortened playback.
-- Video viewer (`VideoDiff.tsx`): `VideoDiff` in the service streams each
-  side (up to 4 GiB) into a private temp folder (`media.go`, removed on
-  shutdown) and probes the container in Go with
-  `preview.ProbeVideo`. The webview plays it from
+- Video viewer (`VideoDiff.tsx`): `VideoDiff` in the service serves a
+  working-copy side in place (no copy) and streams stored sides (up to
+  4 GiB each, both at once; the first failure cancels and removes the
+  other) into a private temp folder (`media.go`, removed on shutdown), then
+  probes the container in Go with `preview.ProbeVideo`. The webview plays it from
   `/nipa-media/<token>/<name>`, served by `service.MediaMiddleware` on the
   Wails asset server with `http.ServeContent` (range requests, never a data
   URL). Both versions sit side by side with one Play/Pause, a shared seek
@@ -163,7 +179,10 @@ Sonar never compile it.
   A file is held from the moment `VideoDiff` returns it until the viewer
   closes and calls `ReleaseMedia(tokens)` (streaming a released file holds
   it again); only released files are evicted, least recently used first,
-  beyond 4, and 32 unreleased files bound requests that outlived their view.
+  beyond 4, and 160 unreleased files (a model holds one per texture) bound
+  requests that outlived their view. A working-copy file registered in place
+  must resolve (symlinks followed) inside the clone, outside `.nipa/`, and be
+  a regular file; the store only ever drops its token, never the file.
   The video answer is not cached past the viewer's lifetime. As a backstop,
   a playback error asks `HasMedia(token)` and reloads the comparison once
   when the file is gone instead of blaming the format.

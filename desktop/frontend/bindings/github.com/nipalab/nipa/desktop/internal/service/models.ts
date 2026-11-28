@@ -48,7 +48,8 @@ export interface AudioCompare {
 /**
  * AudioSide is one analysed version of an audio file. Peaks holds min/max
  * pairs per bucket and channel, Spectrogram is base64 bytes, SpecRows rows of
- * SpecColumns (row 0 lowest), Playback a base64 16-bit WAV.
+ * SpecColumns (row 0 lowest). PlaybackURL serves a 16-bit WAV copy through
+ * MediaMiddleware (Media is its token, for HasMedia and ReleaseMedia).
  */
 export interface AudioSide {
     "path": string;
@@ -63,7 +64,8 @@ export interface AudioSide {
     "specRows": number;
     "specMinHz": number;
     "specMaxHz": number;
-    "playback": string;
+    "playbackUrl": string;
+    "media": string;
     "playbackTruncated"?: boolean;
 }
 
@@ -917,7 +919,9 @@ export interface ModelCompare {
 
 /**
  * ModelSide is one version of a model with what the viewer needs to render
- * it: its bytes and the files it references, all base64.
+ * it. The bytes are not in the result: the webview fetches the model from
+ * URL and each referenced file from Files (name as referenced -> URL), all
+ * served by MediaMiddleware.
  */
 export interface ModelSide {
     "path": string;
@@ -934,8 +938,19 @@ export interface ModelSide {
      */
     "stats": ModelStats | null;
     "statsError"?: string;
-    "data": string;
+    "url": string;
+
+    /**
+     * the model's token, for HasMedia
+     */
+    "media": string;
     "files": { [_ in string]?: string } | null;
+
+    /**
+     * Tokens lists every media token of this side (the model and its
+     * files), for ReleaseMedia when the viewer closes.
+     */
+    "tokens": string[] | null;
     "missing": string[] | null;
 
     /**

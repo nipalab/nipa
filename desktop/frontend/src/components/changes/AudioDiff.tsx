@@ -8,6 +8,7 @@ import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { createPlayer, drawWaveform, formatDb, formatTime, spectrogramPixels, type AudioContextLike, type Player, type Side } from "@/lib/audio";
 import { formatBytes } from "@/lib/diff";
 import { base64ToBytes, cn } from "@/lib/utils";
+import { fetchBytes, mediaExpired } from "@/lib/media";
 import { useTranslation } from "react-i18next";
 import { translate , locale } from "@/i18n";
 import { withAbort } from "@/lib/abort";
@@ -19,7 +20,12 @@ export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
     queryKey: viewerKey(root, diff, "audio"),
     queryFn: ({ signal }) => withAbort(signal, desktop.audioDiff(root, old, next)),
     staleTime: 30_000,
+    // Playback copies are media files released when the viewer closes, so
+    // cached results are not kept long.
+    gcTime: 30_000,
+    refetchOnWindowFocus: false,
   });
+  const reloaded = useRef<string | null>(null);
   if (query.isPending) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -29,7 +35,14 @@ export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
   }
   if (query.isError) return <MetaDiff diff={diff} detail={translate("audioDiff.theAudioCouldNotBe", { value: String((query.error as Error)?.message ?? query.error) })} />;
   if (!query.data || (!query.data.old && !query.data.new)) return <MetaDiff diff={diff} detail={translate("audioDiff.thereIsNoPreviewFor")} />;
-  return <AudioCompareView compare={query.data} />;
+  const data = query.data;
+  const reload = () => {
+    if (reloaded.current === diff.path) return false;
+    reloaded.current = diff.path;
+    void query.refetch();
+    return true;
+  };
+  return <AudioCompareView key={`${data.old?.media ?? ""}:${data.new?.media ?? ""}`} compare={data} onExpired={reload} />;
 }
 
 type View = "wave" | "spectrum" | "both";
@@ -40,15 +53,36 @@ const defaultContext = (): AudioContextLike => {
   return new Ctor() as unknown as AudioContextLike;
 };
 
-const playable = (side: AudioSide | null) => !!side && !!side.playback;
+const playable = (side: AudioSide | null) => !!side && !!side.playbackUrl;
 
-export function AudioCompareView({ compare, makeContext = defaultContext }: { compare: AudioCompare; makeContext?: () => AudioContextLike }) {
+const playbackBytes = (side: AudioSide | null, signal: AbortSignal) => (side?.playbackUrl ? fetchBytes(side.playbackUrl, signal) : Promise.resolve(null));
+
+type CompareProps = {
+  compare: AudioCompare;
+  makeContext?: () => AudioContextLike;
+  hasMedia?: (token: string) => Promise<boolean>;
+  release?: (tokens: string[]) => Promise<void>;
+  // onExpired reloads the comparison when a playback file was evicted; it
+  // returns false when a reload was already tried.
+  onExpired?: () => boolean;
+};
+
+export function AudioCompareView({ compare, makeContext = defaultContext, hasMedia = desktop.hasMedia, release = desktop.releaseMedia, onExpired }: CompareProps) {
   const { t } = useTranslation();
   const { old, new: next } = compare;
+  const tokens = [old?.media, next?.media].filter((t): t is string => !!t).join(" ");
+  useEffect(() => {
+    if (!tokens) return;
+    return () => {
+      release(tokens.split(" ")).catch(() => undefined);
+    };
+  }, [tokens, release]);
+  const expiredRef = useRef(onExpired);
+  expiredRef.current = onExpired;
   const sides = useMemo(() => [old, next].filter((s): s is AudioSide => !!s), [old, next]);
   const both = !!old?.stats && !!next?.stats;
   const [view, setView] = useState<View>("both");
-  const [listen, setListen] = useState<Side>(next?.playback ? "new" : "old");
+  const [listen, setListen] = useState<Side>(next?.playbackUrl ? "new" : "old");
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [playError, setPlayError] = useState<string | null>(null);
@@ -65,25 +99,34 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
       setPosition(0);
     });
     player.current = p;
-    let live = true;
+    const abort = new AbortController();
     setReady(false);
     setPlaying(false);
     setPosition(0);
     setPlayError(null);
-    p.load(old?.playback ? base64ToBytes(old.playback) : null, next?.playback ? base64ToBytes(next.playback) : null).then(
-      () => {
-        if (!live) return;
-        p.setSide(listenRef.current);
-        setReady(true);
-      },
-      (err: unknown) => live && setPlayError(err instanceof Error ? err.message : String(err)),
-    );
+    Promise.all([playbackBytes(old, abort.signal), playbackBytes(next, abort.signal)])
+      .then(([a, b]) => p.load(a, b))
+      .then(
+        () => {
+          if (abort.signal.aborted) return;
+          p.setSide(listenRef.current);
+          setReady(true);
+        },
+        (err: unknown) => {
+          if (abort.signal.aborted) return;
+          const message = err instanceof Error ? err.message : String(err);
+          void mediaExpired([old?.media, next?.media], hasMedia).then((expired) => {
+            if (abort.signal.aborted || (expired && expiredRef.current?.())) return;
+            setPlayError(expired ? translate("audioDiff.expired") : message);
+          });
+        },
+      );
     return () => {
-      live = false;
+      abort.abort();
       p.dispose();
       player.current = null;
     };
-  }, [old, next, makeContext]);
+  }, [old, next, makeContext, hasMedia]);
 
   useEffect(() => player.current?.setSide(listen), [listen, ready]);
 

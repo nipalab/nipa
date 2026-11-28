@@ -235,7 +235,8 @@ const audioSide = (path: string, seed: number, loud: number, size: number, rms: 
   specRows: 128,
   specMinHz: 0,
   specMaxHz: 24000,
-  playback: "",
+  playbackUrl: "",
+  media: "",
 });
 
 const videoSide = (path: string, size: number, bitrate: number, duration: number): VideoSide => ({

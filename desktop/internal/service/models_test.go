@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +22,7 @@ type blobDaemon struct {
 	files    map[string]string
 	failures map[string]*daemonpb.OpFailure
 	sizes    map[string]int64
+	mu       sync.Mutex
 	reads    []*daemonpb.ReadBlobRequest
 	err      error
 	// onRead runs when a read starts, onDrained when its stream ends.
@@ -41,7 +44,9 @@ func (s *drainedStream) Recv() (*daemonpb.BlobEvent, error) {
 }
 
 func (d *blobDaemon) ReadBlob(_ context.Context, req *daemonpb.ReadBlobRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[daemonpb.BlobEvent], error) {
+	d.mu.Lock()
 	d.reads = append(d.reads, req)
+	d.mu.Unlock()
 	if d.onRead != nil {
 		d.onRead(req.GetBlob().GetPath())
 	}
@@ -85,7 +90,24 @@ const heroGLTF = `{"asset":{"version":"2.0","generator":"test"},"scenes":[{"node
 "meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}],"accessors":[{"count":3,"min":[0,0,0],"max":[1,2,3]}],
 "materials":[{"name":"Skin"}],"buffers":[{"uri":"hero.bin"}],"images":[{"uri":"tex/skin.png"},{"uri":"../../outside.png"},{"uri":"gone.png"}]}`
 
-func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+// served fetches a media URL through MediaMiddleware the way the webview
+// does and returns the body.
+func served(t *testing.T, svc *Service, url string) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	MediaMiddleware(svc)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+	require.Equal(t, http.StatusOK, rec.Code, url)
+	return rec.Body.String()
+}
+
+func servedFiles(t *testing.T, svc *Service, files map[string]string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for name, url := range files {
+		out[name] = served(t, svc, url)
+	}
+	return out
+}
 
 func TestService_ModelDiffLoadsFilesAndStats(t *testing.T) {
 	svc, d := newModels(t, map[string]string{
@@ -103,11 +125,14 @@ func TestService_ModelDiffLoadsFilesAndStats(t *testing.T) {
 	require.NoError(t, err)
 	n := out.New
 	require.Equal(t, "gltf", n.Format)
-	require.Equal(t, b64(heroGLTF), n.Data)
-	require.Equal(t, map[string]string{"hero.bin": b64("BIN!"), "tex/skin.png": b64("PNG")}, n.Files)
+	require.Equal(t, heroGLTF, served(t, svc, n.URL))
+	require.True(t, strings.HasPrefix(n.URL, MediaPrefix+n.Media+"/hero.gltf"))
+	require.Equal(t, map[string]string{"hero.bin": "BIN!", "tex/skin.png": "PNG"}, servedFiles(t, svc, n.Files))
+	require.Len(t, n.Tokens, 3)
+	require.Equal(t, n.Media, n.Tokens[0])
 	require.Equal(t, []string{"../../outside.png", "gone.png"}, n.Missing)
 	require.Equal(t, &ModelStats{Generator: "test", Meshes: 1, Primitives: 1, Vertices: 3, Triangles: 1, Materials: []string{"Skin"}, Nodes: 1, Animations: []string{}, Min: []float64{0, 0, 0}, Max: []float64{1, 2, 3}}, n.Stats)
-	require.Equal(t, b64("OLD"), out.Old.Files["hero.bin"])
+	require.Equal(t, "OLD", served(t, svc, out.Old.Files["hero.bin"]))
 	for _, r := range d.reads {
 		if strings.HasPrefix(r.GetBlob().GetPath(), "art/old/") {
 			require.Equal(t, "HEAD", r.GetBlob().GetRevision())
@@ -117,7 +142,7 @@ func TestService_ModelDiffLoadsFilesAndStats(t *testing.T) {
 	out, err = svc.ModelDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "art/ship.obj"})
 	require.NoError(t, err)
 	require.Nil(t, out.Old)
-	require.Equal(t, map[string]string{"ship.mtl": b64("newmtl Hull\nmap_Kd paint/hull.png\n"), "paint/hull.png": b64("HULL")}, out.New.Files)
+	require.Equal(t, map[string]string{"ship.mtl": "newmtl Hull\nmap_Kd paint/hull.png\n", "paint/hull.png": "HULL"}, servedFiles(t, svc, out.New.Files))
 	require.Equal(t, 1, out.New.Stats.Triangles)
 	require.Empty(t, out.New.Stats.Animations)
 }
@@ -135,7 +160,7 @@ func TestService_ModelDiffWithoutStatsOrBudget(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, out.New.Stats)
 	require.Equal(t, "unsupported format: fbx model statistics", out.New.StatsError)
-	require.Equal(t, b64("Kaydara"), out.New.Data)
+	require.Equal(t, "Kaydara", served(t, svc, out.New.URL))
 
 	out, err = svc.ModelDiff(ctx, "/w", nil, &ImageRef{Path: "bad.obj"})
 	require.NoError(t, err)
@@ -146,13 +171,14 @@ func TestService_ModelDiffWithoutStatsOrBudget(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, out.Old.TooLarge)
 	require.Equal(t, int64(maxModelBytes+1), out.Old.Size)
-	require.Empty(t, out.Old.Data)
+	require.Empty(t, out.Old.URL)
+	require.Empty(t, out.Old.Tokens)
 
 	d.sizes["b.bin"] = maxRenderBytes
 	out, err = svc.ModelDiff(ctx, "/w", nil, &ImageRef{Path: "b.gltf"})
 	require.NoError(t, err)
 	require.True(t, out.New.TooLarge)
-	require.Empty(t, out.New.Data)
+	require.Empty(t, out.New.URL)
 	require.Empty(t, out.New.Files)
 	require.NotNil(t, out.New.Stats)
 

@@ -9,7 +9,8 @@ import (
 
 // Every blob-backed viewer stops once the frontend cancels its call: a read
 // in progress aborts, a read that finished after the cancel is not decoded,
-// and the other side is never requested.
+// and the other side is never requested. Video copies both sides at once,
+// so both may have started; neither leaves a media file behind.
 func TestService_ViewersStopOnCancel(t *testing.T) {
 	viewers := map[string]func(ctx context.Context, svc *Service, old, new *ImageRef) error{
 		"audio": func(ctx context.Context, svc *Service, old, new *ImageRef) error {
@@ -53,7 +54,12 @@ func TestService_ViewersStopOnCancel(t *testing.T) {
 				}
 				err = run(callCtx, svc, &ImageRef{Path: "a.bin"}, &ImageRef{Path: "b.bin"})
 				require.ErrorIs(t, err, context.Canceled)
-				require.Len(t, d.reads, 1, "the second side is never read")
+				if name == "video" {
+					require.LessOrEqual(t, len(d.reads), 2)
+				} else {
+					require.Len(t, d.reads, 1, "the second side is never read")
+				}
+				require.Empty(t, svc.media.files, "a cancelled call publishes no media")
 			})
 		}
 	}

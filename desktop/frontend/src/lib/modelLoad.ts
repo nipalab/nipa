@@ -5,15 +5,13 @@ import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { USDLoader } from "three/examples/jsm/loaders/USDLoader.js";
 import type { ModelSide, ModelStats } from "@/api/desktop";
-import { base64ToBytes } from "@/lib/utils";
+import { fetchBytes, mediaPrefix, type Fetcher } from "@/lib/media";
 
 export type LoadedModel = { object: Object3D; animations: AnimationClip[] };
 
 export const clipName = (clip: AnimationClip, i: number): string => clip.name || `Animation ${i + 1}`;
 
 export const renderableFormats = ["glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz"];
-
-export { base64ToBytes };
 
 const mimeTypes: Record<string, string> = {
   png: "image/png",
@@ -57,33 +55,33 @@ export function fileKey(files: Record<string, string>): (url: string) => string 
   return (url) => keys.get(cleanPath(url)) ?? keys.get(cleanPath(decode(url)));
 }
 
-// fileManager serves the model's referenced files from memory and never lets
-// a loader reach the network: unknown URLs get an empty placeholder.
+// fileManager points the loaders at the media URLs of the model's referenced
+// files (files maps each name as referenced to its URL) and never lets a
+// loader reach anything else: unknown URLs get an empty placeholder.
 export function fileManager(files: Record<string, string>): LoadingManager {
   const lookup = fileKey(files);
   const manager = new LoadingManager();
   manager.setURLModifier((url) => {
-    if (/^(data|blob):/i.test(url)) return url;
+    if (/^(data|blob):/i.test(url) || url.startsWith(mediaPrefix)) return url;
     const key = lookup(url);
-    if (key) return `data:${mimeFor(key)};base64,${files[key]}`;
+    if (key) return files[key];
     return mimeFor(url).startsWith("image/") && !url.toLowerCase().endsWith(".ktx2") ? blankPNG : "data:application/octet-stream;base64,";
   });
   return manager;
 }
 
-const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+const text = (bytes: ArrayBuffer) => new TextDecoder().decode(bytes);
 
-const arrayBuffer = (bytes: Uint8Array): ArrayBuffer => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-
-// loadModel parses one side's bytes into a three.js object graph.
-export async function loadModel(side: ModelSide): Promise<LoadedModel> {
+// loadModel fetches one side's model from its media URL and parses it into
+// a three.js object graph; the loaders fetch referenced files themselves.
+export async function loadModel(side: ModelSide, signal?: AbortSignal, fetcher: Fetcher = fetch): Promise<LoadedModel> {
   const files = (side.files ?? {}) as Record<string, string>;
   const manager = fileManager(files);
-  const bytes = base64ToBytes(side.data);
+  const bytes = await fetchBytes(side.url, signal, fetcher);
   switch (side.format) {
     case "glb":
     case "gltf": {
-      const gltf = await new GLTFLoader(manager).parseAsync(side.format === "glb" ? arrayBuffer(bytes) : text(bytes), "");
+      const gltf = await new GLTFLoader(manager).parseAsync(side.format === "glb" ? bytes : text(bytes), "");
       return { object: gltf.scene, animations: gltf.animations };
     }
     case "obj": {
@@ -99,7 +97,7 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
       for (const lib of libs) {
         const key = lookup(lib);
         if (!key) continue;
-        const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[key])), key.slice(0, key.lastIndexOf("/") + 1));
+        const materials = new MTLLoader(manager).parse(text(await fetchBytes(files[key], signal, fetcher)), key.slice(0, key.lastIndexOf("/") + 1));
         materials.preload();
         if (!merged) merged = materials;
         else for (const [name, m] of Object.entries(materials.materials)) merged.materials[name] ??= m;
@@ -108,7 +106,7 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
       return { object: loader.parse(source), animations: [] };
     }
     case "fbx": {
-      const object = new FBXLoader(manager).parse(arrayBuffer(bytes), "");
+      const object = new FBXLoader(manager).parse(bytes, "");
       return { object, animations: object.animations };
     }
     case "usda":
@@ -116,7 +114,7 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
     case "usd":
     case "usdc":
     case "usdz":
-      return { object: new USDLoader(manager).parse(arrayBuffer(bytes), ""), animations: [] };
+      return { object: new USDLoader(manager).parse(bytes, ""), animations: [] };
   }
   throw new Error(`${side.format.toUpperCase()} models cannot be shown yet`);
 }
