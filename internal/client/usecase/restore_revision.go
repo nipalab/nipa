@@ -81,6 +81,10 @@ func (r *RevisionRestore) Run(ctx context.Context, root, path, commitID string, 
 	if err := checkWriteInsideRoot(root, p); err != nil {
 		return err
 	}
+	// A file where a folder above p is needed is refused, not replaced.
+	if _, err := planSwaps(ctx, root, r.repo, []materializedFile{{Path: p}}, nil); err != nil {
+		return err
+	}
 
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
 	if err != nil {

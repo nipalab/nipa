@@ -485,9 +485,17 @@ func TestRemoveLeftFiles(t *testing.T) {
 	wantErr := errors.New("stat cache failed")
 	require.ErrorIs(t, removeLeftFiles(context.Background(), root, &stubLocalRepo{statCacheErr: wantErr}, removals), wantErr)
 
+	// A folder that took a removed file's place is not its content: kept.
 	require.NoError(t, os.Remove(filepath.Join(root, "b.bin")))
 	require.NoError(t, os.Mkdir(filepath.Join(root, "b.bin"), 0o755))
-	require.ErrorContains(t, removeLeftFiles(context.Background(), root, struct{}{}, removals), "remove b.bin")
+	require.NoError(t, removeLeftFiles(context.Background(), root, struct{}{}, removals))
+	require.DirExists(t, filepath.Join(root, "b.bin"))
+
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		require.NoError(t, os.Remove(filepath.Join(root, "b.bin")))
+		require.NoError(t, os.WriteFile(filepath.Join(root, "b.bin"), []byte("unreadable"), 0o000))
+		require.ErrorContains(t, removeLeftFiles(context.Background(), root, struct{}{}, removals), "remove b.bin")
+	}
 }
 
 func TestTreeFileHelpers(t *testing.T) {

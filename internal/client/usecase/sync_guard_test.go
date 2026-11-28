@@ -125,15 +125,24 @@ func TestGuardedSync_UntrackedFileInTheWay(t *testing.T) {
 	require.NoError(t, guardedSync(lr, root, client, tree), "an untracked file that already has the incoming content is not lost")
 }
 
-func TestGuardedSync_DirectoryInTheWayIsLeftToMaterialize(t *testing.T) {
+func TestGuardedSync_DirectoryInTheWay(t *testing.T) {
 	lr, root, client := syncedRepo(t)
 	tree := nextTree(t, client)
 	tree.FileChildren = append(tree.FileChildren, rawManifestFile("new.bin", client.data, "FRESH"))
-	require.NoError(t, os.Mkdir(filepath.Join(root, "new.bin"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "new.bin", "sub"), 0o755))
+	writeRepoFile(t, root, "new.bin/sub/mine", "mine")
 
+	// A folder with content where a file goes is refused before anything is
+	// written, and it is not reported as a local change of a tracked file.
 	err := guardedSync(lr, root, client, tree)
-	require.Error(t, err)
+	require.ErrorContains(t, err, "new.bin/sub/mine")
 	require.NotContains(t, err.Error(), "local changes")
+	require.Equal(t, "ONE", string(readRepoFile(t, root, "a.bin")), "nothing else was written either")
+
+	// An empty folder holds nothing to lose: it gives way to the file.
+	require.NoError(t, os.Remove(filepath.Join(root, "new.bin", "sub", "mine")))
+	require.NoError(t, guardedSync(lr, root, client, tree))
+	require.Equal(t, "FRESH", string(readRepoFile(t, root, "new.bin")))
 }
 
 func TestGuardedSync_UnreadableFileCountsAsLocalChange(t *testing.T) {

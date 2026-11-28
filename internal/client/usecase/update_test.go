@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1076,8 +1077,11 @@ func TestUpdate_Run_MaterializesReadOnlyFile(t *testing.T) {
 }
 
 func TestUpdate_Run_Error_RemoveReadError(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file the process cannot read")
+	}
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "x"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "x"), []byte("x"), 0o000))
 
 	fileHash := chunker.FileHash(nil)
 	local := &stubLocalRepo{

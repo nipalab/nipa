@@ -87,7 +87,9 @@ there; only a repository without `StoreChunkFrom` (test stubs) buffers them.
 into the cache the same way. Planning walks the tree with `walkTreeFiles` and
 copies chunk lists only for the files it rewrites (`treeFileHash` compares an
 unchanged file without copying). Removals (`removeLeftFiles`) run on the
-`runPool` and trust a fresh `stat_cache` fingerprint before hashing a file.
+`runPool` and trust a fresh `stat_cache` fingerprint before hashing a file,
+then remove the folders they emptied; a file that became a folder or a
+folder that became a file is freed earlier (file/folder swaps, below).
 Every sync and restore brackets its writes with `beginWorkingWrite`
 (`usecase/sweep.go`): `localrepo.BeginWorkingWrite` keeps a locked marker in
 `.nipa/writes/`, so a marker nobody holds means a write was killed, and the
@@ -325,10 +327,55 @@ Delta sync (`Update.syncTo`, `usecase/sync_delta.go`, span `sync.tree`):
   commit, not a move of the clone).
 - *Known limits*. A view token is only stored from a fetched manifest: a
   clone of an empty branch has none until its first full update, also after
-  its own first push. A path that is a file in one commit and a directory in
-  the other fails in `syncPlan.run` ("not a directory" / "file exists") in
-  the delta sync exactly as in the full sync; the stored rows handle the
-  swap, the working-copy write order does not.
+  its own first push.
+
+File/folder swaps (`usecase/sync_swap.go`): a path that is a file in one
+commit and a folder in the other is freed by `syncPlan.run` for the full and
+the delta sync alike (`TestSync_FileFolderSwaps`, and swaps are generated in
+`TestEndToEnd_DeltaUpdateProperty`). Before, writes ran before removals, so
+a written file's temp/`MkdirAll` hit the old file ("not a directory") or its
+rename hit the old folder ("file exists"). `planSwaps` runs after
+`checkSyncTargets` and before `localChangeConflicts`, forced or not: one
+`Lstat` per written file and per distinct folder above one finds a file
+where a folder is needed (from the top; it must be a removal of this sync)
+and a folder where a file is written (walked without following links: its
+files must be removals of this sync). Those tracked files must hold no local
+change (`trackedFileChanged`: stat fingerprint, else hash, the rule
+`guardedRemoveCached` keeps files by); anything else (an untracked or ignored
+file, an edited tracked file, a link) refuses the sync with a 400 listing up
+to 20 paths, before anything is written, **also with `--force`**: a forced
+sync overwrites edits at paths it writes but never deletes a changed file the
+target drops, and a swap cannot keep it. Empty folders hold nothing and go.
+Execution keeps the "nothing until the download is done" rule as far as the
+layout allows: `removeBlocking` deletes the files where folders are needed
+right after `ClearSyncedTree` and before the direct plan creates temp files
+in those folders (so before the download); `clearFolders` deletes the
+folders a file replaces (tracked files, then folders deepest first, a
+read-only folder made writable first) after the download, right before
+`materializeAll`/`directPlan.finish`; `swapPlan.left` drops what they took
+from the final removals. An interrupted or failed sync leaves the stored tree
+at the base with no record, so the next update is a full sync, which treats a
+removed path as gone: `guardedRemoveCached` answers "gone" for a path below a
+file (`isNotDir`, which also matches `os.Root`'s errno-less "not a
+directory") and keeps a folder that stands where a tracked file was.
+`removeLeftFiles` then prunes the folders its removals emptied
+(`pruneEmptiedFolders`, deepest first, never the root, never a link), so the
+working copy has the folders a fresh clone has. `applyThreeWay` (merge,
+revert, shelve apply) plans and frees swaps the same way after its download
+and before its writes (a removal taken counts as deleted and staged);
+`Restore` (and shelve's put-back) refuses content in the way and removes an
+empty folder; `RevisionRestore` refuses a file where a folder is needed;
+shelve create removes new files before restoring tracked ones. On the
+staging side a tracked file that is now a folder, or below a path that is a
+file now, reads as missing (`statTracked`/`isMissing` in status, add and
+`classifyStaged`), so a local swap stages and pushes. Not handled:
+case-insensitive renames (`A` -> `a`) are not treated as swaps; a push that
+stages only the new file `a/x` and not the deletions of the tracked files
+under the old folder `a/x/` is accepted by the server (`buildNewTree` does not
+check that a name is not both a file and a folder), leaving a tree no clone
+can check out; `internal/merge.ThreeWay` has no file/folder conflict, so a
+merge where one side edits `a/b` and the other turns it into `a/b/c` is
+refused by the swap check instead of reported as a conflict.
 
 Push reads (`Push.stagedBase`): `Run` (through `pushStagedEffect`) and `Plan`
 read the tracked rows of the staged paths (`SnapshotFiles`) and the tree hash
@@ -392,7 +439,8 @@ either path. A crash between `SaveCommit` and the tree save leaves the
 record naming the old commit, so the next update syncs fully and the next
 push falls back.
 
-Local changes guard: `Update.Run`/`Switch`/`SwitchTag` sync with
+Local changes guard (see also the file/folder swap check above, which no
+`--force` turns off): `Update.Run`/`Switch`/`SwitchTag` sync with
 `syncOptions.keepLocalChanges` unless the `Update` came from `WithForce(true)`
 (`nipa update --force`, `nipa switch --force`, the MCP tools' `force`).
 `localChangeConflicts` (`usecase/sync_guard.go`) looks only at the files the

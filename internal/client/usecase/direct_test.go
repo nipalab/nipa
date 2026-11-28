@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -245,16 +246,31 @@ func TestSyncWorkingCopy_MaterializeFailureLeavesDirectFilesUnswapped(t *testing
 	requireNoTempFiles(t, root)
 }
 
+// sideEffectDownloader runs before while the chunks download.
+type sideEffectDownloader struct {
+	*recordingDownloader
+	before func()
+}
+
+func (d *sideEffectDownloader) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
+	d.before()
+	return d.recordingDownloader.DownloadChunks(ctx, scope, hashes, onChunk)
+}
+
 func TestSyncWorkingCopy_DirectReplaceFailureCleansUp(t *testing.T) {
 	lr, root := newDirectRepo(t)
-	writeRepoFile(t, root, "a.bin/keep", "a directory where a file is wanted")
 	data := map[serverDomain.Hash][]byte{}
 	tree := &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
 		rawManifestFile("a.bin", data, "new a"),
 		rawManifestFile("b.bin", data, "new b"),
 	}}
 
-	err := syncTree(t, lr, root, &recordingDownloader{data: data}, tree)
+	// A folder with content appears where a file goes after the sync checked
+	// the way (one there before is refused up front, see sync_swap_test.go).
+	client := &sideEffectDownloader{recordingDownloader: &recordingDownloader{data: data}, before: func() {
+		writeRepoFile(t, root, "a.bin/keep", "a directory where a file is wanted")
+	}}
+	err := syncTree(t, lr, root, client, tree)
 	var failed *materializeError
 	require.ErrorAs(t, err, &failed)
 	require.Equal(t, "a.bin", failed.path)
@@ -328,8 +344,14 @@ func TestSyncWorkingCopy_DirectCachedChunkLoadFailure(t *testing.T) {
 }
 
 func TestSyncWorkingCopy_DirectTempCreationFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a folder the process cannot write")
+	}
 	lr, root := newDirectRepo(t)
-	writeRepoFile(t, root, "x", "a file where a directory is wanted")
+	// A folder the temp file cannot be created in (a file in the way is
+	// refused before anything happens, see sync_swap_test.go).
+	require.NoError(t, os.Mkdir(filepath.Join(root, "x"), 0o555))
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "x"), 0o755) })
 	data := map[serverDomain.Hash][]byte{}
 	tree := &serverDomain.TreeNode{
 		Name:         "root",

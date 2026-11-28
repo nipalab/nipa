@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -116,7 +117,44 @@ var deltaUpdateSparseSets = [][]string{
 	{"a/b", "c", "d/f1.txt", "b/a/x.cfg"},
 }
 
-var deltaUpdateMoves atomic.Int64
+var deltaUpdateMoves, deltaUpdateSwaps atomic.Int64
+
+// swapsBetween counts the paths that are a file in one working copy listing
+// (workingTree) and a directory in the other.
+func swapsBetween(a, b []string) int {
+	files := func(list []string) map[string]bool {
+		out := map[string]bool{}
+		for _, line := range list {
+			out[line[:strings.IndexByte(line, '|')]] = true
+		}
+		return out
+	}
+	dirs := func(fs map[string]bool) map[string]bool {
+		out := map[string]bool{}
+		for p := range fs {
+			for i := 0; i < len(p); i++ {
+				if p[i] == '/' {
+					out[p[:i]] = true
+				}
+			}
+		}
+		return out
+	}
+	fa, fb := files(a), files(b)
+	da, db := dirs(fa), dirs(fb)
+	n := 0
+	for p := range fa {
+		if db[p] {
+			n++
+		}
+	}
+	for p := range fb {
+		if da[p] {
+			n++
+		}
+	}
+	return n
+}
 
 // TestEndToEnd_DeltaUpdateProperty checks, over random histories and views
 // (read rules and sparse sets), that a clone moved from commit to commit by
@@ -126,11 +164,14 @@ var deltaUpdateMoves atomic.Int64
 // Everything goes through the real server and the real client usecases.
 func TestEndToEnd_DeltaUpdateProperty(t *testing.T) {
 	t.Parallel()
-	seeds := deltaSeeds[:4]
+	seeds := deltaSeeds
 	if testing.Short() {
 		seeds = seeds[:1]
 	}
-	t.Cleanup(func() { t.Logf("delta update property: %d moves over %d seeds", deltaUpdateMoves.Load(), len(seeds)) })
+	t.Cleanup(func() {
+		t.Logf("delta update property: %d moves (%d across a file/directory swap) over %d seeds",
+			deltaUpdateMoves.Load(), deltaUpdateSwaps.Load(), len(seeds))
+	})
 	for _, seed := range seeds {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
 			t.Parallel()
@@ -140,12 +181,8 @@ func TestEndToEnd_DeltaUpdateProperty(t *testing.T) {
 }
 
 // deltaHistory pushes a random history to main and names every commit with a
-// branch c<i> and a tag t<i>. The generator must not turn files into
-// directories or back (deltaGen.noSwaps): syncing a working copy across such
-// a swap fails in the full sync as well ("not a directory" / "file exists"),
-// which is not what this test is about. The stored rows handle swaps
-// (localrepo TestApplyTreeDelta_EqualsSavingTheManifest), and so do the
-// server and treedelta.Apply (TestEndToEnd_ManifestDeltaProperty).
+// branch c<i> and a tag t<i>. The generator turns files into directories of
+// the same name and back, so moves cross such swaps.
 func deltaHistory(t *testing.T, h *deltaHarness, gen *deltaGen, seed int64, count int) []string {
 	t.Helper()
 	model := deltaModel{}
@@ -192,12 +229,12 @@ func deltaHistory(t *testing.T, h *deltaHarness, gen *deltaGen, seed int64, coun
 
 func runDeltaUpdateProperty(t *testing.T, seed int64) {
 	h := newDeltaHarness(t)
-	gen := &deltaGen{rng: rand.New(rand.NewSource(seed)), noSwaps: true}
+	gen := &deltaGen{rng: rand.New(rand.NewSource(seed))}
 	const commitCount, movesPerView = 9, 12
 	commits := deltaHistory(t, h, gen, seed, commitCount)
 	url := "http://" + h.host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
-	views, moves, deltas, failed, restored := 0, 0, 0, 0, 0
+	views, moves, deltas, failed, restored, swaps := 0, 0, 0, 0, 0, 0
 	for fi, filter := range deltaFilters {
 		if !filter.admin {
 			h.setFilter(filter)
@@ -325,6 +362,9 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 					continue
 				}
 				require.NoError(t, err, label)
+				if fresh[at] != nil && swapsBetween(fresh[at].working, want.working) > 0 {
+					swaps++
+				}
 				at = j
 				got := cloneStateOf(t, dir)
 				require.Equal(t, want.stored, got.stored, "%s: stored tree", label)
@@ -338,9 +378,11 @@ func runDeltaUpdateProperty(t *testing.T, seed int64) {
 	}
 
 	deltaUpdateMoves.Add(int64(moves))
-	t.Logf("seed %d: %d views, %d moves (%d refused like the manifest), %d deltas applied, %d deleted files restored by forced moves",
-		seed, views, moves, failed, deltas, restored)
+	deltaUpdateSwaps.Add(int64(swaps))
+	t.Logf("seed %d: %d views, %d moves (%d refused like the manifest, %d across a file/directory swap), %d deltas applied, %d deleted files restored by forced moves",
+		seed, views, moves, failed, swaps, deltas, restored)
 	require.Greater(t, views, len(deltaFilters)*len(deltaUpdateSparseSets)/2, "most views must be readable for some commit")
 	require.Greater(t, deltas, moves/2, "most moves must go through a delta")
 	require.Positive(t, restored)
+	require.Positive(t, swaps, "some moves must cross a file/directory swap")
 }
