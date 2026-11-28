@@ -9,7 +9,7 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   merge, revert, log, diff, blame, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, shelve, ignore import, import git, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, blame (`blame.go`: path log via
-  `GetPathCommitLog` capped at 500 scanned commits, each version through a
+  `GetPathCommitLog`, at most 500 commits that changed the file, each version through a
   dir-scoped `GetCommitDirManifest` + commit-scoped download, lines
   carried back with `diff.Lines` and attributed newest first until every
   line has an owner; working file vs pinned commit marks `Uncommitted`,

@@ -97,7 +97,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `from_commit_id`/`from_commit_hash` (exact fork point, base36/hex).
   `GetCommitLog` takes `{context, branch, start_commit_id?, limit, path?}`
   (`path` switches to `Branch.PathCommitLog`: only commits that changed that
-  file or folder, scan capped at 500 commits); `ListTags` defaults a missing
+  file or folder, read from the path change index over at most 10,000
+  first-parent commits, see `server.md`); `ListTags` defaults a missing
   limit to 100.
   `GetCommit` takes
   `{context, commit_id}` (base36; **ID only**, no hash alias) and returns the

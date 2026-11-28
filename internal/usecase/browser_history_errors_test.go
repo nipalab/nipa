@@ -167,15 +167,15 @@ func TestBranch_PathCommitLog_ResolveError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestBranch_PathCommitLog_StartCommit(t *testing.T) {
+func TestBranch_PathCommitLogScan_StartCommit(t *testing.T) {
 	perm, repo, uc := newHistoryTestBranch(t)
 	headID, startID := snow.ID(20), snow.ID(15)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), startID, maxPathHistoryScan).Return([]*domain.CommitLogEntry{}, nil)
+	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), startID, oldPathHistoryScan).Return([]*domain.CommitLogEntry{}, nil)
 
-	commits, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", &startID, 0)
+	commits, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", &startID, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Empty(t, commits)
 }
@@ -192,19 +192,19 @@ func TestBranch_PathCommitLog_FilterError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestBranch_PathCommitLog_CommitLogError(t *testing.T) {
+func TestBranch_PathCommitLogScan_CommitLogError(t *testing.T) {
 	wantErr := errors.New("db down")
 	perm, repo, uc := newHistoryTestBranch(t)
 	headID := snow.ID(20)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
-	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, maxPathHistoryScan).Return(nil, wantErr)
+	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, oldPathHistoryScan).Return(nil, wantErr)
 
-	_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "", nil, 0)
+	_, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "", nil, 0, oldPathHistoryScan)
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestBranch_PathCommitLog_HashErrors(t *testing.T) {
+func TestBranch_PathCommitLogScan_HashErrors(t *testing.T) {
 	t.Run("head hash error", func(t *testing.T) {
 		wantErr := errors.New("db down")
 		perm, repo, uc := newHistoryTestBranch(t)
@@ -212,12 +212,12 @@ func TestBranch_PathCommitLog_HashErrors(t *testing.T) {
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-		repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, maxPathHistoryScan).Return([]*domain.CommitLogEntry{
+		repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, oldPathHistoryScan).Return([]*domain.CommitLogEntry{
 			{Commit: domain.Commit{ID: headID, Parent1ID: &headID}},
 		}, nil)
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(nil, wantErr)
 
-		_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 0)
+		_, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", nil, 0, oldPathHistoryScan)
 		require.ErrorIs(t, err, wantErr)
 	})
 
@@ -228,7 +228,7 @@ func TestBranch_PathCommitLog_HashErrors(t *testing.T) {
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-		repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, maxPathHistoryScan).Return([]*domain.CommitLogEntry{
+		repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, oldPathHistoryScan).Return([]*domain.CommitLogEntry{
 			{Commit: domain.Commit{ID: headID, Parent1ID: &olderID}},
 			{Commit: domain.Commit{ID: olderID, Parent1ID: &olderID}},
 		}, nil)
@@ -238,18 +238,18 @@ func TestBranch_PathCommitLog_HashErrors(t *testing.T) {
 			Return([]*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}}, nil)
 		repo.EXPECT().GetCommit(gomock.Any(), olderID).Return(nil, wantErr)
 
-		_, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 0)
+		_, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", nil, 0, oldPathHistoryScan)
 		require.ErrorIs(t, err, wantErr)
 	})
 }
 
-func TestBranch_PathCommitLog_WindowTruncated(t *testing.T) {
+func TestBranch_PathCommitLogScan_WindowTruncated(t *testing.T) {
 	perm, repo, uc := newHistoryTestBranch(t)
 	headID, parentID := snow.ID(20), snow.ID(10)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, maxPathHistoryScan).Return([]*domain.CommitLogEntry{
+	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, oldPathHistoryScan).Return([]*domain.CommitLogEntry{
 		{Commit: domain.Commit{ID: headID, Parent1ID: &parentID}},
 	}, nil)
 	repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, TreeID: 101}, nil)
@@ -257,18 +257,18 @@ func TestBranch_PathCommitLog_WindowTruncated(t *testing.T) {
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).
 		Return([]*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}}, nil)
 
-	commits, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 0)
+	commits, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", nil, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Empty(t, commits)
 }
 
-func TestBranch_PathCommitLog_LimitReached(t *testing.T) {
+func TestBranch_PathCommitLogScan_LimitReached(t *testing.T) {
 	perm, repo, uc := newHistoryTestBranch(t)
 	headID, olderID := snow.ID(20), snow.ID(10)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, maxPathHistoryScan).Return([]*domain.CommitLogEntry{
+	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), headID, oldPathHistoryScan).Return([]*domain.CommitLogEntry{
 		{Commit: domain.Commit{ID: headID, Parent1ID: &olderID}},
 		{Commit: domain.Commit{ID: olderID, Parent1ID: &olderID}},
 	}, nil)
@@ -281,7 +281,7 @@ func TestBranch_PathCommitLog_LimitReached(t *testing.T) {
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(100)).
 		Return([]*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}}, nil)
 
-	commits, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 1)
+	commits, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", nil, 1, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Len(t, commits, 1)
 	require.Equal(t, headID, commits[0].ID)

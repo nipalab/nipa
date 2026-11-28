@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack vscode-test vscode-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-manifest bench-small-change bench-small-update bench-mr bench-mr-ee bench-unit fuzz load-test release release-server
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack vscode-test vscode-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-manifest bench-small-change bench-small-update bench-mr bench-mr-ee bench-blame bench-blame-ee bench-unit fuzz load-test release release-server
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 GCOVR ?= gcovr
@@ -259,6 +259,14 @@ bench-mr:
 ## The same on postgres + MinIO (needs Docker).
 bench-mr-ee:
 	NIPA_BENCH_FILES=$(files) go test ./ee/e2e -run TestEnterpriseMergeRequestScale -v -count=1 -timeout 60m
+
+## Per-path history (blame's server step, file and folder history) over 500 commits on a 1,676-directory tree of N files, plus the write cost of a 20-file push and merge: SQLite (e.g. make bench-blame files=100000).
+bench-blame:
+	NIPA_BENCH_FILES=$(files) go test ./internal/e2e -run TestEndToEnd_BlameScale -v -count=1 -timeout 60m
+
+## The same on postgres + MinIO (needs Docker).
+bench-blame-ee:
+	NIPA_BENCH_FILES=$(files) go test ./ee/e2e -run TestEnterpriseBlameScale -v -count=1 -timeout 60m
 
 ## Run the package micro-benchmarks (chunker, diff, treehash).
 bench-unit:

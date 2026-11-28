@@ -130,6 +130,11 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	var reqs []ApplyPushRequest
 	parentID := target.CommitID
 	parentHashes := []domain.Hash{targetHead.Hash}
+	// prevChanges is what the previous replayed commit's tree changed
+	// against the target head. Every step is built on the target head, so a
+	// replayed commit after the first changes, against its parent (the
+	// previous step), the difference between the two builds.
+	var prevChanges *treeChanges
 	state, stored, err := b.replayMerge(ctx, projectID, opts.Strategy, base, *target.CommitID, *source.CommitID, func(step mergeLanding) error {
 		root, err := buildNewTree(ctx, b.branchRepo, targetHead, step.files, step.removed)
 		if err != nil {
@@ -137,6 +142,10 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		}
 		if step.commit != nil {
 			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, step.commit.Message, "", root)
+			if prevChanges != nil {
+				req.PathChanges = root.changes.since(prevChanges)
+			}
+			prevChanges = root.changes
 			req.UserID = step.commit.UserID
 			reqs = append(reqs, req)
 			prev := req.CommitID

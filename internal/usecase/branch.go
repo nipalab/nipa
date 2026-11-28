@@ -61,6 +61,12 @@ type branchRepository interface {
 	ListChunksByFiles(ctx context.Context, fileIDs []int64) (map[int64][]domain.Chunk, error)
 	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 	CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
+	// PathChangeLog, PathChangeRows, UnindexedPathChangeCommits and
+	// RecordPathChanges are the path change index (see path_changes.go).
+	PathChangeLog(ctx context.Context, q PathChangeQuery) ([]*domain.CommitLogEntry, error)
+	PathChangeRows(ctx context.Context, q PathChangeQuery, commitIDs []snow.ID) ([]PathChangeRow, error)
+	UnindexedPathChangeCommits(ctx context.Context, projectID, startCommitID snow.ID, scanLimit int) ([]UnindexedCommit, error)
+	RecordPathChanges(ctx context.Context, commits []CommitPathChanges) error
 }
 
 type BranchForkPoint struct {

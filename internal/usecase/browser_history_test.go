@@ -268,7 +268,7 @@ func TestBranch_TreeAtWithHistory_NoPermission(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
-func TestBranch_PathCommitLog_File(t *testing.T) {
+func TestBranch_PathCommitLogScan_File(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
 	repo := NewMockbranchRepository(ctrl)
@@ -284,20 +284,20 @@ func TestBranch_PathCommitLog_File(t *testing.T) {
 	expectCommitManifest(repo, rootID, nil, root)
 	expectFlatLog(repo, headID, midID, rootID)
 
-	commits, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "a.txt", nil, 0)
+	commits, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "a.txt", nil, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Len(t, commits, 2)
 	require.Equal(t, midID, commits[0].ID)
 	require.Equal(t, rootID, commits[1].ID)
 
-	commits, err = uc.PathCommitLog(context.Background(), snow.ID(1), "main", "b.txt", nil, 0)
+	commits, err = uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "b.txt", nil, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Len(t, commits, 2)
 	require.Equal(t, headID, commits[0].ID)
 	require.Equal(t, rootID, commits[1].ID)
 }
 
-func TestBranch_PathCommitLog_Directory(t *testing.T) {
+func TestBranch_PathCommitLogScan_Directory(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
 	repo := NewMockbranchRepository(ctrl)
@@ -319,13 +319,13 @@ func TestBranch_PathCommitLog_Directory(t *testing.T) {
 	expectCommitManifest(repo, rootID, nil, root)
 	expectFlatLog(repo, headID, midID, rootID)
 
-	commits, err := uc.PathCommitLog(context.Background(), snow.ID(1), "main", "public", nil, 0)
+	commits, err := uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "public", nil, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Len(t, commits, 2)
 	require.Equal(t, headID, commits[0].ID)
 	require.Equal(t, rootID, commits[1].ID)
 
-	commits, err = uc.PathCommitLog(context.Background(), snow.ID(1), "main", "top.txt", nil, 0)
+	commits, err = uc.PathCommitLogScan(context.Background(), snow.ID(1), "main", "top.txt", nil, 0, oldPathHistoryScan)
 	require.NoError(t, err)
 	require.Len(t, commits, 2)
 	require.Equal(t, midID, commits[0].ID)

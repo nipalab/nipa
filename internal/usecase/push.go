@@ -40,6 +40,14 @@ type ApplyPushRequest struct {
 	AuthorName  string
 	AuthorEmail string
 	CreatedAt   *time.Time
+
+	// PathChanges are the commit's path change index rows (what it changes
+	// against its first parent; none for a root commit), written with the
+	// commit when IndexPaths is set. A request without IndexPaths leaves the
+	// commit unindexed, and the first per-path history read over it indexes
+	// it from the stored trees.
+	PathChanges []PathChange
+	IndexPaths  bool
 }
 
 // PushNodeRow is a new tree node (directory). IDs are logical and parent-first;
@@ -611,6 +619,14 @@ func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID
 		ParentID2:  parent2ID,
 		Message:    message,
 		Origin:     origin,
+		IndexPaths: parentID == nil || root.changes != nil,
+	}
+	if parentID != nil && root.changes != nil {
+		// The tree was built on the first parent's tree (push, import, a
+		// merge or squash commit, a rebase's first commit), so what the build
+		// changed is what the commit changes. A rebase replaces it for its
+		// later commits (MergeForMergeRequest).
+		req.PathChanges = root.changes.since(nil)
 	}
 
 	queue := []*pushTreeNode{root}
@@ -757,6 +773,9 @@ type pushTreeNode struct {
 	Files    []*pushFile
 	Children []*pushTreeNode
 	KeepDirs []*pushTreeNode
+	// changes is what the build changed against its base tree; only the root
+	// carries it.
+	changes *treeChanges
 }
 
 type pushFile struct {
@@ -777,6 +796,9 @@ func buildNewTree(ctx context.Context, branchRepo branchRepository, headCommit *
 		rebuildDirs: map[string]bool{},
 	}
 	if headCommit != nil {
+		// A tree without a base is a root commit's, which has no path change
+		// rows: nothing is recorded for its files.
+		b.changes = newTreeChanges()
 		root, err := branchRepo.GetTreeNode(ctx, headCommit.TreeID)
 		if err != nil {
 			return nil, err
@@ -818,6 +840,7 @@ func buildNewTree(ctx context.Context, branchRepo branchRepository, headCommit *
 		return nil, newTreeClashError(b.clashes)
 	}
 	b.finalize(ctx, root)
+	root.changes = b.changes
 	return root, nil
 }
 
@@ -924,6 +947,10 @@ type treeBuilder struct {
 	// clashes collects the names that would be a file and a directory at
 	// once; a tree with any is never returned.
 	clashes []treeClash
+	// changes records the base and built state of every file the change
+	// touches and every directory it rebuilds: the path change index rows
+	// come from it without another tree read. It is nil without a base tree.
+	changes *treeChanges
 }
 
 func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domain.TreeNode) (*pushTreeNode, error) {
@@ -955,6 +982,7 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		}
 	}
 	removedSet := b.removed[dirPath]
+	b.recordFileChanges(dirPath, baseFiles, byName, removedSet)
 	for _, bf := range baseFiles {
 		if removedSet[bf.Name] {
 			continue
@@ -992,7 +1020,11 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		if err != nil {
 			return nil, err
 		}
-		if len(child.Files) == 0 && len(child.Children) == 0 && len(child.KeepDirs) == 0 {
+		kept := len(child.Files) > 0 || len(child.Children) > 0 || len(child.KeepDirs) > 0
+		if b.changes != nil {
+			b.changes.dirs[joinPath(dirPath, sub)] = [2]bool{childBase != nil && childBase.Hash != emptyTreeHash, kept}
+		}
+		if !kept {
 			continue
 		}
 		child.Parent = node
@@ -1032,6 +1064,29 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		}
 	}
 	return node, nil
+}
+
+// recordFileChanges records the base and built state of the files of one
+// rebuilt directory that the change pushes or removes. byName holds only the
+// pushed files when it is called.
+func (b *treeBuilder) recordFileChanges(dirPath string, baseFiles []*domain.File, pushed map[string]*pushFile, removed map[string]bool) {
+	if b.changes == nil || (len(pushed) == 0 && len(removed) == 0) {
+		return
+	}
+	base := make(map[string]*domain.File, len(baseFiles))
+	for _, bf := range baseFiles {
+		base[bf.Name] = bf
+	}
+	for name, pf := range pushed {
+		built := fileState{present: true, hash: pf.Hash, class: domain.ClassifyStoredMode(pf.Mode)}
+		b.changes.files[joinPath(dirPath, name)] = [2]fileState{storedFileState(base[name]), built}
+	}
+	for name := range removed {
+		if _, ok := pushed[name]; ok {
+			continue
+		}
+		b.changes.files[joinPath(dirPath, name)] = [2]fileState{storedFileState(base[name]), {}}
+	}
 }
 
 func (b *treeBuilder) noteClash(dirPath, name string, dirInBase bool) {

@@ -226,7 +226,10 @@ func insertCommit(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyP
 	}); err != nil {
 		return handleError(err)
 	}
-	return nil
+	if !req.IndexPaths {
+		return nil
+	}
+	return writePathIndex(ctx, q, req.CommitID, req.PathChanges)
 }
 
 func nullID(id *snow.ID) sql.NullInt64 {

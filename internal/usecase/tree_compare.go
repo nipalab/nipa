@@ -125,6 +125,18 @@ func (f comparedFile) path() string { return joinTreePath(f.dir, f.name) }
 // view filters every tree like a manifest load does, so a hidden path is
 // never reported and never descended into.
 func compareTrees(ctx context.Context, repo treeBatchReader, view treeView, roots []*domain.TreeNode, decide []int) ([]comparedFile, error) {
+	w, err := walkCompare(ctx, repo, view, roots, decide, true)
+	if err != nil {
+		return nil, err
+	}
+	return w.out, nil
+}
+
+// walkCompare runs the compareTrees walk and returns it whole: besides the
+// differing files (out) it lists the directories that some deciding trees
+// hold and others do not (dirsToggled). withChunks loads the chunk lists of
+// the reported files; without it they stay unloaded.
+func walkCompare(ctx context.Context, repo treeBatchReader, view treeView, roots []*domain.TreeNode, decide []int, withChunks bool) (*compareWalk, error) {
 	if decide == nil {
 		decide = make([]int, len(roots))
 		for i := range decide {
@@ -133,7 +145,7 @@ func compareTrees(ctx context.Context, repo treeBatchReader, view treeView, root
 	}
 	w := &compareWalk{repo: repo, view: view, sides: len(roots), decide: decide}
 	if w.sameDirs(roots) {
-		return nil, nil
+		return w, nil
 	}
 	level := []compareDir{{nodes: roots}}
 	for len(level) > 0 {
@@ -143,10 +155,12 @@ func compareTrees(ctx context.Context, repo treeBatchReader, view treeView, root
 		}
 		level = next
 	}
-	if err := w.loadChunks(ctx); err != nil {
-		return nil, err
+	if withChunks {
+		if err := w.loadChunks(ctx); err != nil {
+			return nil, err
+		}
 	}
-	return w.out, nil
+	return w, nil
 }
 
 type compareWalk struct {
@@ -155,6 +169,9 @@ type compareWalk struct {
 	sides  int
 	decide []int
 	out    []comparedFile
+	// dirsToggled are the paths of directories present (visible and not
+	// empty) in some deciding trees and absent from others.
+	dirsToggled []string
 }
 
 // compareDir is one directory path the walk reads, with the node every tree
@@ -177,6 +194,18 @@ func (w *compareWalk) sameDirs(nodes []*domain.TreeNode) bool {
 		}
 	}
 	return true
+}
+
+// presenceDiffers reports whether some deciding trees hold the directory and
+// others do not.
+func (w *compareWalk) presenceDiffers(nodes []*domain.TreeNode) bool {
+	first := nodes[w.decide[0]] != nil
+	for _, side := range w.decide[1:] {
+		if (nodes[side] != nil) != first {
+			return true
+		}
+	}
+	return false
 }
 
 func sameComparedFile(a, b *domain.File) bool {
@@ -253,6 +282,9 @@ func (w *compareWalk) level(ctx context.Context, level []compareDir) ([]compareD
 			at := make([]*domain.TreeNode, w.sides)
 			for side := range at {
 				at[side] = sideDirs[side][name]
+			}
+			if w.presenceDiffers(at) {
+				w.dirsToggled = append(w.dirsToggled, joinTreePath(dir.path, name))
 			}
 			if w.sameDirs(at) {
 				continue
