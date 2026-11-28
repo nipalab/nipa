@@ -104,9 +104,6 @@ var (
 type deltaGen struct {
 	rng  *rand.Rand
 	tick int
-	// noSwaps keeps mutate from turning a file into a directory of the same
-	// name or the reverse.
-	noSwaps bool
 }
 
 func (g *deltaGen) pick(list []string) string { return list[g.rng.Intn(len(list))] }
@@ -182,11 +179,11 @@ func (g *deltaGen) mutate(m deltaModel) {
 			g.transplant(m, g.pick(dirs), false)
 		case op == 9 && len(dirs) > 0:
 			m.removeDir(g.pick(dirs))
-		case op == 10 && !g.noSwaps:
+		case op == 10:
 			// A file becomes a directory of the same name.
 			path := g.pick(paths)
 			m.set(path+"/"+g.pick(deltaFileNames), g.file())
-		case op == 11 && len(dirs) > 0 && !g.noSwaps:
+		case op == 11 && len(dirs) > 0:
 			// A directory becomes a file of the same name.
 			m.set(g.pick(dirs), g.file())
 		default:

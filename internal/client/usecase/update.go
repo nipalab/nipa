@@ -558,6 +558,12 @@ func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCo
 		return err
 	}
 
+	// What stands where a file becomes a folder or a folder a file is
+	// checked before anything changes, forced or not.
+	swaps, err := planSwaps(ctx, root, lr, jobFiles, removals)
+	if err != nil {
+		return err
+	}
 	conflicts, err := localChangeConflicts(ctx, root, lr, p.replaced)
 	if err != nil {
 		return err
@@ -570,6 +576,13 @@ func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCo
 			return err
 		}
 	}
+	// A tracked file where a written file needs a folder goes before the
+	// writes are prepared: their temp files are created in that folder. The
+	// stored tree still names it, so an interrupted sync recovers on retry.
+	if err := swaps.removeBlocking(ctx, root); err != nil {
+		return err
+	}
+	removals = swaps.left(removals)
 
 	missing, err := lr.MissingChunks(p.want)
 	if err != nil {
@@ -611,6 +624,11 @@ func (p *syncPlan) run(ctx context.Context, client chunkDownloader, lr workingCo
 		return nil
 	}
 	if err := downloadChunksStream(ctx, client, scope, missing, estimated, sink, syncStreamTarget(lr, direct, cached), progress...); err != nil {
+		return err
+	}
+	// Every file is downloaded; a folder a file takes the place of goes now,
+	// right before the files are swapped in.
+	if err := swaps.clearFolders(ctx, root); err != nil {
 		return err
 	}
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
@@ -715,12 +733,25 @@ func removeLeftFiles(ctx context.Context, root string, lr any, removals []client
 	if err != nil {
 		return err
 	}
-	return runPool(ctx, removals, func(base clientDomain.SnapshotFile) error {
-		if _, err := guardedRemoveCached(root, base, statCache); err != nil {
+	var (
+		mu   sync.Mutex
+		gone []string
+	)
+	err = runPool(ctx, removals, func(base clientDomain.SnapshotFile) error {
+		removed, err := guardedRemoveCached(root, base, statCache)
+		if err != nil {
 			return fmt.Errorf("remove %s: %w", base.Path, err)
+		}
+		if removed {
+			mu.Lock()
+			gone = append(gone, base.Path)
+			mu.Unlock()
 		}
 		return nil
 	})
+	// The folders the removals emptied go too, as a fresh clone has none.
+	pruneEmptiedFolders(root, gone)
+	return err
 }
 
 // statEntriesFor loads the fingerprints of paths: single rows for a few
@@ -1022,7 +1053,8 @@ func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache 
 	defer wt.release()
 	name := filepath.FromSlash(base.Path)
 	dir, done, err := wt.dirOf("remove", name, false)
-	if os.IsNotExist(err) {
+	if os.IsNotExist(err) || isNotDir(err) {
+		// No folder, or a file where its folder was: the path is gone.
 		return true, nil
 	}
 	if err != nil {
@@ -1030,8 +1062,17 @@ func guardedRemoveCached(root string, base clientDomain.SnapshotFile, statCache 
 	}
 	defer done()
 	leaf := filepath.Base(name)
+	info, err := dir.Lstat(leaf)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err == nil && info.IsDir() {
+		// A folder took the file's place (or the path became a directory
+		// already): not the tracked content, so it is kept.
+		return false, nil
+	}
 	if entry, ok := statCache[base.Path]; ok {
-		if info, err := dir.Lstat(leaf); err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
+		if err == nil && info.Mode().IsRegular() && statMatches(entry, info) {
 			if entry.Hash != base.Hash {
 				return false, nil
 			}

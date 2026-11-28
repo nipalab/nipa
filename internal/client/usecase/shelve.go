@@ -398,14 +398,16 @@ func (s *Shelve) clearShelved(ctx context.Context, shelf *domain.Shelf, restore 
 			return err
 		}
 	}
-	if len(restore) > 0 {
-		if err := s.wc.restoreSnapshot(ctx, restore, tracked); err != nil {
-			return err
-		}
-	}
+	// New files go first: a tracked file restored where a new folder took
+	// its place (or the reverse) needs the way free. The shelf holds them.
 	defer guardWrites(s.root)()
 	for _, p := range added {
 		if err := removeWorkingFile(s.root, p); err != nil {
+			return err
+		}
+	}
+	if len(restore) > 0 {
+		if err := s.wc.restoreSnapshot(ctx, restore, tracked); err != nil {
 			return err
 		}
 	}

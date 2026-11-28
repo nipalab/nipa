@@ -299,8 +299,8 @@ func TestAdd_ScopedReadsStageWhatTheFullLoadStages(t *testing.T) {
 		{name: "ignored directory forced", targets: []string{"ignored-dir"}, opts: AddOptions{Force: true}, want: []string{"ignored-dir/x.txt"}},
 		{name: "file in an ignored directory", targets: []string{"ignored-dir/x.txt"}, wantErr: "is ignored"},
 		{name: "ignored file where a tracked directory was", targets: []string{"was-dir.log"}, dirBecameFile: true, want: []string{"was-dir.log"}},
-		// Both paths fail alike: the deleted file's parent is a file now.
-		{name: "root with a file where a tracked directory was", targets: []string{"."}, dirBecameFile: true, wantErr: "not a directory"},
+		// Both paths stage alike: the new file and the deletion below it.
+		{name: "root with a file where a tracked directory was", targets: []string{"."}, dirBecameFile: true, open: true},
 		{name: "metadata path", targets: []string{".nipa/config"}, wantErr: "cannot operate on path inside"},
 		{name: "outside the repository", targets: []string{"../x"}, wantErr: "outside the repository"},
 		{name: "file outside the sparse set", targets: []string{"other/outside.txt"}, sparse: []string{"src", "docs"}, want: []string{"other/outside.txt"}},

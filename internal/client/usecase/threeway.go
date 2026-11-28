@@ -49,18 +49,31 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 			writes = append(writes, p)
 		}
 	}
+	swaps := &swapPlan{}
 	if write {
 		defer guardWrites(root)()
 		if err := checkTargets(root, "write", writes); err != nil {
 			return nil, err
 		}
 		var removes []string
+		var removals []domain.SnapshotFile
 		for _, p := range res.Deleted {
-			if _, ok := baseByPath[p]; ok {
+			if base, ok := baseByPath[p]; ok {
 				removes = append(removes, p)
+				removals = append(removals, base)
 			}
 		}
 		if err := checkTargets(root, "remove", removes); err != nil {
+			return nil, err
+		}
+		// A file that becomes a folder or a folder that becomes a file: what
+		// is in the way is checked before anything is downloaded or written.
+		targets := make([]materializedFile, 0, len(writes))
+		for _, p := range sortedStrings(writes) {
+			targets = append(targets, materializedFile{Path: p})
+		}
+		var err error
+		if swaps, err = planSwaps(ctx, root, local, targets, removals); err != nil {
 			return nil, err
 		}
 	}
@@ -74,6 +87,15 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 	}
 	if err := downloadMissing(ctx, client, local, scope, missing, estimatedBytes(needs, missing)); err != nil {
 		return nil, err
+	}
+
+	if write {
+		if err := swaps.removeBlocking(ctx, root); err != nil {
+			return nil, err
+		}
+		if err := swaps.clearFolders(ctx, root); err != nil {
+			return nil, err
+		}
 	}
 
 	out := &threeWayResult{Files: make(map[string]merge.File, len(ours)), Kinds: map[string]string{}}
@@ -173,9 +195,12 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 			out.Staged = append(out.Staged, p)
 			continue
 		}
-		removed, err := guardedRemove(root, base)
-		if err != nil {
-			return nil, fmt.Errorf("remove %s: %w", p, err)
+		removed := swaps.gone(p)
+		if !removed {
+			var err error
+			if removed, err = guardedRemove(root, base); err != nil {
+				return nil, fmt.Errorf("remove %s: %w", p, err)
+			}
 		}
 		if removed {
 			out.Deleted = append(out.Deleted, p)

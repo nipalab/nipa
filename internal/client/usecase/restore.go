@@ -153,6 +153,20 @@ func (w *WorkingCopy) restoreFiles(ctx context.Context, paths []string, tracked 
 	if err := checkRestoreTargets(w.root, changed); err != nil {
 		return err
 	}
+	// A file in place of a folder above a restored file, or a folder with
+	// content in place of a restored file, is refused before anything is
+	// written; an empty folder in the way goes.
+	writes := make([]materializedFile, 0, len(changed))
+	for _, f := range changed {
+		writes = append(writes, materializedFile{Path: f.Path})
+	}
+	swaps, err := planSwaps(ctx, w.root, w.localRepo, writes, nil)
+	if err != nil {
+		return err
+	}
+	if err := swaps.clearFolders(ctx, w.root); err != nil {
+		return err
+	}
 	statEntries, cachedFiles, err := w.restoreDirect(ctx, changed, layouts)
 	if err != nil {
 		return restoreError(err)

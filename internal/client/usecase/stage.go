@@ -3,7 +3,6 @@ package usecase
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -161,9 +160,9 @@ func (w *WorkingCopy) withoutUnchanged(scope *trackedScope, paths []string) ([]s
 			kept = append(kept, path)
 			continue
 		}
-		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+		info, err := statTracked(w.root, path)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isMissing(err) {
 				kept = append(kept, path)
 				continue
 			}
@@ -283,14 +282,20 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 
 	st := &domain.Status{Branch: cfg.Branch, Head: cfg.Head}
 	for _, p := range staged {
-		_, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(p)))
+		var err error
+		if _, tracked := baseByPath[p]; tracked {
+			// A tracked file that is a folder now is a deletion.
+			_, err = statTracked(w.root, p)
+		} else {
+			_, err = os.Stat(filepath.Join(w.root, filepath.FromSlash(p)))
+		}
 		switch {
 		case err == nil:
 			st.Staged = append(st.Staged, p)
 			if _, tracked := baseByPath[p]; !tracked {
 				st.Added = append(st.Added, p)
 			}
-		case errors.Is(err, fs.ErrNotExist):
+		case isMissing(err):
 			st.Deleted = append(st.Deleted, p)
 		default:
 			return nil, err
@@ -337,9 +342,9 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 			st.Untracked = append(st.Untracked, path)
 			continue
 		}
-		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+		info, err := statTracked(w.root, path)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isMissing(err) {
 				delete(workingSet, path)
 				continue
 			}
@@ -359,7 +364,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	for i, result := range w.rehash(jobs) {
 		job := jobs[i]
 		if result.err != nil {
-			if errors.Is(result.err, fs.ErrNotExist) {
+			if isMissing(result.err) {
 				delete(workingSet, job.path)
 				continue
 			}
@@ -428,9 +433,9 @@ func (w *WorkingCopy) RefreshStatEntries(paths []string) error {
 		if !tracked {
 			continue
 		}
-		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+		info, err := statTracked(w.root, path)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if isMissing(err) {
 				continue
 			}
 			return err
@@ -445,7 +450,7 @@ func (w *WorkingCopy) RefreshStatEntries(paths []string) error {
 	for i, result := range w.rehash(jobs) {
 		job := jobs[i]
 		if result.err != nil {
-			if errors.Is(result.err, fs.ErrNotExist) {
+			if isMissing(result.err) {
 				continue
 			}
 			return fmt.Errorf("hash %q: %w", job.path, result.err)
@@ -706,7 +711,7 @@ func (w *WorkingCopy) expandAddTargets(tracked *trackedScope, targets []string, 
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
+			if !isMissing(err) {
 				return nil, err
 			}
 			found, err := stageTrackedTarget(tracked, t, add)

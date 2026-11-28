@@ -3,8 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -424,11 +426,23 @@ func TestMerge_Run_Error_MaterializeMergedFile(t *testing.T) {
 	mergeUse := newTestMerge(t, client, local, nil)
 
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "a.txt"), 0o755))
+	// A folder with content where the merged file goes.
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "a.txt"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt", "mine"), []byte("mine"), 0o644))
 
 	_, err := mergeUse.Run(context.Background(), root, "feature", MergeOptions{})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "a.txt")
+	require.Contains(t, err.Error(), "a.txt/mine")
+
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		return
+	}
+	// A root the merged file cannot be written into.
+	ro := t.TempDir()
+	require.NoError(t, os.Chmod(ro, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+	_, err = newTestMerge(t, client, local, nil).Run(context.Background(), ro, "feature", MergeOptions{})
+	require.ErrorIs(t, err, fs.ErrPermission)
 }
 
 func TestMerge_Run_BinaryConflictNested(t *testing.T) {
@@ -575,8 +589,11 @@ func TestMerge_Run_Error_RemoveGuarded(t *testing.T) {
 	local.snapshot = &domain.Snapshot{Files: []domain.SnapshotFile{{Path: "f.txt", Hash: baseFile.Hash}}}
 	mergeUse := newTestMerge(t, client, local, nil)
 
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file the process cannot read")
+	}
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "f.txt"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "f.txt"), []byte("base\n"), 0o000))
 
 	_, err := mergeUse.Run(context.Background(), root, "feature", MergeOptions{})
 	require.Error(t, err)

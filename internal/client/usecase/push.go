@@ -694,6 +694,10 @@ func classifyStaged(root string, staged []string, baseByPath map[string]domain.S
 		}
 		abs := filepath.Join(root, filepath.FromSlash(path))
 		info, err := os.Stat(abs)
+		if _, inBase := baseByPath[path]; err == nil && inBase && info.IsDir() {
+			// The tracked file became a folder: its row goes.
+			err = fs.ErrNotExist
+		}
 		switch {
 		case err == nil:
 			if !info.Mode().IsRegular() {
@@ -705,7 +709,7 @@ func classifyStaged(root string, staged []string, baseByPath map[string]domain.S
 				sf.baseMode = normalizedMode(base.Mode)
 			}
 			toRead = append(toRead, sf)
-		case os.IsNotExist(err):
+		case isMissing(err):
 			if _, inBase := baseByPath[path]; !inBase {
 				return nil, nil, domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
 			}

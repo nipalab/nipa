@@ -5,13 +5,15 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (395 specs, counted as the `It(`/`PIt(` calls in the
+Coverage (399 specs, counted as the `It(`/`PIt(` calls in the
 non-support spec files): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection, username binding, deleted keys, default
 `~/.ssh` key discovery and ssh-agent), `clone`, `branch`,
 `add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
-`--tag` detach), `merge`, `revert` (single, range, conflicts, `--mainline`),
+`--tag` detach; also across a file that becomes a folder and back, the
+refusal to delete untracked or edited content in the way, and pushing a swap
+made locally), `merge`, `revert` (single, range, conflicts, `--mainline`),
 `log`,
 `diff` (all output modes and revision shapes), `sparse-checkout`, `tag`,
 `lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group`, `shelve`
