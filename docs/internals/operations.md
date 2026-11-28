@@ -295,19 +295,26 @@ cadence), flushed via `serverapp.WithMetricsPush` — no collector required
 (scraping and remote-write agents remain supported in docs/OBSERVABILITY.md).
 
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
-resolves the source and target heads, `GetMergeBase`, and calls
-`Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which walks the two
-commit trees in lockstep (`Branch.changedTreeEntries`, `tree_walk.go`): a pair
-of directories with the same stored hash is skipped without a query, the others
-are loaded with each side pruned by the caller's read filter, and the flattened
-entries go to `diff.TreeDiffEntries(baseEntries, headEntries, chunkStore.Get)`
-— a three-dot diff like GitHub/GitLab, exposed at
+resolves the source and target heads, the merge base commit
+(`GetMergeBaseCommits`: the merge request paths never load the merge base
+tree), and calls `Branch.TreeDiffBetween` (`internal/usecase/browser.go`),
+which compares the two commit trees with `compareTrees`
+(`internal/usecase/tree_compare.go`, through `Branch.changedTreeEntries`): a
+pair of directories with the same stored hash is skipped without a query, the
+others are read level by level in batches with each side pruned by the
+caller's read filter, chunk lists are read for the differing files only, and
+the flattened entries go to `diff.TreeDiffEntries(baseEntries, headEntries,
+chunkStore.Get)` — a three-dot diff like GitHub/GitLab, exposed at
 `GET /api/v1/orgs/{org}/projects/{project}/merge-requests/{id}/diff`. The web
 UI commit pages diff a commit against its first parent through the same
 `CommitDiff` walk (`?path=` filters to a file/dir). A zero hash counts as
 "unknown" and is never skipped. `commitChanges` (merge/fast-forward write
-checks, binary lock planning) and `VisibleChunks` (which also skips directories
-already visited for an earlier commit, keyed by path and hash) share the idea.
+checks, binary lock planning) and the merge strategies use the same walk (see
+`docs/internals/server.md`); `VisibleChunks` (which also skips directories
+already visited for an earlier commit, keyed by path and hash) shares the
+idea. `make bench-mr files=100000` (`TestEndToEnd_MergeRequestScale`) and
+`make bench-mr-ee files=100000` (`TestEnterpriseMergeRequestScale`) time
+every merge request path against a 1,676-directory tree.
 
 - `make bench-upload mb=512` (or `NIPA_BENCH_MB=512 go test ./internal/e2e
   -run TestEndToEnd_UploadThroughput -v`) measures upload throughput against an

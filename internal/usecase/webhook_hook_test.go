@@ -116,7 +116,7 @@ func TestMergeRequest_CreateEmitsWebhookEvent(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, created domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -197,7 +197,7 @@ func TestMergeRequest_MergeEmitsWebhookEvent(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)

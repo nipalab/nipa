@@ -1251,14 +1251,14 @@ func TestMergeFastForward_Success(t *testing.T) {
 		Times(2)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
-		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
+	repo.EXPECT().ListFileMetaByTrees(gomock.Any(), []int64{101, 102}).Return(map[int64][]*domain.File{
+		101: {{ID: 1, Name: "a.txt", TreeID: 101}},
+		102: {{ID: 2, Name: "b.txt", TreeID: 102}},
+	}, nil)
+	repo.EXPECT().ListTreeChildrenByTrees(gomock.Any(), []int64{101, 102}).Return(nil, nil)
+	repo.EXPECT().ListChunksByFiles(gomock.Any(), []int64{1, 2}).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(1), ptrSnow(11), &head).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(1)).
 		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &head}, nil)

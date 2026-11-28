@@ -109,7 +109,7 @@ type stubBranchMerger struct {
 	diffErr       error
 }
 
-func (s *stubBranchMerger) GetMergeBase(_ context.Context, _ snow.ID, _, _ usecase.MergeRef) (*usecase.MergeBaseInfo, error) {
+func (s *stubBranchMerger) GetMergeBaseCommits(_ context.Context, _ snow.ID, _, _ usecase.MergeRef) (*usecase.MergeBaseInfo, error) {
 	if s.baseErr != nil {
 		return nil, s.baseErr
 	}

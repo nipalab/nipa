@@ -32,7 +32,9 @@ type transactor interface {
 }
 
 type branchMerger interface {
-	GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error)
+	// GetMergeBaseCommits resolves the merge base without loading its tree:
+	// the merge request paths only need the commit ids.
+	GetMergeBaseCommits(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error)
 	FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error)
 	MergeForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, opts MergeCommitOptions) (*domain.Branch, error)
 	Delete(ctx context.Context, projectID snow.ID, name string) error
@@ -194,7 +196,7 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, in CreateM
 		return nil, domain.NewErrorUser(fmt.Sprintf("branch %q has no commits", targetBranch))
 	}
 
-	info, err := m.merger.GetMergeBase(ctx, projectID,
+	info, err := m.merger.GetMergeBaseCommits(ctx, projectID,
 		MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
 	if err != nil {
 		return nil, err
@@ -643,7 +645,7 @@ func (m *MergeRequest) ensureLocksForRequest(ctx context.Context, projectID snow
 	}
 	var baseID *snow.ID
 	if target.CommitID != nil && source.CommitID != nil {
-		info, err := m.merger.GetMergeBase(ctx, projectID, MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
+		info, err := m.merger.GetMergeBaseCommits(ctx, projectID, MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
 		if err != nil {
 			return err
 		}
@@ -699,7 +701,7 @@ func (m *MergeRequest) changeRange(ctx context.Context, projectID snow.ID, mr *d
 	if target.CommitID == nil {
 		return nil, source.CommitID, nil
 	}
-	info, err := m.merger.GetMergeBase(ctx, projectID,
+	info, err := m.merger.GetMergeBaseCommits(ctx, projectID,
 		MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
 	if err != nil {
 		return nil, nil, err
@@ -787,7 +789,7 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 		return info, nil
 	}
 
-	base, err := m.merger.GetMergeBase(ctx, projectID,
+	base, err := m.merger.GetMergeBaseCommits(ctx, projectID,
 		MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
 	if err != nil {
 		return nil, err

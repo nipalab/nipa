@@ -31,28 +31,34 @@ func flatten(node *domain.TreeNode, prefix string, out map[string]File) {
 	}
 	for _, f := range node.FileChildren {
 		path := strings.TrimPrefix(prefix+"/"+f.Name, "/")
-		hashes := make([]domain.Hash, len(f.Chunks))
-		sizes := make([]int64, len(f.Chunks))
-		for i, c := range f.Chunks {
-			hashes[i] = c.Hash
-			sizes[i] = c.SizeBytes
-		}
-		out[path] = File{
-			Path:        path,
-			Mode:        f.Mode,
-			SizeBytes:   f.SizeBytes,
-			IsBinary:    f.IsBinary,
-			Encoding:    f.Encoding,
-			Hash:        chunker.FileHash(hashes),
-			ChunkHashes: hashes,
-			ChunkSizes:  sizes,
-		}
+		out[path] = FromFile(path, f)
 	}
 	for _, child := range node.TreeChildren {
 		if child == nil {
 			continue
 		}
 		flatten(child, prefix+"/"+child.Name, out)
+	}
+}
+
+// FromFile is the merge view of one stored file at path, exactly as Flatten
+// builds it: the hash is recomputed from the chunk list.
+func FromFile(path string, f *domain.File) File {
+	hashes := make([]domain.Hash, len(f.Chunks))
+	sizes := make([]int64, len(f.Chunks))
+	for i, c := range f.Chunks {
+		hashes[i] = c.Hash
+		sizes[i] = c.SizeBytes
+	}
+	return File{
+		Path:        path,
+		Mode:        f.Mode,
+		SizeBytes:   f.SizeBytes,
+		IsBinary:    f.IsBinary,
+		Encoding:    f.Encoding,
+		Hash:        chunker.FileHash(hashes),
+		ChunkHashes: hashes,
+		ChunkSizes:  sizes,
 	}
 }
 

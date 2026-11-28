@@ -478,8 +478,11 @@ LIKE; CLI `--search`).
 Merge strategies: `Merge` takes a `strategy` (`ff` default, `merge`, `squash`,
 `rebase`) and `delete_source`. `Branch.MergeForMergeRequest`
 (`internal/usecase/merge_strategies.go`) reuses the hoisted `internal/merge`
-three-way engine (the former `internal/client/merge`): it loads the full
-unfiltered trees (`mergeTree`), materializes taken files and diff3 text merges
+three-way engine (the former `internal/client/merge`): `replayMerge` runs one
+`mergeStep` per landed commit (one for merge/squash, one per replayed commit
+for rebase), each reading the unfiltered base, target and source trees only
+at the paths where base and source differ (`mergeInputs`, see "Tree
+comparisons" below), materializes taken files and diff3 text merges
 (new content stored through the `Chunk` usecase via `WithChunkUploader`), and
 writes the resulting tree and commit through `PushRepository.ApplyPushAll` —
 one transaction for the whole rebase chain (`WithMergeCommitter`). Conflicts
@@ -495,6 +498,53 @@ protection-aware (admin required) and merged-source deletion is best-effort
 (warn on failure). The SPA merge box picks the strategy plus a delete-source
 checkbox; the CLI adds `mr merge --strategy <ff|merge|squash|rebase>
 [--delete-source]`.
+
+Tree comparisons (`compareTrees`, `internal/usecase/tree_compare.go`): every
+server path that compares commit trees goes through one walk: the merge
+request diff and its review anchoring (`TreeDiffBetween`), the commit diff and
+compare endpoints (`CommitDiff`), `commitChanges` (fast-forward write checks,
+`BinaryChangesBetween`/`BinaryLockPlan` for the merge request lock gate) and
+the merge strategies (`mergeInputs`). It takes the root nodes of two or three
+trees (nil = empty tree), a `treeView` (read filter + sparse set, applied like
+a manifest load) and the deciding trees, and walks them level by level: each
+level is one `ListFileMetaByTrees` and one `ListTreeChildrenByTrees` over the
+differing directories of every tree (`readTreeLevel`, shared with the delta
+manifest walk), a child directory stored with the same non-zero hash on every
+deciding tree is skipped unread, and one `ListChunksByFiles` at the end reads
+chunk lists for the reported files only. A path is reported when the deciding
+trees do not all hold a file there with the same hash and raw mode (the
+equality of `diff.Compare` and `merge.ThreeWay`); the other trees ride along
+with their file at that path. Skipping by stored hash is exact although a tree
+hash covers names, file hashes and mode classes only: reads resolve every node
+to the oldest content node of its hash, so a commit that only changes a raw
+mode within its class (0o644 -> 0o664) or a binary flag writes a directory
+whose rows are never read, the full manifests show no difference either, and
+a directory that changed for another reason shows its own rows
+(`TestCompareTrees_HashUncoveredFields`). The merge strategies need only the
+paths where base and source differ: `merge.ThreeWay` changes nothing and
+raises no conflict where theirs equals the base, so `mergeState` holds the
+target head's files at those paths only and `mergeDelta`/`ensureMergedWrites`
+over it give the full-tree result; a rebase seeds each step's target files
+from the walk unless an earlier step already holds the path. The merge request
+paths that only need the merge base commit (create, detail, check, commits,
+diff, lock re-check, review anchoring) use `GetMergeBaseCommits`; until then
+each of them loaded the whole merge base manifest and dropped it, which was
+nearly all of a merge request diff's cost. The `GetMergeBase` RPC still
+returns the tree for client merges. Old implementations stay as test oracles
+(`changedTreeEntriesReference`, `replayMergeReference`); the property tests
+are `usecase/tree_compare_property_test.go` (in-memory trees that resolve by
+hash like the database, raw-mode and binary-only changes, file/folder swaps,
+text merges, unrelated histories) and `e2e/tree_compare_test.go` (deltaGen
+histories on the real server, the six read-rule sets, every commit pair, the
+merge request diff per filter); `e2e/merge_request_cost_test.go` pins the
+reads. Measured with `make bench-mr files=100000` (SQLite, 1,676 directories,
+20 files changed, median of 5): MR diff 525 ms -> 11 ms (208k -> 4.4k rows),
+check/detail/commits ~500 ms -> ~1 ms (no tree read), create 527 -> 12 ms,
+merge/squash/rebase 2.43 s -> 0.13 s (817k -> 13k rows, 1.1 GB -> 20 MB
+allocated; the rest is `buildNewTree` and the write), ff 548 -> 23 ms. On
+postgres + MinIO (`make bench-mr-ee files=100000`): MR diff 692 -> 56 ms
+(the rest is mostly reading the changed text from S3), check/detail 417 -> 4
+ms, create 689 -> 32 ms, ff 952 -> 68 ms, merge/squash/rebase 2.46 s -> 0.5 s.
 
 MR lists paginate by number: `GET .../merge-requests` takes
 `status/author/source/target/draft/assignee/search/after/limit` and returns

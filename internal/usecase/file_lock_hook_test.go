@@ -10,6 +10,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 )
 
 func TestBranch_FastForward_FileLocks(t *testing.T) {
@@ -33,18 +34,13 @@ func TestBranch_FastForward_FileLocks(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
-		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil).AnyTimes()
+	expectTreeRows(repo, map[int64][]*domain.File{101: {{ID: 1, Name: "a.txt", TreeID: 101}}, 102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).
 		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
 	gomock.InOrder(
 		gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(nil),
@@ -79,16 +75,12 @@ func TestBranch_FastForward_FileLocksReject(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	expectTreeRows(repo, map[int64][]*domain.File{102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
 	wantErr := domain.NewErrorConflict("binary file \"tex.png\" requires a lock")
 	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(wantErr)
@@ -130,7 +122,7 @@ func TestMergeRequest_Create_FileLocks(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -159,7 +151,7 @@ func TestMergeRequest_Create_FileLockConflict(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(openMergeRequest(), nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
@@ -180,7 +172,7 @@ func TestMergeRequest_Merge_FileLocks(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil).AnyTimes()
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -226,7 +218,7 @@ func TestMergeRequest_Create_BinaryChangesError(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	wantErr := errors.New("db down")
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).Return(nil, wantErr)
@@ -245,7 +237,7 @@ func TestMergeRequest_Create_RepoError(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -268,7 +260,7 @@ func TestMergeRequest_Merge_FileLocksBranchError(t *testing.T) {
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil),
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, errors.New("db down")),
 	)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 
 	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
@@ -284,7 +276,7 @@ func TestMergeRequest_Merge_FileLocksReject(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil).AnyTimes()
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -305,7 +297,7 @@ func TestMergeRequest_Merge_FileLocksReleaseError(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil).AnyTimes()
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -353,7 +345,7 @@ func TestMergeRequest_Reopen_ReacquiresLocks(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -379,7 +371,7 @@ func TestMergeRequest_Reopen_LockConflict(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -468,9 +460,8 @@ func TestBranch_FastForward_FileLocksNoClaim(t *testing.T) {
 		Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101, Parent1ID: &headID}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	expectTreeRows(repo, map[int64][]*domain.File{}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t)).WithFileLocks(gate)
 	_, err := uc.FastForward(context.Background(), snow.ID(1), "main", "feature")
@@ -497,16 +488,12 @@ func TestBranch_FastForward_FileLocksReleaseError(t *testing.T) {
 		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	expectTreeRows(repo, map[int64][]*domain.File{102: {{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}}, map[int64][]*domain.TreeNode{})
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
-		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
 	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
@@ -527,7 +514,7 @@ func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil).AnyTimes()
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
@@ -553,34 +540,18 @@ func binaryTreeFixture(t *testing.T, repo *MockbranchRepository, fromHead, toHea
 		Return(&domain.Commit{ID: toHead, ProjectID: 1, TreeID: 102}, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
-		{ID: 1, Name: "a.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
-		{ID: 2, Name: "conv.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{4}}}},
-		{ID: 3, Name: "gone.bin", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{3}}}},
-		{ID: 4, Name: "old.png", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}}},
-	}, nil).AnyTimes()
-	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return([]*domain.File{
-		{ID: 1, Name: "a.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
-		{ID: 2, Name: "conv.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{4}}}},
-		{ID: 3, Name: "gone.bin", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{3}}}},
-		{ID: 4, Name: "old.png", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}}},
-	}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).Return([]*domain.File{
-		{ID: 5, Name: "a.txt", TreeID: 102, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
-		{ID: 6, Name: "conv.txt", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{7}}}},
-		{ID: 7, Name: "new.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{6}}}},
-		{ID: 8, Name: "old.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{5}}}},
-	}, nil).AnyTimes()
-	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).Return([]*domain.File{
-		{ID: 5, Name: "a.txt", TreeID: 102, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
-		{ID: 6, Name: "conv.txt", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{7}}}},
-		{ID: 7, Name: "new.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{6}}}},
-		{ID: 8, Name: "old.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{5}}}},
-	}, nil).AnyTimes()
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
+	// Stored file hashes cover the chunk list, as Push guarantees.
+	file := func(id int64, name string, tree int64, binary bool, chunk byte) *domain.File {
+		hashes := []domain.Hash{{chunk}}
+		return &domain.File{ID: id, Name: name, TreeID: tree, Mode: 0o644, IsBinary: binary,
+			Hash: treehash.FileHash(hashes), Chunks: []domain.Chunk{{Hash: hashes[0]}}}
+	}
+	expectTreeRows(repo, map[int64][]*domain.File{
+		101: {file(1, "a.txt", 101, false, 1), file(2, "conv.txt", 101, false, 4), file(3, "gone.bin", 101, true, 3), file(4, "old.png", 101, true, 2)},
+		102: {file(5, "a.txt", 102, false, 1), file(6, "conv.txt", 102, true, 7), file(7, "new.png", 102, true, 6), file(8, "old.png", 102, true, 5)},
+	}, nil)
 }
 
 func TestBranch_BinaryChangesBetween(t *testing.T) {

@@ -60,7 +60,7 @@ func TestMergeRequest_Create(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, created domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -161,7 +161,7 @@ func TestMergeRequest_Check_Mergeable(t *testing.T) {
 		Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 
 	info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
@@ -182,7 +182,7 @@ func TestMergeRequest_Check_States(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 
 		info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
@@ -249,7 +249,7 @@ func TestMergeRequest_Merge(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -270,7 +270,7 @@ func TestMergeRequest_Merge_RecordMergeFailureIsNotFatal(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -291,7 +291,7 @@ func TestMergeRequest_Merge_BehindTarget(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 
 	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "", false)
@@ -456,7 +456,7 @@ func TestMergeRequest_Diff(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 	merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), &base, sourceHead).Return(nil, nil)
 
@@ -476,7 +476,7 @@ func TestMergeRequest_Commits(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 	branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(1), sourceHead, base, mergeRequestCommitLimit).
 		Return([]*domain.CommitLogEntry{
@@ -518,7 +518,7 @@ func TestMergeRequest_Commits_MergeBaseError(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(nil, errors.New("boom"))
 
 	_, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
@@ -677,7 +677,7 @@ func TestMergeRequest_ErrorPaths(t *testing.T) {
 			Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 			Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(&MergeBaseInfo{}, nil)
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
@@ -694,7 +694,7 @@ func TestMergeRequest_ErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 		merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).Return(nil, wantErr)
 
@@ -711,7 +711,7 @@ func TestMergeRequest_ErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 		merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -785,7 +785,7 @@ func TestMergeRequest_MoreErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 		_, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
 		require.ErrorIs(t, err, wantErr)
@@ -810,7 +810,7 @@ func TestMergeRequest_MoreErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 		merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 			Return(nil, domain.NewErrorNoPermission())
@@ -840,7 +840,7 @@ func TestMergeRequest_MoreErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-		merger.EXPECT().GetMergeBase(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
+		merger.EXPECT().GetMergeBaseCommits(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 		_, err := mr.Diff(permissionCtx(7), snow.ID(1), 5)
 		require.ErrorIs(t, err, wantErr)
@@ -885,7 +885,7 @@ func TestMergeRequest_Check_BlockedByChangesRequested(t *testing.T) {
 		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
 		Reviewer:     domain.ReviewActor{UserID: 8},
@@ -913,7 +913,7 @@ func TestMergeRequest_Check_BlockedByApprovals(t *testing.T) {
 	target := branchWithHead(2, targetHead)
 	target.RequiredApprovals = 2
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(target, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
 		Reviewer:     domain.ReviewActor{UserID: 8},
@@ -940,7 +940,7 @@ func TestMergeRequest_Check_ApprovalsSatisfied(t *testing.T) {
 	target := branchWithHead(2, targetHead)
 	target.RequiredApprovals = 1
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(target, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
 		Reviewer:     domain.ReviewActor{UserID: 8},
@@ -966,7 +966,7 @@ func TestMergeRequest_Merge_BlockedByChangesRequested(t *testing.T) {
 		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
 		Reviewer:     domain.ReviewActor{UserID: 8},
@@ -995,7 +995,7 @@ func TestMergeRequest_Merge_RecordsLifecycleEvents(t *testing.T) {
 		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
@@ -1034,7 +1034,7 @@ func TestMergeRequest_Create_RecordsOpenedEvent(t *testing.T) {
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, created domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -1093,7 +1093,7 @@ func TestMergeRequest_Check_Draft(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(draftMergeRequest(), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 
 	info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
@@ -1112,7 +1112,7 @@ func TestMergeRequest_Merge_RefusesDraft(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(draftMergeRequest(), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 
 	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "", false)
@@ -1229,7 +1229,7 @@ func TestMergeRequest_Check_ReviewStateError(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, wantErr)
 
@@ -1254,7 +1254,7 @@ func TestMergeRequest_Merge_SquashStrategy(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(open, nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", MergeCommitOptions{
 		Strategy: domain.MergeStrategySquash,
@@ -1280,7 +1280,7 @@ func TestMergeRequest_Merge_BehindAllowedForNonFF(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -1301,7 +1301,7 @@ func TestMergeRequest_Merge_DeleteSourceFailureIsNotFatal(t *testing.T) {
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
-	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+	merger.EXPECT().GetMergeBaseCommits(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
