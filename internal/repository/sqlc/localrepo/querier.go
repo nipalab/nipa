@@ -16,6 +16,10 @@ type Querier interface {
 	FileHashesByTree(ctx context.Context, treePath string) ([]FileHashesByTreeRow, error)
 	FileList(ctx context.Context) ([]File, error)
 	FileListByChunk(ctx context.Context, chunk []byte) ([]FileListByChunkRow, error)
+	// nipa_lists_any_chunk is registered by the localrepo package (chunkset.go):
+	// it is 1 when the chunk list holds a hash of the set registered under
+	// set_id, so SQLite filters the table in one pass and returns the matches.
+	FileListByChunkSet(ctx context.Context, setID int64) ([]FileListByChunkSetRow, error)
 	FileListByPaths(ctx context.Context, paths []string) ([]FileListByPathsRow, error)
 	FileListByTree(ctx context.Context, treePath string) ([]FileListByTreeRow, error)
 	FileListInRange(ctx context.Context, arg FileListInRangeParams) ([]FileListInRangeRow, error)

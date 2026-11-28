@@ -13,7 +13,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   dir-scoped `GetCommitDirManifest` + commit-scoped download, lines
   carried back with `diff.Lines` and attributed newest first until every
   line has an owner; working file vs pinned commit marks `Uncommitted`,
-  text ≤ 2 MiB, older binary/large versions end the history like the cap),
+  text ≤ 2 MiB, older binary/large versions end the history like the cap;
+  afterwards only the chunks it downloaded are pruned, `pruneCandidates`),
   tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
@@ -335,8 +336,11 @@ Delta sync (`Update.syncTo`, `usecase/sync_delta.go`, span `sync.tree`):
 - *Prune*. A delta sync returns a `pushCacheEffect` (the chunks of the rows
   it replaced or removed and of the files it wrote), and `Run`/`Switch`/
   `SwitchTag` prune through `pruneAfterPush`: only those objects are checked
-  (`pruneChunks`), with the full sweep as before when more than
-  `maxTargetedPruneChunks` need a lookup and after every full sync.
+  (`pruneChunks`, one `FilesWithAnyChunk` scan for any number of them), with
+  the full sweep after every full sync. Before the set scan a switch 20
+  files apart needed more than 16 lookups and swept the whole cache, most of
+  its client cost (~430 of ~510 ms at 100,000 files; now ~90 ms, of which
+  ~30 ms is the scan).
 - *Left on full manifests*: clone (no base exists; it now asks through
   `fetchManifest` to get the token), the post-push refetch
   (`saveLandedTree` fallback; same, by the pushed commit's id),
@@ -471,15 +475,23 @@ that content loses its keeper). `pruneChunks` checks only those: candidates
 without an object are dropped first (`MissingChunks`; when none is cached the
 prune is done, without the lock), then, under the same guard as the full sweep
 (`pruneGuard`: exclusive lock without waiting, no pending merge/revert/shelf
-state), the rewritten rows settle the chunks they keep, every remaining chunk
-is looked up with `FilesWithChunk`, and an object is deleted (`RemoveObjects`)
-only when no tracked file that `cachedInPristine` accepts lists it: the keep
-rule of `pruneCache`, restricted to the candidates, so it never deletes what
-the full sweep would keep. The full sweep still runs after a push that
-concluded a merge or revert (their materialized content has no row), that
-saved a fetched manifest (sparse checkout, `base`/`mismatch`/`error`
-fallback), that leaves more than `maxTargetedPruneChunks` (16) chunks to look
-up, and for repositories without the by-path reads. What the targeted prune
+state), the rewritten rows settle the chunks they keep, the remaining chunks
+are looked up (`unkeptChunks`: `FilesWithChunk` for a single one,
+`FilesWithAnyChunk` for more, one scan of the files table for the whole set,
+filtered inside SQLite, `docs/internals/localrepo.md`), and an object is
+deleted (`RemoveObjects`) only when no tracked file that `cachedInPristine`
+accepts lists it: the keep rule of `pruneCache`, restricted to the
+candidates, so it never deletes what the full sweep would keep. A 20-file
+push or a switch 20 files apart therefore no longer falls back to the full
+sweep, which at 100,000 files (the whole snapshot plus a listing of the
+object cache) cost ~430 ms and ~90 MiB of heap; the scan costs ~30 ms and
+holds only the matching rows (`make bench-small-commands`). The full sweep
+still runs after a push that concluded a merge or revert (their materialized
+content has no row), that saved a fetched manifest (sparse checkout,
+`base`/`mismatch`/`error` fallback), for repositories without the by-path
+reads, and for a repository without `FilesWithAnyChunk` (test stubs) left
+with more than `maxTargetedPruneChunks` (16) chunks to look up one by one.
+What the targeted prune
 does not collect, and the next full sweep does (clone, a real update, switch,
 tag switch, restore, `nipa diff`, lock pins, the daemon's idle pruner, `nipa
 gc`, or one of the pushes above): objects no row of this push referenced
@@ -487,6 +499,29 @@ gc`, or one of the pushes above): objects no row of this push referenced
 since, content a daemon blob/preview read left behind), stale `.tmp-*` files,
 and the orphans of a push whose prune was skipped (repository busy or a
 pending state). `nipa gc` is unchanged.
+
+Other commands prune their own candidates the same way (`pruneCandidates`:
+`pruneChunks` with no rewritten rows, the full sweep for a repository without
+`FilesWithAnyChunk`, nothing on failure): blame prunes the chunks it
+downloaded (the old versions it read; the current ones stay because their
+rows keep them) instead of sweeping after every run, and unlock
+(`LockPins.Unpin`) prunes the chunks of the raw files the released pin
+covered, which another pin or a text file may still keep; unpinning the root
+(`.`) still sweeps. Lock (`LockPins.Pin`) reads the rows the pin covers
+through `pinnedRawFiles`: the row at the pin (`SnapshotFiles`) and the rows
+below it (`SnapshotFilesUnder`, a primary-key range, so `a` never covers
+`a-b` or `a.bin` and `%`/`_` are plain bytes), raw content only, in path
+order, which is what filtering `Snapshot()` with `PrefixCovers` gave
+(`TestPinnedRawFiles_ByPathEqualsTheSnapshotFilter`); a repository without
+the by-path reads still filters the snapshot. `ensureSnapshotContent`
+(lock, restore, diff, shelve) reads only the fingerprints of the files it
+recaptures (`statEntriesFor`: their own rows up to 512 paths, the whole
+cache beyond) instead of `LoadStatCache`. At 100,000 files a lock of one
+file went from ~440 ms / ~84 MiB of heap to ~20 ms / ~12 MiB and an unlock
+from ~425 ms to ~33 ms. `TestEndToEnd_SmallCommandCostsFollowTheChange`
+pins the reads of lock, unlock, a 20-file push, a switch and blame at 200
+and 1,200 files and checks after each that the object cache is exactly what
+the full sweep leaves.
 
 Post-push tree save (`Push.saveLandedTree`, span `push.tree`): after the
 server accepted the push and `SaveCommit` pinned the new commit, the stored

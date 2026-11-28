@@ -207,6 +207,56 @@ func (q *Queries) FileListByChunk(ctx context.Context, chunk []byte) ([]FileList
 	return items, nil
 }
 
+const fileListByChunkSet = `-- name: FileListByChunkSet :many
+SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+WHERE nipa_lists_any_chunk(chunks, CAST(?1 AS INTEGER)) = 1
+`
+
+type FileListByChunkSetRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+// nipa_lists_any_chunk is registered by the localrepo package (chunkset.go):
+// it is 1 when the chunk list holds a hash of the set registered under
+// set_id, so SQLite filters the table in one pass and returns the matches.
+func (q *Queries) FileListByChunkSet(ctx context.Context, setID int64) ([]FileListByChunkSetRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileListByChunkSet, setID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListByChunkSetRow
+	for rows.Next() {
+		var i FileListByChunkSetRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileListByPaths = `-- name: FileListByPaths :many
 SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files

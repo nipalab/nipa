@@ -340,6 +340,22 @@ commit indexes it.
   worker, client-side p50/p95/p99 plus a `/metrics` delta) against a running
   server. Requested metrics must be namespace-filtered (`nipa_*`), bench and
   load code stays env-gated so CI never runs it.
+- `make bench-small-commands files=100000` (`TestEndToEnd_SmallCommandScale`,
+  `NIPA_BENCH_RUNS` default 3, `NIPA_BENCH_HISTORY` default 40 blamed
+  versions) times the client commands that touch one or a few files in a
+  clone of N text files plus one 8 MiB binary: lock and unlock of the binary,
+  a push of 1 and of 20 files (on the branch and on a fresh feature branch), a
+  switch between two branches 20 files apart (delta manifest) and blame. Each
+  runs "before" (through a repository wrapper that hides
+  `FilesWithAnyChunk` and, for lock, the directory and fingerprint reads, so
+  the command takes its old whole-clone path) and "after", and the table
+  prints wall time, bytes allocated, the peak heap (client and the
+  in-process server together), the time inside reads that follow the clone
+  size, and those reads (snapshot rows, `stat_cache` rows, cache listings,
+  chunk scans, by-path rows). `NIPA_BENCH_CPUPROFILE=<dir>` writes one CPU
+  profile per "after" command. The same counters are pinned at 200 and 1,200
+  files by `TestEndToEnd_SmallCommandCostsFollowTheChange`, which runs in the
+  normal suite.
 - `NIPA_E2E_LARGE_MANIFEST=1 go test ./internal/e2e -run
   TestEndToEnd_ManifestsOverGRPCDefault -v` runs the streamed push/clone/update
   e2e with 25000 files (manifests over the 4 MiB gRPC default); CI runs it with

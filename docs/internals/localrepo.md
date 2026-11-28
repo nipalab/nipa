@@ -253,7 +253,18 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   re-checked on hash boundaries in Go). There is no chunk index, so this one
   is a table scan inside SQLite that returns only matching rows (about 16 ms
   on 100,000 files, against ~370 ms for `Snapshot()` plus the cache listing);
-  a chunk-to-file index would need a schema change. `RemoveObjects(hashes)`
+  a chunk-to-file index would need a schema change.
+  `FilesWithAnyChunk(hashes)` (`chunkset.go`) is the same for a set: one
+  scan whatever the number of hashes (`FileListByChunkSet`), filtered inside
+  SQLite by the SQL function `nipa_lists_any_chunk(chunks, set_id)` that the
+  package registers with the driver at init (`sqlite.MustRegisterScalarFunction`):
+  the set lives in a process-wide registry under a fresh id for the length of
+  the query, a match is on a 32-byte boundary only (as `FilesWithChunk`
+  re-checks), an unknown id is an SQL error, never a "no" (a missed match
+  would let a prune delete a kept object), and only matching rows reach Go,
+  sorted by path. About 27 ms per 100,000 files for any set size, against
+  ~14 ms per hash for `FilesWithChunk` and ~90 ms for streaming every row
+  into Go. `RemoveObjects(hashes)`
   deletes named objects through the objects root (`openRealDir`), skipping
   missing ones and linked fan-out folders, and returns the count and bytes
   freed.

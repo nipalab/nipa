@@ -340,6 +340,13 @@ func (r *failingPristineRepo) LoadStatCache() (map[string]clientDomain.StatEntry
 	return r.LocalRepo.LoadStatCache()
 }
 
+func (r *failingPristineRepo) StatEntries(paths []string) (map[string]clientDomain.StatEntry, error) {
+	if r.statErr != nil {
+		return nil, r.statErr
+	}
+	return r.LocalRepo.StatEntries(paths)
+}
+
 func (r *failingPristineRepo) StoreChunks(c []*serverDomain.ChunkData) error {
 	if r.storeErr != nil {
 		return r.storeErr

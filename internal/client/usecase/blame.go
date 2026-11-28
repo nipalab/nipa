@@ -90,7 +90,10 @@ func (b *Blame) Run(ctx context.Context, root, filePath, rev string, progress Bl
 	if err := b.repo.Init(root); err != nil {
 		return nil, err
 	}
-	defer func() { pruneAfterSuccess(b.repo, err) }()
+	// The versions blame downloads are the only objects it adds to the
+	// cache; old versions no tracked file keeps go again right after.
+	var fetched []serverDomain.Hash
+	defer func() { pruneCandidates(b.repo, fetched, err) }()
 	unlock, err := lockShared(b.repo)
 	if err != nil {
 		return nil, err
@@ -121,7 +124,7 @@ func (b *Blame) Run(ctx context.Context, root, filePath, rev string, progress Bl
 	if err != nil {
 		return nil, err
 	}
-	w := &blameWalk{b: b, ctx: ctx, nu: nu, path: p, progress: progress}
+	w := &blameWalk{b: b, ctx: ctx, nu: nu, path: p, progress: progress, fetched: &fetched}
 	res = &BlameResult{Path: p}
 	if working == nil {
 		res.Revision = start
@@ -201,6 +204,8 @@ type blameWalk struct {
 	progress BlameProgress
 	done     int
 	total    int
+	// fetched collects the chunks downloaded into the object cache.
+	fetched *[]serverDomain.Hash
 }
 
 func blameLines(target []string) []BlameLine {
@@ -320,6 +325,9 @@ func (w *blameWalk) version(commitID string) (blameVersion, error) {
 	scope := clientDomain.ChunkScope{Org: w.nu.Org, Project: w.nu.Project, CommitIDs: commitIDs(commitID), Paths: []string{w.path}}
 	if err := downloadMissing(w.ctx, w.b.client, w.b.repo, scope, missing, entry.SizeBytes); err != nil {
 		return blameVersion{}, err
+	}
+	if w.fetched != nil {
+		*w.fetched = append(*w.fetched, missing...)
 	}
 	lines, err := readText(w.path, &blobReader{load: w.b.repo.LoadChunk, entry: entry})
 	if err != nil {
