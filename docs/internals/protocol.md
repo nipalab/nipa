@@ -503,7 +503,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     that applies its push locally (`localrepo.ApplyPush`) never fetches the
     new commit's manifest, so before this a clone that had never fetched one
     (an empty-project clone) had no token and its first update or switch was
-    a full sync (8.08 s at 100,000 files against ~0.6 s for a delta). The
+    a full sync (`make bench-small-update files=100000`, "first switch after
+    an empty-clone push", 5 files apart: 2.62 s full before, 76 ms delta
+    after; a load test saw 8.08 s against 0.54-0.71 s). The
     push now answers with the token `GetTreeManifest` hands the same caller
     for a full checkout: `manifestView(CompileFilter(read), no paths,
     recursive)`, the view the client applies pushes to (only full checkouts
@@ -525,7 +527,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
     per pushed file (the same order as the per-file write check
     `checkPushContent` already does); no repository call. Measured with
     `BenchmarkPush_View`: 0.76 µs for an allow-all caller, 9 µs for 50 rules
-    and 5 files, 8.8 ms for 50 rules and 10,000 files. A failed
+    and 5 files, 8.8 ms for 50 rules and 10,000 files. End to end at
+    100,000 files the push is unchanged within noise: one-file push in
+    `TestEndToEnd_WideTreeScale` median of 5, 330 ms before and 332 ms after;
+    the 5-file pushes of `TestEndToEnd_SmallUpdateScale` median of 26,
+    104.8 ms before and 106.9 ms after. A failed
     `CompileFilter` fails the push before anything is written.
   - *Declining* is never an error; the handler then runs the ordinary full
     manifest path, so its answer (including every error) is the one a client
