@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -181,7 +182,7 @@ func (d *Diff) workingDiff(ctx context.Context, root string, opts DiffOptions) (
 	if err := p.ensureSnapshotContent(ctx, oldSide); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents, opts.MaxTextBytes))
 	return d.attach(changes, root, contents, opts), nil
 }
 
@@ -199,10 +200,22 @@ func (d *Diff) workingSnapshot(filters []string) (*clientDomain.Snapshot, error)
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range filters {
-		f = normalizeFilter(f)
-		if err := scope.prefetch([]string{f}); err != nil {
-			return nil, err
+	// Parents sort before their children, so a directory filter loaded first
+	// covers the filters below it.
+	normalized := make([]string, len(filters))
+	for i, f := range filters {
+		normalized[i] = normalizeFilter(f)
+	}
+	slices.Sort(normalized)
+	normalized = slices.Compact(normalized)
+	// One batched read answers every filter that names a tracked file; only
+	// the others are read as directories.
+	if err := scope.prefetch(normalized); err != nil {
+		return nil, err
+	}
+	for _, f := range normalized {
+		if _, tracked := scope.files[f]; tracked || scope.covers(f) {
+			continue
 		}
 		if _, err := scope.under(f); err != nil {
 			return nil, err
@@ -261,7 +274,7 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	if err := d.ensureContent(ctx, changes, true, false, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents, opts.MaxTextBytes))
 	return d.attach(changes, root, contents, opts), nil
 }
 
@@ -306,7 +319,7 @@ func (d *Diff) compareRevisions(ctx context.Context, nu *clientDomain.NipaUrl, b
 	if err := d.ensureContent(ctx, changes, true, true, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader("", nil))
+	changes = diff.DetectRenames(changes, d.similarityLoader("", nil, opts.MaxTextBytes))
 	return d.attach(changes, "", nil, opts), nil
 }
 
@@ -327,10 +340,12 @@ func (d *Diff) attach(changes []diff.Change, root string, contents map[string][]
 
 // similarityLoader loads text content for rename detection, preferring the
 // working-tree contents map over the local object cache. Binary files never
-// load content; similarity falls back to chunk overlap.
-func (d *Diff) similarityLoader(root string, contents map[string][]byte) func(diff.Entry) ([]byte, bool) {
+// load content, nor, with maxText above zero, does a text larger than
+// maxText (the cap attach applies to rendered sides); similarity falls back
+// to chunk overlap for them.
+func (d *Diff) similarityLoader(root string, contents map[string][]byte, maxText int64) func(diff.Entry) ([]byte, bool) {
 	return func(e diff.Entry) ([]byte, bool) {
-		if e.IsBinary {
+		if e.IsBinary || (maxText > 0 && e.SizeBytes > maxText) {
 			return nil, false
 		}
 		if contents != nil {

@@ -373,3 +373,50 @@ func TestDiffScaleFixture_FingerprintsMatchDisk(t *testing.T) {
 	require.True(t, statMatches(stats[scalePath(3)], info))
 	require.Less(t, info.ModTime(), time.Now())
 }
+
+func TestDiff_ScopedPaths_ManyFiltersBatchTheirReads(t *testing.T) {
+	fx := newDiffScaleRepo(t, 300, 1)
+	fx.write(t, scalePath(150), "edited\n")
+	fx.write(t, scalePath(20), "edited too\n")
+
+	lr := localrepo.NewLocalRepo()
+	t.Cleanup(func() { _ = lr.Close() })
+	counter := &readCountingRepo{LocalRepo: lr}
+	// 100 tracked files, a folder, a filter the folder covers (twice, as
+	// written two ways) and a path that is not tracked.
+	var filters []string
+	for i := 100; i < 200; i++ {
+		filters = append(filters, scalePath(i))
+	}
+	dir := scalePath(0)[:strings.LastIndexByte(scalePath(0), '/')]
+	filters = append(filters, "nope/x", dir+"/", "./"+dir, strings.Split(dir, "/")[0])
+
+	files, err := NewDiff(nil, nil, counter).Run(context.Background(), fx.root, nil, DiffOptions{Paths: filters})
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	require.Equal(t, scalePath(20), files[0].Change.Path)
+	require.Equal(t, scalePath(150), files[1].Change.Path)
+	require.Zero(t, counter.snapshots)
+	require.Equal(t, 2, counter.dirReads, "only the folder and the untracked path are read as folders; the covered filter is not")
+	// One batched snapshot read for every filter, plus the fingerprint reads.
+	require.Equal(t, 3, counter.pathReads)
+}
+
+func TestDiff_SimilarityLoader_SkipsTextAboveTheCap(t *testing.T) {
+	// No local repo: a load from the object cache would panic, so a decline
+	// proves nothing was read.
+	d := NewDiff(nil, nil, nil)
+	big := diff.Entry{Path: "big.txt", SizeBytes: 11}
+	_, ok := d.similarityLoader("", nil, 10)(big)
+	require.False(t, ok, "a revision side above the cap falls back to chunk overlap")
+	_, ok = d.similarityLoader("/root", map[string][]byte{"big.txt": []byte("01234567890")}, 10)(big)
+	require.False(t, ok, "so does a working side above the cap, even when held inline")
+
+	small := diff.Entry{Path: "small.txt", SizeBytes: 3}
+	content, ok := d.similarityLoader("/root", map[string][]byte{"small.txt": []byte("abc")}, 10)(small)
+	require.True(t, ok)
+	require.Equal(t, []byte("abc"), content)
+	content, ok = d.similarityLoader("/root", map[string][]byte{"big.txt": []byte("01234567890")}, 0)(big)
+	require.True(t, ok, "without a cap the inline content is used")
+	require.Equal(t, []byte("01234567890"), content)
+}
