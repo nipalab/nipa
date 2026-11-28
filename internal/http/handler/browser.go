@@ -341,10 +341,15 @@ func toDiffFileResponse(file diff.FileDiff) model.DiffFileResponse {
 		resp.OldPath = file.Change.Old.Path
 	}
 	if !resp.Binary {
-		options := diff.Options{Context: diff.DefaultContext}
-		resp.Patch = diff.FilePatch(file, options)
-		resp.Hunks = toDiffHunkResponses(diff.FileHunks(file, options))
-		resp.Additions, resp.Deletions = diff.CountLines(file.Old, file.New)
+		res := diff.FileHunksBudget(file, diff.Options{Context: diff.DefaultContext}, diff.DefaultBudget)
+		resp.Additions, resp.Deletions = res.Additions, res.Deletions
+		resp.CountsApproximate = res.Approx
+		if res.Omitted {
+			resp.TooLarge = true
+			return resp
+		}
+		resp.Patch = diff.FilePatchHunks(file, res.Hunks)
+		resp.Hunks = toDiffHunkResponses(res.Hunks)
 	}
 	return resp
 }

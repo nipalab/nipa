@@ -166,6 +166,31 @@ afterEach(async () => {
 })
 
 describe('DiffView', () => {
+  it('shows a too large notice with estimated counts instead of the diff', async () => {
+    const huge: DiffFileResponse = {
+      path: 'scenes/level.unity',
+      status: 'modified',
+      binary: false,
+      additions: 120,
+      deletions: 80,
+      too_large: true,
+      counts_approximate: true,
+    }
+    const { container } = await render(<DiffView files={[huge]} />)
+    expect(container.textContent).toContain('Diff too large to display')
+    expect(container.textContent).toContain('line counts are estimates')
+    expect(container.textContent).toContain('~+120')
+    expect(container.textContent).toContain('~-80')
+    expect(container.querySelector('[title="Estimated: the file is too large to diff"]')).not.toBeNull()
+    expect(container.querySelector('table')).toBeNull()
+  })
+
+  it('shows exact counts without a marker', async () => {
+    const { container } = await render(<DiffView files={[file]} />)
+    expect(container.textContent).not.toContain('~')
+    expect(container.textContent).not.toContain('Diff too large to display')
+  })
+
   it('pairs a remove run with the add run side by side and pads the short side', async () => {
     const { container } = await render(<DiffView files={[file]} />)
     const paired = rowWith(container, 'two-old')
@@ -859,6 +884,7 @@ describe('ChangesView', () => {
   it('lists changed files and filters them from the toolbar', async () => {
     const { container } = await render(<ChangesView files={[file, addedFile]} />)
     expect(container.textContent).toContain('2 files changed')
+    expect(container.textContent).not.toContain('~')
     expect(container.querySelector('a[href="#file-code.txt"]')).not.toBeNull()
     expect(container.querySelector('a[href="#file-docs/readme.md"]')).not.toBeNull()
 
@@ -866,6 +892,22 @@ describe('ChangesView', () => {
     expect(container.textContent).toContain('1 file changed')
     expect(container.textContent).not.toContain('code.txt')
     expect(container.textContent).toContain('hello docs')
+  })
+
+  it('marks estimated counts in the file list and totals', async () => {
+    const huge: DiffFileResponse = {
+      path: 'big.csv',
+      status: 'modified',
+      binary: false,
+      additions: 7,
+      deletions: 3,
+      too_large: true,
+      counts_approximate: true,
+    }
+    const { container } = await render(<ChangesView files={[addedFile, huge]} />)
+    expect(container.querySelector('a[href="#file-big.csv"]')?.textContent).toContain('~+7')
+    expect(container.textContent).toContain('~+8 ~−3')
+    expect(container.textContent).toContain('Diff too large to display')
   })
 
   it('marks files as viewed and collapses them', async () => {

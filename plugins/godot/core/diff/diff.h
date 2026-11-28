@@ -30,6 +30,7 @@ struct File {
     long long additions = 0;
     long long deletions = 0;
     bool omitted = false;  // hunks omitted by the daemon or content unavailable
+    bool approximate = false;  // additions/deletions are estimates (file too big to diff)
     std::vector<Hunk> hunks;
 
     bool placeholder() const { return omitted || kind != "text"; }

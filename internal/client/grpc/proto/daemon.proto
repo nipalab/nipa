@@ -219,9 +219,11 @@ message DiffFileSide {
     string hash = 5; // hex file hash; empty for an untracked working file
 }
 
-// DiffFile is one changed path. Text files carry their hunks unless the
-// rendered hunks exceed the per-file budget (hunks_omitted); binary files only
-// carry metadata and a viewer kind for the GUI to fetch previews.
+// DiffFile is one changed path. Text files carry their hunks unless the file
+// is too big to diff (diff.DefaultBudget: lines, bytes or changed lines) or
+// the rendered hunks exceed the per-file message budget (hunks_omitted);
+// binary files only carry metadata and a viewer kind for the GUI to fetch
+// previews.
 message DiffFile {
     string path = 1;
     string status = 2; // added, modified, deleted, renamed
@@ -234,6 +236,10 @@ message DiffFile {
     repeated greet.DiffHunkDetail hunks = 9;
     bool hunks_omitted = 10;
     bool content_unavailable = 11;
+    // counts_approximate is set when additions/deletions are estimates: the
+    // file was too big to diff, so they count the lines left on each side
+    // after trimming the common prefix and suffix (an upper bound).
+    bool counts_approximate = 12;
 }
 
 message DiffFileEvent {

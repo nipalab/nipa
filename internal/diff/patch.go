@@ -59,6 +59,17 @@ func HeaderLine(c Change) string {
 
 // FilePatch renders one change as unified patch lines.
 func FilePatch(f FileDiff, opts Options) []string {
+	return filePatch(f, func() []Hunk { return Hunks(f.Old, f.New, opts) })
+}
+
+// FilePatchHunks renders one change as unified patch lines from hunks the
+// caller already computed for it (FileHunks or FileHunksBudget with the same
+// options), so a caller that needs both does not diff the file twice.
+func FilePatchHunks(f FileDiff, hunks []Hunk) []string {
+	return filePatch(f, func() []Hunk { return hunks })
+}
+
+func filePatch(f FileDiff, hunks func() []Hunk) []string {
 	c := f.Change
 	lines := []string{HeaderLine(c)}
 	oldPath, newPath := "a/"+c.Path, "b/"+c.Path
@@ -104,7 +115,7 @@ func FilePatch(f FileDiff, opts Options) []string {
 		return append(lines, contentUnavailable)
 	}
 
-	hunkLines := renderHunks(Hunks(f.Old, f.New, opts))
+	hunkLines := renderHunks(hunks())
 	switch {
 	case len(hunkLines) > 0:
 		lines = append(lines, "--- "+oldPath, "+++ "+newPath)
@@ -146,13 +157,26 @@ func FilterIgnored(files []FileDiff, opts Options) []FileDiff {
 			out = append(out, f)
 			continue
 		}
-		ops := LinesWith(splitLines(f.Old), splitLines(f.New), opts.equalFunc())
-		if len(hunkRanges(ops, 0)) == 0 {
+		if sameLines(splitLines(f.Old), splitLines(f.New), opts.equalFunc()) {
 			continue
 		}
 		out = append(out, f)
 	}
 	return out
+}
+
+// sameLines reports whether a diff of a and b under eq has no edits, which
+// holds exactly when they pair up line by line; no diff is needed.
+func sameLines(a, b []string, eq EqualFunc) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !eq(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func renderHunks(hunks []Hunk) []string {

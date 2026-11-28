@@ -41,6 +41,20 @@ describe("DiffViewer notices", () => {
     expect(screen.getAllByText("10 B")).toHaveLength(2);
   });
 
+  it("marks approximate counts", () => {
+    show(diff({ hunksOmitted: true, countsApproximate: true, additions: 12, deletions: 3 }));
+    expect(screen.getByText("~+12")).toBeInTheDocument();
+    expect(screen.getByText("~−3")).toBeInTheDocument();
+    expect(screen.getByTitle(/Estimated: the file is too large to diff/)).toBeInTheDocument();
+  });
+
+  it("shows exact counts without a marker", () => {
+    show(diff({ additions: 2, deletions: 1 }));
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("−1")).toBeInTheDocument();
+    expect(screen.queryByTitle(/Estimated/)).not.toBeInTheDocument();
+  });
+
   it("describes binary kinds and missing sides", () => {
     show(diff({ kind: "opaque", status: "added", untracked: true, old: null, new: side({ binary: true, size: 2048 }) }));
     expect(screen.getByText("Binary file")).toBeInTheDocument();

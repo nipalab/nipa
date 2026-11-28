@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -894,4 +895,25 @@ func TestMergeRequestReview_MergedUsesRecordedHead(t *testing.T) {
 		require.Equal(t, "main.go", path)
 		require.Equal(t, 3, *newLine)
 	})
+
+	t.Run("a file too large to diff cannot take a line comment", func(t *testing.T) {
+		review, _, _, _, _, merger, _ := newTestMergeRequestReview(t)
+		merger.EXPECT().TreeDiffBetween(gomock.Any(), snow.ID(1), &base, head).Return(oversizedFileDiff("scene.unity"), nil)
+
+		line := 1
+		_, _, _, err := review.anchor(context.Background(), snow.ID(1), merged, "scene.unity", nil, &line)
+		requireUserError(t, err)
+		require.Contains(t, err.Error(), "too large to diff")
+	})
+}
+
+// oversizedFileDiff is a modified file with more lines than diff.DefaultBudget
+// allows, so its hunks are never computed.
+func oversizedFileDiff(path string) []diff.FileDiff {
+	lines := strings.Repeat("line\n", diff.DefaultBudget.MaxLines)
+	return []diff.FileDiff{{
+		Change: diff.Change{Path: path, Status: diff.Modified},
+		Old:    []byte(lines + "old\n"),
+		New:    []byte("new\n" + lines),
+	}}
 }

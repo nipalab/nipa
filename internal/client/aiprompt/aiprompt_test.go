@@ -169,9 +169,11 @@ func TestFromMRDiff(t *testing.T) {
 		{Path: "b.png", Status: "added", Binary: true, Patch: []string{"should not appear"}},
 		{Path: "n.txt", OldPath: "o.txt", Status: "renamed"},
 		{Path: "big.txt", Status: "added", Additions: 9, TooLarge: true},
+		{Path: "huge.txt", Status: "modified", Additions: 7, Deletions: 3, TooLarge: true, CountsApproximate: true},
 	})
-	require.Len(t, out, 4)
+	require.Len(t, out, 5)
 	require.Equal(t, []string{"diff --nipa a/big.txt b/big.txt", "[diff too large to show: +9 -0]"}, out[3].Lines)
+	require.Equal(t, []string{"diff --nipa a/huge.txt b/huge.txt", "[diff too large to show: +~7 -~3]"}, out[4].Lines)
 	require.Equal(t, []string{"diff --nipa a/a.txt b/a.txt", "@@ -1 +1 @@", "-a", "+b"}, out[0].Lines)
 	require.Equal(t, []string{"diff --nipa a/b.png b/b.png", "Binary file changed"}, out[1].Lines)
 	require.Equal(t, "diff --nipa a/o.txt b/n.txt", out[2].Lines[0])

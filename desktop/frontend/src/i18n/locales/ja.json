@@ -583,6 +583,7 @@
   "deleteSafety.checking_other": "これを使っているファイルを確認中…",
   "deleteSafety.none_other": "これを参照している他のファイルはありません。",
   "diffViewer.similar": "{{percent}}% 類似",
+  "diffViewer.approxCounts": "概算: ファイルが大きすぎて差分を計算できないため、変更のない先頭と末尾を除いた残りの行数です",
   "fontDiff.moreRanges": "ほか {{count}} 範囲",
   "fontDiff.scripts": "スクリプト",
   "fontDiff.scriptsAfter": "スクリプト(変更後)",

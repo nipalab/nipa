@@ -400,6 +400,12 @@ export interface FileDiff {
     "deletions": number;
     "hunks": DiffHunk[] | null;
     "hunksOmitted"?: boolean;
+
+    /**
+     * CountsApproximate marks Additions/Deletions as an upper-bound estimate
+     * for a file too big to diff.
+     */
+    "countsApproximate"?: boolean;
     "contentUnavailable"?: boolean;
     "untracked"?: boolean;
 

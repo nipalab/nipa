@@ -26,7 +26,10 @@ patches) under the shared slot (`show` + one revision diffs a commit against
 its first parent, `DiffOptions.Show`); `DiffFiles` runs the same request but streams
 one structured `DiffFile` per path (status, `internal/preview` viewer kind,
 side metadata, counts, `greet.DiffHunkDetail` hunks capped at 1 MiB per file)
-for the desktop GUI. `ReadBlob` streams one file version (working copy,
+for the desktop GUI. Each file is diffed under `diff.DefaultBudget`
+(`FileHunksBudget`): a file over it is not diffed at all and comes back with
+`hunks_omitted` and `counts_approximate` (estimated counts), so one huge text
+asset in a commit listing cannot exhaust the daemon. `ReadBlob` streams one file version (working copy,
 offline `snapshot`, or a `revision` whose chunks are downloaded first) through
 `usecase.Diff.ReadBlob`, and `Preview` decodes old/new images with
 `internal/preview` into downscaled PNG chunks plus pixel-diff stats (415 for

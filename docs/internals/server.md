@@ -366,7 +366,9 @@ head round (`approved`/`changes_requested`/`commented`); a review for an older
 head is stale and stops counting, and the latest per reviewer+head wins.
 Submitting a review can carry inline comments that become anchored threads
 (`file_path` empty = top-level conversation; otherwise `old_line`/`new_line`
-must be a line the current diff shows). `POST .../reviews` on your own request
+must be a line the current diff shows; a file over `diff.DefaultBudget` has
+no hunks, so a line comment on it is a user error asking for a top-level
+comment instead). `POST .../reviews` on your own request
 is rejected; a project writer can `POST .../reviews/{id}/dismiss` (kept in
 history, `dismissed_reason=new_commits|manual`) while a reviewer can `DELETE`
 their own; dismissing leaves comment threads intact (`review_id` FK is
@@ -408,7 +410,11 @@ surface: `GetMergeRequest` (detail + mergeability + live review summary),
 messages mirroring the REST diff model; clients read it through the
 server-streaming `StreamMergeRequestDiff`, ~1 MiB `MergeRequestDiffPart`s,
 a file whose patch and hunks exceed one part is sent without them and
-`too_large`, shown as "diff too large to show" by `nipa mr diff`, MCP
+`too_large`; `diffFileToPB` and the REST `toDiffFileResponse` also set
+`too_large` (REST `too_large`) without diffing when a file is over
+`diff.DefaultBudget`, with estimated counts flagged `counts_approximate`
+(`nipa mr diff` prints `+~N -~M`; the SPA shows a "Diff too large to display"
+banner and `~` counts). It is shown as "diff too large to show" by `nipa mr diff`, MCP
 `truncated` and the AI prompt; an older server answers `Unimplemented` with an
 upgrade hint), `MergeabilityDetail.blocked_by`,
 `MergeRequestDetail.review`/`MergeRequestDetail.draft` (populated by

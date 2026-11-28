@@ -756,7 +756,11 @@ func (r *MergeRequestReview) anchor(ctx context.Context, projectID snow.ID, mr *
 		if file.Change.Path != filePath && file.Change.Old.Path != filePath {
 			continue
 		}
-		hunks := diff.FileHunks(file, diff.Options{Context: diff.DefaultContext})
+		res := diff.FileHunksBudget(file, diff.Options{Context: diff.DefaultContext}, diff.DefaultBudget)
+		if res.Omitted {
+			return "", nil, nil, domain.NewErrorUser(fmt.Sprintf("%s is too large to diff, so a comment cannot be anchored to one of its lines; comment on the merge request instead", filePath))
+		}
+		hunks := res.Hunks
 		if oldLine != nil {
 			if _, _, ok := diff.HunkLineAt(hunks, diff.SideLeft, *oldLine); !ok {
 				return "", nil, nil, domain.NewErrorUser(fmt.Sprintf("line %d is not part of the diff of %s", *oldLine, filePath))

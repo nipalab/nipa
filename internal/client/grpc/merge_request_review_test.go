@@ -394,7 +394,7 @@ func TestClient_MergeRequestReviewNotConnected(t *testing.T) {
 func TestClient_GetMergeRequestDiff_ManyPartsAndTooLarge(t *testing.T) {
 	fs := &fakeMergeRequestServer{diffResp: &pb.GetMergeRequestDiffResponse{Files: []*pb.DiffFileDetail{
 		{Path: "a.txt", Status: "M", Patch: []string{"-a", "+b"}},
-		{Path: "big.txt", Status: "A", Additions: 90000, TooLarge: true},
+		{Path: "big.txt", Status: "A", Additions: 90000, TooLarge: true, CountsApproximate: true},
 	}}}
 	c := newMergeRequestTestClient(t, fs)
 
@@ -403,6 +403,8 @@ func TestClient_GetMergeRequestDiff_ManyPartsAndTooLarge(t *testing.T) {
 	require.Len(t, files, 2)
 	require.False(t, files[0].TooLarge)
 	require.True(t, files[1].TooLarge)
+	require.True(t, files[1].CountsApproximate)
+	require.False(t, files[0].CountsApproximate)
 	require.Equal(t, int64(90000), files[1].Additions)
 	require.Empty(t, files[1].Patch)
 	require.Equal(t, int64(5), fs.diffReq.GetNumber())

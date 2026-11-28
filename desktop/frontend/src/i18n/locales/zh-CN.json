@@ -583,6 +583,7 @@
   "deleteSafety.checking_other": "正在检查哪些文件使用了它…",
   "deleteSafety.none_other": "没有其他文件引用它。",
   "diffViewer.similar": "{{percent}}% 相似",
+  "diffViewer.approxCounts": "估算值：文件过大无法比较差异，这里是跳过未更改的开头和结尾后剩余的行数",
   "fontDiff.moreRanges": "另有 {{count}} 个范围",
   "fontDiff.scripts": "文字系统",
   "fontDiff.scriptsAfter": "文字系统(之后)",

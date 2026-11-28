@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -697,6 +699,8 @@ func TestDiffFileToPB(t *testing.T) {
 	require.Len(t, detail.Hunks, 1)
 	require.Equal(t, int64(1), detail.Additions)
 	require.Equal(t, int64(1), detail.Deletions)
+	require.False(t, detail.TooLarge)
+	require.False(t, detail.CountsApproximate)
 
 	renamed := diffFileToPB(diff.FileDiff{
 		Change: diff.Change{
@@ -714,6 +718,33 @@ func TestDiffFileToPB(t *testing.T) {
 	require.True(t, binary.Binary)
 	require.Empty(t, binary.Patch)
 	require.Empty(t, binary.Hunks)
+	require.False(t, binary.TooLarge)
+}
+
+func TestDiffFileToPB_OverBudget(t *testing.T) {
+	var oldText, newText strings.Builder
+	for i := 0; i < diff.DefaultBudget.MaxLines+10; i++ {
+		fmt.Fprintf(&oldText, "line %d\n", i)
+		if i == 5 || i == 100 {
+			fmt.Fprintf(&newText, "changed %d\n", i)
+			continue
+		}
+		fmt.Fprintf(&newText, "line %d\n", i)
+	}
+	detail := diffFileToPB(diff.FileDiff{
+		Change: diff.Change{
+			Path: "big.txt", Status: diff.Modified,
+			Old: diff.Entry{Path: "big.txt", Hash: domain.Hash{1}},
+			New: diff.Entry{Path: "big.txt", Hash: domain.Hash{2}},
+		},
+		Old: []byte(oldText.String()), New: []byte(newText.String()),
+	})
+	require.True(t, detail.GetTooLarge())
+	require.True(t, detail.GetCountsApproximate())
+	require.Empty(t, detail.GetPatch())
+	require.Empty(t, detail.GetHunks())
+	require.EqualValues(t, 96, detail.GetAdditions())
+	require.EqualValues(t, 96, detail.GetDeletions())
 }
 
 func TestDomainMergeRequestToPB_MergedSourceCommit(t *testing.T) {

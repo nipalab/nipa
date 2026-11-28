@@ -3,13 +3,16 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/diff"
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
@@ -312,4 +315,48 @@ func TestHandler_ListCommits_ImportedAuthor(t *testing.T) {
 	require.Equal(t, "Linus", commits[1].AuthorName)
 	require.Equal(t, "linus@git.dev", commits[1].AuthorEmail)
 	require.Equal(t, origin, commits[1].Origin)
+}
+
+// hugeTextDiff is a modified text file with more lines than diff.DefaultBudget
+// allows, changed in two places.
+func hugeTextDiff(path string) diff.FileDiff {
+	var oldText, newText strings.Builder
+	for i := 0; i < diff.DefaultBudget.MaxLines+10; i++ {
+		fmt.Fprintf(&oldText, "line %d\n", i)
+		if i == 5 || i == 100 {
+			fmt.Fprintf(&newText, "changed %d\n", i)
+			continue
+		}
+		fmt.Fprintf(&newText, "line %d\n", i)
+	}
+	return diff.FileDiff{
+		Change: diff.Change{
+			Path: path, Status: diff.Modified,
+			Old: diff.Entry{Path: path, Hash: domain.Hash{1}},
+			New: diff.Entry{Path: path, Hash: domain.Hash{2}},
+		},
+		Old: []byte(oldText.String()), New: []byte(newText.String()),
+	}
+}
+
+func TestToDiffFileResponse_Budget(t *testing.T) {
+	small := toDiffFileResponse(diff.FileDiff{
+		Change: diff.Change{Path: "a.txt", Status: diff.Modified, Old: diff.Entry{Hash: domain.Hash{1}}, New: diff.Entry{Hash: domain.Hash{2}}},
+		Old:    []byte("one\ntwo\n"),
+		New:    []byte("one\nTWO\nthree\n"),
+	})
+	require.False(t, small.TooLarge)
+	require.False(t, small.CountsApproximate)
+	require.Equal(t, 2, small.Additions)
+	require.Equal(t, 1, small.Deletions)
+	require.NotEmpty(t, small.Patch)
+	require.Len(t, small.Hunks, 1)
+
+	huge := toDiffFileResponse(hugeTextDiff("big.txt"))
+	require.True(t, huge.TooLarge)
+	require.True(t, huge.CountsApproximate)
+	require.Empty(t, huge.Patch)
+	require.Empty(t, huge.Hunks)
+	require.Equal(t, 96, huge.Additions)
+	require.Equal(t, 96, huge.Deletions)
 }

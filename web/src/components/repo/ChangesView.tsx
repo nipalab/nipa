@@ -3,11 +3,11 @@ import { SegmentedControl, Text, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
 import type { DiffFileResponse, ThreadResponse } from '../../api/models'
 import { EmptyState } from '../ui'
-import { DiffAnchor, DiffFile, FileStatusIcon } from './DiffView'
+import { DiffAnchor, DiffFile, FileStatusIcon, countPrefix } from './DiffView'
 
 type ViewMode = 'split' | 'unified'
 
-function DiffStat({ additions, deletions }: { additions: number; deletions: number }) {
+function DiffStat({ additions, deletions, approximate }: { additions: number; deletions: number; approximate?: boolean }) {
   const total = additions + deletions
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -29,7 +29,7 @@ function DiffStat({ additions, deletions }: { additions: number; deletions: numb
         )}
       </span>
       <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
-        +{additions} −{deletions}
+        {countPrefix(approximate)}+{additions} {countPrefix(approximate)}−{deletions}
       </Text>
     </span>
   )
@@ -87,6 +87,7 @@ export function ChangesView({
 
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
+  const approximate = files.some((file) => file.counts_approximate)
 
   function toggleValue(set: Set<string>, path: string, value: boolean) {
     const next = new Set(set)
@@ -150,8 +151,12 @@ export function ChangesView({
                 </span>
                 {!file.binary && (
                   <>
-                    <span style={{ color: 'var(--fgColor-success)', fontSize: 11 }}>+{file.additions}</span>
-                    <span style={{ color: 'var(--fgColor-danger)', fontSize: 11 }}>-{file.deletions}</span>
+                    <span style={{ color: 'var(--fgColor-success)', fontSize: 11 }}>
+                      {countPrefix(file.counts_approximate)}+{file.additions}
+                    </span>
+                    <span style={{ color: 'var(--fgColor-danger)', fontSize: 11 }}>
+                      {countPrefix(file.counts_approximate)}-{file.deletions}
+                    </span>
                   </>
                 )}
               </a>
@@ -174,7 +179,7 @@ export function ChangesView({
           <Text style={{ fontWeight: 600 }}>
             {visible.length} file{visible.length === 1 ? '' : 's'} changed
           </Text>
-          <DiffStat additions={additions} deletions={deletions} />
+          <DiffStat additions={additions} deletions={deletions} approximate={approximate} />
           <div style={{ width: 220 }}>
             <TextInput
               block

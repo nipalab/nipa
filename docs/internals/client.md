@@ -42,6 +42,23 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   client and the server merge strategies) delegates its line diff to
   `diff.Lines`. Keep `internal/diff`
   free of client imports: the server merge-request diff reuses it.
+  The line diff trims the common prefix/suffix, then runs linear-space Myers
+  (divide and conquer on the middle snake): O(lines) memory, O(lines × edits)
+  time, removed lines before added ones within a change run.
+  `LinesBudget(a, b, eq, maxCost)` gives up (`ok=false`) once the edit
+  distance exceeds `maxCost`. `HunksBudget`/`FileHunksBudget` take a
+  `Budget{MaxLines, MaxBytes, MaxCost}` (zero field = no limit;
+  `DefaultBudget` = 200k lines / 16 MiB per side, 5000 edits; the edit cap
+  skips one-block insertions/deletions such as added files) and return a
+  `HunkResult` with hunks, exact counts, or `Omitted` + `Approx` counts (lines
+  left after trimming, an upper bound) without diffing. Every path that diffs
+  content nobody opened (daemon `DiffFiles`, server MR/commit diffs, review
+  anchoring) goes through the budget; `Hunks`/`FileHunks`/`FilePatch` stay
+  unbudgeted for explicit CLI use. `FilePatchHunks` renders a patch from
+  already computed hunks so callers diff once. `FilterIgnored` needs no diff
+  (zero edits ⇔ same line count and pairwise equal). `lines_ref_test.go`
+  keeps the old stored-trace Myers as a test oracle: the property/fuzz tests
+  check the new scripts apply and have the same edit count.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or

@@ -289,11 +289,15 @@ func diffFileToPB(file diff.FileDiff) *pb.DiffFileDetail {
 		resp.OldPath = file.Change.Old.Path
 	}
 	if !resp.Binary {
-		options := diff.Options{Context: diff.DefaultContext}
-		resp.Patch = diff.FilePatch(file, options)
-		resp.Hunks = diffHunksToPB(diff.FileHunks(file, options))
-		additions, deletions := diff.CountLines(file.Old, file.New)
-		resp.Additions, resp.Deletions = int64(additions), int64(deletions)
+		res := diff.FileHunksBudget(file, diff.Options{Context: diff.DefaultContext}, diff.DefaultBudget)
+		resp.Additions, resp.Deletions = int64(res.Additions), int64(res.Deletions)
+		resp.CountsApproximate = res.Approx
+		if res.Omitted {
+			resp.TooLarge = true
+			return resp
+		}
+		resp.Patch = diff.FilePatchHunks(file, res.Hunks)
+		resp.Hunks = diffHunksToPB(res.Hunks)
 	}
 	return resp
 }

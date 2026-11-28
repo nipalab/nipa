@@ -60,19 +60,22 @@ type DiffHunk struct {
 }
 
 type FileDiff struct {
-	Path               string     `json:"path"`
-	OldPath            string     `json:"oldPath,omitempty"`
-	Status             string     `json:"status"` // added, modified, deleted, renamed
-	Kind               string     `json:"kind"`
-	Similarity         int        `json:"similarity,omitempty"`
-	Old                *FileSide  `json:"old"`
-	New                *FileSide  `json:"new"`
-	Additions          int64      `json:"additions"`
-	Deletions          int64      `json:"deletions"`
-	Hunks              []DiffHunk `json:"hunks"`
-	HunksOmitted       bool       `json:"hunksOmitted,omitempty"`
-	ContentUnavailable bool       `json:"contentUnavailable,omitempty"`
-	Untracked          bool       `json:"untracked,omitempty"`
+	Path         string     `json:"path"`
+	OldPath      string     `json:"oldPath,omitempty"`
+	Status       string     `json:"status"` // added, modified, deleted, renamed
+	Kind         string     `json:"kind"`
+	Similarity   int        `json:"similarity,omitempty"`
+	Old          *FileSide  `json:"old"`
+	New          *FileSide  `json:"new"`
+	Additions    int64      `json:"additions"`
+	Deletions    int64      `json:"deletions"`
+	Hunks        []DiffHunk `json:"hunks"`
+	HunksOmitted bool       `json:"hunksOmitted,omitempty"`
+	// CountsApproximate marks Additions/Deletions as an upper-bound estimate
+	// for a file too big to diff.
+	CountsApproximate  bool `json:"countsApproximate,omitempty"`
+	ContentUnavailable bool `json:"contentUnavailable,omitempty"`
+	Untracked          bool `json:"untracked,omitempty"`
 	// OldRevision and NewRevision are set for a commit's changes; the working
 	// copy diff leaves them empty.
 	OldRevision string `json:"oldRevision,omitempty"`
@@ -294,6 +297,7 @@ func toFileDiff(f *daemonpb.DiffFile) *FileDiff {
 		Deletions:          f.GetDeletions(),
 		Hunks:              make([]DiffHunk, 0, len(f.GetHunks())),
 		HunksOmitted:       f.GetHunksOmitted(),
+		CountsApproximate:  f.GetCountsApproximate(),
 		ContentUnavailable: f.GetContentUnavailable(),
 	}
 	if out.Status == "renamed" {

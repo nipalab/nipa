@@ -583,6 +583,7 @@
   "deleteSafety.checking_other": "Memeriksa file mana yang memakainya…",
   "deleteSafety.none_other": "Tidak ada file lain yang merujuknya.",
   "diffViewer.similar": "{{percent}}% mirip",
+  "diffViewer.approxCounts": "Perkiraan: berkas terlalu besar untuk di-diff, jadi ini adalah baris yang tersisa setelah melewati awal dan akhir yang tidak berubah",
   "fontDiff.moreRanges": "dan {{count}} rentang lagi",
   "fontDiff.scripts": "Skrip",
   "fontDiff.scriptsAfter": "Skrip (sesudah)",

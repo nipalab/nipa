@@ -67,13 +67,43 @@ func BenchmarkLines(b *testing.B) {
 	}{
 		{name: "2000-lines-1-change", total: 2000, changed: 1},
 		{name: "5000-lines-50-changes", total: 5000, changed: 50},
+		{name: "50k-lines-300-changes", total: 50000, changed: 300},
+		{name: "100k-lines-300-changes", total: 100000, changed: 300},
+		{name: "500k-lines-300-changes", total: 500000, changed: 300},
+		{name: "500k-lines-3000-changes", total: 500000, changed: 3000},
 	}
 	for _, tc := range cases {
 		a, bLines := benchLines(tc.total, tc.changed)
 		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				_ = Lines(a, bLines)
+			}
+		})
+	}
+}
+
+// BenchmarkHunksBudget measures the default budget on a file over the line
+// limit (omitted, approximate counts) and on one that fits.
+func BenchmarkHunksBudget(b *testing.B) {
+	cases := []struct {
+		name    string
+		total   int
+		changed int
+	}{
+		{name: "100k-lines-300-changes", total: 100000, changed: 300},
+		{name: "500k-lines-3000-changes-omitted", total: 500000, changed: 3000},
+	}
+	for _, tc := range cases {
+		a, bLines := benchLines(tc.total, tc.changed)
+		oldText := []byte(strings.Join(a, "\n"))
+		newText := []byte(strings.Join(bLines, "\n"))
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = HunksBudget(oldText, newText, Options{Context: DefaultContext}, DefaultBudget)
 			}
 		})
 	}

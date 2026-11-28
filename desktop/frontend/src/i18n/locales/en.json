@@ -586,6 +586,7 @@
   "deleteSafety.none_one": "No other file references it.",
   "deleteSafety.none_other": "No other file references them.",
   "diffViewer.similar": "{{percent}}% similar",
+  "diffViewer.approxCounts": "Estimated: the file is too large to diff, so these are the lines left after skipping the unchanged start and end",
   "fontDiff.moreRanges": "and {{count}} more ranges",
   "fontDiff.scripts": "Scripts",
   "fontDiff.scriptsAfter": "Scripts (after)",

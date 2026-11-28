@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { Button, Checkbox, Stack, Text, Textarea } from '@primer/react'
+import { Banner, Button, Checkbox, Stack, Text, Textarea } from '@primer/react'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -19,6 +19,14 @@ export interface DiffAnchor {
 }
 
 type ViewMode = 'split' | 'unified'
+
+// countPrefix marks line counts the server estimated because the file was too
+// large to diff.
+export function countPrefix(approximate: boolean | undefined): string {
+  return approximate ? '~' : ''
+}
+
+const APPROX_COUNTS_TITLE = 'Estimated: the file is too large to diff'
 
 interface LineRow {
   kind: 'line'
@@ -481,10 +489,14 @@ export function DiffFile({
       <FileStatusIcon status={file.status} />
       <Mono>{file.old_path ? `${file.old_path} → ${file.path}` : file.path}</Mono>{' '}
       {!file.binary && (
-        <>
-          <Text style={{ color: 'var(--fgColor-success)' }}>+{file.additions}</Text>{' '}
-          <Text style={{ color: 'var(--fgColor-danger)' }}>-{file.deletions}</Text>
-        </>
+        <span title={file.counts_approximate ? APPROX_COUNTS_TITLE : undefined}>
+          <Text style={{ color: 'var(--fgColor-success)' }}>
+            {countPrefix(file.counts_approximate)}+{file.additions}
+          </Text>{' '}
+          <Text style={{ color: 'var(--fgColor-danger)' }}>
+            {countPrefix(file.counts_approximate)}-{file.deletions}
+          </Text>
+        </span>
       )}
       {openCount > 0 && (
         <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
@@ -530,6 +542,24 @@ export function DiffFile({
         style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden', scrollMarginTop: 16 }}
       >
         {header}
+      </div>
+    )
+  }
+
+  if (file.too_large) {
+    return (
+      <div
+        id={`file-${file.path}`}
+        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden', scrollMarginTop: 16 }}
+      >
+        {header}
+        <div style={{ padding: 12 }}>
+          <Banner variant="info" title="Diff too large to display">
+            This file has too many lines or changes to diff here
+            {file.counts_approximate ? ', so its line counts are estimates' : ''}. Compare it locally with{' '}
+            <Mono>nipa diff</Mono>.
+          </Banner>
+        </div>
       </div>
     )
   }

@@ -706,6 +706,7 @@ func TestSetupMrDiffCmd(t *testing.T) {
 		{Path: "new.txt", OldPath: "old.txt", Status: "R", Additions: 0, Deletions: 0},
 		{Path: "b.bin", Status: "A", Binary: true},
 		{Path: "huge.txt", Status: "A", Additions: 90000, TooLarge: true},
+		{Path: "scene.unity", Status: "M", Additions: 120, Deletions: 80, TooLarge: true, CountsApproximate: true},
 	}}
 	cli := newMRCli(t, client)
 
@@ -716,6 +717,7 @@ func TestSetupMrDiffCmd(t *testing.T) {
 	require.Contains(t, out, "R old.txt -> new.txt (+0 -0)")
 	require.Contains(t, out, "binary file")
 	require.Contains(t, out, "A huge.txt (+90000 -0)\n  diff too large to show")
+	require.Contains(t, out, "M scene.unity (+~120 -~80)\n  diff too large to show")
 }
 
 func TestSetupMrReopenCmd(t *testing.T) {

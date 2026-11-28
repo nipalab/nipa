@@ -169,6 +169,7 @@ diff::File parse_diff_file(const nlohmann::json& j) {
     f.deletions = json_int(j, "deletions");
     f.omitted = field(j, "hunks_omitted").is_boolean() && field(j, "hunks_omitted").get<bool>();
     f.omitted = f.omitted || (field(j, "content_unavailable").is_boolean() && field(j, "content_unavailable").get<bool>());
+    f.approximate = field(j, "counts_approximate").is_boolean() && field(j, "counts_approximate").get<bool>();
     const auto& hunks = field(j, "hunks");
     if (hunks.is_array()) {
         for (const auto& h : hunks) {

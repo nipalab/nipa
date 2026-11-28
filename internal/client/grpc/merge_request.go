@@ -238,14 +238,15 @@ func readMergeRequestDiff(ctx context.Context, client pb.NipaServiceClient, req 
 		}
 		for _, file := range part.GetFiles() {
 			files = append(files, &clientDomain.MergeRequestDiffFile{
-				Path:      file.GetPath(),
-				OldPath:   file.GetOldPath(),
-				Status:    file.GetStatus(),
-				Binary:    file.GetBinary(),
-				Additions: file.GetAdditions(),
-				Deletions: file.GetDeletions(),
-				Patch:     file.GetPatch(),
-				TooLarge:  file.GetTooLarge(),
+				Path:              file.GetPath(),
+				OldPath:           file.GetOldPath(),
+				Status:            file.GetStatus(),
+				Binary:            file.GetBinary(),
+				Additions:         file.GetAdditions(),
+				Deletions:         file.GetDeletions(),
+				Patch:             file.GetPatch(),
+				TooLarge:          file.GetTooLarge(),
+				CountsApproximate: file.GetCountsApproximate(),
 			})
 		}
 	}

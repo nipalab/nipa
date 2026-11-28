@@ -72,6 +72,12 @@ type DiffFileResponse struct {
 	Deletions int                `json:"deletions"`
 	Patch     []string           `json:"patch,omitempty"`
 	Hunks     []DiffHunkResponse `json:"hunks,omitempty"`
+	// TooLarge is set when the file is too big to diff: Patch and Hunks are
+	// left out.
+	TooLarge bool `json:"too_large,omitempty"`
+	// CountsApproximate is set when Additions and Deletions are estimates
+	// (an upper bound) because the file was not diffed.
+	CountsApproximate bool `json:"counts_approximate,omitempty"`
 }
 
 type CommitDiffResponse struct {
