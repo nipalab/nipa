@@ -543,7 +543,8 @@ tag checkout every staged path too, since those refuse to run with them.
 `revision` is empty (against the pinned commit, so lines the commit lacks
 are `uncommitted`), otherwise the file as of a branch, tag, commit id or
 `HEAD`. It lists the commits that changed the path through `GetCommitLog`
-with `path` (the server scans at most 500 commits, first-parent), reads each
+with `path` (the server reads them from its path change index over at most
+10,000 first-parent commits), reads each
 version newest first through a dir-scoped `GetTreeManifest` of that commit
 (the root's own files, or the parent folder's subtree) and the
 commit-scoped chunk download, and attributes lines with `diff.Lines`: a

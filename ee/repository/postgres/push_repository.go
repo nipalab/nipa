@@ -225,7 +225,10 @@ func insertCommit(ctx context.Context, q *sqlcPostgres.Queries, req usecase.Appl
 	}); err != nil {
 		return handleError(err)
 	}
-	return nil
+	if !req.IndexPaths {
+		return nil
+	}
+	return writePathIndex(ctx, q, req.CommitID, req.PathChanges)
 }
 
 // pushBatchStore runs the bulk statements of pushbatch against postgres.

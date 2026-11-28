@@ -114,7 +114,8 @@ paths (used for "go to file" search). History walks at most 50 first-parent
 commits, comparing subtree hashes, and stops once every entry is resolved.
 
 `GET …/commits?path=` keeps only the commits that touched a file or directory
-(scan capped at 500 commits). `start` (inclusive commit id) and `limit` page the
+(read from the path change index over at most 10,000 first-parent commits).
+`start` (inclusive commit id) and `limit` page the
 list, and `GET …/commits/{commit}/diff?base=` diffs against any base commit
 (the compare view). Hidden paths return 404, like the tree and blob
 endpoints.

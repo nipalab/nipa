@@ -314,7 +314,14 @@ checks, binary lock planning) and the merge strategies use the same walk (see
 already visited for an earlier commit, keyed by path and hash) shares the
 idea. `make bench-mr files=100000` (`TestEndToEnd_MergeRequestScale`) and
 `make bench-mr-ee files=100000` (`TestEnterpriseMergeRequestScale`) time
-every merge request path against a 1,676-directory tree.
+every merge request path against a 1,676-directory tree. `make bench-blame
+files=100000` / `make bench-blame-ee files=100000` (`TestEndToEnd_BlameScale`,
+`TestEnterpriseBlameScale`) time the per-path history (blame's server step,
+file and folder history) over 500 commits on the same tree, the first read
+over a history not indexed yet, and the write cost of the path change index
+on a 20-file push and merge (see `server.md` "Path change index"). Databases
+from before the index need no operator step: the first history read over a
+commit indexes it.
 
 - `make bench-upload mb=512` (or `NIPA_BENCH_MB=512 go test ./internal/e2e
   -run TestEndToEnd_UploadThroughput -v`) measures upload throughput against an

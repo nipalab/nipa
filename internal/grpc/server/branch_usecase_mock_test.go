@@ -439,6 +439,50 @@ func (mr *MockbranchRepositoryMockRecorder) ListTreeChildrenByTrees(ctx, parentI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildrenByTrees", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildrenByTrees), ctx, parentIDs)
 }
 
+// PathChangeLog mocks base method.
+func (m *MockbranchRepository) PathChangeLog(ctx context.Context, q usecase.PathChangeQuery) ([]*domain.CommitLogEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PathChangeLog", ctx, q)
+	ret0, _ := ret[0].([]*domain.CommitLogEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PathChangeLog indicates an expected call of PathChangeLog.
+func (mr *MockbranchRepositoryMockRecorder) PathChangeLog(ctx, q any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PathChangeLog", reflect.TypeOf((*MockbranchRepository)(nil).PathChangeLog), ctx, q)
+}
+
+// PathChangeRows mocks base method.
+func (m *MockbranchRepository) PathChangeRows(ctx context.Context, q usecase.PathChangeQuery, commitIDs []snow.ID) ([]usecase.PathChangeRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PathChangeRows", ctx, q, commitIDs)
+	ret0, _ := ret[0].([]usecase.PathChangeRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PathChangeRows indicates an expected call of PathChangeRows.
+func (mr *MockbranchRepositoryMockRecorder) PathChangeRows(ctx, q, commitIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PathChangeRows", reflect.TypeOf((*MockbranchRepository)(nil).PathChangeRows), ctx, q, commitIDs)
+}
+
+// RecordPathChanges mocks base method.
+func (m *MockbranchRepository) RecordPathChanges(ctx context.Context, commitID snow.ID, changes []usecase.PathChange) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPathChanges", ctx, commitID, changes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordPathChanges indicates an expected call of RecordPathChanges.
+func (mr *MockbranchRepositoryMockRecorder) RecordPathChanges(ctx, commitID, changes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPathChanges", reflect.TypeOf((*MockbranchRepository)(nil).RecordPathChanges), ctx, commitID, changes)
+}
+
 // RenameBranch mocks base method.
 func (m *MockbranchRepository) RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error {
 	m.ctrl.T.Helper()
@@ -539,6 +583,21 @@ func (m *MockbranchRepository) SetDefaultBranch(ctx context.Context, projectID, 
 func (mr *MockbranchRepositoryMockRecorder) SetDefaultBranch(ctx, projectID, branchID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDefaultBranch", reflect.TypeOf((*MockbranchRepository)(nil).SetDefaultBranch), ctx, projectID, branchID)
+}
+
+// UnindexedPathChangeCommits mocks base method.
+func (m *MockbranchRepository) UnindexedPathChangeCommits(ctx context.Context, projectID, startCommitID snow.ID, scanLimit int) ([]usecase.UnindexedCommit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnindexedPathChangeCommits", ctx, projectID, startCommitID, scanLimit)
+	ret0, _ := ret[0].([]usecase.UnindexedCommit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UnindexedPathChangeCommits indicates an expected call of UnindexedPathChangeCommits.
+func (mr *MockbranchRepositoryMockRecorder) UnindexedPathChangeCommits(ctx, projectID, startCommitID, scanLimit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnindexedPathChangeCommits", reflect.TypeOf((*MockbranchRepository)(nil).UnindexedPathChangeCommits), ctx, projectID, startCommitID, scanLimit)
 }
 
 // UpdateCommitIf mocks base method.

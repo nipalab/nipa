@@ -88,6 +88,16 @@ type Commit struct {
 	Origin      sql.NullString `json:"origin"`
 }
 
+type CommitPathChange struct {
+	CommitID int64  `json:"commit_id"`
+	Path     string `json:"path"`
+	Kind     int64  `json:"kind"`
+}
+
+type CommitPathIndex struct {
+	CommitID int64 `json:"commit_id"`
+}
+
 type EmailDelivery struct {
 	ID            int64        `json:"id"`
 	Event         string       `json:"event"`

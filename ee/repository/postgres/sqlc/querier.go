@@ -71,6 +71,11 @@ type Querier interface {
 	// means "no stop". It is a separate query from CommitLog so the recursive stop
 	// stays out of the plain branch history.
 	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
+	// CommitPathChangeInsertMany writes path change index rows (see
+	// docs/internals/server.md "Path change index") from a JSON array of
+	// [path, kind] pairs.
+	CommitPathChangeInsertMany(ctx context.Context, arg CommitPathChangeInsertManyParams) error
+	CommitPathIndexMark(ctx context.Context, commitID int64) error
 	CountOwnerSeats(ctx context.Context, ownerID int64) (int64, error)
 	CountStorageServersByOwner(ctx context.Context, ownerUserID int64) (int64, error)
 	CountSweepableChunkPacks(ctx context.Context, cutoff time.Time) (CountSweepableChunkPacksRow, error)
@@ -306,6 +311,21 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	// PathChangeLog walks the first-parent chain from start_commit_id (at most
+	// scan_limit commits, like CommitLog) and keeps the commits that changed the
+	// path: the root commit of the chain, a row at the path itself other than a
+	// mode-only change of a file there, any row below the path (the byte range
+	// [path/, path0) under the column's "C" collation), or any row at all when
+	// any_path is set (the whole tree). Every probe is a primary key range seek
+	// per walked commit.
+	PathChangeLog(ctx context.Context, arg PathChangeLogParams) ([]PathChangeLogRow, error)
+	// PathChangeRows returns the rows of the given commits at or below the path
+	// (every row when any_path is set), for a reader whose rules hide paths.
+	PathChangeRows(ctx context.Context, arg PathChangeRowsParams) ([]CommitPathChange, error)
+	// PathChangeUnindexed lists the commits of the same first-parent walk that
+	// have a parent and no commit_path_index marker yet (stored before the index
+	// existed), with their tree and their first parent's tree.
+	PathChangeUnindexed(ctx context.Context, arg PathChangeUnindexedParams) ([]PathChangeUnindexedRow, error)
 	ProjectChunkRecords(ctx context.Context, arg ProjectChunkRecordsParams) ([]ProjectChunkRecordsRow, error)
 	ProjectChunkSizes(ctx context.Context, arg ProjectChunkSizesParams) ([]ProjectChunkSizesRow, error)
 	ProjectChunkUploadInsertMany(ctx context.Context, arg ProjectChunkUploadInsertManyParams) error

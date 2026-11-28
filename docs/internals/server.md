@@ -566,3 +566,90 @@ CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
 `merge --strategy/--delete-source`, and `list
 --author/--source/--target/--assignee/--search/--after/--status draft`.
 
+
+## Path change index (per-path history, blame)
+
+`Branch.PathCommitLog` (REST `GET …/commits?path=`, gRPC `GetCommitLog` with
+`path`: blame's server step and the web UI file and folder history) lists the
+commits of a first-parent walk (at most `maxPathHistoryScan` = 10,000 commits
+from the branch head or `start`) that changed a file or folder, newest first.
+It used to compare the path's hash between every walked commit and the next
+older one (about five tree reads per commit, a whole folder subtree per
+commit for folder history); it now reads `commit_path_changes`
+(`path_changes.go`, queries in `path_change.sql` of both dialects).
+
+- **Rows.** Per commit, the paths whose state differs from its first parent:
+  kind 1 a file appeared, disappeared or changed hash; kind 2 a file kept its
+  hash and changed its mode class (changes the folders above it, not the
+  file's own history); kind 3 a folder (visible, non-empty) appeared or
+  disappeared. Merge commits are compared with their first parent only (as
+  the scan did), so a merge commit lists everything the merged branch
+  brought. A root commit has no rows: the history lists the walk's root
+  commit whenever the walk reaches it, as the scan always did, so the first
+  push of a 100,000-file tree writes nothing. A marker row in
+  `commit_path_index` says a commit's rows are complete (an empty commit has
+  a marker and no rows). Both tables cascade with `commits`, which the
+  enterprise project purge deletes in batches.
+- **Writers.** `buildNewTree` records, while it rebuilds the touched
+  directories, the base and built state of every pushed or removed file and
+  the presence of every rebuilt directory (`treeChanges`), with no extra read;
+  `buildApplyRequest` turns that into `ApplyPushRequest.PathChanges` with
+  `IndexPaths`, and the repositories' `insertCommit` (the only place a commit
+  row is inserted, under `ApplyPush`/`ApplyPushAll`/`ApplyImport`) writes rows
+  and marker in the commit's transaction. That covers push (incl. pushed
+  merge commits and revert, which is a push), git import, and the merge,
+  squash and rebase strategies; fast-forward, branches and tags write no
+  commit. Every rebase step is built on the target head, so its later commits
+  get `root.changes.since(previous step's changes)`: the difference between
+  two builds on the same base. A request without `IndexPaths` (a writer that
+  did not compute its changes) leaves the commit unmarked, which is safe.
+- **Unindexed commits.** Each read first lists the unmarked commits of its
+  walk (`PathChangeUnindexed`, one statement) and indexes them from their
+  stored trees (`treePathChanges`: the `compareTrees` walk with no filter,
+  which also reports one-sided folders, `walkCompare.dirsToggled`), writing
+  rows and marker idempotently (`RecordPathChanges`, `ON CONFLICT DO
+  NOTHING`). Databases from before migration `000031`/`000022` (e.g. the load
+  test's) are indexed by the first history read over them, once, at the cost
+  of one tree comparison per commit; a fully indexed walk costs that one
+  lookup. The equivalence test drops the index and checks the rows a read
+  computes equal the rows the writers stored.
+- **Reads.** An unrestricted reader (`PathFilter.Unrestricted`) costs one
+  statement (`PathChangeLog`): the recursive first-parent walk keeps a commit
+  when it is the root or has a row at the path (other than kind 2) or below it,
+  probed as the primary key ranges `path = p` and `[p/, p0)` per walked commit
+  (any row for the whole tree). Postgres stores `path` with `COLLATE "C"` so
+  the range is bytewise whatever the database collation. A path-restricted
+  reader gets the same candidates and then their rows (`PathChangeRows`, in
+  batches until the limit is met); a commit counts when a row is visible the
+  way a filtered manifest load sees it (`visiblePathChange`: at the path a
+  readable file or a folder appearing/disappearing, below it a readable file
+  under descendable folders), so hidden paths never surface and a folder
+  whose content is hidden still shows appearing, exactly as the scan did.
+  `TestPathCommitLog_StatementCountIsConstant` (sqlite and postgres) pins an
+  unrestricted read at three statements (branch, unindexed check, log).
+- **Oracle.** The scan is kept as test-only `PathCommitLogScan`
+  (`path_history_oracle_test.go`); `TestPathCommitLog_MatchesScan` builds
+  random histories through the real push and merge usecases (edits, renames,
+  deletions and re-adds, folder deletions, file/folder swaps, mode flips,
+  reverts, identical re-pushes, side branches landed by merge, squash,
+  multi-commit rebase, fast-forward and pushed merge commits) and compares
+  every path, several starts and limits, for an admin and two path-restricted
+  readers, before and after dropping the index.
+- **Behaviour change.** The walk cap went from 500 to 10,000 commits, so a
+  history longer than 500 commits now lists older changes and the root commit
+  the scan cut off; within 500 commits the output is the scan's. An empty
+  directory node stored with the empty-tree hash (which pushes never write)
+  counted as present for the scan and is absent for the index.
+  `TreeAtWithHistory` (the latest commit per entry of a folder listing) still
+  compares trees over its 50-commit window.
+- **Cost.** `make bench-blame files=100000` / `make bench-blame-ee
+  files=100000` (`TestEndToEnd_BlameScale`, `TestEnterpriseBlameScale`: 500
+  one-file commits, the blamed file changed in every 25th) time the file and
+  folder history, the first read over an unindexed history, and a 20-file
+  push and merge with the rows they wrote. Measured A/B at 100,000 files
+  (median of 5, same machine back to back): SQLite blame step 335 -> 12 ms
+  (2,501 -> 2 repository statements after resolving the branch), folder
+  `d00` 10.0 s -> 22 ms, `d00/s00` 511 -> 13 ms; postgres 358 -> 39 ms, folder
+  `d00` 12.2 s -> 38 ms, `d00/s00` 4.1 s -> 38 ms. The first read over 500
+  unindexed commits costs 0.56 s (SQLite) / 1.4 s (postgres), once. A 20-file
+  push or merge writes 20 rows; its time stayed within run-to-run noise.

@@ -19,7 +19,9 @@ import (
 const (
 	// BlameMaxBytes caps every version blame reads.
 	BlameMaxBytes = 2 << 20
-	// BlameMaxCommits matches the server's path history scan.
+	// BlameMaxCommits caps the file versions blame asks the server for: the
+	// newest commits that changed the file (the server reads them from its
+	// path change index).
 	BlameMaxCommits = 500
 )
 

@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"strings"
@@ -164,6 +165,32 @@ func TestEndToEnd_GitImport(t *testing.T) {
 	require.Equal(t, "child", detail.Message)
 	require.Equal(t, imported[1].CommitHash.String(), detail.Hash)
 	require.True(t, authored.Add(time.Hour).Equal(detail.CreatedAt), "GetCommit reports the author date: %s", detail.CreatedAt)
+
+	// Every imported commit lands with its path change index rows: what it
+	// changes against its first parent, none for the root.
+	require.Empty(t, storedPathChanges(t, dbConn, imported[0].CommitID))
+	require.Equal(t, []string{"a.txt:1", "art:3", "art/logo.png:1"}, storedPathChanges(t, dbConn, imported[1].CommitID))
+	require.Equal(t, []string{"docs:3", "docs/merge.md:1"}, storedPathChanges(t, dbConn, imported[2].CommitID))
+	history, err := grpcClient.GetPathCommitLog(ctx, e2eOrgSlug, e2eProjectSlug, imported[2].CommitID.Base36(), "art", 10)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{imported[1].CommitID, imported[0].CommitID}, []snow.ID{history[0].ID, history[1].ID})
+}
+
+// storedPathChanges lists a commit's path change index rows as "path:kind".
+func storedPathChanges(t *testing.T, dbConn *sql.DB, commitID snow.ID) []string {
+	t.Helper()
+	rows, err := dbConn.Query(`SELECT path, kind FROM commit_path_changes WHERE commit_id = ? ORDER BY path, kind`, commitID.Int64())
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var path string
+		var kind int
+		require.NoError(t, rows.Scan(&path, &kind))
+		out = append(out, fmt.Sprintf("%s:%d", path, kind))
+	}
+	require.NoError(t, rows.Err())
+	return out
 }
 
 func TestEndToEnd_GitImportPreflight(t *testing.T) {
