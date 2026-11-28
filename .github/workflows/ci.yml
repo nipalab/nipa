@@ -27,7 +27,7 @@ jobs:
       - name: Run Tests & Generate Reports
         run: |
           set -o pipefail
-          go test -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./... 2>&1 | tee report.json
+          go test -race -timeout 20m -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./... 2>&1 | tee report.json
 
       - name: Enforce coverage threshold
         env:

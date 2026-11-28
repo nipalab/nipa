@@ -138,7 +138,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   directories (`TreeNodeChildHashes`); an untouched child keeps its stored
   hash and rows, a rebuilt directory left without files and children is
   dropped (the root never is), and so is an untouched child whose hash is the
-  empty tree hash. Hashes come from `treehash.TreeHash`; the tracked mode
+  empty tree hash. A path left as a file and as a directory is refused with
+  `clientDomain.PushApplyClashError` (nothing written), like the server does. Hashes come from `treehash.TreeHash`; the tracked mode
   class (1/2/3) is mapped back to the server's stored mode
   (`hashModeOfClass`) first, because `treehash` classifies stored modes and
   would read class 1 as an executable permission. Reads are three indexed

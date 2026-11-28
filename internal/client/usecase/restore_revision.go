@@ -81,8 +81,10 @@ func (r *RevisionRestore) Run(ctx context.Context, root, path, commitID string, 
 	if err := checkWriteInsideRoot(root, p); err != nil {
 		return err
 	}
-	// A file where a folder above p is needed is refused, not replaced.
-	if _, err := planSwaps(ctx, root, r.repo, []materializedFile{{Path: p}}, nil); err != nil {
+	// A file where a folder above p is needed is refused, not replaced. The
+	// revision is not the synced commit, so a tracked file in the way is not
+	// a sign of a damaged commit and keeps its plain reason.
+	if _, err := planSwapsWith(ctx, root, r.repo, []materializedFile{{Path: p}}, nil, false); err != nil {
 		return err
 	}
 

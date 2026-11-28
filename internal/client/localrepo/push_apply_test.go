@@ -677,3 +677,48 @@ func TestApplyPush_CostFollowsPathDepth(t *testing.T) {
 	require.NoError(t, saved.SaveSyncedTree(want, "c2", nil))
 	require.Equal(t, readFullState(t, saved), readFullState(t, lr))
 }
+
+// A push that would leave a path as a file and as a folder is refused by the
+// server; applied locally all the same, it is refused the same way and
+// nothing is written. The complete swap applies.
+func TestApplyPush_RefusesAFileFolderClash(t *testing.T) {
+	base := map[string]pushSpec{"a/b": spec(1), "a/x/one": spec(2), "a/x/sub/deep": spec(3), "top": spec(4)}
+	cases := []struct {
+		name    string
+		pushed  []string
+		removed []string
+		path    string
+	}{
+		{name: "file over a kept folder", pushed: []string{"a/x"}, path: "a/x"},
+		{name: "file over a rebuilt folder", pushed: []string{"a/x"}, removed: []string{"a/x/one"}, path: "a/x"},
+		{name: "file below a file", pushed: []string{"a/b/c"}, path: "a/b"},
+		{name: "file below a root file", pushed: []string{"top/c/d"}, path: "top"},
+		{name: "file and a file below it", pushed: []string{"n", "n/p"}, path: "n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lr := newSyncedRepo(t)
+			require.NoError(t, lr.SaveSyncedTree(manifestTree(base), "c1", nil))
+			before := readFullState(t, lr)
+			in := clientDomain.PushApply{BaseCommitID: "c1", CommitID: "c2", Removed: tc.removed}
+			for i, p := range tc.pushed {
+				in.Files = append(in.Files, spec(byte(70+i)).pushFile(p))
+			}
+			err := lr.ApplyPush(in)
+			var clash *clientDomain.PushApplyClashError
+			require.ErrorAs(t, err, &clash)
+			require.Equal(t, tc.path, clash.Path)
+			require.Contains(t, err.Error(), "as a file and as a folder")
+			require.Equal(t, before, readFullState(t, lr), "nothing may be persisted")
+		})
+	}
+
+	lr := newSyncedRepo(t)
+	require.NoError(t, lr.SaveSyncedTree(manifestTree(base), "c1", nil))
+	swap := pushCase{
+		base:    base,
+		pushed:  map[string]pushSpec{"a/x": spec(80), "a/b/c": spec(81)},
+		removed: []string{"a/x/one", "a/x/sub/deep", "a/b"},
+	}
+	require.NoError(t, lr.ApplyPush(swap.apply("c1", "c2", manifestTree(swap.after()).Hash)))
+}

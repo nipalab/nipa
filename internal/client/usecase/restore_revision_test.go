@@ -379,6 +379,27 @@ func TestCheckWriteInsideRoot(t *testing.T) {
 	require.NoError(t, checkWriteInsideRoot(root, "file/below/x.txt"), "a file in the way is left to the write, which fails on it")
 }
 
+// The synced snapshot tracks a/b as a file and the older commit holds it as a
+// folder: both commits are sound, so the tracked file is only in the way and
+// the refusal must not call the target commit damaged.
+func TestRevisionRestore_RefusesATrackedFileWhereAFolderIsNeeded(t *testing.T) {
+	fx := newRevisionFixture(t, map[string]string{"a/b": "file now\n"}, map[string]string{"a/b/c": "old\n"})
+	_, tracked, err := fx.lr.SnapshotFile("a/b")
+	require.NoError(t, err)
+	require.True(t, tracked, "a/b is tracked in the synced snapshot")
+
+	err = fx.run(t, "a/b/c", fx.commit)
+	requireCode(t, err, 400)
+	require.ErrorContains(t, err, "a/b (untracked or kept file where a folder is needed)")
+	require.NotContains(t, err.Error(), "the target commit is damaged")
+	require.NotContains(t, err.Error(), damagedTargetReason)
+
+	require.Equal(t, "file now\n", fx.read(t, "a/b"))
+	require.Empty(t, fx.client.dirs, "refused before any request")
+	require.Empty(t, fx.status(t).Modified)
+	requireNoTempFiles(t, fx.root)
+}
+
 func TestRevisionRestore_RefusesPendingShelfApply(t *testing.T) {
 	fx := newRevisionFixture(t, map[string]string{"a.txt": "new\n"}, map[string]string{"a.txt": "old\n"})
 	require.NoError(t, fx.lr.SaveShelfState(&clientDomain.ShelfState{ShelfID: "s1", ShelfName: "wip"}))

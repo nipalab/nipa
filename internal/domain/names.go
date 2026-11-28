@@ -10,8 +10,11 @@ import (
 // path may contain it as a segment, or a sync would overwrite clone metadata.
 const MetadataDirName = ".nipa"
 
-// ValidateRepoPath checks a pushed file path: slash separated, every segment
-// a valid name (see ValidatePathSegment), none of them the metadata directory.
+// ValidateRepoPath checks a pushed file path: relative and slash separated,
+// every segment a valid name (see ValidatePathSegment), none of them the
+// metadata directory. A leading slash is refused, not trimmed: the tree
+// builder keys directories by the path as written, so "/a/f" used to lose
+// the file and, next to "a/g", build the directory a twice.
 func ValidateRepoPath(p string) error {
 	return validateRepoPath(p, true)
 }
@@ -24,7 +27,6 @@ func ValidateRemovedRepoPath(p string) error {
 }
 
 func validateRepoPath(p string, rejectMetadata bool) error {
-	p = strings.TrimPrefix(p, "/")
 	if p == "" {
 		return NewErrorUser("file path must not be empty")
 	}

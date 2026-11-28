@@ -193,6 +193,9 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := p.checkStagedTree(staged, baseByPath, toRead, removed); err != nil {
+		return nil, err
+	}
 	collector := newPlanCollector()
 	changes := make([]domain.PlanChange, 0, len(toRead)+len(removed))
 	for _, sf := range toRead {
@@ -280,6 +283,11 @@ func (p *Push) pushStagedEffect(ctx context.Context, root string, nipaUrl *domai
 
 	toRead, removed, err := classifyStaged(root, staged, baseByPath)
 	if err != nil {
+		return nil, nil, err
+	}
+	// A path that would be both a file and a folder is refused by the server;
+	// say so before the upload instead of after it.
+	if err := p.checkStagedTree(staged, baseByPath, toRead, removed); err != nil {
 		return nil, nil, err
 	}
 	pins, err := p.localRepo.ListPins()

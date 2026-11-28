@@ -54,7 +54,23 @@ type swapBlocker struct {
 // see guardedRemoveCached), and a swap cannot keep it, so a swap is refused
 // either way. It costs one Lstat per written file and per distinct folder
 // above one, and a walk of each folder that must become a file.
+//
+// planSwaps serves the paths that write from the synced commit (update/sync
+// and restore of the synced snapshot), so a tracked file in the way is
+// labelled as a damaged target (markKeptTracked).
 func planSwaps(ctx context.Context, root string, lr any, writes []materializedFile, removals []clientDomain.SnapshotFile) (*swapPlan, error) {
+	return planSwapsWith(ctx, root, lr, writes, removals, true)
+}
+
+// planSwapsWith is planSwaps; markKept tells whether a refusal labels the
+// tracked files in the way as kept by a damaged target (markKeptTracked).
+// RevisionRestore passes false: it writes a path from another commit than the
+// synced one, so a tracked file above it says nothing about either commit.
+// The three-way writes (merge, revert, shelve apply; applyThreeWay) pass
+// false too: they write a merge result, not a commit, and merge.ThreeWay has
+// no file/folder clash, so two sound sides (ours adds the file a, theirs
+// a/b) can put a tracked file in the way.
+func planSwapsWith(ctx context.Context, root string, lr any, writes []materializedFile, removals []clientDomain.SnapshotFile, markKept bool) (*swapPlan, error) {
 	plan := &swapPlan{taken: map[string]struct{}{}}
 	if len(writes) == 0 {
 		return plan, nil
@@ -148,6 +164,9 @@ func planSwaps(ctx context.Context, root string, lr any, writes []materializedFi
 		}
 	}
 	if len(blockers) > 0 {
+		if markKept {
+			blockers = markKeptTracked(lr, blockers)
+		}
 		return nil, swapConflictError(blockers)
 	}
 	// Folders go deepest first, so each is empty when it is removed.
@@ -219,6 +238,49 @@ func trackedFileChanged(root string, f clientDomain.SnapshotFile, statCache map[
 	return err != nil || hash != f.Hash
 }
 
+// damagedTargetReason marks a blocker that is a tracked file the sync does
+// not remove: the target commit keeps it and also holds a file at, or a
+// folder over, the same path. A sound commit cannot; a server without the
+// tree check could store one. It holds only where the writes come from the
+// commit the snapshot is synced to (update/sync, restore of the synced
+// snapshot), never for RevisionRestore, which writes from an older commit,
+// nor for the three-way writes (merge, revert, shelve apply), which write a
+// merge result that two sound commits can make clash.
+const damagedTargetReason = "tracked file the target commit keeps: that commit holds a path as both a file and a folder"
+
+// markKeptTracked tells the blockers that are tracked files apart from
+// untracked ones. It runs on the refusal only and reads the blockers' rows;
+// planSwaps (update/sync, restore of the synced snapshot) runs it;
+// planSwapsWith only when asked, which RevisionRestore and the three-way
+// writes do not (see damagedTargetReason).
+func markKeptTracked(lr any, blockers []swapBlocker) []swapBlocker {
+	reader, ok := lr.(interface {
+		SnapshotFiles(paths []string) (map[string]clientDomain.SnapshotFile, error)
+	})
+	if !ok {
+		return blockers
+	}
+	var paths []string
+	for _, b := range blockers {
+		if strings.HasPrefix(b.reason, "untracked or kept file") {
+			paths = append(paths, b.path)
+		}
+	}
+	if len(paths) == 0 {
+		return blockers
+	}
+	tracked, err := reader.SnapshotFiles(paths)
+	if err != nil {
+		return blockers
+	}
+	for i, b := range blockers {
+		if _, kept := tracked[b.path]; kept && strings.HasPrefix(b.reason, "untracked or kept file") {
+			blockers[i].reason = damagedTargetReason
+		}
+	}
+	return blockers
+}
+
 // swapConflictError refuses a sync that would have to delete content to turn
 // a file into a folder or a folder into a file.
 func swapConflictError(blockers []swapBlocker) error {
@@ -231,6 +293,12 @@ func swapConflictError(blockers []swapBlocker) error {
 			break
 		}
 		fmt.Fprintf(&b, "\n  %s (%s)", x.path, x.reason)
+	}
+	for _, x := range blockers {
+		if x.reason == damagedTargetReason {
+			b.WriteString("\nthe target commit is damaged: moving the tracked files it keeps does not help, a commit that deletes the file or the files below it repairs the branch")
+			break
+		}
 	}
 	// The CLI prints the message only, so it says what to do too.
 	b.WriteString("\nnothing was changed; move them out of the way (push or shelve changes to tracked files first) and run again; --force does not delete them")

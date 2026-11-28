@@ -300,6 +300,15 @@ func (p *pushApplyPlan) rebuild(ctx context.Context, q *sqlcLocalrepo.Queries, d
 		}
 	}
 
+	// Files and subdirectories are keyed by stored path, so a name that is
+	// both shows as one key in both maps. The server refuses such a tree
+	// (usecase.buildNewTree); neither does this apply write one.
+	for path := range treeEntries {
+		if _, clash := fileEntries[path]; clash {
+			return &clientDomain.PushApplyClashError{Path: strings.TrimPrefix(path, "/")}
+		}
+	}
+
 	if dir.path != "" && len(fileEntries) == 0 && len(treeEntries) == 0 {
 		dir.dropped = true
 		if stored != nil {
