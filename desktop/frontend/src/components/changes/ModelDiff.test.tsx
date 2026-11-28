@@ -213,6 +213,18 @@ describe("ModelCompareView", () => {
     expect(await screen.findByText("After: the preview files are no longer available, reopen the file.")).toBeInTheDocument();
   });
 
+  it("does not reload a viewer closed while its files' availability is checked", async () => {
+    loader.loadModel.mockRejectedValue(new Error("the file could not be loaded (HTTP 404)"));
+    let answer!: (alive: boolean) => void;
+    api.hasMedia.mockImplementation(() => new Promise<boolean>((r) => (answer = r)));
+    const onExpired = vi.fn().mockReturnValue(true);
+    const view = renderWithProviders(<ModelCompareView compare={{ old: null, new: side() }} onExpired={onExpired} />);
+    await waitFor(() => expect(api.hasMedia).toHaveBeenCalledWith("m1"));
+    view.unmount();
+    await act(async () => answer(false));
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
   it("shows the load error when the availability check fails or the side has no token", async () => {
     loader.loadModel.mockRejectedValue(new Error("network down"));
     api.hasMedia.mockRejectedValue(new Error("no bridge"));

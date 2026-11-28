@@ -80,6 +80,8 @@ function useLoadedSide(side: ModelSide | null, { hasMedia, onExpired }: MediaHoo
       (err: unknown) => {
         if (abort.signal.aborted) return;
         void mediaExpired([side.media], hasMedia).then((expired) => {
+          // Aborted while asking: a reload would publish media no view releases.
+          if (abort.signal.aborted) return;
           if (!expired) fail(errorText(err));
           else if (!expiredRef.current?.()) fail(errorText(err), true);
         });
