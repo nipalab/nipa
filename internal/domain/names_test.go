@@ -9,10 +9,10 @@ import (
 )
 
 func TestValidateRepoPath(t *testing.T) {
-	for _, p := range []string{"a", "/a/b.txt", "dir/sub/file", "a b/c"} {
+	for _, p := range []string{"a", "a/b.txt", "dir/sub/file", "a b/c"} {
 		assert.NoError(t, ValidateRepoPath(p), p)
 	}
-	for _, p := range []string{"", "/", "//a", "a\\b", "a//b", "a/./b", "../a", "a/..", "a/"} {
+	for _, p := range []string{"", "/", "//a", "/a", "/a/b.txt", "a\\b", "a//b", "a/./b", "../a", "a/..", "a/", "a\x00b"} {
 		err := ValidateRepoPath(p)
 		require.Error(t, err, p)
 		assert.False(t, IsServerError(err), p)

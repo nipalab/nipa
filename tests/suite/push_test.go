@@ -227,6 +227,56 @@ var _ = Describe("nipa push", func() {
 		Expect(fileExists(fresh, "file.txt")).To(BeFalse())
 	})
 
+	It("pushes a tracked folder replaced by a file as a complete swap and refuses half of one", func() {
+		project := newProject("push-folder-to-file")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"a/x/one.txt":     []byte("one\n"),
+			"a/x/sub/two.txt": []byte("two\n"),
+			"keep.txt":        []byte("keep\n"),
+		}, "seed")
+		url := repoURLFor(orgSlug, project)
+
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		other := cloneRepo(parent, url, "other")
+		Expect(os.RemoveAll(filepath.Join(dir, "a", "x"))).To(Succeed())
+		writeText(dir, "a/x", "a file now\n")
+
+		// Adding the one path stages the file and the deletions it implies.
+		add := runNipa(dir, "add", "a/x")
+		Expect(add.ExitCode).To(Equal(0), add.Output())
+		status := runNipa(dir, "status")
+		Expect(status.ExitCode).To(Equal(0), status.Output())
+		Expect(status.Output()).To(MatchRegexp(`(?m)^D  a/x/one\.txt$`), status.Output())
+		Expect(status.Output()).To(MatchRegexp(`(?m)^D  a/x/sub/two\.txt$`), status.Output())
+
+		// With the deletions unstaged, the push would leave a/x as a file and
+		// as a folder: it is refused before anything is uploaded, and the
+		// branch stays cloneable.
+		unstage := runNipa(dir, "remove", "a/x/one.txt", "a/x/sub/two.txt")
+		Expect(unstage.ExitCode).To(Equal(0), unstage.Output())
+		push := pushRepo(dir, "half a swap")
+		Expect(push.ExitCode).NotTo(Equal(0), push.Output())
+		Expect(push.Output()).To(ContainSubstring("a path cannot be both a file and a folder"))
+		Expect(push.Output()).To(ContainSubstring(`"a/x" is staged as a file, but the tracked files below it are not staged for deletion: a/x/one.txt, a/x/sub/two.txt`))
+		refused := cloneRepo(parent, url, "after-refusal")
+		Expect(readText(refused, "a/x/one.txt")).To(Equal("one\n"))
+
+		add = runNipa(dir, "add", "a/x")
+		Expect(add.ExitCode).To(Equal(0), add.Output())
+		push = pushRepo(dir, "folder becomes a file")
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		assertCleanStatus(dir)
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "a/x")).To(Equal("a file now\n"))
+		Expect(readText(fresh, "keep.txt")).To(Equal("keep\n"))
+		update := runNipa(other, "update")
+		Expect(update.ExitCode).To(Equal(0), update.Output())
+		Expect(readText(other, "a/x")).To(Equal("a file now\n"))
+		assertCleanStatus(other)
+	})
+
 	It("pushes a deletion of a tracked file", func() {
 		project := newProject("push-delete")
 		seedRepo(orgSlug, project, map[string][]byte{

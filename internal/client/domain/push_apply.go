@@ -38,3 +38,13 @@ type PushApplyMismatchError struct {
 func (e *PushApplyMismatchError) Error() string {
 	return fmt.Sprintf("local tree hash %s does not match the pushed tree hash %s", e.Computed, e.Expected)
 }
+
+// PushApplyClashError means applying the push to the stored tree would leave
+// a path as a file and as a folder at once. Nothing was written.
+type PushApplyClashError struct {
+	Path string
+}
+
+func (e *PushApplyClashError) Error() string {
+	return fmt.Sprintf("the pushed tree holds %q as a file and as a folder", e.Path)
+}

@@ -401,7 +401,11 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   before reading the file list, caps files plus removed paths at
   `PUSH_MAX_FILES` (default 2000000, `Push.WithMaxFiles`, also applied to the
   unary `Push`) and the encoded manifest at 1 GiB, and applies the push only
-  after the client closed the stream. The maintenance stream interceptor checks
+  after the client closed the stream. Paths are relative (`a/b`; a leading
+  slash is `InvalidArgument`), and a push whose result would hold a name as a
+  file and as a directory in one parent is `InvalidArgument` naming the paths,
+  before anything is written (`buildNewTree`, see `server.md`); a server-side
+  merge hitting the same is `FailedPrecondition`. The maintenance stream interceptor checks
   the first message of a client stream for its org/project. The header carries
   `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the

@@ -732,7 +732,13 @@ func (w *WorkingCopy) expandAddTargets(tracked *trackedScope, targets []string, 
 				return nil, ignoredPathError(t)
 			}
 			add(t)
+			if err := stageDisplaced(tracked, t, false, add); err != nil {
+				return nil, err
+			}
 			continue
+		}
+		if err := stageDisplaced(tracked, t, true, add); err != nil {
+			return nil, err
 		}
 		// Loaded before the walk: the tracked files below the directory are
 		// both the deletions to stage and the walk's ignore exemptions.
@@ -796,6 +802,65 @@ func (w *WorkingCopy) expandAddTargets(tracked *trackedScope, targets []string, 
 
 func ignoredPathError(path string) error {
 	return fmt.Errorf("path %q is ignored; use -f to add it anyway", path)
+}
+
+// stageDisplaced stages the deletions an existing add target implies beyond
+// itself, the way a missing target stages what was tracked there
+// (stageTrackedTarget): a tracked file cannot exist where the working copy
+// has a folder, nor below a path that is a file now. So the tracked files
+// that are folders on the way to the target (the target included when it is
+// a folder) are staged, and so is every tracked file below a target that is
+// a file and was not tracked as one. Without them a push of the target alone
+// would make the path both a file and a folder, which the server refuses.
+//
+// It reads the rows of the target and its parent folders in one batch and,
+// for a file target that is not tracked, seeks once below it.
+func stageDisplaced(tracked *trackedScope, target string, isDir bool, add func(string)) error {
+	if target == "" {
+		return nil
+	}
+	var above []string
+	for i := strings.IndexByte(target, '/'); i >= 0; {
+		above = append(above, target[:i])
+		next := strings.IndexByte(target[i+1:], '/')
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	// The target's own row rides in the same read: a folder target may be a
+	// tracked file, and a file target is looked up next anyway.
+	if err := tracked.prefetch(append(above, target)); err != nil {
+		return err
+	}
+	if isDir {
+		above = append(above, target)
+	}
+	for _, p := range above {
+		if _, ok := tracked.files[p]; ok {
+			add(p)
+		}
+	}
+	if isDir {
+		return nil
+	}
+	if _, ok := tracked.files[target]; ok {
+		// A tracked file has no tracked file below it.
+		return nil
+	}
+	// One index seek tells the usual new file apart; only a path that really
+	// replaced a folder has its tracked files listed.
+	if holds, err := tracked.tracksUnder(target); err != nil || !holds {
+		return err
+	}
+	under, err := tracked.under(target)
+	if err != nil {
+		return err
+	}
+	for _, p := range under {
+		add(p)
+	}
+	return nil
 }
 
 // stageTrackedTarget marks a missing add target as a deletion: the exact path

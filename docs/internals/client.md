@@ -368,12 +368,46 @@ empty folder; `RevisionRestore` refuses a file where a folder is needed;
 shelve create removes new files before restoring tracked ones. On the
 staging side a tracked file that is now a folder, or below a path that is a
 file now, reads as missing (`statTracked`/`isMissing` in status, add and
-`classifyStaged`), so a local swap stages and pushes. Not handled:
-case-insensitive renames (`A` -> `a`) are not treated as swaps; a push that
-stages only the new file `a/x` and not the deletions of the tracked files
-under the old folder `a/x/` is accepted by the server (`buildNewTree` does not
-check that a name is not both a file and a folder), leaving a tree no clone
-can check out; `internal/merge.ThreeWay` has no file/folder conflict, so a
+`classifyStaged`), so a local swap stages and pushes.
+
+Half a swap (the path is staged, what it displaced is not) would leave a name
+as a file and as a folder; the server refuses that tree (`buildNewTree`, see
+`server.md`). The client avoids and catches it:
+- `nipa add` (`stageDisplaced` in `expandAddTargets`) stages what an existing
+  target displaces, the way a missing target stages what was tracked there
+  (`stageTrackedTarget`): a file target that is not tracked as a file stages
+  every tracked file below it (`add a/x` after the folder `a/x` became a file
+  stages the deletions of `a/x/*`), and any target stages the tracked files
+  that are folders on the way to it, itself included when it is a folder
+  (`add a/b/c` or `add a/b` after the file `a/b` became a folder stages the
+  deletion of `a/b`). Those paths cannot exist in the working copy any more,
+  so staging them is what the working copy says, and what `add .` already
+  did. Cost: the target's row and its parent folders' rows in one batched
+  read, plus one index seek below an untracked file target (its tracked
+  files are listed only when there are any).
+- `nipa push` and its plan (`Push.checkStagedTree` -> `stagedTreeClashes`,
+  `push_clash.go`) run right after `classifyStaged`, before a chunk is read
+  or uploaded, and refuse with a 400 naming each path, up to 20 of the tracked
+  files left below it, and the `nipa add <path>` that fixes it. It covers a
+  staged list built some other way (`nipa remove` of the deletions, the daemon
+  staging single paths). Cost: the rows of the staged files' parent folders in
+  one batched read (the staged rows come from `stagedBase`), one index seek
+  below each written file that is not tracked yet, and nothing at all in a
+  repository that tracks nothing; the staged list and the stored tree are
+  untouched by a refusal.
+- `localrepo.ApplyPush` (`planPushApply.rebuild`) refuses the same tree with
+  `clientDomain.PushApplyClashError` and writes nothing, so the local mirror
+  of `buildNewTree` cannot store what the server would not.
+- A sync whose writes hold a path as a file and as a folder (a commit stored
+  before the server check) stops in `checkWriteLayout` (`checkSyncTargets`)
+  before anything is written, naming the paths, instead of failing halfway on
+  a rename with "file exists". An update of an existing clone onto such a
+  commit is refused by `planSwaps`; `markKeptTracked` then labels the tracked
+  files the target keeps and says the commit is damaged rather than telling
+  the user to move them.
+
+Not handled: case-insensitive renames (`A` -> `a`) are not treated as swaps;
+`internal/merge.ThreeWay` has no file/folder conflict, so a
 merge where one side edits `a/b` and the other turns it into `a/b/c` is
 refused by the swap check instead of reported as a conflict.
 

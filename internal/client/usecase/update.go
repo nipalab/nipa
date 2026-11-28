@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -662,6 +664,9 @@ func checkSyncTargets(root string, writes []materializedFile, removals []clientD
 	for _, f := range writes {
 		paths = append(paths, f.Path)
 	}
+	if err := checkWriteLayout(paths); err != nil {
+		return err
+	}
 	if err := checkTargets(root, "write", paths); err != nil {
 		return err
 	}
@@ -670,6 +675,51 @@ func checkSyncTargets(root string, writes []materializedFile, removals []clientD
 		paths = append(paths, f.Path)
 	}
 	return checkTargets(root, "remove", paths)
+}
+
+// checkWriteLayout refuses a sync that writes a path both as a file and as a
+// folder (a file and another file below it). No working copy can hold that;
+// a server with the tree check never stores it, so it means a commit stored
+// before the check. Found here, the sync stops before anything is written
+// instead of failing halfway on "file exists".
+func checkWriteLayout(paths []string) error {
+	if len(paths) < 2 {
+		return nil
+	}
+	files := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		files[p] = struct{}{}
+	}
+	checked := map[string]struct{}{}
+	var clashes []string
+	for _, p := range paths {
+		for i := strings.LastIndexByte(p, '/'); i > 0; i = strings.LastIndexByte(p[:i], '/') {
+			dir := p[:i]
+			if _, done := checked[dir]; done {
+				break
+			}
+			checked[dir] = struct{}{}
+			if _, isFile := files[dir]; isFile {
+				clashes = append(clashes, dir)
+			}
+		}
+	}
+	if len(clashes) == 0 {
+		return nil
+	}
+	sort.Strings(clashes)
+	shown := clashes
+	more := ""
+	if len(shown) > stagedClashLimit {
+		shown = shown[:stagedClashLimit]
+		more = fmt.Sprintf(" (and %d more)", len(clashes)-stagedClashLimit)
+	}
+	quoted := make([]string, 0, len(shown))
+	for _, p := range shown {
+		quoted = append(quoted, strconv.Quote(p))
+	}
+	return clientDomain.NewUserError(fmt.Sprintf("cannot check out this commit: it holds %s%s as both a file and a folder, which no working copy can hold. Nothing was written. The commit is damaged; a commit that deletes the file or the files below it repairs the branch", strings.Join(quoted, ", "), more)).
+		WithHint("check out an earlier commit, or push the deletion from a clone that still has one", "nipa log")
 }
 
 type chunkStreamStore interface {

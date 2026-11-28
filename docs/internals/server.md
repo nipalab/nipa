@@ -10,7 +10,35 @@ with trailing dots/spaces or HFS-ignorable code points, or `NIPA~1`;
 clone's metadata. Removed paths use `ValidateRemovedRepoPath`, which still
 allows such a segment so a push can delete one stored before the check;
 `gitimport` reports metadata paths as `InvalidPathsError` like other invalid
-paths.
+paths. A leading slash is refused too (`/a/f`): it used to be trimmed for the
+check only, while `buildNewTree` keys directories by the path as written, so
+the file was dropped from the tree and, next to `a/g`, the directory `a` was
+built twice.
+
+Tree invariant (`treeBuilder.build` in `usecase/push.go`): a directory never
+holds a name both as a file and as a subdirectory. `buildNewTree` is the only
+producer of a tree to store (push, the merge/squash/rebase strategies, git
+import; fast-forward, tags, branches and revert-as-push store no tree of their
+own, there is no REST write path and shelves are client-side), so the check
+sits where a rebuilt directory's files (`byName`) meet its subdirectories
+(rebuilt `Children` and untouched `KeepDirs`): one map lookup per subdirectory
+of a directory that is rebuilt anyway, no query, nothing for untouched
+directories. Any clash refuses the whole change before `ApplyPush` with a 400
+(`newTreeClashError`, cause `*treeClashError`) that names each path and how it
+clashes (file written over a folder that keeps files, files written below a
+file that stays, both written at once, or already both in the base commit) and
+says to stage the deletions too. It is refused, not repaired: dropping the
+folder would delete files nobody asked to delete. The merge strategies reword
+it as a 409 conflict (`mergeTreeClash`: "merge conflicts in <paths>: one branch
+has the path as a file, the other as a folder"); `merge.ThreeWay` itself still
+has no file/folder conflict, so the mergeability check does not predict it.
+Sorted `Children` with the same name twice are an internal error. A commit
+stored before the check (`files f JOIN tree_nodes t ON t.parent_tree_id =
+f.tree_id AND t.name = f.name` finds them) blocks only pushes that rebuild the
+damaged directory without deleting the file or the folder's content; the
+deletion repairs it. Tests: `usecase/push_tree_clash_test.go`,
+`e2e/push_tree_clash_test.go` (raw pushes, merge requests, a stored damaged
+commit), `tests/suite/push_test.go`.
 
 Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
 --commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -776,8 +777,103 @@ func buildNewTree(ctx context.Context, branchRepo branchRepository, headCommit *
 	if err != nil {
 		return nil, err
 	}
+	if len(b.clashes) > 0 {
+		return nil, newTreeClashError(b.clashes)
+	}
 	b.finalize(ctx, root)
 	return root, nil
+}
+
+// treeClash is a name a built directory would hold twice: as a file and as a
+// subdirectory. No working copy can hold such a tree, so a clone or update of
+// the commit fails for everyone.
+type treeClash struct {
+	// path is the clashing name with its directory.
+	path string
+	// filePushed is set when the file comes from the change being applied,
+	// not from the base tree.
+	filePushed bool
+	// dirInBase is set when the directory exists in the base tree and the
+	// change leaves content in it.
+	dirInBase bool
+}
+
+func (c treeClash) describe() string {
+	switch {
+	case c.filePushed && c.dirInBase:
+		return fmt.Sprintf("%q is written as a file, but the folder %q still holds files that are not deleted", c.path, c.path)
+	case c.filePushed:
+		return fmt.Sprintf("%q is written as a file and files are written below it", c.path)
+	case c.dirInBase:
+		return fmt.Sprintf("%q already is a file and a folder in the base commit", c.path)
+	default:
+		return fmt.Sprintf("files are written below %q, but %q is a file that is not deleted", c.path, c.path)
+	}
+}
+
+// treeClashLimit caps the clashes an error message spells out.
+const treeClashLimit = 20
+
+// treeClashError is the cause of the user error buildNewTree returns for a
+// change that would store a name as a file and as a directory; callers that
+// did not get the change from a user's push (a merge) reword it.
+type treeClashError struct {
+	clashes []treeClash
+}
+
+func (e *treeClashError) Error() string {
+	shown := e.clashes
+	suffix := ""
+	if len(shown) > treeClashLimit {
+		shown = shown[:treeClashLimit]
+		suffix = fmt.Sprintf(" (+%d more)", len(e.clashes)-treeClashLimit)
+	}
+	parts := make([]string, 0, len(shown))
+	for _, c := range shown {
+		parts = append(parts, c.describe())
+	}
+	return strings.Join(parts, "; ") + suffix
+}
+
+func (e *treeClashError) paths() []string {
+	paths := make([]string, 0, len(e.clashes))
+	for _, c := range e.clashes {
+		paths = append(paths, c.path)
+	}
+	return paths
+}
+
+// newTreeClashError is the refusal of a change that would make a path both a
+// file and a folder. The change is refused as a whole rather than repaired:
+// dropping the folder's content would delete files nobody asked to delete,
+// and dropping the file would lose what was pushed.
+func newTreeClashError(clashes []treeClash) error {
+	sort.Slice(clashes, func(i, j int) bool { return clashes[i].path < clashes[j].path })
+	cause := &treeClashError{clashes: clashes}
+	err := domain.NewErrorUser("a path cannot be both a file and a folder: " + cause.Error() +
+		". Delete what the path was in the same push: stage the deletions too (nipa add <path>, or nipa add . for everything) and push again")
+	err.Cause = cause
+	return err
+}
+
+// mergeTreeClash rewords a tree clash for a server-side merge, where the two
+// branches disagree on what a path is: a conflict the user resolves in a
+// working copy. Other errors pass through.
+func mergeTreeClash(err error, prefix string) error {
+	var clash *treeClashError
+	if !errors.As(err, &clash) {
+		return err
+	}
+	if prefix != "" {
+		prefix += ": "
+	}
+	paths := clash.paths()
+	suffix := ""
+	if len(paths) > mergeConflictLimit {
+		suffix = fmt.Sprintf(" (+%d more)", len(paths)-mergeConflictLimit)
+		paths = paths[:mergeConflictLimit]
+	}
+	return domain.NewErrorConflict(fmt.Sprintf("%smerge conflicts in %s%s: one branch has the path as a file, the other as a folder; merge the target into the source branch in a working copy, keep one of the two and push", prefix, strings.Join(paths, ", "), suffix))
 }
 
 type treeBuilder struct {
@@ -788,6 +884,9 @@ type treeBuilder struct {
 	rebuildDirs map[string]bool
 	subdirs     map[string][]string
 	nextID      int64
+	// clashes collects the names that would be a file and a directory at
+	// once; a tree with any is never returned.
+	clashes []treeClash
 }
 
 func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domain.TreeNode) (*pushTreeNode, error) {
@@ -874,7 +973,39 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		kept.Parent = node
 		node.KeepDirs = append(node.KeepDirs, kept)
 	}
+
+	// The one place a directory's files and subdirectories meet: a name in
+	// both is refused here, whichever write path asked for the tree. It costs
+	// a map lookup per subdirectory of a directory that is rebuilt anyway.
+	for i, child := range node.Children {
+		// Children are sorted. Validated paths never name a directory twice;
+		// a caller that skips validation must not get such a tree either.
+		if i > 0 && node.Children[i-1].Name == child.Name {
+			return nil, domain.NewErrorInternalServer(fmt.Sprintf("directory %q is built twice", joinPath(dirPath, child.Name)))
+		}
+		if _, clash := byName[child.Name]; clash {
+			b.noteClash(dirPath, child.Name, baseChildByName[child.Name] != nil)
+		}
+	}
+	if len(byName) > 0 {
+		for _, kept := range node.KeepDirs {
+			if _, clash := byName[kept.Name]; clash {
+				b.noteClash(dirPath, kept.Name, true)
+			}
+		}
+	}
 	return node, nil
+}
+
+func (b *treeBuilder) noteClash(dirPath, name string, dirInBase bool) {
+	clash := treeClash{path: joinPath(dirPath, name), dirInBase: dirInBase}
+	for _, pf := range b.changed[dirPath] {
+		if baseOf(pf.Path) == name {
+			clash.filePushed = true
+			break
+		}
+	}
+	b.clashes = append(b.clashes, clash)
 }
 
 // emptyTreeHash is the hash of a directory with no files and no

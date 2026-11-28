@@ -141,7 +141,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		files, removed := mergeDelta(targetTree, merged)
 		root, err := buildNewTree(ctx, b.branchRepo, targetHead, files, removed)
 		if err != nil {
-			return nil, err
+			return nil, mergeTreeClash(err, "")
 		}
 		parentHashes := []domain.Hash{targetHead.Hash}
 		var parent2ID *snow.ID
@@ -196,7 +196,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 			files, removed := mergeDelta(targetTree, current)
 			root, err := buildNewTree(ctx, b.branchRepo, targetHead, files, removed)
 			if err != nil {
-				return nil, err
+				return nil, mergeTreeClash(err, fmt.Sprintf("commit %s", commit.Hash.String()[:10]))
 			}
 			req := buildApplyRequest(b.snowNode, projectID, target.ID, parentID, nil, parentHashes, commit.Message, "", root)
 			req.UserID = commit.UserID
