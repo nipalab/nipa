@@ -125,6 +125,19 @@ Fix direction: a thumbnail cache on disk keyed by file hash and size
 the diff lock, and decoders that can downscale while decoding where the
 format allows (JPEG DCT scaling, mip levels for DDS/KTX2).
 
+**Addressed.** One-sided previews of at most 256 px (the grid, history and
+detail thumbnails) go through an on-disk cache in `<user cache>/nipa/thumbs`
+(`internal/client/thumbcache`, 256 MiB, oldest evicted, shared by all repos
+and daemons). Stored versions are keyed by content hash, working files by
+path, size and mtime (never hashed for the key), plus size, level, face and
+a format version. The daemon resolves the key with a new `StatBlob` that
+reads no content (working files skip the diff lock entirely), so a hit
+replays the cached events in about 35 µs instead of 0.37 s and 225 MB for a
+4096² PNG. Misses run under a separate limit of two concurrent thumbnail
+decodes, and DDS/KTX2 decode the smallest mip that covers the thumbnail.
+JPEG DCT scaling was not done (no new dependency); PNG and JPEG still decode
+in full on a miss.
+
 ### 4. Image compare of very large textures is heavy
 
 `Preview` (`internal/client/daemon/blob.go:104`) reads each side whole

@@ -45,6 +45,9 @@ type Image struct {
 	Level    int
 	Face     int
 	Layers   []Layer
+	// SurfaceWidth and SurfaceHeight are the selected surface's size when
+	// DecodeImageForSize decoded a smaller mip into Pixels; zero otherwise.
+	SurfaceWidth, SurfaceHeight int
 }
 
 func (i *Image) setHDR(f *FloatImage) {
@@ -55,6 +58,42 @@ func (i *Image) setHDR(f *FloatImage) {
 
 func (i *Image) Width() int  { return i.Pixels.Rect.Dx() }
 func (i *Image) Height() int { return i.Pixels.Rect.Dy() }
+
+// SurfaceSize is the size of the selected surface: Pixels' size, or the
+// larger size it stands in for when a smaller mip was decoded.
+func (i *Image) SurfaceSize() (int, int) {
+	if i.SurfaceWidth > 0 && i.SurfaceHeight > 0 {
+		return i.SurfaceWidth, i.SurfaceHeight
+	}
+	return i.Width(), i.Height()
+}
+
+// DecodeImageForSize decodes like DecodeImageAt for a preview at most size
+// pixels on its longer side. DDS and KTX2 textures with mipmaps decode the
+// smallest mip level that still covers size instead of the selected level
+// (see Image.SurfaceSize); every other format decodes in full.
+func DecodeImageForSize(name string, data []byte, sel Select, size int) (*Image, error) {
+	var parse func([]byte) (*texture, error)
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".dds":
+		parse = parseDDS
+	case ".ktx2":
+		parse = parseKTX2
+	}
+	if parse == nil || size <= 0 {
+		return DecodeImageAt(name, data, sel)
+	}
+	tex, err := parse(data)
+	if err != nil {
+		return nil, err
+	}
+	img, err := tex.decodeForSize(sel, size)
+	if err != nil {
+		return nil, err
+	}
+	img.Levels, img.Faces = max(img.Levels, 1), max(img.Faces, 1)
+	return img, nil
+}
 
 // DecodeImage decodes the first surface of an image; see DecodeImageAt.
 func DecodeImage(name string, data []byte) (*Image, error) {

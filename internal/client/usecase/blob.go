@@ -80,28 +80,38 @@ func (d *Diff) ReadBlob(ctx context.Context, root string, req BlobRequest, fn fu
 	}
 }
 
-func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(diff.Entry, io.Reader) error) error {
+// revisionEntry resolves p in a revision: its tree entry, the revision and
+// the clone's server URL. It reads no content.
+func (d *Diff) revisionEntry(ctx context.Context, token, p string) (diff.Entry, *revision, *clientDomain.NipaUrl, error) {
 	cfg, err := d.localRepo.LoadConfig()
 	if err != nil {
-		return err
+		return diff.Entry{}, nil, nil, err
 	}
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
 	if err != nil {
-		return err
+		return diff.Entry{}, nil, nil, err
 	}
 	if err := d.client.Connect(ctx, nu.Origin); err != nil {
-		return err
+		return diff.Entry{}, nil, nil, err
 	}
 	if err := d.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
-		return err
+		return diff.Entry{}, nil, nil, err
 	}
 	rev, err := d.resolveRevision(ctx, nu, cfg, token)
 	if err != nil {
-		return err
+		return diff.Entry{}, nil, nil, err
 	}
 	entry, ok := rev.entries[p]
 	if !ok {
-		return missingFile(fmt.Sprintf("%s does not exist in %s", p, token))
+		return diff.Entry{}, nil, nil, missingFile(fmt.Sprintf("%s does not exist in %s", p, token))
+	}
+	return entry, rev, nu, nil
+}
+
+func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(diff.Entry, io.Reader) error) error {
+	entry, rev, nu, err := d.revisionEntry(ctx, token, p)
+	if err != nil {
+		return err
 	}
 	missing, err := d.localRepo.MissingChunks(entry.ChunkHashes)
 	if err != nil {
@@ -140,6 +150,100 @@ func missingFile(msg string) error {
 	e := clientDomain.NewNotFoundError(msg)
 	e.Cause = ErrFileMissing
 	return e
+}
+
+// BlobStat describes one file version without reading its content. Entry
+// carries the path, size and, for stored versions, the content hash; a
+// working file has no hash and is identified by AbsPath and ModTimeNS.
+type BlobStat struct {
+	Entry     diff.Entry
+	AbsPath   string
+	ModTimeNS int64
+}
+
+// Working reports whether the stat describes a working-copy file.
+func (s BlobStat) Working() bool { return s.AbsPath != "" }
+
+// StatBlob resolves the same file version as ReadBlob without streaming,
+// downloading or hashing its content, so callers can key caches on it. A
+// working file is only stat'ed and does not touch the local repository, so
+// it needs no repository lock; the other sources open the clone like
+// ReadBlob. A revision still resolves its tree on the server.
+func (d *Diff) StatBlob(ctx context.Context, root string, req BlobRequest) (BlobStat, error) {
+	p, err := cleanBlobPath(req.Path)
+	if err != nil {
+		return BlobStat{}, err
+	}
+	if req.Source == "" || req.Source == BlobWorking {
+		return statWorkingBlob(root, p)
+	}
+	if err := d.localRepo.Init(root); err != nil {
+		return BlobStat{}, err
+	}
+	d.opened.Store(true)
+	unlock, err := lockShared(d.localRepo)
+	if err != nil {
+		return BlobStat{}, err
+	}
+	defer unlock()
+	switch req.Source {
+	case BlobSnapshot:
+		snapshot, err := d.localRepo.Snapshot()
+		if err != nil {
+			return BlobStat{}, err
+		}
+		entry, ok := snapshotEntries(snapshot, DiffOptions{Paths: []string{p}}, nil)[p]
+		if !ok {
+			return BlobStat{}, missingFile(fmt.Sprintf("%s is not tracked", p))
+		}
+		return BlobStat{Entry: entry}, nil
+	case BlobRevision:
+		entry, _, _, err := d.revisionEntry(ctx, req.Revision, p)
+		return BlobStat{Entry: entry}, err
+	case BlobShelf, BlobShelfBase:
+		return d.statShelfBlob(ctx, req, p)
+	default:
+		return BlobStat{}, clientDomain.NewUserError(fmt.Sprintf("unknown blob source %q", req.Source))
+	}
+}
+
+func (d *Diff) statShelfBlob(ctx context.Context, req BlobRequest, p string) (BlobStat, error) {
+	shelves, ok := d.localRepo.(ShelfReader)
+	if !ok {
+		return BlobStat{}, clientDomain.NewUserError("shelves are not supported here")
+	}
+	entry, _, stored, err := ShelfEntryBlob(shelves, req.Revision, p, req.Source == BlobShelfBase)
+	if err != nil || stored {
+		return BlobStat{Entry: entry}, err
+	}
+	shelf, err := shelves.LoadShelf(req.Revision)
+	if err != nil {
+		return BlobStat{}, err
+	}
+	if shelf.BaseCommitID == "" {
+		return BlobStat{}, missingFile(fmt.Sprintf("%s has no recorded base version", p))
+	}
+	entry, _, _, err = d.revisionEntry(ctx, shelf.BaseCommitID, p)
+	return BlobStat{Entry: entry}, err
+}
+
+func statWorkingBlob(root, p string) (BlobStat, error) {
+	full, err := resolveInsideRoot(root, p)
+	if err != nil {
+		return BlobStat{}, err
+	}
+	info, err := os.Stat(full)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return BlobStat{}, missingFile(fmt.Sprintf("%s does not exist", p))
+		}
+		return BlobStat{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return BlobStat{}, clientDomain.NewUserError(fmt.Sprintf("%s is not a file", p))
+	}
+	entry := diff.Entry{Path: p, Mode: serverModeFromPerm(info.Mode()), SizeBytes: info.Size()}
+	return BlobStat{Entry: entry, AbsPath: full, ModTimeNS: info.ModTime().UnixNano()}, nil
 }
 
 func readWorkingBlob(root, p string, fn func(diff.Entry, io.Reader) error) error {

@@ -129,11 +129,12 @@ func (s *opTestStream) events() []*daemonpb.OpEvent {
 	return append([]*daemonpb.OpEvent(nil), s.sent...)
 }
 
-func newOpServer(t *testing.T, ops RepoOps) *Server {
+func newOpServer(t testing.TB, ops RepoOps) *Server {
 	t.Helper()
 	srv, err := NewServer(Options{
-		EndpointPath: filepath.Join(t.TempDir(), "daemon.json"),
-		Runners:      Runners{New: func(string) RepoOps { return ops }},
+		EndpointPath:      filepath.Join(t.TempDir(), "daemon.json"),
+		Runners:           Runners{New: func(string) RepoOps { return ops }},
+		ThumbnailCacheDir: filepath.Join(t.TempDir(), "thumbs"),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

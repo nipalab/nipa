@@ -18,6 +18,9 @@ import (
 type DiffRunner interface {
 	Run(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
 	ReadBlob(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error
+	// StatBlob resolves the version ReadBlob would read without reading its
+	// content; see usecase.Diff.StatBlob.
+	StatBlob(ctx context.Context, root string, req usecase.BlobRequest) (usecase.BlobStat, error)
 }
 
 // serialDiff serializes calls into one DiffRunner. The daemon admits diffs
@@ -45,6 +48,18 @@ func (s *serialDiff) ReadBlob(ctx context.Context, root string, req usecase.Blob
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.runner.ReadBlob(ctx, root, req, fn)
+}
+
+// StatBlob takes the lock except for working files: usecase.Diff stats those
+// directly without touching the shared localrepo handle, so a thumbnail
+// cache lookup does not queue behind a large read.
+func (s *serialDiff) StatBlob(ctx context.Context, root string, req usecase.BlobRequest) (usecase.BlobStat, error) {
+	if req.Source == "" || req.Source == usecase.BlobWorking {
+		return s.runner.StatBlob(ctx, root, req)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runner.StatBlob(ctx, root, req)
 }
 
 const (
