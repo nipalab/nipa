@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Review decisions. A review is one decision per reviewer per review round.
 const (
@@ -100,4 +103,17 @@ type MergeRequestDiffFile struct {
 	Deletions int64    `json:"deletions"`
 	Patch     []string `json:"patch,omitempty"`
 	TooLarge  bool     `json:"too_large,omitempty"`
+	// CountsApproximate marks Additions/Deletions as an upper-bound estimate
+	// for a file the server found too big to diff.
+	CountsApproximate bool `json:"counts_approximate,omitempty"`
+}
+
+// CountsLabel renders the line counts as "+a -d", with a "~" before each
+// count when they are estimates.
+func (f *MergeRequestDiffFile) CountsLabel() string {
+	approx := ""
+	if f.CountsApproximate {
+		approx = "~"
+	}
+	return fmt.Sprintf("+%s%d -%s%d", approx, f.Additions, approx, f.Deletions)
 }

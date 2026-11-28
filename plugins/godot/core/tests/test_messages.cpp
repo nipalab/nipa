@@ -144,6 +144,7 @@ TEST_CASE("diff files parse sides, counts, hunks and omissions") {
         {"additions", "1"},
         {"deletions", 0},
         {"hunks_omitted", true},
+        {"counts_approximate", true},
         {"content_unavailable", false},
         {"hunks", {{{"old_start", "1"}, {"old_lines", 1}, {"new_start", 1}, {"new_lines", 2},
                     {"lines", {{{"kind", "removed"}, {"old_line", "1"}, {"text", "a"}},
@@ -157,6 +158,7 @@ TEST_CASE("diff files parse sides, counts, hunks and omissions") {
     CHECK(f.new_size == 12);
     CHECK(f.additions == 1);
     CHECK(f.omitted);
+    CHECK(f.approximate);
     REQUIRE(f.hunks.size() == 1);
     CHECK(f.hunks[0].old_start == 1);
     REQUIRE(f.hunks[0].lines.size() == 3);
@@ -169,6 +171,7 @@ TEST_CASE("diff files parse sides, counts, hunks and omissions") {
     auto minimal = parse_diff_file(json::object());
     CHECK(minimal.hunks.empty());
     CHECK_FALSE(minimal.omitted);
+    CHECK_FALSE(minimal.approximate);
 
     auto unavailable = parse_diff_file({{"content_unavailable", true}});
     CHECK(unavailable.omitted);

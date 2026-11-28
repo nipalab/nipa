@@ -222,6 +222,10 @@ export interface DiffFileResponse {
   deletions: number
   patch?: string[]
   hunks?: DiffHunkResponse[]
+  // too_large: the file is too big to diff, so patch and hunks are left out.
+  too_large?: boolean
+  // counts_approximate: additions/deletions are an upper-bound estimate.
+  counts_approximate?: boolean
 }
 
 export interface CommitDiffResponse {

@@ -1001,9 +1001,15 @@ message DiffFileDetail {
     int64 deletions = 6;
     repeated string patch = 7;
     repeated DiffHunkDetail hunks = 8;
-    // too_large is set by StreamMergeRequestDiff when the file's patch and
-    // hunks were left out because they exceed the per-file budget.
+    // too_large is set when the file's patch and hunks were left out: the
+    // file is too big to diff (diff.DefaultBudget: lines, bytes or changed
+    // lines), or StreamMergeRequestDiff found the patch over its per-file
+    // message budget.
     bool too_large = 9;
+    // counts_approximate is set when additions/deletions are estimates: the
+    // file was too big to diff, so they count the lines left on each side
+    // after trimming the common prefix and suffix (an upper bound).
+    bool counts_approximate = 10;
 }
 
 message GetMergeRequestDiffRequest {

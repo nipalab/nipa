@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -109,6 +110,7 @@ func TestServer_DiffFilesTextChange(t *testing.T) {
 	require.EqualValues(t, 2, f.GetAdditions())
 	require.EqualValues(t, 1, f.GetDeletions())
 	require.False(t, f.GetHunksOmitted())
+	require.False(t, f.GetCountsApproximate())
 
 	require.Len(t, f.GetHunks(), 1)
 	hunk := f.GetHunks()[0]
@@ -195,6 +197,37 @@ func TestServer_DiffFilesOmitsOversizedHunks(t *testing.T) {
 	require.True(t, got[0].GetHunksOmitted())
 	require.Empty(t, got[0].GetHunks())
 	require.EqualValues(t, 1100, got[0].GetAdditions())
+	require.False(t, got[0].GetCountsApproximate())
+}
+
+func TestServer_DiffFilesSkipsFilesOverTheDiffBudget(t *testing.T) {
+	var oldText, newText strings.Builder
+	for i := 0; i < diff.DefaultBudget.MaxLines+10; i++ {
+		fmt.Fprintf(&oldText, "line %d\n", i)
+		if i == 5 || i == 100 {
+			fmt.Fprintf(&newText, "changed %d\n", i)
+			continue
+		}
+		fmt.Fprintf(&newText, "line %d\n", i)
+	}
+	huge := diff.FileDiff{
+		Change: diff.Change{
+			Path: "scenes/level.unity", Status: diff.Modified,
+			Old: diff.Entry{Path: "scenes/level.unity", Hash: serverDomain.Hash{1}},
+			New: diff.Entry{Path: "scenes/level.unity", Hash: serverDomain.Hash{2}},
+		},
+		Old: []byte(oldText.String()), New: []byte(newText.String()),
+	}
+	srv, root, _ := diffFilesServer(t, huge)
+
+	got := runDiffFiles(t, srv, &daemonpb.DiffRequest{Root: root}).files()
+	require.Len(t, got, 1)
+	require.True(t, got[0].GetHunksOmitted())
+	require.True(t, got[0].GetCountsApproximate())
+	require.Empty(t, got[0].GetHunks())
+	// Lines 5..100 lie between the first and last change: an upper bound.
+	require.EqualValues(t, 96, got[0].GetAdditions())
+	require.EqualValues(t, 96, got[0].GetDeletions())
 }
 
 func TestServer_DiffFilesOmitsManyShortLines(t *testing.T) {

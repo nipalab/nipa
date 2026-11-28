@@ -465,9 +465,9 @@ func (c *Cli) setupMrDiffCmd() *cobra.Command {
 			}
 			for _, file := range files {
 				if file.OldPath != "" {
-					cmd.Printf("%s %s -> %s (+%d -%d)\n", file.Status, file.OldPath, file.Path, file.Additions, file.Deletions)
+					cmd.Printf("%s %s -> %s (%s)\n", file.Status, file.OldPath, file.Path, file.CountsLabel())
 				} else {
-					cmd.Printf("%s %s (+%d -%d)\n", file.Status, file.Path, file.Additions, file.Deletions)
+					cmd.Printf("%s %s (%s)\n", file.Status, file.Path, file.CountsLabel())
 				}
 				if file.Binary {
 					cmd.Println("  binary file")

@@ -12,7 +12,8 @@ import (
 
 // maxFileHunkBytes caps the hunk text sent for one file so a single event
 // stays well below the gRPC message limit; larger diffs keep their counts and
-// set hunks_omitted.
+// set hunks_omitted. Files over diff.DefaultBudget are not diffed at all: they
+// set hunks_omitted with approximate counts (counts_approximate).
 const maxFileHunkBytes = 1 << 20
 
 // hunkLineOverhead approximates the encoded framing of one line (kind, line
@@ -66,24 +67,24 @@ func diffFileToPB(f diff.FileDiff, opts diff.Options) *daemonpb.DiffFile {
 	}
 	out.Kind = string(preview.Classify(c.Path, isBinary))
 
-	hunks := diff.FileHunks(f, opts)
+	res := diff.FileHunksBudget(f, opts, diff.DefaultBudget)
+	out.Additions, out.Deletions = int64(res.Additions), int64(res.Deletions)
+	out.CountsApproximate = res.Approx
+	if res.Omitted {
+		out.HunksOmitted = true
+		return out
+	}
 	size := 0
-	for _, hunk := range hunks {
+	for _, hunk := range res.Hunks {
 		for _, line := range hunk.Lines {
 			size += len(line.Text) + hunkLineOverhead
-			switch line.Kind {
-			case '+':
-				out.Additions++
-			case '-':
-				out.Deletions++
-			}
 		}
 	}
 	if size > maxFileHunkBytes {
 		out.HunksOmitted = true
 		return out
 	}
-	out.Hunks = hunksToPB(hunks)
+	out.Hunks = hunksToPB(res.Hunks)
 	return out
 }
 

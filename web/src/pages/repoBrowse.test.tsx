@@ -1002,6 +1002,28 @@ describe('CommitsPage', () => {
     expect(container.querySelector('a[href="/acme/game/commits"]')?.textContent).toContain('Commits')
     act(() => root.unmount())
   })
+
+  it('marks the commit summary as estimated when a file was too large to diff', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/commits/c3/diff')) {
+        return jsonResponse({
+          commit_id: 'c3',
+          files: [
+            { path: 'big.json', status: 'modified', binary: false, additions: 40, deletions: 9, too_large: true, counts_approximate: true },
+          ],
+        })
+      }
+      if (url.includes('/commits?')) {
+        return jsonResponse([{ id: 'c3', message: 'regenerate data', author_name: 'Bob', created_at: new Date().toISOString() }])
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/commits/c3')
+    await waitForText(container, 'Diff too large to display')
+    expect(container.textContent).toContain('Showing 1 changed file with ~40 additions and ~9 deletions.')
+    act(() => root.unmount())
+  })
 })
 
 describe('imported commits', () => {

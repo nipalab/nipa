@@ -7,7 +7,8 @@ import (
 )
 
 // FuzzLinesScript checks the Myers edit script: the equal and removed lines
-// rebuild the old side, the equal and added lines rebuild the new side.
+// rebuild the old side, the equal and added lines rebuild the new side, and
+// the script is as short as the reference Myers implementation's.
 func FuzzLinesScript(f *testing.F) {
 	f.Add("", "")
 	f.Add("a\nb\nc", "a\nx\nc")
@@ -38,6 +39,9 @@ func FuzzLinesScript(f *testing.F) {
 		}
 		if !slices.Equal(gotNew, b) {
 			t.Fatalf("new side not reproduced: got %q want %q", gotNew, b)
+		}
+		if got, want := editCount(Lines(a, b)), editCount(referenceLines(a, b, nil)); got != want {
+			t.Fatalf("edit count %d, reference %d (not minimal)", got, want)
 		}
 	})
 }

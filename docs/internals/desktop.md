@@ -98,6 +98,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   `Service.ZoomFunc` → Wails `window.SetZoom`, `service.StoredZoom` sets the
   initial window option and `applyStoredZoom` re-applies it at boot since
   macOS ignores that option),
+  `FileDiff.countsApproximate` (daemon `counts_approximate`, a file too big
+  to diff) prefixes the `DiffViewer` header counts with `~` and a
+  `diffViewer.approxCounts` tooltip,
   a blame gutter on text viewers via `Blame` (daemon `Blame`; the
   "Blame" toggle in `DiffViewer` and the Files detail viewer, kept in
   `localStorage` `nipa.blame`, `hooks/useTextTools.ts` +

@@ -37,7 +37,8 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   Godot 4.4+ add-on `addons/nipa` over
   the daemon JSON bridge. `core/` is engine-free C++17 (`daemon` client,
   connector and messages, `paths` project/clone mapping and sidecars, `status`
-  VCS mapping and cache, `diff` model and Myers, `locks` (`LockPolicy` port of
+  VCS mapping and cache, `diff` model and Myers (`diff::File.approximate`
+  mirrors the daemon's `counts_approximate`), `locks` (`LockPolicy` port of
   Unity's covering/scope/push-check rules with asset+sidecar lock units, and
   `ReadOnlyGuard` for strict read-only mode, state in `.godot/nipa/readonly.json`),
   `session` worker, stream loops, lock cache/lock/unlock/blocking push check,

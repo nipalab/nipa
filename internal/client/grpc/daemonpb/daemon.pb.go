@@ -2098,9 +2098,11 @@ func (x *DiffFileSide) GetHash() string {
 	return ""
 }
 
-// DiffFile is one changed path. Text files carry their hunks unless the
-// rendered hunks exceed the per-file budget (hunks_omitted); binary files only
-// carry metadata and a viewer kind for the GUI to fetch previews.
+// DiffFile is one changed path. Text files carry their hunks unless the file
+// is too big to diff (diff.DefaultBudget: lines, bytes or changed lines) or
+// the rendered hunks exceed the per-file message budget (hunks_omitted);
+// binary files only carry metadata and a viewer kind for the GUI to fetch
+// previews.
 type DiffFile struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Path               string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -2114,8 +2116,12 @@ type DiffFile struct {
 	Hunks              []*pb.DiffHunkDetail   `protobuf:"bytes,9,rep,name=hunks,proto3" json:"hunks,omitempty"`
 	HunksOmitted       bool                   `protobuf:"varint,10,opt,name=hunks_omitted,json=hunksOmitted,proto3" json:"hunks_omitted,omitempty"`
 	ContentUnavailable bool                   `protobuf:"varint,11,opt,name=content_unavailable,json=contentUnavailable,proto3" json:"content_unavailable,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// counts_approximate is set when additions/deletions are estimates: the
+	// file was too big to diff, so they count the lines left on each side
+	// after trimming the common prefix and suffix (an upper bound).
+	CountsApproximate bool `protobuf:"varint,12,opt,name=counts_approximate,json=countsApproximate,proto3" json:"counts_approximate,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *DiffFile) Reset() {
@@ -2221,6 +2227,13 @@ func (x *DiffFile) GetHunksOmitted() bool {
 func (x *DiffFile) GetContentUnavailable() bool {
 	if x != nil {
 		return x.ContentUnavailable
+	}
+	return false
+}
+
+func (x *DiffFile) GetCountsApproximate() bool {
+	if x != nil {
+		return x.CountsApproximate
 	}
 	return false
 }
@@ -12619,7 +12632,7 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1b\n" +
 	"\tis_binary\x18\x04 \x01(\bR\bisBinary\x12\x12\n" +
-	"\x04hash\x18\x05 \x01(\tR\x04hash\"\x81\x03\n" +
+	"\x04hash\x18\x05 \x01(\tR\x04hash\"\xb0\x03\n" +
 	"\bDiffFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x12\n" +
@@ -12634,7 +12647,8 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x05hunks\x18\t \x03(\v2\x15.greet.DiffHunkDetailR\x05hunks\x12#\n" +
 	"\rhunks_omitted\x18\n" +
 	" \x01(\bR\fhunksOmitted\x12/\n" +
-	"\x13content_unavailable\x18\v \x01(\bR\x12contentUnavailable\"w\n" +
+	"\x13content_unavailable\x18\v \x01(\bR\x12contentUnavailable\x12-\n" +
+	"\x12counts_approximate\x18\f \x01(\bR\x11countsApproximate\"w\n" +
 	"\rDiffFileEvent\x12*\n" +
 	"\x04file\x18\x01 \x01(\v2\x14.nipadaemon.DiffFileH\x00R\x04file\x121\n" +
 	"\afailure\x18\x02 \x01(\v2\x15.nipadaemon.OpFailureH\x00R\afailureB\a\n" +

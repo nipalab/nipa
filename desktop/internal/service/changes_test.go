@@ -300,6 +300,20 @@ func TestService_FileDiffConvertsHunks(t *testing.T) {
 	}, diff)
 }
 
+func TestService_FileDiffKeepsApproximateCounts(t *testing.T) {
+	svc, d, _, _ := newOps(t)
+	d.diff = []*daemonpb.DiffFileEvent{{Event: &daemonpb.DiffFileEvent_File{File: &daemonpb.DiffFile{
+		Path: "scene.unity", Status: "modified", Kind: "scene",
+		Additions: 40, Deletions: 30, HunksOmitted: true, CountsApproximate: true,
+	}}}}
+	diff, err := svc.FileDiff(ctx, "/work/game", "scene.unity")
+	require.NoError(t, err)
+	require.True(t, diff.HunksOmitted)
+	require.True(t, diff.CountsApproximate)
+	require.EqualValues(t, 40, diff.Additions)
+	require.EqualValues(t, 30, diff.Deletions)
+}
+
 func TestService_FileDiffErrors(t *testing.T) {
 	svc, d, _, _ := newOps(t)
 	d.diffErr = status.Error(codes.InvalidArgument, "bad path")

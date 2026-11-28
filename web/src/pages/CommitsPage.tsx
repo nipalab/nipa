@@ -7,7 +7,7 @@ import { ActorAvatar } from '../components/ActorAvatar'
 import { CopyButton } from '../components/CopyButton'
 import { LoadMore } from '../components/LoadMore'
 import { BranchSelector } from '../components/repo/BranchSelector'
-import { DiffView } from '../components/repo/DiffView'
+import { DiffView, countPrefix } from '../components/repo/DiffView'
 import { ImportedLabel } from '../components/repo/ImportedLabel'
 import { IssueChips, collectIssueKeys, useIssues } from '../components/repo/IssueChips'
 import { absoluteTime, commitTitle, relativeTime, shortSha } from '../components/repo/format'
@@ -59,6 +59,7 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
   const files = diff?.files ?? []
   const additions = files.reduce((total, file) => total + file.additions, 0)
   const deletions = files.reduce((total, file) => total + file.deletions, 0)
+  const approx = countPrefix(files.some((file) => file.counts_approximate))
 
   return (
     <>
@@ -114,8 +115,16 @@ function CommitDetail({ org, project, id, branch }: { org: string; project: stri
         <>
           <Text as="p" className="nipa-diff-summary">
             Showing <strong>{files.length} changed {files.length === 1 ? 'file' : 'files'}</strong> with{' '}
-            <span style={{ color: 'var(--fgColor-success)' }}>{additions} additions</span> and{' '}
-            <span style={{ color: 'var(--fgColor-danger)' }}>{deletions} deletions</span>.
+            <span style={{ color: 'var(--fgColor-success)' }}>
+              {approx}
+              {additions} additions
+            </span>{' '}
+            and{' '}
+            <span style={{ color: 'var(--fgColor-danger)' }}>
+              {approx}
+              {deletions} deletions
+            </span>
+            .
           </Text>
           <DiffView files={files} />
         </>

@@ -53,6 +53,7 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
   const { t } = useTranslation();
   const Viewer = viewerFor(diff);
   const tools = useTextTools(root, diff, Viewer === TextDiff);
+  const approx = diff.countsApproximate ? "~" : "";
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-4">
@@ -68,8 +69,13 @@ export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewe
         </span>
         {diff.similarity ? <span className="text-[11px] text-muted-foreground">{t("diffViewer.similar", { percent: diff.similarity })}</span> : null}
         {(diff.additions > 0 || diff.deletions > 0) && (
-          <span className="font-mono text-[11px]">
-            <span className="text-success">+{diff.additions}</span> <span className="text-danger">−{diff.deletions}</span>
+          <span className="font-mono text-[11px]" title={diff.countsApproximate ? t("diffViewer.approxCounts") : undefined}>
+            <span className="text-success">
+              {approx}+{diff.additions}
+            </span>{" "}
+            <span className="text-danger">
+              {approx}−{diff.deletions}
+            </span>
           </span>
         )}
         <StatusLetter status={diff.untracked ? "untracked" : diff.status} />

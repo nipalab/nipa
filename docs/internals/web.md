@@ -47,7 +47,9 @@ Agent-oriented implementation notes (moved from AGENTS.md). User-facing design d
   reserved, and `npm run routes` in nipa-web checks the Caddyfile covers the
   build).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
-  + diffs, branch management, merge requests (list/create; detail tabs for
+  + diffs (a file the server did not diff, `too_large`, renders a "Diff too
+  large to display" `Banner`; `counts_approximate` counts get a `~`),
+  branch management, merge requests (list/create; detail tabs for
   overview, commits and file changes; merge/reviews with decisions, inline
   floating threads, reviewer requests, activity timeline),
   file locks (list/lock/unlock), project/org settings (protection + ACL,

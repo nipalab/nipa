@@ -9109,11 +9109,17 @@ type DiffFileDetail struct {
 	Deletions int64                  `protobuf:"varint,6,opt,name=deletions,proto3" json:"deletions,omitempty"`
 	Patch     []string               `protobuf:"bytes,7,rep,name=patch,proto3" json:"patch,omitempty"`
 	Hunks     []*DiffHunkDetail      `protobuf:"bytes,8,rep,name=hunks,proto3" json:"hunks,omitempty"`
-	// too_large is set by StreamMergeRequestDiff when the file's patch and
-	// hunks were left out because they exceed the per-file budget.
-	TooLarge      bool `protobuf:"varint,9,opt,name=too_large,json=tooLarge,proto3" json:"too_large,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// too_large is set when the file's patch and hunks were left out: the
+	// file is too big to diff (diff.DefaultBudget: lines, bytes or changed
+	// lines), or StreamMergeRequestDiff found the patch over its per-file
+	// message budget.
+	TooLarge bool `protobuf:"varint,9,opt,name=too_large,json=tooLarge,proto3" json:"too_large,omitempty"`
+	// counts_approximate is set when additions/deletions are estimates: the
+	// file was too big to diff, so they count the lines left on each side
+	// after trimming the common prefix and suffix (an upper bound).
+	CountsApproximate bool `protobuf:"varint,10,opt,name=counts_approximate,json=countsApproximate,proto3" json:"counts_approximate,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *DiffFileDetail) Reset() {
@@ -9205,6 +9211,13 @@ func (x *DiffFileDetail) GetHunks() []*DiffHunkDetail {
 func (x *DiffFileDetail) GetTooLarge() bool {
 	if x != nil {
 		return x.TooLarge
+	}
+	return false
+}
+
+func (x *DiffFileDetail) GetCountsApproximate() bool {
+	if x != nil {
+		return x.CountsApproximate
 	}
 	return false
 }
@@ -14287,7 +14300,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\told_lines\x18\x02 \x01(\x03R\boldLines\x12\x1b\n" +
 	"\tnew_start\x18\x03 \x01(\x03R\bnewStart\x12\x1b\n" +
 	"\tnew_lines\x18\x04 \x01(\x03R\bnewLines\x12+\n" +
-	"\x05lines\x18\x05 \x03(\v2\x15.greet.DiffLineDetailR\x05lines\"\x8b\x02\n" +
+	"\x05lines\x18\x05 \x03(\v2\x15.greet.DiffLineDetailR\x05lines\"\xba\x02\n" +
 	"\x0eDiffFileDetail\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
 	"\bold_path\x18\x02 \x01(\tR\aoldPath\x12\x16\n" +
@@ -14297,7 +14310,9 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tdeletions\x18\x06 \x01(\x03R\tdeletions\x12\x14\n" +
 	"\x05patch\x18\a \x03(\tR\x05patch\x12+\n" +
 	"\x05hunks\x18\b \x03(\v2\x15.greet.DiffHunkDetailR\x05hunks\x12\x1b\n" +
-	"\ttoo_large\x18\t \x01(\bR\btooLarge\"e\n" +
+	"\ttoo_large\x18\t \x01(\bR\btooLarge\x12-\n" +
+	"\x12counts_approximate\x18\n" +
+	" \x01(\bR\x11countsApproximate\"e\n" +
 	"\x1aGetMergeRequestDiffRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\"J\n" +
